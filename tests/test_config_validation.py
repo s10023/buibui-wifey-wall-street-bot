@@ -2,7 +2,7 @@ from typing import Any
 
 import pytest
 
-from utils.config_validation import validate_coins_config
+from utils.config_validation import validate_coins_config, validate_stocks_config
 
 
 class TestValidateCoinsConfig:
@@ -169,3 +169,57 @@ class TestValidateCoinsConfig:
         """smt_secondary is optional — absent is valid."""
         config = {"BTCUSDT": {"leverage": 25, "sl_percent": 2.0}}
         assert validate_coins_config(config) is True
+
+
+class TestValidateStocksConfig:
+    """Tests for validate_stocks_config()."""
+
+    def test_valid_config(self) -> None:
+        config = {
+            "AAPL": {"sl_pct": 0.05},
+            "MSTR": {"sl_pct": 0.08},
+        }
+        assert validate_stocks_config(config) is True
+
+    def test_empty_config(self) -> None:
+        assert validate_stocks_config({}) is True
+
+    def test_not_a_dict(self) -> None:
+        with pytest.raises(ValueError, match="Config must be a dict"):
+            validate_stocks_config("not a dict")  # type: ignore[arg-type]
+
+    def test_params_not_dict(self) -> None:
+        with pytest.raises(ValueError, match="must be a dict"):
+            validate_stocks_config({"AAPL": "invalid"})
+
+    def test_missing_sl_pct(self) -> None:
+        with pytest.raises(ValueError, match="sl_pct"):
+            validate_stocks_config({"AAPL": {}})
+
+    def test_sl_pct_negative(self) -> None:
+        with pytest.raises(ValueError, match="sl_pct"):
+            validate_stocks_config({"AAPL": {"sl_pct": -0.1}})
+
+    def test_sl_pct_zero(self) -> None:
+        with pytest.raises(ValueError, match="sl_pct"):
+            validate_stocks_config({"AAPL": {"sl_pct": 0}})
+
+    def test_sl_pct_not_numeric(self) -> None:
+        with pytest.raises(ValueError, match="sl_pct"):
+            validate_stocks_config({"AAPL": {"sl_pct": "tight"}})
+
+    def test_sl_pct_bool_rejected(self) -> None:
+        with pytest.raises(ValueError, match="sl_pct"):
+            validate_stocks_config({"AAPL": {"sl_pct": True}})
+
+    def test_sl_pct_too_high(self) -> None:
+        with pytest.raises(ValueError, match="sl_pct"):
+            validate_stocks_config({"AAPL": {"sl_pct": 1.5}})
+
+    def test_multiple_symbols_one_invalid(self) -> None:
+        config = {
+            "AAPL": {"sl_pct": 0.05},
+            "MSTR": {"sl_pct": -0.08},
+        }
+        with pytest.raises(ValueError, match="MSTR.*sl_pct"):
+            validate_stocks_config(config)

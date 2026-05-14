@@ -75,7 +75,7 @@ Each Makefile `wifey-*` target wraps the equivalent CLI invocation.
   - `alert_formatter.py` — `SignalEvent`, `StatsContext`, `ConfluenceData`; 6-section alert layout; W1–W8 candle warnings
   - `DEFAULT_DB_PATH` lives in `analytics/store/schema.py` (re-exported via `analytics.data_store`) — import from either, do not redefine in runners
 - `utils/` — shared utilities:
-  - `config_validation.py` — config schema validation (currently `coins.json`; becomes `stocks.json` after T6)
+  - `config_validation.py` — config schema validation: `validate_coins_config` (legacy) + `validate_stocks_config` (Phase A equities, since T6)
   - `telegram.py` — Telegram message sending
   - `live_store.py` — shared in-memory store for live WebSocket data
   - `live_loop.py` — shared Rich live display loop logic
@@ -88,7 +88,8 @@ Each Makefile `wifey-*` target wraps the equivalent CLI invocation.
   - `live_outcomes_report.py` — read-only spot-check of `signal_alert_outcomes` after the T2 backfill worker runs; reports the resolved/open mix, per-(strategy, tf, direction) win rate + avg_r, and per-strategy aggregate. Stop-gap until a Stats UI card lands. Run via `PYTHONPATH=. poetry run python tools/live_outcomes_report.py [--days N] [--min-n N]`.
 - `tests/` — pytest suite; tests import from lib modules and pass mock dependencies directly
 - `.claude/context/` — long-form module references (`analytics.md`, `signals.md`, `web.md`) split out to keep this file lean
-- `config/coins.json` — legacy per-symbol crypto config (gitignored; see `coins.json.example`). Will be replaced by `config/stocks.json` in T6 (US-equities watchlist: AAPL/MSFT/GOOGL/AMZN/META/NVDA/TSLA/AMD/ORCL/ADBE/SPY/QQQ).
+- `config/coins.json` — legacy per-symbol crypto config (gitignored; see `coins.json.example`).
+- `config/stocks.json` — Phase A US-equities watchlist (gitignored; see `stocks.json.example`). 13 symbols: AAPL/MSFT/GOOGL/AMZN/META/ORCL/ADBE/NVDA/AMD/TSLA/MSTR/SPY/QQQ. Schema is `{ticker: {sl_pct: float in (0, 1.0)}}` validated by `utils.config_validation.validate_stocks_config`.
 - `config/strategy_params.toml` — shared base config inherited via `extends = "strategy_params.toml"` by `signal_watch.toml`, `signal_watch_all.toml`, `signal_watch_weekdays.toml`. Contains `[smt_pairs]`, `[bias]`, `[backtest]` defaults, per-strategy `volume_suppress` / `volume_spike_boost` flags, and `tp_r_long` / `tp_r_short` directional overrides. `conservative.toml` / `scalping.toml` / `swing.toml` do **not** extend it — they carry their own `[bias]` / `[backtest]` values.
 
 ## Code Style
@@ -161,4 +162,4 @@ Skills live in `.claude/skills/<name>/SKILL.md` (project-specific, committed to 
 - Branch naming: `feat/`, `fix/`, `docs/`, `chore/`
 - Do not commit `.env`, `config/coins.json`, `config/stocks.json`, or IDE-specific files
 - **Per-repo git identity is mandatory** before any commit: this account uses `s10023 <ngkhaijian@gmail.com>` (global config inherits a work identity and will mis-attribute commits). Verify via `git config --local user.email` before committing. SSH alias `git@github.com-personal:...` is also required for s10023 remotes — see auto-memory `reference_ssh_host_aliases.md` for the full recipe.
-- `gh pr create` must pass `--repo s10023/buibui-wifey-wall-street-bot` explicitly (SSH alias breaks gh's remote auto-discovery).
+- **`gh` commands in this repo must pass `--repo s10023/buibui-wifey-wall-street-bot` explicitly.** The user's `gh` default repo is intentionally set to the parent `s10023/buibui-moon-trader-bot` (primary project), so `gh pr view N` / `gh pr list` / `gh pr create` without `--repo` will resolve against the parent and either fail or target the wrong repo. This is a preference, not a fix-to-be-found — do not run `gh repo set-default` to "solve" it.

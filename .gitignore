@@ -7,6 +7,9 @@ __pycache__/
 # Ignore only config/coins.json
 config/coins.json
 
+# Ignore config/stocks.json (Phase A personal watchlist — ship .example instead)
+config/stocks.json
+
 # But don't ignore other files in config/
 !config/
 .claude/*

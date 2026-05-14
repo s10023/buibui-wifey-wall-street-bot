@@ -1,0 +1,15 @@
+{
+  "AAPL": { "sl_pct": 0.05 },
+  "MSFT": { "sl_pct": 0.05 },
+  "GOOGL": { "sl_pct": 0.05 },
+  "AMZN": { "sl_pct": 0.05 },
+  "META": { "sl_pct": 0.05 },
+  "ORCL": { "sl_pct": 0.05 },
+  "ADBE": { "sl_pct": 0.05 },
+  "NVDA": { "sl_pct": 0.06 },
+  "AMD": { "sl_pct": 0.06 },
+  "TSLA": { "sl_pct": 0.06 },
+  "MSTR": { "sl_pct": 0.08 },
+  "SPY": { "sl_pct": 0.03 },
+  "QQQ": { "sl_pct": 0.03 }
+}
