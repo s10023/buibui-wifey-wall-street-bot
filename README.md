@@ -99,8 +99,9 @@ buibui-wifey-wall-street-bot/
 │           ├── pages/               # Chart, Backtest, SignalFeed, Positions, Prices, Stats
 │           └── components/          # Nav, CandleChart, BacktestResult, PriceRow, PositionRow, …
 ├── utils/
-│   ├── binance_client.py            # Binance client creation, time sync, config loading
-│   ├── config_validation.py         # Validates coins.json schema
+│   ├── binance_client.py            # (stale — deleted; T5 will fix)
+│   ├── yfinance_client.py           # NEW: equity OHLCV via yfinance (Phase A)
+│   ├── config_validation.py         # Validates coins.json/stocks.json schema
 │   ├── telegram.py                  # Telegram bot messaging
 │   ├── live_store.py                # Shared in-memory store for live WebSocket data
 │   └── live_loop.py                 # Shared Rich live display loop logic
