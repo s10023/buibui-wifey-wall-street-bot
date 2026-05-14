@@ -80,6 +80,7 @@ Each Makefile `wifey-*` target wraps the equivalent CLI invocation.
   - `telegram.py` — Telegram message sending
   - `live_store.py` — shared in-memory store for live WebSocket data
   - `live_loop.py` — shared Rich live display loop logic
+  - `yfinance_client.py` — yfinance helper (`fetch_history`, `YF_INTERVALS`); no auth, no module-level side effects; normalises Yahoo's tz-aware America/New_York DataFrame to canonical lowercase OHLCV + UTC-naive DatetimeIndex (T2, since 2026-05-14). 4h is not native — callers resample 1h→4h (T4).
 - `web/` — web layer (Phase 4 + 5). See `.claude/context/web.md` for full API + UI reference.
   - `api/` — FastAPI: routers (config, ohlcv, fib, signals, backtest, positions, prices, stream, stats, zones); `GET /api/active-config`, `GET /api/zones`, `GET /api/backtest/analysis`; stats live fields via `_inject_live_fields()`
   - `ui/` — Svelte 5 + Vite; pages: Chart, Backtest, SignalFeed, Positions, Prices, Stats; build: `make web-build`
