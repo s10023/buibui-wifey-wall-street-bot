@@ -75,7 +75,7 @@ Each Makefile `wifey-*` target wraps the equivalent CLI invocation.
   - `alert_formatter.py` — `SignalEvent`, `StatsContext`, `ConfluenceData`; 6-section alert layout; W1–W8 candle warnings
   - `DEFAULT_DB_PATH` lives in `analytics/store/schema.py` (re-exported via `analytics.data_store`) — import from either, do not redefine in runners
 - `utils/` — shared utilities:
-  - `config_validation.py` — config schema validation (currently `coins.json`; becomes `stocks.json` after T6)
+  - `config_validation.py` — config schema validation: `validate_coins_config` (legacy) + `validate_stocks_config` (Phase A equities, since T6)
   - `telegram.py` — Telegram message sending
   - `live_store.py` — shared in-memory store for live WebSocket data
   - `live_loop.py` — shared Rich live display loop logic
@@ -88,7 +88,8 @@ Each Makefile `wifey-*` target wraps the equivalent CLI invocation.
   - `live_outcomes_report.py` — read-only spot-check of `signal_alert_outcomes` after the T2 backfill worker runs; reports the resolved/open mix, per-(strategy, tf, direction) win rate + avg_r, and per-strategy aggregate. Stop-gap until a Stats UI card lands. Run via `PYTHONPATH=. poetry run python tools/live_outcomes_report.py [--days N] [--min-n N]`.
 - `tests/` — pytest suite; tests import from lib modules and pass mock dependencies directly
 - `.claude/context/` — long-form module references (`analytics.md`, `signals.md`, `web.md`) split out to keep this file lean
-- `config/coins.json` — legacy per-symbol crypto config (gitignored; see `coins.json.example`). Will be replaced by `config/stocks.json` in T6 (US-equities watchlist: AAPL/MSFT/GOOGL/AMZN/META/NVDA/TSLA/AMD/ORCL/ADBE/SPY/QQQ).
+- `config/coins.json` — legacy per-symbol crypto config (gitignored; see `coins.json.example`).
+- `config/stocks.json` — Phase A US-equities watchlist (gitignored; see `stocks.json.example`). 13 symbols: AAPL/MSFT/GOOGL/AMZN/META/ORCL/ADBE/NVDA/AMD/TSLA/MSTR/SPY/QQQ. Schema is `{ticker: {sl_pct: float in (0, 1.0)}}` validated by `utils.config_validation.validate_stocks_config`.
 - `config/strategy_params.toml` — shared base config inherited via `extends = "strategy_params.toml"` by `signal_watch.toml`, `signal_watch_all.toml`, `signal_watch_weekdays.toml`. Contains `[smt_pairs]`, `[bias]`, `[backtest]` defaults, per-strategy `volume_suppress` / `volume_spike_boost` flags, and `tp_r_long` / `tp_r_short` directional overrides. `conservative.toml` / `scalping.toml` / `swing.toml` do **not** extend it — they carry their own `[bias]` / `[backtest]` values.
 
 ## Code Style
