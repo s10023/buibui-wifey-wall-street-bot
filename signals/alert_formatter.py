@@ -392,7 +392,7 @@ def format_signal_alert(
     sl_pct: float = 0.02,
     tp_r: float = 2.0,
     min_sl_pct: float = 0.0,
-    cme_gap_warning: str | None = None,
+    gap_warning: str | None = None,
     ohlcv_df: pd.DataFrame | None = None,
 ) -> str:
     """Format a single SignalEvent as a Markdown Telegram message.
@@ -406,7 +406,7 @@ def format_signal_alert(
         sl_pct=sl_pct,
         tp_r=tp_r,
         min_sl_pct=min_sl_pct,
-        cme_gap_warning=cme_gap_warning,
+        gap_warning=gap_warning,
         ohlcv_df=ohlcv_df,
     )
 
@@ -418,7 +418,7 @@ def format_confluence_alert(
     min_sl_pct: float = 0.0,
     backtest_summary: str | None = None,
     stats_context: "StatsContext | None" = None,
-    cme_gap_warning: str | None = None,
+    gap_warning: str | None = None,
     ohlcv_df: pd.DataFrame | None = None,
 ) -> str:
     """Format one or more SignalEvents (same symbol/tf/direction) as a Telegram message.
@@ -478,8 +478,8 @@ def format_confluence_alert(
 
     # --- Section 4: Warnings ---
     warnings = _build_candle_warnings(events, ohlcv_df)
-    if cme_gap_warning:
-        warnings.append(cme_gap_warning)
+    if gap_warning:
+        warnings.append(gap_warning)
     warnings_block = ("\n\n" + "\n".join(warnings)) if warnings else ""
 
     # --- Section 5: Edge (backtest summary + co-firing confluence) ---
