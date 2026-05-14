@@ -16,7 +16,6 @@ from analytics.backtest_lib import (
     _is_low_volume,
     _is_volume_spike,
 )
-from analytics.cme_gap_lib import cme_gap_alert_warning, get_recent_cme_gap
 from analytics.data_store import (
     BacktestSnapshot,
     _backtest_run_id,
@@ -29,6 +28,7 @@ from analytics.data_store import (
     upsert_signal_outcome,
     upsert_signals,
 )
+from analytics.overnight_gap_lib import gap_fill_warning, get_overnight_gap
 from analytics.signal._common import (
     _CANDLE_CLOSE_BUFFER_SECS,
     _SCAN_WINDOW,
@@ -110,11 +110,11 @@ __all__ = [
     "_resolve_volume_suppress",
     "_resolve_volume_suppress_long",
     "_resolve_volume_suppress_short",
-    "cme_gap_alert_warning",
+    "gap_fill_warning",
     "get_backtest_cache",
     "get_funding_rates",
     "get_ohlcv",
-    "get_recent_cme_gap",
+    "get_overnight_gap",
     "parse_timeframe_secs",
     "put_backtest_cache",
     "run_scan_cycle",

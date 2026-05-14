@@ -23,7 +23,6 @@ from analytics.backtest_lib import (
     _is_low_volume,
     _is_volume_spike,
 )
-from analytics.cme_gap_lib import cme_gap_alert_warning, get_recent_cme_gap
 from analytics.data_store import (
     BacktestSnapshot,
     _backtest_run_id,
@@ -36,6 +35,7 @@ from analytics.data_store import (
     upsert_signal_outcome,
     upsert_signals,
 )
+from analytics.overnight_gap_lib import gap_fill_warning, get_overnight_gap
 from analytics.regime import Regime, classify_series
 from analytics.signal._common import (
     _SCAN_WINDOW,
@@ -415,7 +415,7 @@ def run_scan_cycle(
         _sec_key = ((secondary_map or {}).get(_sym, ""), _tf)
         _sec = secondary_dfs.get(_sec_key) if needs_secondary else None
         _funding = funding_map.get(_sym)
-        _gap = get_recent_cme_gap(_ohlcv)
+        _gap = get_overnight_gap(_ohlcv)
         # Slice to _SCAN_WINDOW for detectors — they only need recent candles
         # (max lookback = 100). Full window stays in ohlcv_map for Phase 3 backtest.
         _ohlcv_scan = (
@@ -468,7 +468,7 @@ def run_scan_cycle(
     # --- Phase 3: Fan-in — sequential processing of scan results ---
     # All shared-state operations happen here: CooldownStore reads/writes,
     # bt_cache updates, DB writes (upsert_signals, upsert_backtest_run).
-    for symbol, tf, events, cme_gap in scan_results:
+    for symbol, tf, events, overnight_gap in scan_results:
         ohlcv_df = ohlcv_map[(symbol, tf)]
         sec_key = ((secondary_map or {}).get(symbol, ""), tf)
         sec_df = secondary_dfs.get(sec_key) if needs_secondary else None
@@ -1055,7 +1055,11 @@ def run_scan_cycle(
                     if 0 < _first.tp_price < _entry
                     else _entry - _sl_dist * eff_alert_tp_r
                 )
-            _gap_warning = cme_gap_alert_warning(cme_gap, direction, _entry, _rough_tp)
+            _gap_warning = (
+                gap_fill_warning(overnight_gap, direction, _entry)
+                if overnight_gap is not None
+                else None
+            )
 
             # Co-fire confluence tagging (D10 step 3): check if a known-good
             # strategy pair from backtest_combos co-fired within combo_window
@@ -1122,7 +1126,7 @@ def run_scan_cycle(
                 min_sl_pct=min_sl_pct,
                 backtest_summary=dir_summary,
                 stats_context=stats_ctx_cache.get(symbol),
-                cme_gap_warning=_gap_warning,
+                gap_warning=_gap_warning,
                 ohlcv_df=ohlcv_df,
             )
             alerts.append(msg)

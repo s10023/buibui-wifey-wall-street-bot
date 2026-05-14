@@ -17,8 +17,8 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 
-from analytics.cme_gap_lib import cme_gap_alert_warning, get_recent_cme_gap
 from analytics.data_store import DEFAULT_DB_PATH, get_funding_rates, get_ohlcv
+from analytics.overnight_gap_lib import gap_fill_warning, get_overnight_gap
 from analytics.signal.types import SignalEvent
 from analytics.signal_config import BacktestFilterConfig, BiasConfig, StrategyOverride
 from analytics.signal_lib import (
@@ -217,7 +217,7 @@ def run_signal_test(
                     continue
 
                 fallback_close = float(closed_df["close"].iloc[-1])
-                cme_gap = get_recent_cme_gap(ohlcv_df)
+                overnight_gap = get_overnight_gap(ohlcv_df)
 
                 for strategy in strategies:
                     plugin = SIGNAL_REGISTRY[strategy]
@@ -393,8 +393,10 @@ def run_signal_test(
                             if 0 < event.tp_price < _entry
                             else _entry - _sl_dist * tp_r
                         )
-                    gap_warning = cme_gap_alert_warning(
-                        cme_gap, event.direction, _entry, _rough_tp
+                    gap_warning = (
+                        gap_fill_warning(overnight_gap, event.direction, _entry)
+                        if overnight_gap is not None
+                        else None
                     )
 
                     alert_text = format_confluence_alert(
@@ -404,7 +406,7 @@ def run_signal_test(
                         min_sl_pct=min_sl_pct,
                         backtest_summary=bt_summary,
                         stats_context=stats_ctx_cache.get(symbol),  # type: ignore[arg-type]
-                        cme_gap_warning=gap_warning,
+                        gap_warning=gap_warning,
                         ohlcv_df=ohlcv_df,
                     )
 
