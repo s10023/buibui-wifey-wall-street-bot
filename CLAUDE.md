@@ -2,9 +2,17 @@
 
 This file provides instructions for Claude Code when working in this repository.
 
+## Fork lineage
+
+This repo is a fork of `s10023/buibui-moon-trader-bot` (parent), forked 2026-05-14 and frozen at parent commit `635ed5a`. It is being repurposed from a Binance crypto bot into a yfinance-backed US-equities signal bot.
+
+- **Sister memory** (parent's accumulated wisdom — strategy edges, regime classifier history, F8/F9/T2 work, sweep findings, gate architecture) lives at `~/.claude-personal/projects/-home-kng-repo-buibui-moon-trader-bot/memory/MEMORY.md`. Read it when working on a feature that exists in both repos (back-port / forward-port). Skip parent's `Current State` and any crypto-specific findings (`smt_pairs`, `funding_reversion`, BTC/ETH/SOL cells, CME gap).
+- **Active work**: Phase A (signals only, equities) — see `docs/superpowers/specs/2026-04-10-tradfi-equity-fork-design.md` and `docs/superpowers/plans/2026-04-10-tradfi-equity-fork.md`. Phase B (order layer + broker pick) is deferred.
+- **In-flight task queue** (per plan §0.e): T6 → T7 → T9 → T10 → T2 → T3 → T4 → T5 → T11 → re-enable Actions → T8 → T13 → T15 → T16.
+
 ## Project Overview
 
-Buibui Wifey Wall Street Bot — a crypto trading bot for Binance Futures. Live price + position monitoring, an analytics/backtest stack (DuckDB), a 20-strategy signal engine with Telegram alerts, and a FastAPI + Svelte web UI. Python 3.11+, managed with Poetry.
+Buibui Wifey Wall Street Bot — a yfinance-backed US-equities signal bot (Phase A: signals only). Analytics/backtest stack (DuckDB), a multi-strategy signal engine with Telegram alerts, and a FastAPI + Svelte web UI. Phase B = order layer (broker TBD), deferred. Python 3.11+, managed with Poetry.
 
 ## Key Commands
 
@@ -26,9 +34,8 @@ For routine DB refresh after backtest/strategy changes: `make db-update` (= `db-
 
 `wifey.py` is the single CLI entry point with subcommands:
 
-- `wifey monitor price | position` — live price / position monitor
-- `wifey signal watch | test` — live signal daemon / historical replay
-- `wifey analytics backfill | sync` — OHLCV ingestion
+- `wifey signal watch | test` — live signal daemon / historical replay (rewire pending T10 — currently imports deleted `utils/binance_client`)
+- `wifey analytics backfill | sync` — OHLCV ingestion (will switch to yfinance in T2–T5)
 - `wifey backtest` — run/save backtests (sweep, combo, cross-TF modes)
 - `wifey digest` — pre-canned analytics queries
 - `wifey param-audit | param-sweep` — WFO parameter tools
@@ -37,15 +44,13 @@ For routine DB refresh after backtest/strategy changes: `make db-update` (= `db-
 
 Each Makefile `wifey-*` target wraps the equivalent CLI invocation.
 
+> The legacy `wifey monitor price | position` subcommand was removed in T1 (live mode + `utils/binance_client` deleted); `monitor/price_monitor.py` and `monitor/position_monitor.py` remain on disk with broken imports and will be either rewired for equities or removed entirely in T16.
+
 ## Project Structure
 
 - `wifey.py` — thin CLI entry shim (delegates to `cli.main:main`)
-- `cli/` — argparse subcommand package: `main.py` builds the top-level parser and dispatches to per-subcommand modules (`monitor.py`, `signal.py`, `analytics.py`, `backtest.py`, `digest.py`, `param.py`, `recalibrate.py`, `web.py`); `_common.py` shared helpers
-- `monitor/` — monitor modules split into thin wrappers and pure logic libs:
-  - `price_monitor.py` / `position_monitor.py` — thin wrappers (create client, load config, call lib)
-  - `price_lib.py` / `position_lib.py` — pure business logic with dependency injection (no module-level side effects)
-  - `live_price.py` — WebSocket + Rich live mode for price monitor
-  - `live_position.py` — WebSocket + Rich live mode for position monitor
+- `cli/` — argparse subcommand package: `main.py` builds the top-level parser and dispatches to per-subcommand modules (`monitor.py` legacy, `signal.py`, `analytics.py`, `backtest.py`, `digest.py`, `param.py`, `recalibrate.py`, `web.py`); `_common.py` shared helpers
+- `monitor/` — legacy crypto price/position monitor; **non-functional after T1** (`utils/binance_client.py` + `monitor/live_price.py` + `monitor/live_position.py` deleted). Remaining `price_monitor.py` / `position_monitor.py` / `price_lib.py` / `position_lib.py` have broken imports; fate decided in T16 (rewire for equities or delete).
 - `analytics/` — analytics data layer (DuckDB-backed). See `.claude/context/analytics.md` for full module API reference.
   - `store/` — DB layer split into 8 modules: `schema.py` (`init_schema`, `DEFAULT_DB_PATH`), `market_data.py` (OHLCV / funding / OI upsert), `signals.py` (`upsert_signals`, `get_signals_history`, `upsert_signal_outcome`), `backtest_runs.py` (`upsert_backtest_run`, `upsert_backtest_trades`, `list_backtest_runs`, `get_win_rate_by_strategy`), `backtest_cache.py` (`BacktestSnapshot`, `get/put/prune_backtest_cache`), `confidence.py` (`upsert_confidence_ratings`, combined + directional getters), `combos.py` (combo + cross-TF combo upsert/list/lookup), `stats_cache.py`. `_common.py` holds the sealed `_upsert` register/unregister helper. `data_store.py` is a thin re-export shim for the 30+ external import sites.
   - **CRITICAL**: `_upsert` (in `store/_common.py`) uses explicit `conn.register`/`conn.unregister` in try/finally — never switch to implicit replacement scan (causes malloc heap corruption). Never drop the try/finally.
@@ -55,7 +60,6 @@ Each Makefile `wifey-*` target wraps the equivalent CLI invocation.
   - `backtest_runner.py` / `backtest_config.py` — thin runner + TOML config loader for sweep mode
   - `param_sweep.py` — WFO sweep lib; `run_param_sweep` / `run_strategy_audit`; parallelized via `ProcessPoolExecutor`
   - `digest_lib.py` — 12 pre-canned SQL queries; `run_digest`; `DigestScope`; powers `wifey digest` + analysis API
-  - `cme_gap_lib.py` — CME gap detection + alert warning helper
   - `zones_lib.py` — structural zone extraction (geometry only): FVG, OB, EQH/EQL, BOS, Fib, OTE, swing points
   - `signal/` — signal scanner split into 10 modules: `scanner.py` (`scan_symbol` + `run_scan_cycle` 3-phase fan-out), `types.py` (`SignalEvent`, `StatsContext`, `ConfluenceData`), `gates.py` (`_filter_signals_by_adr`, `_is_adr_exempt`, `_apply_direction_filter_gate`, `_apply_htf_ema_gate`, `_apply_regime_gate`), `resolvers.py` (10× `_resolve_*` helpers, incl. `_resolve_atr_sl_floor`), `bt_cache.py` (`_compute_backtest`, `_backtest_summary`), `atr_floor.py` (`_apply_atr_floor` — F9 ATR-as-min-SL widener for the live path; mirrors backtest engine), `outcome_backfill.py` (`backfill_outcomes` — forward-walks OHLCV to resolve outstanding `signal_alert_outcomes` rows; called once per cycle from `signal_runner`), `stats_context.py` (`_compute_stats_context`), `cofire.py` (live + cross-TF co-fire detection), `_common.py` (`_bt_mem_cache`, `_reset_bt_cache`, timeframe parsing). `signal_lib.py` is a 4-line re-export shim.
   - `signal_config.py` — `SignalWatchConfig`, `BacktestFilterConfig`, `BiasConfig`, `ComboConfig`; TOML `extends` support
@@ -71,21 +75,20 @@ Each Makefile `wifey-*` target wraps the equivalent CLI invocation.
   - `alert_formatter.py` — `SignalEvent`, `StatsContext`, `ConfluenceData`; 6-section alert layout; W1–W8 candle warnings
   - `DEFAULT_DB_PATH` lives in `analytics/store/schema.py` (re-exported via `analytics.data_store`) — import from either, do not redefine in runners
 - `utils/` — shared utilities:
-  - `binance_client.py` — Binance client creation, time sync, config loading
-  - `config_validation.py` — coins.json schema validation
+  - `config_validation.py` — config schema validation (currently `coins.json`; becomes `stocks.json` after T6)
   - `telegram.py` — Telegram message sending
   - `live_store.py` — shared in-memory store for live WebSocket data
   - `live_loop.py` — shared Rich live display loop logic
 - `web/` — web layer (Phase 4 + 5). See `.claude/context/web.md` for full API + UI reference.
   - `api/` — FastAPI: routers (config, ohlcv, fib, signals, backtest, positions, prices, stream, stats, zones); `GET /api/active-config`, `GET /api/zones`, `GET /api/backtest/analysis`; stats live fields via `_inject_live_fields()`
   - `ui/` — Svelte 5 + Vite; pages: Chart, Backtest, SignalFeed, Positions, Prices, Stats; build: `make web-build`
-- `trade/open_trades.py` — Binance Futures order opener (manual/CLI use; wired via `make wifey-open-trades`). No automation hooked into the signal daemon yet.
+- `trade/open_trades.py` — legacy Binance Futures order opener (manual/CLI use; wired via `make wifey-open-trades`). **Phase A out of scope** — Phase B will replace with an equities broker adapter (broker TBD).
 - `tools/` — one-shot analysis scripts (not part of the daemon/CLI surface):
   - `strategy_edge_audit.py` — Phase 0 strategy edge audit; aggregates `backtest_trades` by (strategy × tf × regime × session) + combo uplift; deterministic KILL/DEMOTE/KEEP rule. Run via `PYTHONPATH=. poetry run python tools/strategy_edge_audit.py`. See `docs/redesign/buibui-redesign-phase0.md`.
   - `live_outcomes_report.py` — read-only spot-check of `signal_alert_outcomes` after the T2 backfill worker runs; reports the resolved/open mix, per-(strategy, tf, direction) win rate + avg_r, and per-strategy aggregate. Stop-gap until a Stats UI card lands. Run via `PYTHONPATH=. poetry run python tools/live_outcomes_report.py [--days N] [--min-n N]`.
 - `tests/` — pytest suite; tests import from lib modules and pass mock dependencies directly
 - `.claude/context/` — long-form module references (`analytics.md`, `signals.md`, `web.md`) split out to keep this file lean
-- `config/coins.json` — per-symbol leverage and stop-loss config (gitignored; see `coins.json.example`)
+- `config/coins.json` — legacy per-symbol crypto config (gitignored; see `coins.json.example`). Will be replaced by `config/stocks.json` in T6 (US-equities watchlist: AAPL/MSFT/GOOGL/AMZN/META/NVDA/TSLA/AMD/ORCL/ADBE/SPY/QQQ).
 - `config/strategy_params.toml` — shared base config inherited via `extends = "strategy_params.toml"` by `signal_watch.toml`, `signal_watch_all.toml`, `signal_watch_weekdays.toml`. Contains `[smt_pairs]`, `[bias]`, `[backtest]` defaults, per-strategy `volume_suppress` / `volume_spike_boost` flags, and `tp_r_long` / `tp_r_short` directional overrides. `conservative.toml` / `scalping.toml` / `swing.toml` do **not** extend it — they carry their own `[bias]` / `[backtest]` values.
 
 ## Code Style
@@ -117,7 +120,7 @@ When changes affect project structure, CLI commands, features, or behavior, upda
 
 ## Session Memory Protocol
 
-At the end of every session where anything changed (features, bug fixes, refactors, decisions), automatically update the **Current State** section in `~/.claude-personal/projects/-home-kng-repo-buibui-moon-trader-bot/memory/MEMORY.md`. Do not wait to be asked.
+At the end of every session where anything changed (features, bug fixes, refactors, decisions), automatically update the **Current State** section in `~/.claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot/memory/MEMORY.md`. Do not wait to be asked.
 
 Fields to keep current:
 
@@ -156,4 +159,6 @@ Skills live in `.claude/skills/<name>/SKILL.md` (project-specific, committed to 
 
 - Commit messages use conventional commits: `feat:`, `fix:`, `test:`, `docs:`, `build:`, `chore:`
 - Branch naming: `feat/`, `fix/`, `docs/`, `chore/`
-- Do not commit `.env`, `config/coins.json`, or IDE-specific files
+- Do not commit `.env`, `config/coins.json`, `config/stocks.json`, or IDE-specific files
+- **Per-repo git identity is mandatory** before any commit: this account uses `s10023 <ngkhaijian@gmail.com>` (global config inherits a work identity and will mis-attribute commits). Verify via `git config --local user.email` before committing. SSH alias `git@github.com-personal:...` is also required for s10023 remotes — see auto-memory `reference_ssh_host_aliases.md` for the full recipe.
+- `gh pr create` must pass `--repo s10023/buibui-wifey-wall-street-bot` explicitly (SSH alias breaks gh's remote auto-discovery).
