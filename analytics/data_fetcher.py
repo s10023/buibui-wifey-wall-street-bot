@@ -1,18 +1,18 @@
-"""Pure data-fetching logic for analytics — Binance Futures API to DataFrames.
+"""Pure data-fetching logic — yfinance to canonical OHLCV DataFrames.
 
-All functions accept a Binance client as a parameter.
+4h bars are synthesised by resampling 1h bars anchored to 13:30 UTC
+(US regular-session open). Other intervals (1h, 1d, 1wk) pass through.
+
 No module-level side effects.
 """
 
-from collections.abc import Callable
-from typing import Any, Literal
+from datetime import UTC, datetime
 
 import pandas as pd
-from binance.client import Client
 
-OIPeriod = Literal["5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"]
+from utils.yfinance_client import fetch_history
 
-KLINES_MAX_LIMIT: int = 1000
+BARS_MAX_LIMIT: int = 5000
 
 OHLCV_COLUMNS: list[str] = [
     "symbol",
@@ -23,97 +23,78 @@ OHLCV_COLUMNS: list[str] = [
     "low",
     "close",
     "volume",
-    "taker_buy_volume",
 ]
-FUNDING_COLUMNS: list[str] = ["symbol", "funding_time", "funding_rate"]
-OI_COLUMNS: list[str] = ["symbol", "timestamp", "oi_usd"]
+
+# Mapping from canonical interval to (yfinance_interval, default_period).
+# yfinance caps history per interval — defaults below stay within those caps.
+_INTERVAL_CONFIG: dict[str, tuple[str, str]] = {
+    "1h": ("1h", "2y"),  # yf 1h caps at 730d
+    "4h": ("1h", "2y"),  # synthesised by resampling 1h
+    "1d": ("1d", "max"),  # unlimited
+    "1wk": ("1wk", "max"),
+}
 
 
-def _fetch_to_df(
-    raw: list[Any],
-    mapper: Callable[[Any], dict[str, Any]],
-    columns: list[str],
-) -> pd.DataFrame:
-    if not raw:
-        return pd.DataFrame(columns=columns)
-    return pd.DataFrame([mapper(r) for r in raw], columns=columns)
-
-
-def fetch_klines(
-    client: Client,
+def fetch_bars(
     symbol: str,
     interval: str,
-    start_time: int,
-    limit: int = KLINES_MAX_LIMIT,
+    start_ms: int,
+    limit: int = BARS_MAX_LIMIT,
 ) -> pd.DataFrame:
-    """Fetch up to `limit` klines starting from start_time (Unix ms).
+    """Fetch up to ``limit`` bars at or after start_ms (Unix ms).
 
     Returns a DataFrame with columns matching OHLCV_COLUMNS.
-    Returns an empty DataFrame (with correct columns) if the API returns no data.
-    Raises on API errors — callers decide whether to retry or skip.
+    Returns an empty DataFrame (with correct columns) on no data.
+    Raises on yfinance / network errors — callers decide whether to retry.
     """
-    raw = client.futures_klines(
-        symbol=symbol, interval=interval, startTime=start_time, limit=limit
-    )
-    return _fetch_to_df(
-        raw,
-        lambda k: {
+    if interval not in _INTERVAL_CONFIG:
+        raise ValueError(
+            f"Unsupported interval '{interval}'. Supported: {list(_INTERVAL_CONFIG)}"
+        )
+    yf_interval, period = _INTERVAL_CONFIG[interval]
+    raw = fetch_history(symbol, interval=yf_interval, period=period)
+    if raw.empty:
+        return pd.DataFrame(columns=OHLCV_COLUMNS)
+
+    if interval == "4h":
+        raw = _resample_to_4h(raw)
+        if raw.empty:
+            return pd.DataFrame(columns=OHLCV_COLUMNS)
+
+    start_dt = datetime.fromtimestamp(start_ms / 1000, tz=UTC).replace(tzinfo=None)
+    raw = raw.loc[raw.index >= start_dt]
+    raw = raw.head(limit)
+
+    return pd.DataFrame(
+        {
             "symbol": symbol,
             "timeframe": interval,
-            "open_time": int(k[0]),
-            "open": float(k[1]),
-            "high": float(k[2]),
-            "low": float(k[3]),
-            "close": float(k[4]),
-            "volume": float(k[5]),
-            "taker_buy_volume": float(k[9]),
-        },
-        OHLCV_COLUMNS,
+            "open_time": raw.index.values.astype("datetime64[ms]").astype("int64"),
+            "open": raw["open"].astype(float).values,
+            "high": raw["high"].astype(float).values,
+            "low": raw["low"].astype(float).values,
+            "close": raw["close"].astype(float).values,
+            "volume": raw["volume"].astype(float).values,
+        }
     )
 
 
-def fetch_funding_rates(
-    client: Client,
-    symbol: str,
-    limit: int = 100,
-) -> pd.DataFrame:
-    """Fetch the most recent `limit` funding rate records for symbol.
+def _resample_to_4h(hourly: pd.DataFrame) -> pd.DataFrame:
+    """Resample 1h bars to 4h, anchored to 13:30 UTC (US regular-session open).
 
-    Returns a DataFrame with columns matching FUNDING_COLUMNS.
-    Returns an empty DataFrame (with correct columns) if no data.
+    4h bins: 13:30-17:30, 17:30-21:30, 21:30-01:30, 01:30-05:30, 05:30-09:30, 09:30-13:30.
+    The first three cover RTH + early after-hours; the latter three cover overnight.
     """
-    raw = client.futures_funding_rate(symbol=symbol, limit=limit)
-    return _fetch_to_df(
-        raw,
-        lambda r: {
-            "symbol": r["symbol"],
-            "funding_time": int(r["fundingTime"]),
-            "funding_rate": float(r["fundingRate"]),
-        },
-        FUNDING_COLUMNS,
-    )
-
-
-def fetch_open_interest(
-    client: Client,
-    symbol: str,
-    period: OIPeriod,
-    limit: int = 200,
-) -> pd.DataFrame:
-    """Fetch the most recent `limit` open interest history records for symbol.
-
-    `period` matches Binance OI history intervals: "5m", "15m", "30m", "1h", "2h",
-    "4h", "6h", "12h", "1d".
-    Returns a DataFrame with columns matching OI_COLUMNS.
-    Returns an empty DataFrame (with correct columns) if no data.
-    """
-    raw = client.futures_open_interest_hist(symbol=symbol, period=period, limit=limit)
-    return _fetch_to_df(
-        raw,
-        lambda r: {
-            "symbol": r["symbol"],
-            "timestamp": int(r["timestamp"]),
-            "oi_usd": float(r["sumOpenInterestValue"]),
-        },
-        OI_COLUMNS,
+    return (
+        hourly.resample("4h", origin="start_day", offset="13h30min")
+        .agg(
+            {
+                "open": "first",
+                "high": "max",
+                "low": "min",
+                "close": "last",
+                "volume": "sum",
+            }
+        )
+        .dropna()
     )
