@@ -9,9 +9,9 @@ DEV_PORT ?= 5173
 # Makefile — Lint Markdown and Python
 
 PYTHON_FILES = $(shell find . -name "*.py" -not -path "./venv/*" -not -path "./.venv/*")
-DOCKER_IMAGE = buibui-bot
+DOCKER_IMAGE = wifey-bot
 
-.PHONY: lint lint-md lint-md-fix lint-py-check lint-py typecheck test test-regression regression-update poetry-install poetry-update docker-build docker-monitor-price docker-monitor-price-live docker-monitor-position docker-monitor-position-live docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch buibui-monitor-price buibui-monitor-price-live buibui-monitor-price-telegram buibui-monitor-position buibui-monitor-position-live buibui-monitor-position-telegram buibui-open-trades buibui-analytics-backfill buibui-analytics-sync buibui-backtest buibui-combo-backtest buibui-cross-tf-backtest buibui-signal-watch buibui-param-audit buibui-param-sweep buibui-recalibrate buibui-digest buibui-web web-install web-dev web-build web-preview web-full clean-db clean
+.PHONY: lint lint-md lint-md-fix lint-py-check lint-py typecheck test test-regression regression-update poetry-install poetry-update docker-build docker-monitor-price docker-monitor-price-live docker-monitor-position docker-monitor-position-live docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-monitor-price wifey-monitor-price-live wifey-monitor-price-telegram wifey-monitor-position wifey-monitor-position-live wifey-monitor-position-telegram wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
 
 lint: lint-md lint-py
 
@@ -69,25 +69,25 @@ docker-monitor-price:
 	@echo "🐳 Running price monitor in Docker..."
 	docker run -t --env-file .env \
 		-v $(PWD)/config/coins.json:/app/config/coins.json:ro \
-		$(DOCKER_IMAGE) poetry run python buibui.py monitor price
+		$(DOCKER_IMAGE) poetry run python wifey.py monitor price
 
 docker-monitor-price-live:
 	@echo "🐳 Running price monitor (live) in Docker..."
 	docker run -it --env-file .env \
 		-v $(PWD)/config/coins.json:/app/config/coins.json:ro \
-		$(DOCKER_IMAGE) poetry run python buibui.py monitor price --live
+		$(DOCKER_IMAGE) poetry run python wifey.py monitor price --live
 
 docker-monitor-position:
 	@echo "🐳 Running position monitor in Docker..."
 	docker run -t --env-file .env \
 		-v $(PWD)/config/coins.json:/app/config/coins.json:ro \
-		$(DOCKER_IMAGE) poetry run python buibui.py monitor position
+		$(DOCKER_IMAGE) poetry run python wifey.py monitor position
 
 docker-monitor-position-live:
 	@echo "🐳 Running position monitor (live) in Docker..."
 	docker run -it --env-file .env \
 		-v $(PWD)/config/coins.json:/app/config/coins.json:ro \
-		$(DOCKER_IMAGE) poetry run python buibui.py monitor position --live --sort $(SORT)
+		$(DOCKER_IMAGE) poetry run python wifey.py monitor position --live --sort $(SORT)
 
 docker-analytics-backfill:
 	@echo "📥 Running analytics backfill in Docker..."
@@ -95,7 +95,7 @@ docker-analytics-backfill:
 	docker run --rm --env-file .env \
 		-v $(PWD)/analytics.db:/app/analytics.db \
 		-v $(PWD)/config/coins.json:/app/config/coins.json:ro \
-		$(DOCKER_IMAGE) poetry run python buibui.py analytics backfill --since $(or $(SINCE),2023-01-01) \
+		$(DOCKER_IMAGE) poetry run python wifey.py analytics backfill --since $(or $(SINCE),2023-01-01) \
 		$(if $(SYMBOLS),--symbols $(SYMBOLS),) \
 		$(if $(TIMEFRAMES),--timeframes $(TIMEFRAMES),)
 
@@ -105,7 +105,7 @@ docker-analytics-sync:
 	docker run --rm --env-file .env \
 		-v $(PWD)/analytics.db:/app/analytics.db \
 		-v $(PWD)/config/coins.json:/app/config/coins.json:ro \
-		$(DOCKER_IMAGE) poetry run python buibui.py analytics sync \
+		$(DOCKER_IMAGE) poetry run python wifey.py analytics sync \
 		$(if $(SYMBOLS),--symbols $(SYMBOLS),) \
 		$(if $(TIMEFRAMES),--timeframes $(TIMEFRAMES),)
 
@@ -115,7 +115,7 @@ docker-backtest:
 	docker run --rm --env-file .env \
 		-v $(PWD)/analytics.db:/app/analytics.db \
 		-v $(PWD)/config/coins.json:/app/config/coins.json:ro \
-		$(DOCKER_IMAGE) poetry run python buibui.py backtest \
+		$(DOCKER_IMAGE) poetry run python wifey.py backtest \
 		--symbol $(SYMBOL) \
 		--strategy $(STRATEGY) \
 		--interval $(INTERVAL) \
@@ -125,45 +125,45 @@ docker-backtest:
 		$(if $(SECONDARY),--secondary-symbol $(SECONDARY),) \
 		$(if $(SAVE),--save,)
 
-buibui-monitor-price:
+wifey-monitor-price:
 	@echo "📈 Running price monitor..."
-	poetry run python buibui.py monitor price
+	poetry run python wifey.py monitor price
 
-buibui-monitor-price-live:
+wifey-monitor-price-live:
 	@echo "📈 Running price monitor in live mode..."
-	poetry run python buibui.py monitor price --live
+	poetry run python wifey.py monitor price --live
 
-buibui-monitor-price-telegram:
+wifey-monitor-price-telegram:
 	@echo "📈 Running price monitor and sending to Telegram..."
-	poetry run python buibui.py monitor price --telegram
+	poetry run python wifey.py monitor price --telegram
 
-buibui-monitor-position:
+wifey-monitor-position:
 	@echo "📊 Running position monitor..."
-	poetry run python buibui.py monitor position --sort $(SORT)
+	poetry run python wifey.py monitor position --sort $(SORT)
 
-buibui-monitor-position-live:
+wifey-monitor-position-live:
 	@echo "📊 Running position monitor in live mode..."
-	poetry run python buibui.py monitor position --live --sort $(SORT)
+	poetry run python wifey.py monitor position --live --sort $(SORT)
 
-buibui-monitor-position-telegram:
+wifey-monitor-position-telegram:
 	@echo "📊 Running position monitor and sending to Telegram..."
-	poetry run python buibui.py monitor position --telegram
+	poetry run python wifey.py monitor position --telegram
 
-buibui-analytics-backfill:
+wifey-analytics-backfill:
 	@echo "📥 Running analytics backfill..."
-	@poetry run python buibui.py analytics backfill --since $(or $(SINCE),2023-01-01) \
+	@poetry run python wifey.py analytics backfill --since $(or $(SINCE),2023-01-01) \
 		$(if $(SYMBOLS),--symbols $(SYMBOLS),) \
 		$(if $(TIMEFRAMES),--timeframes $(TIMEFRAMES),)
 
-buibui-analytics-sync:
+wifey-analytics-sync:
 	@echo "🔄 Syncing analytics data..."
-	@poetry run python buibui.py analytics sync \
+	@poetry run python wifey.py analytics sync \
 		$(if $(SYMBOLS),--symbols $(SYMBOLS),) \
 		$(if $(TIMEFRAMES),--timeframes $(TIMEFRAMES),)
 
-buibui-backtest:
+wifey-backtest:
 	@echo "📊 Running backtest..."
-	@poetry run python buibui.py backtest \
+	@poetry run python wifey.py backtest \
 		$(if $(CONFIG),--config $(CONFIG),) \
 		$(if $(SYMBOL),--symbol $(SYMBOL),) \
 		$(if $(SYMBOLS),--symbols $(SYMBOLS),) \
@@ -181,9 +181,9 @@ buibui-backtest:
 		$(if $(WINDOW),--window $(WINDOW),) \
 		$(if $(SAVE),--save,)
 
-buibui-combo-backtest:
+wifey-combo-backtest:
 	@echo "📊 Running co-firing confluence backtest..."
-	@poetry run python buibui.py backtest \
+	@poetry run python wifey.py backtest \
 		--combo \
 		$(if $(CONFIG),--config $(CONFIG),) \
 		$(if $(SYMBOLS),--symbols $(SYMBOLS),) \
@@ -197,9 +197,9 @@ buibui-combo-backtest:
 		$(if $(SAVE),--save,) \
 		$(if $(WORKERS),--workers $(WORKERS),)
 
-buibui-cross-tf-backtest:
+wifey-cross-tf-backtest:
 	@echo "📊 Running cross-TF co-firing backtest..."
-	@poetry run python buibui.py backtest \
+	@poetry run python wifey.py backtest \
 		--cross-tf \
 		$(if $(CONFIG),--config $(CONFIG),) \
 		$(if $(SYMBOLS),--symbols $(SYMBOLS),) \
@@ -213,9 +213,9 @@ buibui-cross-tf-backtest:
 		$(if $(SAVE),--save,) \
 		$(if $(WORKERS),--workers $(WORKERS),)
 
-buibui-param-audit:
+wifey-param-audit:
 	@echo "🔬 Running strategy audit..."
-	@poetry run python buibui.py param-audit \
+	@poetry run python wifey.py param-audit \
 		$(if $(SYMBOL),--symbol $(SYMBOL),$(error SYMBOL is required)) \
 		$(if $(TIMEFRAME),--timeframe $(TIMEFRAME),$(error TIMEFRAME is required)) \
 		$(if $(STRATEGIES),--strategies $(STRATEGIES),) \
@@ -225,9 +225,9 @@ buibui-param-audit:
 		$(if $(FEE_PCT),--fee-pct $(FEE_PCT),) \
 		$(if $(DAY_FILTER),--day-filter $(DAY_FILTER),)
 
-buibui-param-sweep:
+wifey-param-sweep:
 	@echo "🔬 Running WFO parameter sweep..."
-	@poetry run python buibui.py param-sweep \
+	@poetry run python wifey.py param-sweep \
 		$(if $(STRATEGY),--strategy $(STRATEGY),$(error STRATEGY is required)) \
 		$(if $(SYMBOL),--symbol $(SYMBOL),$(error SYMBOL is required)) \
 		$(if $(TIMEFRAME),--timeframe $(TIMEFRAME),$(error TIMEFRAME is required)) \
@@ -240,9 +240,9 @@ buibui-param-sweep:
 		$(if $(FEE_PCT),--fee-pct $(FEE_PCT),) \
 		$(if $(DAY_FILTER),--day-filter $(DAY_FILTER),)
 
-buibui-recalibrate:
+wifey-recalibrate:
 	@echo "⭐ Recalibrating confidence star ratings from backtest DB..."
-	@poetry run python buibui.py recalibrate \
+	@poetry run python wifey.py recalibrate \
 		$(if $(MIN_TRADES),--min-trades $(MIN_TRADES),) \
 		$(if $(CONFIG),--config $(CONFIG),) \
 		$(if $(DAY_FILTER),--day-filter $(DAY_FILTER),) \
@@ -251,29 +251,29 @@ buibui-recalibrate:
 ## Routine DB update: run all-config backtests + recalibrate + regression update
 db-update-backtest:
 	@echo "📊 Running backtest for all 3 signal_watch configs (SINCE=2025-09-12)..."
-	$(MAKE) buibui-backtest CONFIG=config/signal_watch.toml SINCE=2025-09-12 SAVE=1
-	$(MAKE) buibui-backtest CONFIG=config/signal_watch_weekdays.toml SINCE=2025-09-12 SAVE=1
-	$(MAKE) buibui-backtest CONFIG=config/signal_watch_all.toml SINCE=2025-09-12 SAVE=1
+	$(MAKE) wifey-backtest CONFIG=config/signal_watch.toml SINCE=2025-09-12 SAVE=1
+	$(MAKE) wifey-backtest CONFIG=config/signal_watch_weekdays.toml SINCE=2025-09-12 SAVE=1
+	$(MAKE) wifey-backtest CONFIG=config/signal_watch_all.toml SINCE=2025-09-12 SAVE=1
 
 db-update-recalibrate:
 	@echo "⭐ Recalibrating all 3 signal_watch configs..."
-	$(MAKE) buibui-recalibrate CONFIG=config/signal_watch.toml APPLY=1
-	$(MAKE) buibui-recalibrate CONFIG=config/signal_watch_weekdays.toml APPLY=1
-	$(MAKE) buibui-recalibrate CONFIG=config/signal_watch_all.toml APPLY=1
+	$(MAKE) wifey-recalibrate CONFIG=config/signal_watch.toml APPLY=1
+	$(MAKE) wifey-recalibrate CONFIG=config/signal_watch_weekdays.toml APPLY=1
+	$(MAKE) wifey-recalibrate CONFIG=config/signal_watch_all.toml APPLY=1
 
 db-update: db-update-backtest db-update-recalibrate regression-update
 	@echo "✅ Routine DB update complete. Review: git diff tests/fixtures/golden_*.json"
 
-buibui-digest:
+wifey-digest:
 	@echo "📊 Running backtest analysis digest..."
-	@poetry run python buibui.py digest \
+	@poetry run python wifey.py digest \
 		$(if $(QUERY),--query $(QUERY),) \
 		$(if $(MIN_TRADES),--min-trades $(MIN_TRADES),) \
 		$(if $(TOP_N),--top-n $(TOP_N),)
 
-buibui-signal-watch:
+wifey-signal-watch:
 	@echo "🔍 Running signal detection daemon..."
-	@poetry run python buibui.py signal watch \
+	@poetry run python wifey.py signal watch \
 		$(if $(CONFIG),--config $(CONFIG),) \
 		$(if $(SYMBOLS),--symbols $(SYMBOLS),) \
 		$(if $(TIMEFRAMES),--timeframes $(TIMEFRAMES),) \
@@ -289,7 +289,7 @@ docker-signal-watch:
 		-v $(PWD)/analytics.db:/app/analytics.db \
 		-v $(PWD)/config/coins.json:/app/config/coins.json:ro \
 		-v $(PWD)/signal_state.json:/app/signal_state.json \
-		$(DOCKER_IMAGE) poetry run python buibui.py signal watch \
+		$(DOCKER_IMAGE) poetry run python wifey.py signal watch \
 		$(if $(CONFIG),--config $(CONFIG),) \
 		$(if $(SYMBOLS),--symbols $(SYMBOLS),) \
 		$(if $(TIMEFRAMES),--timeframes $(TIMEFRAMES),) \
@@ -298,9 +298,9 @@ docker-signal-watch:
 		$(if $(SECONDARY),--secondary-symbol $(SECONDARY),) \
 		$(if $(MIN_SL_PCT),--min-sl-pct $(MIN_SL_PCT),)
 
-buibui-signal-test:
+wifey-signal-test:
 	@echo "🧪 Firing test alert from historical data..."
-	@poetry run python buibui.py signal test \
+	@poetry run python wifey.py signal test \
 		$(if $(CONFIG),--config $(CONFIG),) \
 		$(if $(SYMBOL),--symbol $(SYMBOL),) \
 		$(if $(TIMEFRAME),--timeframe $(TIMEFRAME),) \
@@ -311,9 +311,9 @@ buibui-signal-test:
 		$(if $(DIRECTION),--direction $(DIRECTION),) \
 		$(if $(TELEGRAM),--telegram,)
 
-buibui-web:
+wifey-web:
 	@echo "Starting web backend..."
-	poetry run python buibui.py web --host 0.0.0.0 --port $(PORT) \
+	poetry run python wifey.py web --host 0.0.0.0 --port $(PORT) \
 		$(if $(CONFIG),--config $(CONFIG),)
 
 web-install:
@@ -331,9 +331,9 @@ web-check:
 web-preview:
 	cd web/ui && npm run preview -- --port $(DEV_PORT)
 
-web-full: web-build buibui-web
+web-full: web-build wifey-web
 
-buibui-open-trades:
+wifey-open-trades:
 	@echo "🚀 Opening multiple trades..."
 	poetry run python trade/open_trades.py
 

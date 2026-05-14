@@ -51,7 +51,7 @@ surfaces:
 
   - id: makefile
     path: Makefile
-    purpose: Make targets — every `buibui.py` subcommand should have a `buibui-*` wrapper
+    purpose: Make targets — every `wifey.py` subcommand should have a `buibui-*` wrapper
     scope: any_referencing_changed_artifact
 
   - id: docker_compose
@@ -66,7 +66,7 @@ surfaces:
 
 # Files that, if changed, almost always require a doc walk:
 behavior_signal_globs:
-  - "buibui.py"
+  - "wifey.py"
   - "cli/**/*.py"
   - "Makefile"
   - "docker-compose.yml"
@@ -111,7 +111,7 @@ git log main..<branch> --oneline
 
 User-facing signals — **walk the docs** if any are present:
 
-- New CLI subcommand or flag (`buibui.py`, `cli/`)
+- New CLI subcommand or flag (`wifey.py`, `cli/`)
 - New Make target or changed default
 - New TOML config key or changed default
 - New environment variable
@@ -151,7 +151,7 @@ From the diff, build a concrete list the doc walk will key off:
 
 - Each new/renamed/deleted **file** (especially modules listed in CLAUDE.md
   Project Structure)
-- Each new **CLI flag/subcommand** in `buibui.py` / `cli/`
+- Each new **CLI flag/subcommand** in `wifey.py` / `cli/`
 - Each new **Make target** (lines added like `^[a-z_-]+:` in `Makefile`)
 - Each new **TOML config key** or changed default in `config/*.toml`
 - Each module that became a **shim** (line count drops drastically and body
@@ -213,7 +213,7 @@ For each surface in the config, do the following:
 - Quickstart still works (commands referenced still exist).
 
 ### Makefile
-- Every `buibui.py` subcommand has a `make buibui-<name>` target.
+- Every `wifey.py` subcommand has a `make buibui-<name>` target.
 - Every public daemon has a `docker-up` / `docker-down` line.
 
 ### docker-compose.yml

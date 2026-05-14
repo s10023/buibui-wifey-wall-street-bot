@@ -1,4 +1,4 @@
-"""Buibui CLI — `analytics` subcommand (backfill + sync)."""
+"""Wifey CLI — `analytics` subcommand (backfill + sync)."""
 
 from __future__ import annotations
 

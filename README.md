@@ -1,4 +1,4 @@
-# Buibui Moon Trader Bot
+# Buibui Wifey Wall Street Bot
 
 A tactical crypto trading bot designed for fast, risk-managed, and confident entries — with live price monitoring and position tracking. Built for degens who trade smart. LFG.
 
@@ -47,8 +47,8 @@ Includes max USD-per-trade cap and wallet-level risk protection.
 ## Directory Structure
 
 ```text
-buibui-moon-trader-bot/
-├── buibui.py                        # CLI entry point (argparse)
+buibui-wifey-wall-street-bot/
+├── wifey.py                        # CLI entry point (argparse)
 ├── monitor/
 │   ├── price_monitor.py             # Price monitor thin wrapper (creates client, calls lib)
 │   ├── price_lib.py                 # Pure price monitor business logic
@@ -71,7 +71,7 @@ buibui-moon-trader-bot/
 │   ├── stats_lib.py                 # Pure stats lib: compute_p1p2_daily, compute_hourly_extremes, compute_adr, compute_dow_patterns, compute_session_breakdown, compute_weekly_p1p2, compute_all → StatsBundle
 │   ├── backtest_config.py           # BacktestSweepConfig + load_backtest_config() for TOML sweep mode
 │   ├── param_sweep.py               # WFO sweep lib: run_param_sweep / run_strategy_audit; parallelized via ProcessPoolExecutor
-│   ├── digest_lib.py                # 12 pre-canned SQL queries; run_digest; DigestScope; powers buibui digest
+│   ├── digest_lib.py                # 12 pre-canned SQL queries; run_digest; DigestScope; powers wifey digest
 │   ├── cme_gap_lib.py               # CME gap detection + alert warning helper
 │   ├── zones_lib.py                 # Structural zone extraction (geometry only): FVG, OB, EQH/EQL, BOS, Fib, OTE, swing points
 │   ├── recalibrate_lib.py           # Compute + write star ratings to DB or source
@@ -151,8 +151,8 @@ A 2-line summary of the most actionable stats is injected into every Telegram si
 ### 1. Clone this repo
 
 ```bash
-git clone https://github.com/kng-software/buibui-moon-trader-bot.git
-cd buibui-moon-trader-bot
+git clone https://github.com/kng-software/buibui-wifey-wall-street-bot.git
+cd buibui-wifey-wall-street-bot
 ```
 
 ### 2. Install dependencies
@@ -210,21 +210,21 @@ symbol for `smt_divergence` detection on that symbol.
 ### Monitor Prices
 
 ```bash
-poetry run python buibui.py monitor price
+poetry run python wifey.py monitor price
 ```
 
 This will run once and exit by default.
 To run in live refresh mode:
 
 ```bash
-poetry run python buibui.py monitor price --live
+poetry run python wifey.py monitor price --live
 ```
 
 You can also control how the table is sorted using the `--sort` flag:
 
 ```bash
-poetry run python buibui.py monitor price --sort change_15m:desc   # Sort by highest 15m % change
-poetry run python buibui.py monitor price --sort change_1h:asc     # Sort by lowest 1h % change
+poetry run python wifey.py monitor price --sort change_15m:desc   # Sort by highest 15m % change
+poetry run python wifey.py monitor price --sort change_1h:asc     # Sort by lowest 1h % change
 ```
 
 Supported sort keys:
@@ -266,7 +266,7 @@ When sorting is active, the sort key and direction are displayed below the table
 ### Monitor Positions and PnL
 
 ```bash
-poetry run python buibui.py monitor position [--sort key[:asc|desc]] [--hide-empty] [--compact]
+poetry run python wifey.py monitor position [--sort key[:asc|desc]] [--hide-empty] [--compact]
 ```
 
 Shows:
@@ -302,9 +302,9 @@ When sorting is active, the sort key and direction are displayed below the table
 Sorting Options:
 
 ```bash
-poetry run python buibui.py monitor position --sort pnl_pct:desc   # Sort by highest PnL%
-poetry run python buibui.py monitor position --sort sl_usd:asc     # Sort by lowest SL risk
-poetry run python buibui.py monitor position --sort default        # Sort by coins.json order (default)
+poetry run python wifey.py monitor position --sort pnl_pct:desc   # Sort by highest PnL%
+poetry run python wifey.py monitor position --sort sl_usd:asc     # Sort by lowest SL risk
+poetry run python wifey.py monitor position --sort default        # Sort by coins.json order (default)
 ```
 
 Supported sort keys:
@@ -333,7 +333,7 @@ DuckDB database for offline analysis and strategy backtesting.
 **First run — backfill historical data:**
 
 ```bash
-poetry run python buibui.py analytics backfill --since 2023-01-01
+poetry run python wifey.py analytics backfill --since 2023-01-01
 ```
 
 Options:
@@ -345,7 +345,7 @@ Options:
 **Incremental sync — fetch new candles since last stored:**
 
 ```bash
-poetry run python buibui.py analytics sync
+poetry run python wifey.py analytics sync
 ```
 
 Options:
@@ -362,19 +362,19 @@ Backtest runs in two modes: **single-combo** (one symbol + strategy) or **sweep*
 **Single-combo mode:**
 
 ```bash
-poetry run python buibui.py backtest --symbol BTCUSDT --strategy fvg --interval 4h --days 90
+poetry run python wifey.py backtest --symbol BTCUSDT --strategy fvg --interval 4h --days 90
 ```
 
 **Sweep mode — TOML config:**
 
 ```bash
-poetry run python buibui.py backtest --config config/backtest_sample.toml
+poetry run python wifey.py backtest --config config/backtest_sample.toml
 ```
 
 **Sweep mode — CLI flags:**
 
 ```bash
-poetry run python buibui.py backtest --symbols BTCUSDT ETHUSDT --timeframes 1h 4h --strategies fvg bos --days 90
+poetry run python wifey.py backtest --symbols BTCUSDT ETHUSDT --timeframes 1h 4h --strategies fvg bos --days 90
 ```
 
 **Available strategies:**
@@ -471,13 +471,13 @@ confidence ratings. Each signal-watch TOML config gets its own set of ratings st
 
 ```bash
 # Per-config workflow (preferred — no source patching)
-poetry run python buibui.py recalibrate --config config/signal_watch.toml            # dry-run
-poetry run python buibui.py recalibrate --config config/signal_watch.toml --apply    # write to DB
-poetry run python buibui.py recalibrate --config config/signal_watch_weekdays.toml --apply
+poetry run python wifey.py recalibrate --config config/signal_watch.toml            # dry-run
+poetry run python wifey.py recalibrate --config config/signal_watch.toml --apply    # write to DB
+poetry run python wifey.py recalibrate --config config/signal_watch_weekdays.toml --apply
 
 # Legacy: write global ratings directly to analytics/strategies/_registry.py (still works, no --config needed)
-poetry run python buibui.py recalibrate --apply
-poetry run python buibui.py recalibrate --min-trades 20 --apply
+poetry run python wifey.py recalibrate --apply
+poetry run python wifey.py recalibrate --min-trades 20 --apply
 ```
 
 `--config` derives `day_filter` and `config_name` from the TOML file, then filters
@@ -501,10 +501,10 @@ Strategies with fewer than `--min-trades` (default: 10) closed trades are exclud
 
 ```bash
 # After any backtest sweep with SAVE=1 — recalibrate each config independently
-make buibui-backtest CONFIG=config/signal_watch.toml SAVE=1
-make buibui-recalibrate CONFIG=config/signal_watch.toml             # preview
-make buibui-recalibrate CONFIG=config/signal_watch.toml APPLY=1    # write to DB
-make buibui-signal-watch CONFIG=config/signal_watch.toml            # restart; loads DB stars
+make wifey-backtest CONFIG=config/signal_watch.toml SAVE=1
+make wifey-recalibrate CONFIG=config/signal_watch.toml             # preview
+make wifey-recalibrate CONFIG=config/signal_watch.toml APPLY=1    # write to DB
+make wifey-signal-watch CONFIG=config/signal_watch.toml            # restart; loads DB stars
 ```
 
 ### Signal Watch — 24/7 Strategy Alerts
@@ -513,7 +513,7 @@ Runs a polling daemon that scans closed candles every N seconds and sends Telegr
 when a strategy fires. Requires `analytics backfill` to have been run first.
 
 ```bash
-poetry run python buibui.py signal watch
+poetry run python wifey.py signal watch
 ```
 
 **Options:**
@@ -611,7 +611,7 @@ strategy-wide.
 Two boolean flags are also supported per strategy block:
 
 - **`adr_exempt = true`** — skip the ADR bias gate for this strategy (use for breakout/continuation strategies that need range momentum)
-- **`volume_suppress = true/false`** — override the global `[backtest].volume_suppress` for this strategy. `true` drops signals on candles with volume < 1.5× the 20-candle rolling mean; `false` explicitly keeps them even when the global flag is on. Omit to inherit the global default (off). Decision is data-driven: run `make buibui-backtest` and check the "Volume Impact" table for each strategy — suppress when normal-vol avg R clearly exceeds low-vol avg R (Δ > 0.05R).
+- **`volume_suppress = true/false`** — override the global `[backtest].volume_suppress` for this strategy. `true` drops signals on candles with volume < 1.5× the 20-candle rolling mean; `false` explicitly keeps them even when the global flag is on. Omit to inherit the global default (off). Decision is data-driven: run `make wifey-backtest` and check the "Volume Impact" table for each strategy — suppress when normal-vol avg R clearly exceeds low-vol avg R (Δ > 0.05R).
 
 The inline backtest (computed each scan cycle per firing signal) respects all config values:
 `fee_pct`, `day_filter`, `sl_pct`, and `cooldown_seconds` are now all read from TOML and
@@ -710,31 +710,31 @@ No DB writes, no cooldown state, no latest-candle-only restriction.
 
 ```bash
 # Most recent BOS signal for BTCUSDT 1h — print only
-poetry run python buibui.py signal test --strategy bos --symbol BTCUSDT --timeframe 1h
+poetry run python wifey.py signal test --strategy bos --symbol BTCUSDT --timeframe 1h
 
 # Pin to a specific candle (UTC)
-poetry run python buibui.py signal test --strategy bos --symbol BTCUSDT --timeframe 1h \
+poetry run python wifey.py signal test --strategy bos --symbol BTCUSDT --timeframe 1h \
   --at 2026-04-07T02:00:00
 
 # Use MYT offset (+08:00)
-poetry run python buibui.py signal test --strategy bos --symbol BTCUSDT --timeframe 1h \
+poetry run python wifey.py signal test --strategy bos --symbol BTCUSDT --timeframe 1h \
   --at 2026-04-07T10:00:00+08:00
 
 # Inherit symbol/TF/tp_r from TOML and send to Telegram
-poetry run python buibui.py signal test --config config/signal_watch.toml \
+poetry run python wifey.py signal test --config config/signal_watch.toml \
   --strategy marubozu --timeframe 15m --telegram
 
 # Filter to shorts only, wider lookback
-poetry run python buibui.py signal test --strategy fvg --symbol ETHUSDT --timeframe 4h \
+poetry run python wifey.py signal test --strategy fvg --symbol ETHUSDT --timeframe 4h \
   --direction short --lookback 500
 ```
 
 Or via Makefile:
 
 ```bash
-make buibui-signal-test STRATEGY=bos SYMBOL=BTCUSDT TIMEFRAME=1h
-make buibui-signal-test STRATEGY=bos SYMBOL=BTCUSDT TIMEFRAME=1h AT=2026-04-07T02:00:00
-make buibui-signal-test CONFIG=config/signal_watch.toml STRATEGY=marubozu TIMEFRAME=15m TELEGRAM=1
+make wifey-signal-test STRATEGY=bos SYMBOL=BTCUSDT TIMEFRAME=1h
+make wifey-signal-test STRATEGY=bos SYMBOL=BTCUSDT TIMEFRAME=1h AT=2026-04-07T02:00:00
+make wifey-signal-test CONFIG=config/signal_watch.toml STRATEGY=marubozu TIMEFRAME=15m TELEGRAM=1
 ```
 
 **Options:**
@@ -758,18 +758,18 @@ A JSON REST API and SSE streaming backend for the Phase 5 Svelte frontend (or an
 
 ```bash
 # Start the API server (default: http://127.0.0.1:8000)
-poetry run python buibui.py web
+poetry run python wifey.py web
 
 # Pass a signal-watch TOML so the UI auto-populates defaults from it
-poetry run python buibui.py web --config config/signal_watch.toml
+poetry run python wifey.py web --config config/signal_watch.toml
 
 # Custom host/port with auto-reload for development
-poetry run python buibui.py web --host 0.0.0.0 --port 8000 --reload
+poetry run python wifey.py web --host 0.0.0.0 --port 8000 --reload
 
 # Or via Makefile (override PORT and/or CONFIG)
-make buibui-web
-make buibui-web PORT=8080
-make buibui-web CONFIG=config/signal_watch.toml
+make wifey-web
+make wifey-web PORT=8080
+make wifey-web CONFIG=config/signal_watch.toml
 make web-full CONFIG=config/signal_watch.toml   # build UI then start server
 ```
 
@@ -826,7 +826,7 @@ make web-full
 ```
 
 **Dev environment:** Set `VITE_API_TOKEN=<your API_TOKEN>` in `web/ui/.env.local`.
-**Production:** `make web-build` then `make buibui-web` — FastAPI serves the UI from `/`.
+**Production:** `make web-build` then `make wifey-web` — FastAPI serves the UI from `/`.
 
 ---
 
@@ -853,59 +853,59 @@ make poetry-update
 
 ```bash
 # Price monitor
-make buibui-monitor-price
-make buibui-monitor-price-live
-make buibui-monitor-price-telegram
+make wifey-monitor-price
+make wifey-monitor-price-live
+make wifey-monitor-price-telegram
 
 # Position monitor (with flexible sorting)
-make buibui-monitor-position                       # Default sort
-make buibui-monitor-position SORT=pnl_pct:desc     # Sort by PnL%
-make buibui-monitor-position SORT=sl_usd:asc       # Sort by SL risk
-make buibui-monitor-position-telegram
+make wifey-monitor-position                       # Default sort
+make wifey-monitor-position SORT=pnl_pct:desc     # Sort by PnL%
+make wifey-monitor-position SORT=sl_usd:asc       # Sort by SL risk
+make wifey-monitor-position-telegram
 ```
 
 **Analytics:**
 
 ```bash
-make buibui-analytics-backfill              # Backfill from 2023-01-01 (default)
-make buibui-analytics-backfill SINCE=2024-01-01   # Backfill from custom date
-make buibui-analytics-sync                  # Incremental sync
+make wifey-analytics-backfill              # Backfill from 2023-01-01 (default)
+make wifey-analytics-backfill SINCE=2024-01-01   # Backfill from custom date
+make wifey-analytics-sync                  # Incremental sync
 ```
 
 **Backtest:**
 
 ```bash
-make buibui-backtest                                          # BTCUSDT fvg 4h 90d (defaults)
-make buibui-backtest SYMBOL=ETHUSDT STRATEGY=bos             # Override symbol and strategy
-make buibui-backtest SYMBOL=BTCUSDT STRATEGY=smt_divergence SECONDARY=ETHUSDT
-make buibui-backtest SYMBOL=BTCUSDT STRATEGY=fvg INTERVAL=1h DAYS=30 SL_PCT=0.015 TP_R=3.0
-make buibui-backtest CONFIG=config/signal_watch.toml SAVE=1  # Full sweep + persist to DB
-make buibui-backtest SYMBOL=BTCUSDT STRATEGY=bos SAVE=1      # Single-combo + persist to DB
+make wifey-backtest                                          # BTCUSDT fvg 4h 90d (defaults)
+make wifey-backtest SYMBOL=ETHUSDT STRATEGY=bos             # Override symbol and strategy
+make wifey-backtest SYMBOL=BTCUSDT STRATEGY=smt_divergence SECONDARY=ETHUSDT
+make wifey-backtest SYMBOL=BTCUSDT STRATEGY=fvg INTERVAL=1h DAYS=30 SL_PCT=0.015 TP_R=3.0
+make wifey-backtest CONFIG=config/signal_watch.toml SAVE=1  # Full sweep + persist to DB
+make wifey-backtest SYMBOL=BTCUSDT STRATEGY=bos SAVE=1      # Single-combo + persist to DB
 
 # Co-firing confluence backtest (D10)
-make buibui-combo-backtest CONFIG=config/signal_watch.toml SINCE=2025-09-12 SAVE=1
-make buibui-combo-backtest CONFIG=config/signal_watch.toml WINDOW=3 MIN_TRADES=5
-make buibui-combo-backtest CONFIG=config/signal_watch.toml WORKERS=2  # light mode when other processes running
+make wifey-combo-backtest CONFIG=config/signal_watch.toml SINCE=2025-09-12 SAVE=1
+make wifey-combo-backtest CONFIG=config/signal_watch.toml WINDOW=3 MIN_TRADES=5
+make wifey-combo-backtest CONFIG=config/signal_watch.toml WORKERS=2  # light mode when other processes running
 
 # Recalibrate confidence star ratings (per-config)
-make buibui-recalibrate CONFIG=config/signal_watch.toml          # dry-run
-make buibui-recalibrate CONFIG=config/signal_watch.toml APPLY=1  # write to DB
-make buibui-recalibrate MIN_TRADES=20 CONFIG=config/signal_watch.toml APPLY=1
+make wifey-recalibrate CONFIG=config/signal_watch.toml          # dry-run
+make wifey-recalibrate CONFIG=config/signal_watch.toml APPLY=1  # write to DB
+make wifey-recalibrate MIN_TRADES=20 CONFIG=config/signal_watch.toml APPLY=1
 
 # Digest: aggregated analysis over saved backtest runs
-make buibui-digest QUERY=strategy           # strategy leaderboard (default)
-make buibui-digest QUERY=symbol             # symbol leaderboard
-make buibui-digest QUERY=direction_bias     # long vs short avg R per strategy
-make buibui-digest QUERY=adr_ab             # ADR gate A/B delta
-make buibui-digest QUERY=volume_ab          # volume suppress A/B delta
-make buibui-digest QUERY=day_filter_ab      # day filter A/B delta
-make buibui-digest QUERY=consistency        # edge breadth across symbol×TF combos
-make buibui-digest QUERY=recovery_factor    # risk-adjusted ranking
-make buibui-digest QUERY=tf                 # timeframe ranking
-make buibui-digest QUERY=combos TOP_N=20    # best combos top-N
-make buibui-digest QUERY=co_firing          # co-firing confluence pair leaderboard
-make buibui-digest QUERY=cross_tf_combos   # cross-TF co-firing pair leaderboard (HTF→LTF)
-make buibui-digest MIN_TRADES=10            # raise min-trades threshold
+make wifey-digest QUERY=strategy           # strategy leaderboard (default)
+make wifey-digest QUERY=symbol             # symbol leaderboard
+make wifey-digest QUERY=direction_bias     # long vs short avg R per strategy
+make wifey-digest QUERY=adr_ab             # ADR gate A/B delta
+make wifey-digest QUERY=volume_ab          # volume suppress A/B delta
+make wifey-digest QUERY=day_filter_ab      # day filter A/B delta
+make wifey-digest QUERY=consistency        # edge breadth across symbol×TF combos
+make wifey-digest QUERY=recovery_factor    # risk-adjusted ranking
+make wifey-digest QUERY=tf                 # timeframe ranking
+make wifey-digest QUERY=combos TOP_N=20    # best combos top-N
+make wifey-digest QUERY=co_firing          # co-firing confluence pair leaderboard
+make wifey-digest QUERY=cross_tf_combos   # cross-TF co-firing pair leaderboard (HTF→LTF)
+make wifey-digest MIN_TRADES=10            # raise min-trades threshold
 ```
 
 Defaults: `SYMBOL=BTCUSDT`, `STRATEGY=fvg`, `INTERVAL=4h`, `DAYS=90`.
@@ -915,10 +915,10 @@ To populate both `day_filter` variants for complete coverage:
 
 ```bash
 # day_filter = false
-poetry run python buibui.py backtest --config config/signal_watch.toml --save
+poetry run python wifey.py backtest --config config/signal_watch.toml --save
 
 # day_filter = true
-poetry run python buibui.py backtest --config config/signal_watch.toml --day-filter --save
+poetry run python wifey.py backtest --config config/signal_watch.toml --day-filter --save
 ```
 
 **Persisting results for confidence score recalibration:**
@@ -968,22 +968,22 @@ make web-dev DEV_PORT=3000          # Override Vite port
 make web-build                      # Build Svelte app → web/ui/dist/
 make web-preview                    # Preview production build locally
 make web-full                       # Build + start FastAPI serving the UI
-make buibui-web PORT=8080           # FastAPI on a custom port
+make wifey-web PORT=8080           # FastAPI on a custom port
 ```
 
 **Signal watch:**
 
 ```bash
-make buibui-signal-watch                                              # All symbols, 4h, all strategies
-make buibui-signal-watch CONFIG=config/signal_watch.toml             # Load from config file
-make buibui-signal-watch CONFIG=config/signal_watch.toml TELEGRAM=1  # Config file + override flag
-make buibui-signal-watch SYMBOLS="BTCUSDT ETHUSDT"                   # Specific symbols
-make buibui-signal-watch STRATEGIES="fvg bos" TELEGRAM=1             # Specific strategies + Telegram
-make buibui-signal-watch TIMEFRAMES="15m 1h 4h" MIN_SL_PCT=0.003 TELEGRAM=1  # SL floor
-make buibui-signal-watch STRATEGIES="smt_divergence" SECONDARY=ETHUSDT  # deprecated
-make buibui-signal-test STRATEGY=bos SYMBOL=BTCUSDT TIMEFRAME=1h       # test alert, print only
-make buibui-signal-test STRATEGY=bos SYMBOL=BTCUSDT TIMEFRAME=1h AT=2026-04-07T02:00:00  # pin candle
-make buibui-signal-test CONFIG=config/signal_watch.toml STRATEGY=marubozu TIMEFRAME=15m TELEGRAM=1
+make wifey-signal-watch                                              # All symbols, 4h, all strategies
+make wifey-signal-watch CONFIG=config/signal_watch.toml             # Load from config file
+make wifey-signal-watch CONFIG=config/signal_watch.toml TELEGRAM=1  # Config file + override flag
+make wifey-signal-watch SYMBOLS="BTCUSDT ETHUSDT"                   # Specific symbols
+make wifey-signal-watch STRATEGIES="fvg bos" TELEGRAM=1             # Specific strategies + Telegram
+make wifey-signal-watch TIMEFRAMES="15m 1h 4h" MIN_SL_PCT=0.003 TELEGRAM=1  # SL floor
+make wifey-signal-watch STRATEGIES="smt_divergence" SECONDARY=ETHUSDT  # deprecated
+make wifey-signal-test STRATEGY=bos SYMBOL=BTCUSDT TIMEFRAME=1h       # test alert, print only
+make wifey-signal-test STRATEGY=bos SYMBOL=BTCUSDT TIMEFRAME=1h AT=2026-04-07T02:00:00  # pin candle
+make wifey-signal-test CONFIG=config/signal_watch.toml STRATEGY=marubozu TIMEFRAME=15m TELEGRAM=1
 ```
 
 The daemon wakes at clock-aligned candle boundaries (e.g. 04:00:10, 08:00:10 for `4h`),

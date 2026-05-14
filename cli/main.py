@@ -1,4 +1,4 @@
-"""Buibui CLI entry — assembles argparse tree, dispatches to subcommand handlers."""
+"""Wifey CLI entry — assembles argparse tree, dispatches to subcommand handlers."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def main() -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
-    parser = argparse.ArgumentParser(description="Buibui Moon Trader CLI")
+    parser = argparse.ArgumentParser(description="Buibui Wifey Wall Street CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
     monitor.add_monitor_subparser(subparsers)
     signal.add_signal_subparser(subparsers)

@@ -14,4 +14,4 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - name: Build Docker image
-        run: docker build -t buibui-bot .
+        run: docker build -t wifey-bot .

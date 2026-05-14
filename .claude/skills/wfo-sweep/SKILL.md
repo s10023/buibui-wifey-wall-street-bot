@@ -50,7 +50,7 @@ Extract:
 
 For each TF in config's `timeframes`:
 ```bash
-poetry run python buibui.py param-audit \
+poetry run python wifey.py param-audit \
   --symbol BTCUSDT \
   --timeframe <TF> \
   --since 2025-09-12 \
@@ -81,7 +81,7 @@ Min trades by TF: `15m→20, 1h→12, 4h→5, 1d→2`
 
 For each (strategy, TF) in candidate list, run on each symbol in config:
 ```bash
-poetry run python buibui.py param-sweep \
+poetry run python wifey.py param-sweep \
   --strategy <strategy> \
   --symbol <symbol> \
   --timeframe <TF> \
@@ -158,14 +158,14 @@ make buibui-backtest CONFIG=config/signal_watch.toml SAVE=1
 
 Then dry-run recalibrate to see star changes:
 ```bash
-poetry run python buibui.py recalibrate --config config/signal_watch.toml
+poetry run python wifey.py recalibrate --config config/signal_watch.toml
 ```
 
 Show diff. Ask: "Apply star ratings? (y/n)"
 
 If yes:
 ```bash
-poetry run python buibui.py recalibrate --config config/signal_watch.toml --apply
+poetry run python wifey.py recalibrate --config config/signal_watch.toml --apply
 ```
 
 ### Step 7: Update golden files

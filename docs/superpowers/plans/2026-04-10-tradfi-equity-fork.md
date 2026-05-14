@@ -160,7 +160,7 @@ and replaced with equity equivalents (overnight gap; **`vwap` column dropped ent
 
   ```bash
   # Entry point
-  mv buibui.py [BOTNAME].py
+  mv wifey.py [BOTNAME].py
 
   # Makefile — replace all references to "buibui" with [BOTNAME]
   sed -i 's/buibui/[BOTNAME]/g' Makefile

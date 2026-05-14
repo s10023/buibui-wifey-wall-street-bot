@@ -62,7 +62,7 @@ WFO sweeps are run against a specific config (usually `signal_watch.toml` with `
 5. **Edit** `signal_watch.toml` with new values; update comments with WFO OOS data
 6. **Edit** `signal_watch_weekdays.toml` for applicable TFs (check file first)
 7. **Run**: `make buibui-backtest CONFIG=config/signal_watch.toml SAVE=1`
-8. **Run**: `poetry run python buibui.py recalibrate` (dry-run first, show diff)
+8. **Run**: `poetry run python wifey.py recalibrate` (dry-run first, show diff)
 9. If any stars changed: ask user whether to `--apply`
 10. **Report**: table of changes made (strategy | TF | old tp_r | new tp_r | OOS avg_r | OOS n)
 

@@ -1,4 +1,4 @@
-"""Buibui CLI — `backtest` subcommand (single-combo / sweep / combo / cross-TF modes)."""
+"""Wifey CLI — `backtest` subcommand (single-combo / sweep / combo / cross-TF modes)."""
 
 from __future__ import annotations
 

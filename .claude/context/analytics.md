@@ -156,7 +156,7 @@ Detailed API reference for `analytics/`. Load this when working on any analytics
 - `run_signal_test(symbol, timeframe, strategy, at_ms, lookback, ...)` — read-only, no DB writes, no cooldown
 - `--at` pins to historical candle (Unix ms or ISO datetime); `--lookback` default 200
 - `secondary_map: dict[str, str] | None` — loads secondary OHLCV for `smt_divergence`
-- `buibui.py` builds secondary map from `coins.json smt_secondary` automatically
+- `wifey.py` builds secondary map from `coins.json smt_secondary` automatically
 
 ## signal_config.py — signal_watch TOML config loader
 

@@ -1,5 +1,5 @@
 [project]
-name = "buibui-moon-trader-bot"
+name = "buibui-wifey-wall-street-bot"
 version = "0.1.0"
 description = ""
 authors = [
@@ -95,7 +95,7 @@ module = "uvicorn.*"
 ignore_missing_imports = true
 
 [tool.coverage.run]
-source = ["buibui", "monitor", "utils", "analytics", "web"]
+source = ["wifey", "monitor", "utils", "analytics", "web"]
 
 [tool.coverage.report]
 show_missing = true

@@ -1,4 +1,4 @@
-"""Buibui CLI — `recalibrate` subcommand."""
+"""Wifey CLI — `recalibrate` subcommand."""
 
 from __future__ import annotations
 

@@ -132,8 +132,8 @@ def main() -> None:
     print(
         "Reminder: if you're unsure whether important runs were removed, re-run and save:"
     )
-    print("  make buibui-backtest SAVE=1 CONFIG=config/signal_watch.toml")
-    print("  make buibui-recalibrate CONFIG=config/signal_watch.toml APPLY=1")
+    print("  make wifey-backtest SAVE=1 CONFIG=config/signal_watch.toml")
+    print("  make wifey-recalibrate CONFIG=config/signal_watch.toml APPLY=1")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""Buibui CLI — `digest` subcommand (pre-canned analytics queries)."""
+"""Wifey CLI — `digest` subcommand (pre-canned analytics queries)."""
 
 from __future__ import annotations
 

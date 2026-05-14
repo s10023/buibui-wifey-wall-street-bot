@@ -161,7 +161,7 @@ After updating the config, `/db-update` (or at minimum
 | `analytics/signal_lib.py` | Live combo detection in `run_scan_cycle()` Phase 3 |
 | `analytics/digest_lib.py` | Card 12 `query_cross_tf_combos` |
 | `analytics/data_store.py` | Combo result tables; `confluence_ratings` join |
-| `buibui.py` | `--combo`, `--cross-tf`, `--htf-ltf`, `--window`, `--window-hours` flags |
+| `wifey.py` | `--combo`, `--cross-tf`, `--htf-ltf`, `--window`, `--window-hours` flags |
 | `Makefile` | `buibui-combo-backtest`, `buibui-cross-tf-backtest` targets |
 | `tools/combo_health.py` | Post-run spot-check: totals, freshness, live-gate viable counts, top combos |
 

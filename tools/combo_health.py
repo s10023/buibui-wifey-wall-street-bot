@@ -7,8 +7,8 @@ meeting the live alert gates plus the top viable combos.
 
 Use this after::
 
-    make buibui-combo-backtest    CONFIG=<cfg> SAVE=1 SINCE=2025-09-12
-    make buibui-cross-tf-backtest CONFIG=<cfg> SAVE=1 SINCE=2025-09-12
+    make wifey-combo-backtest    CONFIG=<cfg> SAVE=1 SINCE=2025-09-12
+    make wifey-cross-tf-backtest CONFIG=<cfg> SAVE=1 SINCE=2025-09-12
 
 Live gate defaults match `[combo]` in `config/strategy_params.toml`
 (same-TF: tue_thu + avg_r ≥ 1.0; cross-TF: tue_thu + avg_r ≥ 0.0).
