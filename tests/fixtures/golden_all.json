@@ -402,56 +402,6 @@
         "recovery_factor": 2.4224
       }
     },
-    "cvd_divergence": {
-      "15m": {
-        "trade_count": 139,
-        "long_trade_count": 56,
-        "short_trade_count": 83,
-        "win_rate": 0.2302,
-        "avg_r": 0.2361,
-        "total_r": 32.8239,
-        "long_avg_r": -0.0558,
-        "short_avg_r": 0.4331,
-        "long_total_r": -3.124,
-        "short_total_r": 35.9479,
-        "long_win_rate": 0.1786,
-        "short_win_rate": 0.2651,
-        "max_drawdown_r": 19.2879,
-        "recovery_factor": 1.7018
-      },
-      "1h": {
-        "trade_count": 26,
-        "long_trade_count": 10,
-        "short_trade_count": 16,
-        "win_rate": 0.3462,
-        "avg_r": 0.9814,
-        "total_r": 25.5153,
-        "long_avg_r": 1.2811,
-        "short_avg_r": 0.794,
-        "long_total_r": 12.8107,
-        "short_total_r": 12.7046,
-        "long_win_rate": 0.4,
-        "short_win_rate": 0.3125,
-        "max_drawdown_r": 6.6663,
-        "recovery_factor": 3.8275
-      },
-      "4h": {
-        "trade_count": 4,
-        "long_trade_count": 2,
-        "short_trade_count": 2,
-        "win_rate": 0.5,
-        "avg_r": 0.7193,
-        "total_r": 2.8773,
-        "long_avg_r": 0.7218,
-        "short_avg_r": 0.7168,
-        "long_total_r": 1.4436,
-        "short_total_r": 1.4337,
-        "long_win_rate": 0.5,
-        "short_win_rate": 0.5,
-        "max_drawdown_r": 1.0327,
-        "recovery_factor": 2.786
-      }
-    },
     "trend_day": {
       "4h": {
         "trade_count": 234,

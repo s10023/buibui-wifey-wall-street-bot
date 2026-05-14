@@ -5,7 +5,7 @@ registry assembler (`_registry`) so callers can import everything from
 `analytics.strategies` without having to reach into private submodules.
 
 In strat-2 the registries (`STRATEGY_REGISTRY`, `DETECTOR_REGISTRY`, etc.) and
-the 21 `detect_*` functions moved here from `analytics.indicators_lib`.
+the per-detector `detect_*` functions moved here from `analytics.indicators_lib`.
 `indicators_lib.py` is now a thin shim that re-exports from this package.
 """
 
@@ -31,7 +31,6 @@ from analytics.strategies._shared import (
     is_trending,
     volume_confirm,
 )
-from analytics.strategies.cvd_divergence import detect_cvd_divergence
 from analytics.strategies.doji import detect_doji
 from analytics.strategies.ema import detect_ema
 from analytics.strategies.engulfing import detect_engulfing
@@ -71,7 +70,6 @@ __all__ = [
     "_signals_to_df",
     "compute_ema",
     "compute_htf_ema_slope",
-    "detect_cvd_divergence",
     "detect_doji",
     "detect_ema",
     "detect_engulfing",

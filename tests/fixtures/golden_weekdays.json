@@ -354,24 +354,6 @@
         "recovery_factor": 2.4224
       }
     },
-    "cvd_divergence": {
-      "1h": {
-        "trade_count": 3,
-        "long_trade_count": 1,
-        "short_trade_count": 2,
-        "win_rate": 0.0,
-        "avg_r": -1.0475,
-        "total_r": -3.1424,
-        "long_avg_r": -1.0417,
-        "short_avg_r": -1.0504,
-        "long_total_r": -1.0417,
-        "short_total_r": -2.1007,
-        "long_win_rate": 0.0,
-        "short_win_rate": 0.0,
-        "max_drawdown_r": 3.1424,
-        "recovery_factor": -1.0
-      }
-    },
     "trend_day": {
       "4h": {
         "trade_count": 234,

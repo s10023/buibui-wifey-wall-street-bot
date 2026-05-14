@@ -23,7 +23,6 @@ strategies = [
     'smt_divergence',
     'eqh_eql',
     'order_block',
-    'cvd_divergence',
     'trend_day',
     'engulfing',
     'pin_bar',
@@ -48,7 +47,6 @@ orb                  = ["1h", "4h"]        # 15m/1d suppressed (n/a — zero tra
 bos                  = ["15m", "1h", "4h"] # 1d all negative excluded
 pin_bar              = ["15m", "1h", "4h", "1d"]
 liquidity_sweep      = ["1d"]              # Phase 1: 1h dropped (audit -0.250R, 0% positive); 15m/4h already excluded
-cvd_divergence       = ["1h"]              # Phase 1: 15m → 1h swap (audit shows 1h 80% positive +0.304R; 15m only 44%)
 doji                 = ["15m", "1h"]       # 4h all negative (-0.03R best); 1d too thin (3 trades)
 order_block          = ["1d"]              # Phase 1: 4h dropped (audit CONFLUENCE_ONLY -0.079R); 15m/1h already excluded
 morning_evening_star = ["15m", "1h", "4h"] # 1d suppressed (negative)
@@ -120,12 +118,6 @@ tp_r = 3.0                    # all TFs negative; hard mode suppresses at runtim
 tp_r_15m = 4.0                # +0.73R (37% WR; post-spam-fix recalibrated from 5.0)
 tp_r_1h  = 5.0                # +0.45R (28 trades, thin — monotonic climb)
 tp_r_4h  = 5.0                # +0.18R (10 trades; barely positive, hard mode may gate)
-
-[strategy_params.cvd_divergence]
-tp_r_15m = 3.0                # +0.09R@3.0R (noisy; hard mode gates when negative)
-# tp_r_1h removed — weekdays CVD 1h ALL NEGATIVE (was +0.97R — degraded with canonical since=2025-09-12)
-# tp_r_4h removed — only 3 trades; excluded from strategy_timeframes
-volume_suppress = true        # A14b: normal-vol wins Δ=+0.13R (low +0.15R vs normal +0.28R)
 
 [strategy_params.trend_day]
 tp_r_4h  = 3.5                # WFO OOS: BTC+0.217R ETH+0.041R SOL+0.120R n=52-65 (was 5.0 overfit)

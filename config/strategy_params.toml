@@ -46,8 +46,8 @@ adr_suppress_threshold = 0.80
 # F8 HTF EMA directional gate — suppress signals against the HTF trend.
 # Per-strategy anchors derived from the 24-cell tue_thu sweep (PR #344):
 #   default 4h EMA-50 lifts aggregate avg_r by +0.059 on tue_thu.
-#   Per-strategy 1d EMA-50 override flips 5 strategies that 4h hurts
-#   (ema, smt_divergence, cvd_divergence, orb, eqh_eql) plus marubozu — net mix
+#   Per-strategy 1d EMA-50 override flips strategies that 4h hurts
+#   (ema, smt_divergence, orb, eqh_eql) plus marubozu — net mix
 #   captures ~+0.074 lift. 4h EMA-200 dropped (-0.001 delta = no benefit).
 #
 # Soft-tested 2026-05-05; flipped to hard 2026-05-06.
@@ -62,7 +62,6 @@ deadband_pct = 0.003           # |slope| < 0.3% over slope_lookback bars → all
 [bias.htf_ema.per_strategy]
 ema             = { tf = "1d", period = 50, slope_lookback = 10 }
 smt_divergence  = { tf = "1d", period = 50, slope_lookback = 10 }
-cvd_divergence  = { tf = "1d", period = 50, slope_lookback = 10 }
 orb             = { tf = "1d", period = 50, slope_lookback = 10 }
 eqh_eql         = { tf = "1d", period = 50, slope_lookback = 10 }
 marubozu        = { tf = "1d", period = 50, slope_lookback = 10 }

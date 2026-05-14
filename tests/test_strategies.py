@@ -8,7 +8,6 @@ import pytest
 
 from analytics.strategies import (
     SIGNAL_COLUMNS,
-    detect_cvd_divergence,
     detect_eqh_eql,
     detect_funding_extreme,
     detect_fvg,
@@ -1937,164 +1936,6 @@ class TestDetectOrderBlock:
 
 
 # ---------------------------------------------------------------------------
-# CVD Divergence
-# ---------------------------------------------------------------------------
-
-
-class TestCvdDivergence:
-    """Tests for detect_cvd_divergence."""
-
-    _LOOKBACK = 3  # small for test efficiency
-    _MS = _MS_PER_HOUR
-
-    def _make_cvd_df(
-        self,
-        highs: list[float],
-        lows: list[float],
-        tbvs: list[float],
-        vols: list[float] | None = None,
-    ) -> pd.DataFrame:
-        """Build a minimal OHLCV DataFrame with taker_buy_volume."""
-        n = len(highs)
-        if vols is None:
-            vols = [100.0] * n
-        rows = [
-            _candle(
-                _BASE_TIME + i * self._MS,
-                highs[i],
-                highs[i],
-                lows[i],
-                highs[i],
-                volume=vols[i],
-                taker_buy_volume=tbvs[i],
-            )
-            for i in range(n)
-        ]
-        return _make_ohlcv(rows)
-
-    def test_returns_empty_on_empty_input(self) -> None:
-        result = detect_cvd_divergence(
-            pd.DataFrame(columns=list(_make_ohlcv([]).columns))
-        )
-        assert result.empty
-        _assert_signal_columns(result)
-
-    def test_returns_empty_when_taker_buy_volume_all_null(self) -> None:
-        rows = [
-            _candle(_BASE_TIME + i * self._MS, 100, 110, 90, 100) for i in range(10)
-        ]
-        df = _make_ohlcv(rows)
-        df["taker_buy_volume"] = float("nan")
-        result = detect_cvd_divergence(df, lookback=self._LOOKBACK)
-        assert result.empty
-
-    def test_returns_empty_when_column_missing(self) -> None:
-        rows = [
-            _candle(_BASE_TIME + i * self._MS, 100, 110, 90, 100) for i in range(10)
-        ]
-        df = _make_ohlcv(rows).drop(columns=["taker_buy_volume"])
-        result = detect_cvd_divergence(df, lookback=self._LOOKBACK)
-        assert result.empty
-
-    def test_returns_empty_on_insufficient_rows(self) -> None:
-        rows = [_candle(_BASE_TIME, 100, 110, 90, 100)]
-        df = _make_ohlcv(rows)
-        result = detect_cvd_divergence(df, lookback=10)
-        assert result.empty
-
-    def test_detects_bearish_divergence(self) -> None:
-        # Price: swing high at 110, then higher swing high at 120
-        # CVD: first peak higher than second peak → bearish divergence
-        # 30 candles: flat, then two distinct swing-high humps
-        n = 30
-        highs = [100.0] * n
-        lows = [95.0] * n
-        tbvs = [50.0] * n
-        # First swing high hump (around index 10): price 110, CVD buying = 80
-        for i in range(8, 13):
-            highs[i] = 110.0
-            tbvs[i] = 80.0
-        # Second swing high hump (around index 22): price 120 (higher), CVD buying = 30 (lower)
-        for i in range(20, 25):
-            highs[i] = 120.0
-            tbvs[i] = 30.0
-        df = self._make_cvd_df(highs, lows, tbvs)
-        result = detect_cvd_divergence(df, lookback=self._LOOKBACK, cvd_lookback=n)
-        short_signals = result[result["direction"] == "short"]
-        assert not short_signals.empty
-
-    def test_detects_bullish_divergence(self) -> None:
-        # Price: swing low at 90, then lower swing low at 80
-        # CVD: first trough lower than second trough → bullish divergence
-        n = 30
-        highs = [105.0] * n
-        lows = [100.0] * n
-        tbvs = [50.0] * n
-        # First swing low (around index 10): price 90, CVD selling = 20 (very low buy)
-        for i in range(8, 13):
-            lows[i] = 90.0
-            tbvs[i] = 20.0
-        # Second swing low (around index 22): price 80 (lower), CVD selling eases = 60 (higher)
-        for i in range(20, 25):
-            lows[i] = 80.0
-            tbvs[i] = 60.0
-        df = self._make_cvd_df(highs, lows, tbvs)
-        result = detect_cvd_divergence(df, lookback=self._LOOKBACK, cvd_lookback=n)
-        long_signals = result[result["direction"] == "long"]
-        assert not long_signals.empty
-
-    def test_no_signal_on_confirming_price_cvd(self) -> None:
-        # Price higher swing high AND CVD also higher → no divergence
-        n = 30
-        highs = [100.0] * n
-        lows = [95.0] * n
-        tbvs = [50.0] * n
-        for i in range(8, 13):
-            highs[i] = 110.0
-            tbvs[i] = 40.0
-        for i in range(20, 25):
-            highs[i] = 120.0
-            tbvs[i] = 80.0  # CVD also higher → confirming, not diverging
-        df = self._make_cvd_df(highs, lows, tbvs)
-        result = detect_cvd_divergence(df, lookback=self._LOOKBACK, cvd_lookback=n)
-        short_signals = result[result["direction"] == "short"]
-        assert short_signals.empty
-
-    def test_sl_price_is_swing_high_for_short(self) -> None:
-        n = 30
-        highs = [100.0] * n
-        lows = [95.0] * n
-        tbvs = [50.0] * n
-        for i in range(8, 13):
-            highs[i] = 110.0
-            tbvs[i] = 80.0
-        for i in range(20, 25):
-            highs[i] = 120.0
-            tbvs[i] = 30.0
-        df = self._make_cvd_df(highs, lows, tbvs)
-        result = detect_cvd_divergence(df, lookback=self._LOOKBACK, cvd_lookback=n)
-        short_signals = result[result["direction"] == "short"]
-        if not short_signals.empty:
-            # SL should be at the swing high level (120.0)
-            assert float(short_signals.iloc[0]["sl_price"]) == 120.0
-
-    def test_signal_columns_correct(self) -> None:
-        n = 30
-        highs = [100.0] * n
-        lows = [95.0] * n
-        tbvs = [50.0] * n
-        for i in range(8, 13):
-            highs[i] = 110.0
-            tbvs[i] = 80.0
-        for i in range(20, 25):
-            highs[i] = 120.0
-            tbvs[i] = 30.0
-        df = self._make_cvd_df(highs, lows, tbvs)
-        result = detect_cvd_divergence(df, lookback=self._LOOKBACK, cvd_lookback=n)
-        _assert_signal_columns(result)
-
-
-# ---------------------------------------------------------------------------
 # Trend Day
 # ---------------------------------------------------------------------------
 
@@ -2195,3 +2036,27 @@ class TestDetectTrendDay:
         df = _make_ohlcv([_candle(_BASE_TIME, 109.0, 110.0, 99.0, 100.0)])
         result = detect_trend_day(df)
         assert result.iloc[0]["reason"] == "trend_day_bear@109.00-100.00"
+
+
+# ---------------------------------------------------------------------------
+# T7: cvd_divergence removal — yfinance OHLCV has no taker_buy_volume so the
+# detector can never fire on equities. These assertions lock the strip in.
+# ---------------------------------------------------------------------------
+
+
+def test_cvd_divergence_not_in_strategy_registry() -> None:
+    from analytics.strategies import STRATEGY_REGISTRY
+
+    assert "cvd_divergence" not in STRATEGY_REGISTRY
+
+
+def test_cvd_divergence_not_in_detector_registry() -> None:
+    from analytics.strategies import DETECTOR_REGISTRY
+
+    assert "cvd_divergence" not in DETECTOR_REGISTRY
+
+
+def test_cvd_divergence_not_in_signal_registry() -> None:
+    from signals.registry import SIGNAL_REGISTRY
+
+    assert "cvd_divergence" not in SIGNAL_REGISTRY

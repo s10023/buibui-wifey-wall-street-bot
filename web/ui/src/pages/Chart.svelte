@@ -25,7 +25,6 @@
     eqh_eql:              "EQH/EQL",
     ote_entry:            "OTE Entry",
     fib_golden_zone:      "Fib Zone",
-    cvd_divergence:       "CVD Div",
     smt_divergence:       "SMT Div",
     order_block:          "Ord Block",
     liquidity_sweep:      "Liq Sweep",
@@ -41,7 +40,7 @@
     Fibonacci:    ["fib_golden_zone", "ote_entry"],
     "Price Action": ["wick_fill", "marubozu", "inside_bar", "trend_day"],
     Candlestick:  ["engulfing", "pin_bar", "hammer_hanging_man", "doji", "morning_evening_star"],
-    Flow:         ["smt_divergence", "cvd_divergence", "funding_reversion"],
+    Flow:         ["smt_divergence", "funding_reversion"],
     Session:      ["orb", "seasonality"],
     Trend:        ["ema"],
   };
