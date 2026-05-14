@@ -1,138 +1,99 @@
-"""Tests for analytics/data_fetcher.py."""
+"""Tests for yfinance-backed data_fetcher."""
 
+from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import patch
 
-import pytest
+import pandas as pd
 
-from analytics.data_fetcher import (
-    FUNDING_COLUMNS,
-    KLINES_MAX_LIMIT,
-    OHLCV_COLUMNS,
-    OI_COLUMNS,
-    fetch_funding_rates,
-    fetch_klines,
-    fetch_open_interest,
-)
-
-_KLINE_RAW: list[Any] = [
-    1_700_000_000_000,
-    "30000.0",
-    "31000.0",
-    "29500.0",
-    "30500.0",
-    "100.0",
-    1_700_003_599_999,
-    "3050000.0",
-    1000,
-    "50.0",
-    "1525000.0",
-    "0",
-]
-_FUNDING_RAW: dict[str, Any] = {
-    "symbol": "BTCUSDT",
-    "fundingTime": 1_700_000_000_000,
-    "fundingRate": "0.0001",
-    "markPrice": "30000.0",
-}
-_OI_RAW: dict[str, Any] = {
-    "symbol": "BTCUSDT",
-    "sumOpenInterest": "1000.0",
-    "sumOpenInterestValue": "30000000.0",
-    "timestamp": 1_700_000_000_000,
-}
+from analytics.data_fetcher import OHLCV_COLUMNS, fetch_bars
 
 
-class TestFetchKlines:
-    def test_returns_dataframe_with_correct_columns(self) -> None:
-        client = MagicMock()
-        client.futures_klines.return_value = [_KLINE_RAW]
-        df = fetch_klines(client, "BTCUSDT", "1h", 0)
-        assert list(df.columns) == OHLCV_COLUMNS
-
-    def test_returns_empty_dataframe_on_empty_response(self) -> None:
-        client = MagicMock()
-        client.futures_klines.return_value = []
-        df = fetch_klines(client, "BTCUSDT", "1h", 0)
-        assert df.empty
-        assert list(df.columns) == OHLCV_COLUMNS
-
-    def test_casts_price_fields_to_float(self) -> None:
-        client = MagicMock()
-        client.futures_klines.return_value = [_KLINE_RAW]
-        df = fetch_klines(client, "BTCUSDT", "1h", 0)
-        assert df.iloc[0]["open"] == 30000.0
-        assert df.iloc[0]["close"] == 30500.0
-
-    def test_sets_symbol_and_timeframe_columns(self) -> None:
-        client = MagicMock()
-        client.futures_klines.return_value = [_KLINE_RAW]
-        df = fetch_klines(client, "BTCUSDT", "1h", 0)
-        assert df.iloc[0]["symbol"] == "BTCUSDT"
-        assert df.iloc[0]["timeframe"] == "1h"
-
-    def test_raises_on_api_error(self) -> None:
-        client = MagicMock()
-        client.futures_klines.side_effect = Exception("API error")
-        with pytest.raises(Exception, match="API error"):
-            fetch_klines(client, "BTCUSDT", "1h", 0)
-
-    def test_includes_taker_buy_volume(self) -> None:
-        client = MagicMock()
-        client.futures_klines.return_value = [_KLINE_RAW]
-        df = fetch_klines(client, "BTCUSDT", "1h", 0)
-        assert "taker_buy_volume" in df.columns
-        assert df.iloc[0]["taker_buy_volume"] == 50.0
-
-    def test_empty_response_has_taker_buy_volume_column(self) -> None:
-        client = MagicMock()
-        client.futures_klines.return_value = []
-        df = fetch_klines(client, "BTCUSDT", "1h", 0)
-        assert "taker_buy_volume" in df.columns
-
-    def test_max_limit_constant(self) -> None:
-        assert KLINES_MAX_LIMIT == 1000
+def _yf_frame(rows: list[dict[str, Any]]) -> pd.DataFrame:
+    """Build a UTC-naive OHLCV DataFrame matching utils.yfinance_client output."""
+    idx = pd.DatetimeIndex([r["ts"] for r in rows])
+    return pd.DataFrame(
+        {
+            "open": [r["open"] for r in rows],
+            "high": [r["high"] for r in rows],
+            "low": [r["low"] for r in rows],
+            "close": [r["close"] for r in rows],
+            "volume": [r["volume"] for r in rows],
+        },
+        index=idx,
+    )
 
 
-class TestFetchFundingRates:
-    def test_returns_dataframe_with_correct_columns(self) -> None:
-        client = MagicMock()
-        client.futures_funding_rate.return_value = [_FUNDING_RAW]
-        df = fetch_funding_rates(client, "BTCUSDT")
-        assert list(df.columns) == FUNDING_COLUMNS
-
-    def test_returns_empty_dataframe_on_empty_response(self) -> None:
-        client = MagicMock()
-        client.futures_funding_rate.return_value = []
-        df = fetch_funding_rates(client, "BTCUSDT")
-        assert df.empty
-        assert list(df.columns) == FUNDING_COLUMNS
-
-    def test_maps_binance_field_names(self) -> None:
-        client = MagicMock()
-        client.futures_funding_rate.return_value = [_FUNDING_RAW]
-        df = fetch_funding_rates(client, "BTCUSDT")
-        assert df.iloc[0]["funding_time"] == 1_700_000_000_000
-        assert df.iloc[0]["funding_rate"] == 0.0001
+def _row(ts: str = "2024-01-15T14:30:00", price: float = 186.0) -> dict[str, Any]:
+    return {
+        "ts": ts,
+        "open": 185.0,
+        "high": 187.5,
+        "low": 184.0,
+        "close": price,
+        "volume": 1_000_000.0,
+    }
 
 
-class TestFetchOpenInterest:
-    def test_returns_dataframe_with_correct_columns(self) -> None:
-        client = MagicMock()
-        client.futures_open_interest_hist.return_value = [_OI_RAW]
-        df = fetch_open_interest(client, "BTCUSDT", "1h")
-        assert list(df.columns) == OI_COLUMNS
+def test_fetch_bars_returns_canonical_columns() -> None:
+    start_ms = int(datetime(2024, 1, 15, tzinfo=UTC).timestamp() * 1000)
+    with patch(
+        "analytics.data_fetcher.fetch_history",
+        return_value=_yf_frame([_row()]),
+    ):
+        result = fetch_bars("AAPL", "1d", start_ms)
+    assert list(result.columns) == OHLCV_COLUMNS
 
-    def test_returns_empty_dataframe_on_empty_response(self) -> None:
-        client = MagicMock()
-        client.futures_open_interest_hist.return_value = []
-        df = fetch_open_interest(client, "BTCUSDT", "1h")
-        assert df.empty
-        assert list(df.columns) == OI_COLUMNS
 
-    def test_maps_open_interest_value(self) -> None:
-        client = MagicMock()
-        client.futures_open_interest_hist.return_value = [_OI_RAW]
-        df = fetch_open_interest(client, "BTCUSDT", "1h")
-        assert df.iloc[0]["oi_usd"] == 30_000_000.0
-        assert df.iloc[0]["timestamp"] == 1_700_000_000_000
+def test_fetch_bars_maps_fields_correctly() -> None:
+    start_ms = int(datetime(2024, 1, 15, tzinfo=UTC).timestamp() * 1000)
+    with patch(
+        "analytics.data_fetcher.fetch_history",
+        return_value=_yf_frame([_row()]),
+    ):
+        result = fetch_bars("AAPL", "1d", start_ms)
+    row = result.iloc[0]
+    assert row["symbol"] == "AAPL"
+    assert row["timeframe"] == "1d"
+    assert row["close"] == 186.0
+    assert row["open_time"] == int(
+        datetime(2024, 1, 15, 14, 30, tzinfo=UTC).timestamp() * 1000
+    )
+
+
+def test_fetch_bars_empty_returns_correct_columns() -> None:
+    start_ms = int(datetime(2024, 1, 15, tzinfo=UTC).timestamp() * 1000)
+    with patch(
+        "analytics.data_fetcher.fetch_history",
+        return_value=pd.DataFrame(),
+    ):
+        result = fetch_bars("AAPL", "1d", start_ms)
+    assert result.empty
+    assert list(result.columns) == OHLCV_COLUMNS
+
+
+def test_fetch_bars_respects_limit() -> None:
+    rows = [_row(ts=f"2024-01-{15 + i:02d}T14:30:00") for i in range(5)]
+    start_ms = int(datetime(2024, 1, 15, tzinfo=UTC).timestamp() * 1000)
+    with patch(
+        "analytics.data_fetcher.fetch_history",
+        return_value=_yf_frame(rows),
+    ):
+        result = fetch_bars("AAPL", "1d", start_ms, limit=3)
+    assert len(result) == 3
+
+
+def test_fetch_bars_4h_resamples_from_1h() -> None:
+    """Caller asks for 4h -> fetcher pulls 1h and resamples anchored to 13:30 UTC."""
+    # 8 consecutive 1h bars starting 13:30 UTC -> 2 complete 4h bars
+    rows = [_row(ts=f"2024-01-15T{13 + i:02d}:30:00") for i in range(8)]
+    start_ms = int(datetime(2024, 1, 15, tzinfo=UTC).timestamp() * 1000)
+    with patch(
+        "analytics.data_fetcher.fetch_history",
+        return_value=_yf_frame(rows),
+    ) as mock_fetch:
+        result = fetch_bars("AAPL", "4h", start_ms)
+    # underlying fetch must request 1h, not 4h
+    assert mock_fetch.call_args.kwargs["interval"] == "1h"
+    assert len(result) == 2
+    assert (result["timeframe"] == "4h").all()
