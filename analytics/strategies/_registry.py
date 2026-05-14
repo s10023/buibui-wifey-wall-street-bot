@@ -14,7 +14,6 @@ from collections.abc import Callable
 import pandas as pd
 
 from analytics.strategies._base import ParamSpec, StrategySpec
-from analytics.strategies.cvd_divergence import detect_cvd_divergence
 from analytics.strategies.doji import detect_doji
 from analytics.strategies.ema import detect_ema
 from analytics.strategies.engulfing import detect_engulfing
@@ -257,30 +256,6 @@ STRATEGY_REGISTRY: dict[str, StrategySpec] = {
             ),
         ],
         confidence={"15m": 1, "1d": 3, "1h": 1, "4h": 1},
-    ),
-    "cvd_divergence": StrategySpec(
-        name="cvd_divergence",
-        description="CVD Divergence: price makes a new swing extreme but cumulative volume delta disagrees.",
-        strategy_type="flow",
-        params=[
-            ParamSpec(
-                "lookback",
-                "int",
-                10,
-                2,
-                100,
-                "Half-window for swing high/low detection.",
-            ),
-            ParamSpec(
-                "cvd_lookback",
-                "int",
-                50,
-                10,
-                500,
-                "Candles of CVD history to compare swing extremes across.",
-            ),
-        ],
-        confidence={"15m": 2, "1h": 4},  # no CVD data in DB — never backtested
     ),
     "trend_day": StrategySpec(
         name="trend_day",
@@ -693,7 +668,6 @@ DETECTOR_REGISTRY: dict[str, Callable[[pd.DataFrame], pd.DataFrame]] = {
     "bos": detect_market_structure,
     "eqh_eql": detect_eqh_eql,
     "order_block": detect_order_block,
-    "cvd_divergence": detect_cvd_divergence,
     "trend_day": detect_trend_day,
     "engulfing": detect_engulfing,
     "pin_bar": detect_pin_bar,

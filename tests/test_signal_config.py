@@ -592,7 +592,7 @@ class TestLoadWithExtends:
         # override anchor for ema (1d EMA-50)
         anchor_ema = cfg.bias.htf_ema_anchor("ema")
         assert anchor_ema.tf == "1d" and anchor_ema.period == 50
-        for strat in ("smt_divergence", "cvd_divergence", "orb", "eqh_eql", "marubozu"):
+        for strat in ("smt_divergence", "orb", "eqh_eql", "marubozu"):
             assert cfg.bias.htf_ema_anchor(strat).tf == "1d", (
                 f"{strat} should override to 1d anchor"
             )
@@ -736,7 +736,6 @@ tp_r = 3.0
         assert cfg.effective_volume_suppress("pin_bar") is False
         assert cfg.effective_volume_suppress("hammer_hanging_man") is False
         assert cfg.effective_volume_suppress("marubozu") is False
-        assert cfg.effective_volume_suppress("cvd_divergence") is False
         assert cfg.effective_volume_suppress("morning_evening_star") is False
         # neutral strategies (no flag) → fall back to global default (false)
         assert cfg.effective_volume_suppress("engulfing") is False

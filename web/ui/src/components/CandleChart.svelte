@@ -29,7 +29,6 @@
     eqh_eql:              "EQH/EQL",
     ote_entry:            "OTE Entry",
     fib_golden_zone:      "Fib Zone",
-    cvd_divergence:       "CVD Div",
     smt_divergence:       "SMT Div",
     order_block:          "Ord Block",
     liquidity_sweep:      "Liq Sweep",

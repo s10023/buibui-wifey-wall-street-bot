@@ -15,7 +15,6 @@ from typing import TypedDict
 import pandas as pd
 
 from analytics.strategies import (
-    detect_cvd_divergence,
     detect_doji,
     detect_ema,
     detect_engulfing,
@@ -54,7 +53,6 @@ _DETECTORS: dict[str, DetectorFn] = {
     "smt_divergence": detect_smt_divergence,
     "eqh_eql": detect_eqh_eql,
     "order_block": detect_order_block,
-    "cvd_divergence": detect_cvd_divergence,
     "trend_day": detect_trend_day,
     "engulfing": detect_engulfing,
     "pin_bar": detect_pin_bar,

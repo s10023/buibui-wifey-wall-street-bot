@@ -3,7 +3,7 @@
 
 symbols    = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
 timeframes = ["1h", "4h", "1d"]
-strategies = ["fvg", "bos", "liquidity_sweep", "eqh_eql", "wick_fill", "cvd_divergence"]
+strategies = ["fvg", "bos", "liquidity_sweep", "eqh_eql", "wick_fill"]
 days       = 90
 sl_pct     = 0.02
 # atr_sl_multiplier = 2.0  # ATR-based SL: SL distance = N × ATR14; overrides sl_pct when set

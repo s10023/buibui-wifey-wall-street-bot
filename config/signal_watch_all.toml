@@ -26,7 +26,6 @@ strategies = [
     'smt_divergence',
     'eqh_eql',
     'order_block',
-    'cvd_divergence',
     'trend_day',
     'engulfing',
     'pin_bar',
@@ -119,11 +118,6 @@ tp_r_15m = 4.5                # sweep peak: +0.80R (was 5.0=+0.72R; clear peak a
 tp_r_1h  = 2.5                # sweep peak: +0.54R (noisy pattern; crashes at 3.0R+); was 4.5=-0.05R
 tp_r_4h  = 2.0                # sweep peak: +0.48R (crashes to -1.02R at 2.5R+); was 5.0=-1.02R
 volume_suppress = true        # A14b: normal-vol wins Δ=+0.28R (low +0.54R vs normal +0.82R)
-
-[strategy_params.cvd_divergence]
-tp_r_15m = 5.0                # +0.12R (monotonically increasing)
-tp_r_1h  = 5.0                # +0.63R (monotonically increasing)
-tp_r_4h  = 2.5                # +0.97R (peaks here; 7 trades — small sample)
 
 [strategy_params.trend_day]
 tp_r_4h  = 3.5                # WFO OOS: BTC+0.217R ETH+0.041R SOL+0.120R n=52-65 (was 5.0 overfit)
