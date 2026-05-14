@@ -2,7 +2,7 @@
 
 Loads TOML config from a file and provides a BacktestSweepConfig dataclass.
 CLI flags take precedence over config values — the caller is responsible
-for merging (see buibui.py run_backtest).
+for merging (see wifey.py run_backtest).
 No module-level side effects.
 """
 

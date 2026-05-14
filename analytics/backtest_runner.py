@@ -1036,7 +1036,7 @@ def run_digest_cmd(
     )
     print(f"\n=== Backtest digest: {query} (min_trades={effective_min}) ===\n")
     if not rows:
-        print("  No data — run `buibui backtest --save` first.")
+        print("  No data — run `wifey backtest --save` first.")
         return
 
     if _tabulate is not None:

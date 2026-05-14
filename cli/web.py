@@ -1,4 +1,4 @@
-"""Buibui CLI — `web` subcommand (FastAPI server entry)."""
+"""Wifey CLI — `web` subcommand (FastAPI server entry)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ def run_web_server(args: argparse.Namespace) -> None:
     import uvicorn
 
     if getattr(args, "config", None):
-        os.environ["BUIBUI_CONFIG"] = args.config
+        os.environ["WIFEY_CONFIG"] = args.config
 
     uvicorn.run(
         "web.api.main:app",

@@ -1,4 +1,4 @@
-"""Tests for buibui.py CLI argument parsing and dispatch."""
+"""Tests for wifey.py CLI argument parsing and dispatch."""
 
 from unittest.mock import patch
 
@@ -6,15 +6,15 @@ import pytest
 
 
 class TestCLIParsing:
-    """Tests for CLI argument parsing in buibui.py."""
+    """Tests for CLI argument parsing in wifey.py."""
 
     def test_price_subcommand_defaults(self) -> None:
         """Price subcommand parses with correct defaults."""
         from monitor import price_monitor
 
         with patch.object(price_monitor, "main") as mock_main:
-            with patch("sys.argv", ["buibui.py", "monitor", "price"]):
-                from buibui import main
+            with patch("sys.argv", ["wifey.py", "monitor", "price"]):
+                from wifey import main
 
                 main()
 
@@ -27,8 +27,8 @@ class TestCLIParsing:
         from monitor import price_monitor
 
         with patch.object(price_monitor, "main") as mock_main:
-            with patch("sys.argv", ["buibui.py", "monitor", "price", "--live"]):
-                from buibui import main
+            with patch("sys.argv", ["wifey.py", "monitor", "price", "--live"]):
+                from wifey import main
 
                 main()
 
@@ -41,9 +41,9 @@ class TestCLIParsing:
         with patch.object(price_monitor, "main") as mock_main:
             with patch(
                 "sys.argv",
-                ["buibui.py", "monitor", "price", "--sort", "change_15m:desc"],
+                ["wifey.py", "monitor", "price", "--sort", "change_15m:desc"],
             ):
-                from buibui import main
+                from wifey import main
 
                 main()
 
@@ -56,8 +56,8 @@ class TestCLIParsing:
         from monitor import position_monitor
 
         with patch.object(position_monitor, "main") as mock_main:
-            with patch("sys.argv", ["buibui.py", "monitor", "position"]):
-                from buibui import main
+            with patch("sys.argv", ["wifey.py", "monitor", "position"]):
+                from wifey import main
 
                 main()
 
@@ -77,7 +77,7 @@ class TestCLIParsing:
             with patch(
                 "sys.argv",
                 [
-                    "buibui.py",
+                    "wifey.py",
                     "monitor",
                     "position",
                     "--sort",
@@ -88,7 +88,7 @@ class TestCLIParsing:
                     "--live",
                 ],
             ):
-                from buibui import main
+                from wifey import main
 
                 main()
 
@@ -102,16 +102,16 @@ class TestCLIParsing:
 
     def test_missing_subcommand_exits(self) -> None:
         """Missing subcommand causes SystemExit."""
-        with patch("sys.argv", ["buibui.py"]):
-            from buibui import main
+        with patch("sys.argv", ["wifey.py"]):
+            from wifey import main
 
             with pytest.raises(SystemExit):
                 main()
 
     def test_missing_monitor_subcommand_exits(self) -> None:
         """'monitor' without price/position causes SystemExit."""
-        with patch("sys.argv", ["buibui.py", "monitor"]):
-            from buibui import main
+        with patch("sys.argv", ["wifey.py", "monitor"]):
+            from wifey import main
 
             with pytest.raises(SystemExit):
                 main()

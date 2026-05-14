@@ -108,4 +108,4 @@ Strategy Recalibration Report
 | `analytics/recalibrate_lib.py` | `compute_recalibrated_ratings()`, `compute_directional_ratings()`, `write_confidence_to_db()`, `write_confidence_to_source()` (legacy) |
 | `analytics/recalibrate_runner.py` | Thin wrapper: opens DB, calls lib, prints report; `--config` derives `config_name`, `day_filter`, `adr_suppress_threshold` |
 | `analytics/data_store.py` | `confidence_ratings` table: PK `(config_name, strategy, tf, direction)` |
-| `buibui.py` | `buibui recalibrate [--config FILE] [--apply] [--min-trades N]` |
+| `wifey.py` | `buibui recalibrate [--config FILE] [--apply] [--min-trades N]` |

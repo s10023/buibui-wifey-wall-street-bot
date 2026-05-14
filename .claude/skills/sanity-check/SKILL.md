@@ -54,7 +54,7 @@ Compare the two lists. Flag any strategy in STRATEGY_REGISTRY but not DETECTOR_R
 
 ### Config wiring
 - Does every `[strategy_params.X]` key in `config/signal_watch.toml` correspond to a real strategy name in `STRATEGY_REGISTRY`?
-- Does `backtest_config.py:BacktestSweepConfig` include all flags exposed by `buibui.py` CLI?
+- Does `backtest_config.py:BacktestSweepConfig` include all flags exposed by `wifey.py` CLI?
 - Does `signal_config.py:SignalWatchConfig` include all fields read from the `[backtest]` section of signal_watch.toml?
 
 ### API router completeness
@@ -111,10 +111,10 @@ For each skill, verify the **key claims** are still true:
 
 | Skill | What to verify |
 |-------|---------------|
-| `atr-sweep` | `--atr-sl-values` CLI flag exists in `buibui.py`; `format_atr_sl_sweep_table` exists in `backtest_lib.py` |
+| `atr-sweep` | `--atr-sl-values` CLI flag exists in `wifey.py`; `format_atr_sl_sweep_table` exists in `backtest_lib.py` |
 | `volume-sweep` | `volume_suppress` field in `BacktestSweepConfig`; `effective_volume_suppress(strategy)` on `BacktestSweepConfig` |
 | `backtest-findings` | Min-trades thresholds still match `recalibrate_lib.py` defaults |
-| `recalibrate` | `buibui recalibrate` subcommand wired in `buibui.py`; `--config` + `--apply` flags present; `confidence_ratings` DB table exists |
+| `recalibrate` | `buibui recalibrate` subcommand wired in `wifey.py`; `--config` + `--apply` flags present; `confidence_ratings` DB table exists |
 | `new-strategy` | 4-file checklist still accurate; `DETECTOR_REGISTRY` is still the single source of truth |
 | `signal-watch` | `buibui signal watch` subcommand exists; TOML field names match `signal_config.py`; `min_avg_r` (not `filter_threshold`) in `[backtest]` section |
 | `pr-summary` | Template sections match what's in the skill body |

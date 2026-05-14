@@ -1,7 +1,7 @@
 services:
   price-monitor:
     build: .
-    command: python buibui.py monitor price --live
+    command: python wifey.py monitor price --live
     # .env is excluded from the image via .dockerignore (security).
     # Supply it at runtime via env_file. Without it the container will fail on startup.
     env_file: .env
@@ -13,7 +13,7 @@ services:
 
   position-monitor:
     build: .
-    command: python buibui.py monitor position --telegram
+    command: python wifey.py monitor position --telegram
     # .env is excluded from the image via .dockerignore (security).
     # Supply it at runtime via env_file. Without it the container will fail on startup.
     env_file: .env
@@ -25,7 +25,7 @@ services:
 
   signal-watch:
     build: .
-    command: python buibui.py signal watch --telegram
+    command: python wifey.py signal watch --telegram
     # .env is excluded from the image via .dockerignore (security).
     # Supply it at runtime via env_file. Without it the container will fail on startup.
     env_file: .env
@@ -42,7 +42,7 @@ services:
     build: .
     # Override SINCE at runtime: SINCE=2024-01-01 docker-compose run --rm analytics-backfill
     command: >
-      python buibui.py analytics backfill --since ${SINCE:-2023-01-01}
+      python wifey.py analytics backfill --since ${SINCE:-2023-01-01}
     env_file: .env
     volumes:
       - ./config/coins.json:/app/config/coins.json:ro
@@ -53,7 +53,7 @@ services:
 
   analytics-sync:
     build: .
-    command: python buibui.py analytics sync
+    command: python wifey.py analytics sync
     env_file: .env
     volumes:
       - ./config/coins.json:/app/config/coins.json:ro

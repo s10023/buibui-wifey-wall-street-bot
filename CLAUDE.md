@@ -4,7 +4,7 @@ This file provides instructions for Claude Code when working in this repository.
 
 ## Project Overview
 
-Buibui Moon Trader Bot — a crypto trading bot for Binance Futures. Live price + position monitoring, an analytics/backtest stack (DuckDB), a 20-strategy signal engine with Telegram alerts, and a FastAPI + Svelte web UI. Python 3.11+, managed with Poetry.
+Buibui Wifey Wall Street Bot — a crypto trading bot for Binance Futures. Live price + position monitoring, an analytics/backtest stack (DuckDB), a 20-strategy signal engine with Telegram alerts, and a FastAPI + Svelte web UI. Python 3.11+, managed with Poetry.
 
 ## Key Commands
 
@@ -24,22 +24,22 @@ For routine DB refresh after backtest/strategy changes: `make db-update` (= `db-
 
 ## CLI
 
-`buibui.py` is the single CLI entry point with subcommands:
+`wifey.py` is the single CLI entry point with subcommands:
 
-- `buibui monitor price | position` — live price / position monitor
-- `buibui signal watch | test` — live signal daemon / historical replay
-- `buibui analytics backfill | sync` — OHLCV ingestion
-- `buibui backtest` — run/save backtests (sweep, combo, cross-TF modes)
-- `buibui digest` — pre-canned analytics queries
-- `buibui param-audit | param-sweep` — WFO parameter tools
-- `buibui recalibrate` — refresh star ratings
-- `buibui web` — start FastAPI backend
+- `wifey monitor price | position` — live price / position monitor
+- `wifey signal watch | test` — live signal daemon / historical replay
+- `wifey analytics backfill | sync` — OHLCV ingestion
+- `wifey backtest` — run/save backtests (sweep, combo, cross-TF modes)
+- `wifey digest` — pre-canned analytics queries
+- `wifey param-audit | param-sweep` — WFO parameter tools
+- `wifey recalibrate` — refresh star ratings
+- `wifey web` — start FastAPI backend
 
-Each Makefile `buibui-*` target wraps the equivalent CLI invocation.
+Each Makefile `wifey-*` target wraps the equivalent CLI invocation.
 
 ## Project Structure
 
-- `buibui.py` — thin CLI entry shim (delegates to `cli.main:main`)
+- `wifey.py` — thin CLI entry shim (delegates to `cli.main:main`)
 - `cli/` — argparse subcommand package: `main.py` builds the top-level parser and dispatches to per-subcommand modules (`monitor.py`, `signal.py`, `analytics.py`, `backtest.py`, `digest.py`, `param.py`, `recalibrate.py`, `web.py`); `_common.py` shared helpers
 - `monitor/` — monitor modules split into thin wrappers and pure logic libs:
   - `price_monitor.py` / `position_monitor.py` — thin wrappers (create client, load config, call lib)
@@ -54,7 +54,7 @@ Each Makefile `buibui-*` target wraps the equivalent CLI invocation.
   - `backtest/` — backtest engine split into 6 modules: `engine.py` (`Trade`, `BacktestResult`, `run_backtest`, `_compute_atr14`), `gates.py` (`_is_low_volume`, `_is_volume_spike`, `filter_signals_by_day`), `combo.py` (`ComboBacktestResult`, `run_combo_backtest`), `cross_tf.py` (`CrossTfComboBacktestResult`, `run_cross_tf_combo_backtest`), `formatters.py` (10× `format_*` helpers + `_tf_sort_key`). `backtest_lib.py` is a thin re-export shim.
   - `backtest_runner.py` / `backtest_config.py` — thin runner + TOML config loader for sweep mode
   - `param_sweep.py` — WFO sweep lib; `run_param_sweep` / `run_strategy_audit`; parallelized via `ProcessPoolExecutor`
-  - `digest_lib.py` — 12 pre-canned SQL queries; `run_digest`; `DigestScope`; powers `buibui digest` + analysis API
+  - `digest_lib.py` — 12 pre-canned SQL queries; `run_digest`; `DigestScope`; powers `wifey digest` + analysis API
   - `cme_gap_lib.py` — CME gap detection + alert warning helper
   - `zones_lib.py` — structural zone extraction (geometry only): FVG, OB, EQH/EQL, BOS, Fib, OTE, swing points
   - `signal/` — signal scanner split into 10 modules: `scanner.py` (`scan_symbol` + `run_scan_cycle` 3-phase fan-out), `types.py` (`SignalEvent`, `StatsContext`, `ConfluenceData`), `gates.py` (`_filter_signals_by_adr`, `_is_adr_exempt`, `_apply_direction_filter_gate`, `_apply_htf_ema_gate`, `_apply_regime_gate`), `resolvers.py` (10× `_resolve_*` helpers, incl. `_resolve_atr_sl_floor`), `bt_cache.py` (`_compute_backtest`, `_backtest_summary`), `atr_floor.py` (`_apply_atr_floor` — F9 ATR-as-min-SL widener for the live path; mirrors backtest engine), `outcome_backfill.py` (`backfill_outcomes` — forward-walks OHLCV to resolve outstanding `signal_alert_outcomes` rows; called once per cycle from `signal_runner`), `stats_context.py` (`_compute_stats_context`), `cofire.py` (live + cross-TF co-fire detection), `_common.py` (`_bt_mem_cache`, `_reset_bt_cache`, timeframe parsing). `signal_lib.py` is a 4-line re-export shim.
@@ -79,7 +79,7 @@ Each Makefile `buibui-*` target wraps the equivalent CLI invocation.
 - `web/` — web layer (Phase 4 + 5). See `.claude/context/web.md` for full API + UI reference.
   - `api/` — FastAPI: routers (config, ohlcv, fib, signals, backtest, positions, prices, stream, stats, zones); `GET /api/active-config`, `GET /api/zones`, `GET /api/backtest/analysis`; stats live fields via `_inject_live_fields()`
   - `ui/` — Svelte 5 + Vite; pages: Chart, Backtest, SignalFeed, Positions, Prices, Stats; build: `make web-build`
-- `trade/open_trades.py` — Binance Futures order opener (manual/CLI use; wired via `make buibui-open-trades`). No automation hooked into the signal daemon yet.
+- `trade/open_trades.py` — Binance Futures order opener (manual/CLI use; wired via `make wifey-open-trades`). No automation hooked into the signal daemon yet.
 - `tools/` — one-shot analysis scripts (not part of the daemon/CLI surface):
   - `strategy_edge_audit.py` — Phase 0 strategy edge audit; aggregates `backtest_trades` by (strategy × tf × regime × session) + combo uplift; deterministic KILL/DEMOTE/KEEP rule. Run via `PYTHONPATH=. poetry run python tools/strategy_edge_audit.py`. See `docs/redesign/buibui-redesign-phase0.md`.
   - `live_outcomes_report.py` — read-only spot-check of `signal_alert_outcomes` after the T2 backfill worker runs; reports the resolved/open mix, per-(strategy, tf, direction) win rate + avg_r, and per-strategy aggregate. Stop-gap until a Stats UI card lands. Run via `PYTHONPATH=. poetry run python tools/live_outcomes_report.py [--days N] [--min-n N]`.
@@ -136,17 +136,17 @@ Skills live in `.claude/skills/<name>/SKILL.md` (project-specific, committed to 
 | `config-refresh` | `/config-refresh` | Full TOML refresh: fix strategy_timeframes gaps, run TP sweep, update tp_r per strategy × TF, commit | When a signal_watch config feels stale, after detector rewrites, or when weekdays config drifts behind signal_watch.toml |
 | `backtest-findings` | `/backtest-findings` | Interpret any sweep table (ATR/TP/volume/duration) and commit winners to TOML | After every sweep run |
 | `param-sweep-apply` | `/param-sweep-apply` | Auto-apply WFO param-sweep/param-audit results: parse pasted tables, pick best tp_r per strategy × TF, edit TOML, run backtest + recalibrate | Paste results and invoke — use when running sweeps manually outside `/wfo-sweep` |
-| `recalibrate` | `/recalibrate` | Update strategy star ratings in the `confidence_ratings` DB table from accumulated backtest runs (feeds Backtest UI stars, Telegram alerts, live signal-watch quality gate) | After any `make buibui-backtest SAVE=1` adds new runs |
+| `recalibrate` | `/recalibrate` | Update strategy star ratings in the `confidence_ratings` DB table from accumulated backtest runs (feeds Backtest UI stars, Telegram alerts, live signal-watch quality gate) | After any `make wifey-backtest SAVE=1` adds new runs |
 | `volume-sweep` | `/volume-sweep` | Test `volume_suppress` per strategy; compare High Vol vs Low Vol avg R | When adding a new strategy; after entry logic changes that affect signal frequency |
 | `new-strategy` | `/new-strategy` | Guided 4-file checklist for adding a new strategy (`analytics/strategies/<name>.py`, `_registry.py`, `signals/registry.py`, tests) | Every time a new strategy is added |
-| `backtest-run` | `/backtest-run` | Quick reference for all `buibui backtest` invocations and flags | Any time you need a backtest command and can't remember the flags |
-| `investigate-strategy` | `/investigate-strategy` | Debug why a strategy did/didn't fire on a specific candle using `buibui signal test` | When asked to investigate, diagnose, or replay a signal |
+| `backtest-run` | `/backtest-run` | Quick reference for all `wifey backtest` invocations and flags | Any time you need a backtest command and can't remember the flags |
+| `investigate-strategy` | `/investigate-strategy` | Debug why a strategy did/didn't fire on a specific candle using `wifey signal test` | When asked to investigate, diagnose, or replay a signal |
 | `signal-watch` | `/signal-watch` | Signal daemon workflow, TOML config reference, signal flow diagram | When configuring or debugging the live signal scanner |
 | `pr-summary` | `/pr-summary` | Write PR title + summary + test plan to `/tmp/pr-<branch>.md` | After finishing any feature branch |
 | `post-branch` | `/post-branch` | Behaviour-gated docs sweep: diff branch changes against CLAUDE.md / README.md / MEMORY.md / Makefile / docker-compose.yml / `.claude/context/`, propose targeted edits, append "Documentation updates" to PR body. Skips for pure refactors. | Immediately after `gh pr create`, before reporting the PR URL |
 | `stats-dashboard` | `/stats-dashboard` | Stats page architecture, card inventory, adding new cards, timezone constraints | When working on Stats page or `stats_lib.py` |
 | `db-update` | `/db-update` | Routine `make db-update`: backtest (3 configs) → recalibrate → regression golden refresh | After any detector / strategy / config change that affects ratings or fixtures |
-| `data-backfill` | `/data-backfill` | OHLCV ingestion via `buibui analytics backfill` / `sync` | First-time setup, wiped DB, new symbol or timeframe, filling a data gap |
+| `data-backfill` | `/data-backfill` | OHLCV ingestion via `wifey analytics backfill` / `sync` | First-time setup, wiped DB, new symbol or timeframe, filling a data gap |
 | `confluence-backtest` | `/confluence-backtest` | Cross-TF (`--cross-tf`) and same-TF (`--combo`) co-firing backtests; HTF/LTF pair sweeps; post-run spot-check via `tools/combo_health.py` | After adding a strategy, changing entry logic, tuning the live `[combo]` gate, or to confirm combo tables are healthy after a refresh |
 | `frontend-svelte` | `/frontend-svelte` | Svelte 5 + Vite UI workflow for `web/ui/` — pages, stores, lightweight-charts, dev/build commands | Any work under `web/ui/`; pair with `/frontend-design` for visual work |
 

@@ -4,7 +4,7 @@ Detailed reference for `web/`. Load this when working on the FastAPI backend or 
 
 ## Backend — `web/api/`
 
-- `main.py` — app + StaticFiles mount; reads `BUIBUI_CONFIG` env var (set by `buibui web --config <toml>`); stores `app.state.config_name` + `app.state.active_config`
+- `main.py` — app + StaticFiles mount; reads `WIFEY_CONFIG` env var (set by `buibui web --config <toml>`); stores `app.state.config_name` + `app.state.active_config`
 - `deps.py` — `require_token`, `require_token_sse` (SSE query-param auth)
 - `routers/` — config, ohlcv, fib, signals, backtest, positions, prices, stream, stats, zones
 - `models/` — Pydantic models per router; `active_config.py` → `ActiveConfigResponse` + `StrategyParamsModel`; `zones.py` → `ZoneBox`, `ZoneLine`, `SwingPoint`, `ZonesResponse`

@@ -1,4 +1,4 @@
-"""Buibui CLI — `param-sweep` and `param-audit` subcommands (top-level commands)."""
+"""Wifey CLI — `param-sweep` and `param-audit` subcommands (top-level commands)."""
 
 from __future__ import annotations
 

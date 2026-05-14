@@ -35,7 +35,7 @@ All `--at` timestamps are **interpreted as UTC**. The output displays in **MYT (
 make buibui-signal-test SYMBOL=BTCUSDT TIMEFRAME=1h STRATEGY=liquidity_sweep AT="2026-04-08 13:00:00"
 
 # Equivalent direct call
-poetry run python buibui.py signal test \
+poetry run python wifey.py signal test \
   --symbol BTCUSDT --timeframe 1h --strategy liquidity_sweep \
   --at "2026-04-08 13:00:00"
 ```

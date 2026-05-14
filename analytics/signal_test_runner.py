@@ -199,7 +199,7 @@ def run_signal_test(
                 if ohlcv_df.empty:
                     print(
                         f"  [{symbol}/{timeframe}] No OHLCV data — "
-                        f"run 'buibui analytics backfill --symbols {symbol}' first."
+                        f"run 'wifey analytics backfill --symbols {symbol}' first."
                     )
                     continue
 

@@ -2,7 +2,7 @@
 
 Loads TOML config from a file and provides a SignalWatchConfig dataclass.
 CLI flags take precedence over config file values — the caller is responsible
-for merging (see buibui.py run_signal_watch).
+for merging (see wifey.py run_signal_watch).
 No module-level side effects.
 """
 
@@ -178,7 +178,7 @@ class BacktestFilterConfig:
     # Widens structural SLs that land too close to entry (prevents fee-drag explosion).
     min_sl_pct: float = 0.0
     # Suppress alerts when the signal candle has volume < 1.5× its 20-candle rolling mean.
-    # Enable after confirming via `make buibui-backtest` volume split that low-vol trades
+    # Enable after confirming via `make wifey-backtest` volume split that low-vol trades
     # underperform. Default off — investigate first.
     volume_suppress: bool = False
     # Exempt spike candles (volume > 3× rolling mean) from volume_suppress.

@@ -1,4 +1,4 @@
-# Buibui Moon Trader Bot — System Overview
+# Buibui Wifey Wall Street Bot — System Overview
 
 **Purpose.** Provide a self-contained mental model of the live signal pipeline so an outside reviewer (ChatGPT, Gemini, a trading-savvy friend) can assess: *given the current architecture, what is missing for this system to be measurably profitable?*
 
@@ -58,7 +58,7 @@
 └─────────────────────────┘
 ```
 
-**CLI surface** (single entry `buibui.py`):
+**CLI surface** (single entry `wifey.py`):
 
 - `buibui analytics backfill | sync` — ingestion
 - `buibui signal watch` — live daemon

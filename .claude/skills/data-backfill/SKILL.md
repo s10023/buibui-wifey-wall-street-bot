@@ -117,5 +117,5 @@ Look for:
 | `analytics/data_sync.py` | `backfill_symbol()`, `sync_symbol()` orchestration; upserts to `ohlcv` |
 | `analytics/data_store.py` | `ohlcv` table schema; `upsert_ohlcv()` |
 | `analytics/analytics_runner.py` | Thin runner wrappers `run_backfill()`, `run_sync()` |
-| `buibui.py` | `analytics backfill` / `analytics sync` subcommands |
+| `wifey.py` | `analytics backfill` / `analytics sync` subcommands |
 | `Makefile` | `buibui-analytics-backfill`, `buibui-analytics-sync` targets |

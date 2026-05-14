@@ -1,4 +1,4 @@
-"""Buibui CLI entry. Real logic lives in cli/."""
+"""Wifey CLI entry. Real logic lives in cli/."""
 
 from cli.main import main
 

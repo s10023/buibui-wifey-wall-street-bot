@@ -1,4 +1,4 @@
-"""Buibui CLI — `monitor` subcommand (price + position)."""
+"""Wifey CLI — `monitor` subcommand (price + position)."""
 
 from __future__ import annotations
 

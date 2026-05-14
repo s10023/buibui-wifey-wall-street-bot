@@ -300,7 +300,7 @@ def run_param_sweep(
     if ohlcv_full.empty:
         print(
             f"  ERROR: No OHLCV data for {symbol}/{timeframe}. "
-            "Run 'buibui analytics backfill' first.",
+            "Run 'wifey analytics backfill' first.",
             file=sys.stderr,
         )
         return []
@@ -679,7 +679,7 @@ def run_strategy_audit(
     if ohlcv_full.empty:
         print(
             f"  ERROR: No OHLCV data for {symbol}/{timeframe}. "
-            "Run 'buibui analytics backfill' first.",
+            "Run 'wifey analytics backfill' first.",
             file=sys.stderr,
         )
         return []
@@ -870,7 +870,7 @@ def format_audit_results(
     if good or marginal:
         lines.append(
             "\n  Next step: deep-sweep winners with "
-            "`buibui param-sweep --strategy <name> --days 365`"
+            "`wifey param-sweep --strategy <name> --days 365`"
         )
     if no_edge:
         names = ", ".join(r.strategy for r in no_edge)

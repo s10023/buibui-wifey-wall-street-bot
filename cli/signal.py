@@ -1,4 +1,4 @@
-"""Buibui CLI — `signal` subcommand (watch + test)."""
+"""Wifey CLI — `signal` subcommand (watch + test)."""
 
 from __future__ import annotations
 

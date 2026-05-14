@@ -90,13 +90,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     app.state.config_name = None
     app.state.active_config = None
 
-    config_path = os.environ.get("BUIBUI_CONFIG")
+    config_path = os.environ.get("WIFEY_CONFIG")
     if config_path:
         _load_active_config(config_path)
     yield
 
 
-app = FastAPI(title="Buibui Web API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Wifey Web API", version="1.0.0", lifespan=lifespan)
 
 _cors_origins = [
     o.strip()
