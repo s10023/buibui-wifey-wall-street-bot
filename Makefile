@@ -11,7 +11,7 @@ DEV_PORT ?= 5173
 PYTHON_FILES = $(shell find . -name "*.py" -not -path "./venv/*" -not -path "./.venv/*")
 DOCKER_IMAGE = wifey-bot
 
-.PHONY: lint lint-md lint-md-fix lint-py-check lint-py typecheck test test-regression regression-update poetry-install poetry-update docker-build docker-monitor-price docker-monitor-price-live docker-monitor-position docker-monitor-position-live docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-monitor-price wifey-monitor-price-live wifey-monitor-price-telegram wifey-monitor-position wifey-monitor-position-live wifey-monitor-position-telegram wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
+.PHONY: lint lint-md lint-md-fix lint-py-check lint-py typecheck test test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
 
 lint: lint-md lint-py
 
@@ -65,30 +65,6 @@ docker-build:
 	@echo "🐳 Building Docker image..."
 	docker build -t $(DOCKER_IMAGE) .
 
-docker-monitor-price:
-	@echo "🐳 Running price monitor in Docker..."
-	docker run -t --env-file .env \
-		-v $(PWD)/config/coins.json:/app/config/coins.json:ro \
-		$(DOCKER_IMAGE) poetry run python wifey.py monitor price
-
-docker-monitor-price-live:
-	@echo "🐳 Running price monitor (live) in Docker..."
-	docker run -it --env-file .env \
-		-v $(PWD)/config/coins.json:/app/config/coins.json:ro \
-		$(DOCKER_IMAGE) poetry run python wifey.py monitor price --live
-
-docker-monitor-position:
-	@echo "🐳 Running position monitor in Docker..."
-	docker run -t --env-file .env \
-		-v $(PWD)/config/coins.json:/app/config/coins.json:ro \
-		$(DOCKER_IMAGE) poetry run python wifey.py monitor position
-
-docker-monitor-position-live:
-	@echo "🐳 Running position monitor (live) in Docker..."
-	docker run -it --env-file .env \
-		-v $(PWD)/config/coins.json:/app/config/coins.json:ro \
-		$(DOCKER_IMAGE) poetry run python wifey.py monitor position --live --sort $(SORT)
-
 docker-analytics-backfill:
 	@echo "📥 Running analytics backfill in Docker..."
 	@touch analytics.db
@@ -124,30 +100,6 @@ docker-backtest:
 		$(if $(TP_R),--tp-r $(TP_R),) \
 		$(if $(SECONDARY),--secondary-symbol $(SECONDARY),) \
 		$(if $(SAVE),--save,)
-
-wifey-monitor-price:
-	@echo "📈 Running price monitor..."
-	poetry run python wifey.py monitor price
-
-wifey-monitor-price-live:
-	@echo "📈 Running price monitor in live mode..."
-	poetry run python wifey.py monitor price --live
-
-wifey-monitor-price-telegram:
-	@echo "📈 Running price monitor and sending to Telegram..."
-	poetry run python wifey.py monitor price --telegram
-
-wifey-monitor-position:
-	@echo "📊 Running position monitor..."
-	poetry run python wifey.py monitor position --sort $(SORT)
-
-wifey-monitor-position-live:
-	@echo "📊 Running position monitor in live mode..."
-	poetry run python wifey.py monitor position --live --sort $(SORT)
-
-wifey-monitor-position-telegram:
-	@echo "📊 Running position monitor and sending to Telegram..."
-	poetry run python wifey.py monitor position --telegram
 
 wifey-analytics-backfill:
 	@echo "📥 Running analytics backfill..."

@@ -2,9 +2,9 @@
 
 from binance.client import Client
 from fastapi import APIRouter, Depends, HTTPException, status
+from monitor.price_lib import get_price_changes
 from utils.binance_client import load_coins_config
 
-from monitor.price_lib import get_price_changes
 from web.api.deps import get_client, require_token
 from web.api.models.prices import PriceRow, PricesResponse
 

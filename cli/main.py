@@ -7,7 +7,7 @@ import logging
 
 from dotenv import load_dotenv
 
-from cli import analytics, backtest, digest, monitor, param, recalibrate, signal, web
+from cli import analytics, backtest, digest, param, recalibrate, signal, web
 
 
 def main() -> None:
@@ -17,7 +17,6 @@ def main() -> None:
     )
     parser = argparse.ArgumentParser(description="Buibui Wifey Wall Street CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
-    monitor.add_monitor_subparser(subparsers)
     signal.add_signal_subparser(subparsers)
     analytics.add_analytics_subparser(subparsers)
     backtest.add_backtest_subparser(subparsers)
