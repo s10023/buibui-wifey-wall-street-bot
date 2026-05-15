@@ -1,4 +1,8 @@
+import json
+from pathlib import Path
 from typing import Any
+
+_DEFAULT_STOCKS_PATH = Path("config/stocks.json")
 
 _MAX_LEVERAGE = 150
 _MIN_LEVERAGE = 1
@@ -85,3 +89,15 @@ def validate_stocks_config(config_dict: dict[str, Any]) -> bool:
                 f"(0, {_MAX_STOCK_SL_FRAC})"
             )
     return True
+
+
+def load_stocks_config(path: Path = _DEFAULT_STOCKS_PATH) -> dict[str, Any]:
+    """Load and validate ``config/stocks.json``. Raises if missing or invalid."""
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} not found — copy stocks.json.example to {path} and edit."
+        )
+    with path.open() as f:
+        config: dict[str, Any] = json.load(f)
+    validate_stocks_config(config)
+    return config

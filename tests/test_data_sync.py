@@ -1,5 +1,6 @@
 """Tests for analytics/data_sync.py."""
 
+import inspect
 from typing import Any
 from unittest.mock import patch
 
@@ -7,14 +8,13 @@ import duckdb
 import pandas as pd
 import pytest
 
-from analytics.data_fetcher import FUNDING_COLUMNS, KLINES_MAX_LIMIT, OHLCV_COLUMNS
+from analytics.data_fetcher import OHLCV_COLUMNS
 from analytics.data_store import (
-    get_funding_rates,
     get_latest_open_time,
     init_schema,
     upsert_ohlcv,
 )
-from analytics.data_sync import backfill, sync, sync_funding_rates
+from analytics.data_sync import backfill, sync
 
 
 def _make_conn() -> duckdb.DuckDBPyConnection:
@@ -24,7 +24,7 @@ def _make_conn() -> duckdb.DuckDBPyConnection:
 
 
 def _make_df(
-    open_times: list[int], symbol: str = "BTCUSDT", timeframe: str = "1h"
+    open_times: list[int], symbol: str = "AAPL", timeframe: str = "1h"
 ) -> pd.DataFrame:
     return pd.DataFrame(
         [
@@ -32,11 +32,11 @@ def _make_df(
                 "symbol": symbol,
                 "timeframe": timeframe,
                 "open_time": t,
-                "open": 30000.0,
-                "high": 31000.0,
-                "low": 29500.0,
-                "close": 30500.0,
-                "volume": 100.0,
+                "open": 100.0,
+                "high": 102.0,
+                "low": 99.0,
+                "close": 101.0,
+                "volume": 1_000_000.0,
             }
             for t in open_times
         ],
@@ -44,65 +44,47 @@ def _make_df(
     )
 
 
+def test_data_sync_has_no_funding_or_oi_imports() -> None:
+    """Phase-A guard: data_sync.py must not reference funding rates or open interest."""
+    import analytics.data_sync as m
+
+    src = inspect.getsource(m)
+    assert "funding" not in src.lower()
+    assert "open_interest" not in src.lower()
+
+
 class TestBackfill:
     def test_fetches_and_stores_single_batch(self) -> None:
         conn = _make_conn()
         df = _make_df([1_000, 2_000, 3_000])
-        with patch("analytics.data_sync.fetch_klines", return_value=df):
-            total = backfill(
-                conn, object(), "BTCUSDT", "1h", 0, sleep_fn=lambda _: None
-            )
+        with patch("analytics.data_sync.fetch_bars", return_value=df):
+            total = backfill(conn, "AAPL", "1h", 0)
         assert total == 3
-        assert get_latest_open_time(conn, "BTCUSDT", "1h") == 3_000
+        assert get_latest_open_time(conn, "AAPL", "1h") == 3_000
 
-    def test_stops_when_batch_is_smaller_than_limit(self) -> None:
+    def test_returns_zero_on_empty_response(self) -> None:
         conn = _make_conn()
-        small_df = _make_df(list(range(10)))
-        with patch("analytics.data_sync.fetch_klines", return_value=small_df):
-            total = backfill(
-                conn, object(), "BTCUSDT", "1h", 0, sleep_fn=lambda _: None
-            )
-        assert total == 10
-
-    def test_paginates_when_full_batch_returned(self) -> None:
-        conn = _make_conn()
-        full_df = _make_df(list(range(KLINES_MAX_LIMIT)))
         empty_df = pd.DataFrame(columns=OHLCV_COLUMNS)
-        call_count = 0
+        with patch("analytics.data_sync.fetch_bars", return_value=empty_df):
+            total = backfill(conn, "AAPL", "1h", 0)
+        assert total == 0
 
-        def side_effect(*args: Any, **kwargs: Any) -> pd.DataFrame:
-            nonlocal call_count
-            call_count += 1
-            return full_df if call_count == 1 else empty_df
-
-        with patch("analytics.data_sync.fetch_klines", side_effect=side_effect):
-            backfill(conn, object(), "BTCUSDT", "1h", 0, sleep_fn=lambda _: None)
-        assert call_count == 2
-
-    def test_calls_sleep_between_batches(self) -> None:
+    def test_passes_through_start_ms_to_fetch_bars(self) -> None:
         conn = _make_conn()
-        full_df = _make_df(list(range(KLINES_MAX_LIMIT)))
-        empty_df = pd.DataFrame(columns=OHLCV_COLUMNS)
-        sleep_calls: list[float] = []
-        call_count = 0
+        captured: list[Any] = []
 
-        def side_effect(*args: Any, **kwargs: Any) -> pd.DataFrame:
-            nonlocal call_count
-            call_count += 1
-            return full_df if call_count == 1 else empty_df
+        def capture(*args: Any, **kwargs: Any) -> pd.DataFrame:
+            captured.append((args, kwargs))
+            return pd.DataFrame(columns=OHLCV_COLUMNS)
 
-        with patch("analytics.data_sync.fetch_klines", side_effect=side_effect):
-            backfill(conn, object(), "BTCUSDT", "1h", 0, sleep_fn=sleep_calls.append)
-        assert len(sleep_calls) == 1
-
-    def test_returns_total_rows_upserted(self) -> None:
-        conn = _make_conn()
-        df = _make_df([1, 2, 3, 4, 5])
-        with patch("analytics.data_sync.fetch_klines", return_value=df):
-            total = backfill(
-                conn, object(), "BTCUSDT", "1h", 0, sleep_fn=lambda _: None
-            )
-        assert total == 5
+        with patch("analytics.data_sync.fetch_bars", side_effect=capture):
+            backfill(conn, "AAPL", "1h", 1_700_000_000_000)
+        assert captured, "fetch_bars was not called"
+        args, _ = captured[0]
+        # fetch_bars(symbol, interval, start_ms, limit=...)
+        assert args[0] == "AAPL"
+        assert args[1] == "1h"
+        assert args[2] == 1_700_000_000_000
 
 
 class TestSync:
@@ -111,80 +93,23 @@ class TestSync:
         upsert_ohlcv(conn, _make_df([1_000_000]))
         captured: list[int] = []
 
-        def capture(c: Any, cl: Any, sym: Any, tf: Any, start: int, **kw: Any) -> int:
+        def capture(c: Any, sym: Any, tf: Any, start: int) -> int:
             captured.append(start)
             return 0
 
         with patch("analytics.data_sync.backfill", side_effect=capture):
-            sync(conn, object(), "BTCUSDT", "1h", sleep_fn=lambda _: None)
+            sync(conn, "AAPL", "1h")
         assert captured == [1_000_000]
 
     def test_raises_when_no_existing_data(self) -> None:
         conn = _make_conn()
         with pytest.raises(ValueError, match="Run backfill first"):
-            sync(conn, object(), "BTCUSDT", "1h")
+            sync(conn, "AAPL", "1h")
 
     def test_returns_zero_when_no_new_data(self) -> None:
         conn = _make_conn()
         upsert_ohlcv(conn, _make_df([1_000_000]))
         empty_df = pd.DataFrame(columns=OHLCV_COLUMNS)
-        with patch("analytics.data_sync.fetch_klines", return_value=empty_df):
-            total = sync(conn, object(), "BTCUSDT", "1h", sleep_fn=lambda _: None)
+        with patch("analytics.data_sync.fetch_bars", return_value=empty_df):
+            total = sync(conn, "AAPL", "1h")
         assert total == 0
-
-
-def _make_funding_df(
-    funding_times: list[int],
-    symbol: str = "BTCUSDT",
-    rate: float = 0.0001,
-) -> pd.DataFrame:
-    return pd.DataFrame(
-        [
-            {
-                "symbol": symbol,
-                "funding_time": t,
-                "funding_rate": rate,
-            }
-            for t in funding_times
-        ],
-        columns=FUNDING_COLUMNS,
-    )
-
-
-class TestSyncFundingRates:
-    def test_returns_row_count_on_success(self) -> None:
-        conn = _make_conn()
-        df = _make_funding_df([1_000_000, 2_000_000, 3_000_000])
-        with patch("analytics.data_sync.fetch_funding_rates", return_value=df):
-            total = sync_funding_rates(conn, object(), "BTCUSDT")
-        assert total == 3
-
-    def test_returns_zero_on_empty_response(self) -> None:
-        conn = _make_conn()
-        empty_df = pd.DataFrame(columns=FUNDING_COLUMNS)
-        with patch("analytics.data_sync.fetch_funding_rates", return_value=empty_df):
-            total = sync_funding_rates(conn, object(), "BTCUSDT")
-        assert total == 0
-
-    def test_data_is_stored_in_db(self) -> None:
-        conn = _make_conn()
-        df = _make_funding_df([1_000_000, 2_000_000])
-        with patch("analytics.data_sync.fetch_funding_rates", return_value=df):
-            sync_funding_rates(conn, object(), "BTCUSDT")
-        stored = get_funding_rates(conn, "BTCUSDT", 0, 9_999_999)
-        assert len(stored) == 2
-        assert list(stored["funding_time"]) == [1_000_000, 2_000_000]
-
-    def test_limit_calculated_from_days(self) -> None:
-        conn = _make_conn()
-        empty_df = pd.DataFrame(columns=FUNDING_COLUMNS)
-        captured_kwargs: list[Any] = []
-
-        def capture(*args: Any, **kwargs: Any) -> pd.DataFrame:
-            captured_kwargs.append(kwargs)
-            return empty_df
-
-        with patch("analytics.data_sync.fetch_funding_rates", side_effect=capture):
-            sync_funding_rates(conn, object(), "BTCUSDT", days=30)
-        # 30 days * 24h / 8h per funding = 90
-        assert captured_kwargs[0]["limit"] == 90

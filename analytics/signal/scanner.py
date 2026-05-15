@@ -28,7 +28,6 @@ from analytics.data_store import (
     _backtest_run_id,
     _make_bt_cache_key,
     get_backtest_cache,
-    get_funding_rates,
     get_ohlcv,
     put_backtest_cache,
     upsert_backtest_run,
@@ -302,11 +301,6 @@ def run_scan_cycle(
     stats_ctx_cache: dict[str, StatsContext | None] = {}
     now_myt = datetime.datetime.now(tz=datetime.timezone(datetime.timedelta(hours=8)))
 
-    needs_funding = any(
-        STRATEGY_REGISTRY[s].requires_funding
-        for s in strategies
-        if s in SIGNAL_REGISTRY and s in STRATEGY_REGISTRY
-    )
     needs_secondary = any(
         STRATEGY_REGISTRY[s].requires_secondary
         for s in strategies
@@ -334,15 +328,15 @@ def run_scan_cycle(
     alerts: list[str] = []
 
     # --- Phase 1: Pre-fetch all DB data sequentially ---
-    # Funding and stats are per-symbol; OHLCV is per (symbol, tf).
+    # Stats are per-symbol; OHLCV is per (symbol, tf).
     # Isolating all DB reads before the parallel scan phase ensures no DuckDB
     # connection is accessed from multiple threads simultaneously.
-    funding_map: dict[str, pd.DataFrame | None] = {}
+    # Phase A (equities, yfinance): no funding-rate strategies are registered,
+    # so `funding_map` is always all-None. The `requires_funding` branch in
+    # `scan_symbol` is dormant code retained for the upstream crypto path.
+    funding_map: dict[str, pd.DataFrame | None] = dict.fromkeys(symbols)
     ohlcv_map: dict[tuple[str, str], pd.DataFrame] = {}
     for symbol in symbols:
-        funding_map[symbol] = (
-            get_funding_rates(conn, symbol, start_ms, now_ms) if needs_funding else None
-        )
         if symbol not in stats_ctx_cache:
             stats_ctx_cache[symbol] = _compute_stats_context(conn, symbol, now_myt)
         for tf in timeframes:
