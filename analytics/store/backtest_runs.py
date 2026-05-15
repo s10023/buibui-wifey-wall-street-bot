@@ -17,8 +17,6 @@ def _backtest_run_id(
     tp_r: float,
     fee_pct: float,
     day_filter: str,
-    smt_trend_filter: int,
-    secondary_symbol: str | None,
     adr_suppress_threshold: float | None = None,
     volume_suppress: bool | None = None,
     min_sl_pct: float = 0.0,
@@ -37,7 +35,9 @@ def _backtest_run_id(
     Optional suffixes are appended only when set so existing run_ids are
     unchanged (None = flag not applied, same hash as before these columns).
     """
-    key = f"{symbol}|{timeframe}|{strategy}|{days}|{sl_pct}|{tp_r}|{fee_pct}|{day_filter}|{smt_trend_filter}|{secondary_symbol}"
+    key = (
+        f"{symbol}|{timeframe}|{strategy}|{days}|{sl_pct}|{tp_r}|{fee_pct}|{day_filter}"
+    )
     if adr_suppress_threshold is not None:
         key += f"|adr:{adr_suppress_threshold}"
     if volume_suppress:
@@ -75,8 +75,6 @@ def upsert_backtest_run(
     tp_r: float,
     fee_pct: float,
     day_filter: str,
-    smt_trend_filter: int,
-    secondary_symbol: str | None = None,
     sweep_id: str | None = None,
     adr_suppress_threshold: float | None = None,
     volume_suppress: bool | None = None,
@@ -95,8 +93,6 @@ def upsert_backtest_run(
         tp_r,
         fee_pct,
         day_filter,
-        smt_trend_filter,
-        secondary_symbol,
         adr_suppress_threshold,
         volume_suppress,
     )
@@ -112,8 +108,6 @@ def upsert_backtest_run(
         "tp_r": tp_r,
         "fee_pct": fee_pct,
         "day_filter": day_filter,
-        "smt_trend_filter": smt_trend_filter,
-        "secondary_symbol": secondary_symbol,
         "total_signals": len(result.trades),
         "closed_trades": len(result.closed_trades),
         "win_count": result.win_count,
@@ -144,8 +138,8 @@ def upsert_backtest_run(
         conn.execute(
             "INSERT OR REPLACE INTO backtest_runs SELECT "
             "run_id, symbol, timeframe, strategy, data_start_ms, data_end_ms, "
-            "days, sl_pct, tp_r, fee_pct, day_filter, smt_trend_filter, "
-            "secondary_symbol, total_signals, closed_trades, win_count, loss_count, "
+            "days, sl_pct, tp_r, fee_pct, day_filter, "
+            "total_signals, closed_trades, win_count, loss_count, "
             "win_rate, avg_r, total_r, max_drawdown_r, run_at_ms, sweep_id, "
             "long_closed_trades, long_win_count, long_win_rate, long_avg_r, "
             "short_closed_trades, short_win_count, short_win_rate, short_avg_r, "

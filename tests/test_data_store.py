@@ -477,8 +477,6 @@ _BT_PARAMS: dict[str, Any] = {
     "tp_r": 2.0,
     "fee_pct": 0.0,
     "day_filter": "off",
-    "smt_trend_filter": 1,
-    "secondary_symbol": None,
     "sweep_id": None,
 }
 
@@ -555,12 +553,10 @@ class TestGetWinRateByStrategy:
         # We fake it by inserting a row directly with closed_trades=25.
         from analytics.data_store import _backtest_run_id
 
-        run_id = _backtest_run_id(
-            "BTCUSDT", "4h", "bos", 90, 0.02, 2.0, 0.0, "off", 1, None
-        )
+        run_id = _backtest_run_id("BTCUSDT", "4h", "bos", 90, 0.02, 2.0, 0.0, "off")
         conn.execute(
             "INSERT INTO backtest_runs VALUES (?, 'BTCUSDT', '4h', 'bos', "
-            "1690000000000, 1700000000000, 90, 0.02, 2.0, 0.0, 'off', 1, NULL, "
+            "1690000000000, 1700000000000, 90, 0.02, 2.0, 0.0, 'off', "
             "25, 25, 15, 10, 0.6, 0.5, 12.5, 3.0, 1700000001000, NULL, "
             "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)",
             [run_id],
@@ -573,12 +569,10 @@ class TestGetWinRateByStrategy:
     def test_excludes_low_trade_count(self, conn: duckdb.DuckDBPyConnection) -> None:
         from analytics.data_store import _backtest_run_id
 
-        run_id = _backtest_run_id(
-            "BTCUSDT", "4h", "fvg", 90, 0.02, 2.0, 0.0, "off", 1, None
-        )
+        run_id = _backtest_run_id("BTCUSDT", "4h", "fvg", 90, 0.02, 2.0, 0.0, "off")
         conn.execute(
             "INSERT INTO backtest_runs VALUES (?, 'BTCUSDT', '4h', 'fvg', "
-            "1690000000000, 1700000000000, 90, 0.02, 2.0, 0.0, 'off', 1, NULL, "
+            "1690000000000, 1700000000000, 90, 0.02, 2.0, 0.0, 'off', "
             "5, 5, 3, 2, 0.6, 0.4, 2.0, 1.0, 1700000001000, NULL, "
             "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)",
             [run_id],

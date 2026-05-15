@@ -5,10 +5,10 @@ from typing import Any
 
 import duckdb
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from utils.binance_client import load_coins_config
 
 from analytics.data_store import get_confidence_ratings
 from analytics.strategies import STRATEGY_REGISTRY
-from utils.binance_client import load_coins_config
 from web.api.deps import get_db, require_token
 from web.api.models.active_config import ActiveConfigResponse
 

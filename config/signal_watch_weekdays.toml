@@ -1,7 +1,7 @@
 # Signal Watch — weekdays profile (Mon–Fri, no weekend signals)
 # Usage: make buibui-signal-watch CONFIG=config/signal_watch_weekdays.toml
 #
-# Inherits: smt_pairs, bias, backtest defaults, and consistent per-strategy flags
+# Inherits: bias, backtest defaults, and consistent per-strategy flags
 # from strategy_params.toml. Only weekdays-specific values are defined here.
 
 extends = "strategy_params.toml"
@@ -20,7 +20,6 @@ strategies = [
     'orb',
     'liquidity_sweep',
     'bos',
-    'smt_divergence',
     'eqh_eql',
     'order_block',
     'trend_day',
@@ -42,7 +41,6 @@ strategies = [
 trend_day            = ["4h", "1d"]
 fib_golden_zone      = ["4h", "1d"]       # 15m/1h suppressed (negative)
 eqh_eql              = ["1h", "1d"]       # Phase 1: 4h dropped (audit -0.217R, 33% positive)
-smt_divergence       = ["15m", "1h"]      # Phase 1: 4h dropped (audit -0.307R, 25% positive); 1d excluded
 orb                  = ["1h", "4h"]        # 15m/1d suppressed (n/a — zero trades on weekdays)
 bos                  = ["15m", "1h", "4h"] # 1d all negative excluded
 pin_bar              = ["15m", "1h", "4h", "1d"]
@@ -114,11 +112,6 @@ tp_r_1d  = 3.5                # +0.48R (3 trades; 4.0+ drops to -1.02R — 0 win
 [strategy_params.bos]
 tp_r = 3.0                    # all TFs negative; hard mode suppresses at runtime
 
-[strategy_params.smt_divergence]
-tp_r_15m = 4.0                # +0.73R (37% WR; post-spam-fix recalibrated from 5.0)
-tp_r_1h  = 5.0                # +0.45R (28 trades, thin — monotonic climb)
-tp_r_4h  = 5.0                # +0.18R (10 trades; barely positive, hard mode may gate)
-
 [strategy_params.trend_day]
 tp_r_4h  = 3.5                # WFO OOS: BTC+0.217R ETH+0.041R SOL+0.120R n=52-65 (was 5.0 overfit)
 tp_r_1d  = 4.0                # +0.23R
@@ -153,7 +146,7 @@ tp_r_1d  = 4.0                # sweep peak: +0.22R (59 trades, 25%WR); was missi
 tp_r_4h  = 2.5                # -0.01R (breakeven; hard mode may gate)
 tp_r_1d  = 1.5                # +0.59R (42 trades, 65% WR)
 
-# backtest, smt_pairs, and bias sections live in strategy_params.toml (base).
+# backtest and bias sections live in strategy_params.toml (base).
 # Uncomment below to override specific backtest options for this config:
 # [backtest]
 # save_results = true

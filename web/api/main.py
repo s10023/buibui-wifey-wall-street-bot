@@ -12,9 +12,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from utils.binance_client import create_client
 
 from analytics.data_store import DEFAULT_DB_PATH, init_schema
-from utils.binance_client import create_client
 from web.api.routers import (
     backtest,
     config,

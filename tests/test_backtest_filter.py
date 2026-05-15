@@ -114,15 +114,13 @@ class TestBacktestSummary:
 class TestComputeBacktest:
     def test_returns_none_for_insufficient_data(self) -> None:
         tiny_df = _make_ohlcv(n=2)
-        result = _compute_backtest(
-            tiny_df, "fvg", None, None, "BTCUSDT", "4h", 0.02, 2.0
-        )
+        result = _compute_backtest(tiny_df, "fvg", None, "BTCUSDT", "4h", 0.02, 2.0)
         assert result is None
 
     def test_returns_none_for_unknown_strategy(self) -> None:
         df = _make_ohlcv(n=20)
         result = _compute_backtest(
-            df, "nonexistent_strategy", None, None, "BTCUSDT", "4h", 0.02, 2.0
+            df, "nonexistent_strategy", None, "BTCUSDT", "4h", 0.02, 2.0
         )
         assert result is None
 
@@ -147,7 +145,7 @@ class TestComputeBacktest:
                 {"fvg": MagicMock(requires_funding=False, requires_secondary=False)},
             ),
         ):
-            _compute_backtest(df, "fvg", None, None, "BTCUSDT", "4h", 0.02, 2.0)
+            _compute_backtest(df, "fvg", None, "BTCUSDT", "4h", 0.02, 2.0)
 
         assert captured == [len(df) - 1]  # detector saw n-1 candles
 
@@ -172,9 +170,7 @@ class TestComputeBacktest:
                 {"fvg": MagicMock(requires_funding=False, requires_secondary=False)},
             ),
         ):
-            result = _compute_backtest(
-                df, "fvg", None, None, "BTCUSDT", "4h", 0.02, 2.0
-            )
+            result = _compute_backtest(df, "fvg", None, "BTCUSDT", "4h", 0.02, 2.0)
 
         assert result is not None
         assert isinstance(result, BacktestResult)
@@ -195,9 +191,7 @@ class TestComputeBacktest:
                 {"fvg": MagicMock(requires_funding=False, requires_secondary=False)},
             ),
         ):
-            result = _compute_backtest(
-                df, "fvg", None, None, "BTCUSDT", "4h", 0.02, 2.0
-            )
+            result = _compute_backtest(df, "fvg", None, "BTCUSDT", "4h", 0.02, 2.0)
 
         assert result is None
 
@@ -232,9 +226,7 @@ class TestComputeBacktest:
                 {"fvg": MagicMock(requires_funding=False, requires_secondary=False)},
             ),
         ):
-            result = _compute_backtest(
-                df, "fvg", None, None, "BTCUSDT", "4h", 0.02, 2.0
-            )
+            result = _compute_backtest(df, "fvg", None, "BTCUSDT", "4h", 0.02, 2.0)
 
         assert result is not None
         assert len(result.trades) == 1

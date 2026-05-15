@@ -5,9 +5,10 @@ import os
 import sys
 from typing import Any
 
+from utils.binance_client import create_client, get_wallet_target, load_coins_config
+
 from monitor import live_position
 from monitor.position_lib import display_table
-from utils.binance_client import create_client, get_wallet_target, load_coins_config
 
 
 def main(

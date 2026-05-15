@@ -4,7 +4,7 @@ Maps strategy name to plugin metadata. Excluded strategies:
 - seasonality: produces stats, not actionable entry signals
 - fibonacci_retracement: legacy, superseded by fib_golden_zone.
 
-`requires_funding`, `requires_secondary`, and `confidence` flags live on
+`requires_funding` and `confidence` flags live on
 `analytics.strategies.STRATEGY_REGISTRY`; they are not duplicated here.
 Confidence is resolved per-TF at dispatch time via STRATEGY_REGISTRY[name].get_confidence(tf).
 """
@@ -31,7 +31,6 @@ from analytics.strategies import (
     detect_order_block,
     detect_ote_entry,
     detect_pin_bar,
-    detect_smt_divergence,
     detect_trend_day,
     detect_wick_fills,
 )
@@ -50,7 +49,6 @@ _DETECTORS: dict[str, DetectorFn] = {
     "liquidity_sweep": detect_liquidity_sweep,
     "fvg": detect_fvg,
     "bos": detect_market_structure,
-    "smt_divergence": detect_smt_divergence,
     "eqh_eql": detect_eqh_eql,
     "order_block": detect_order_block,
     "trend_day": detect_trend_day,

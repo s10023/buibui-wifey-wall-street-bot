@@ -48,10 +48,9 @@ from analytics.strategies import (
     DETECTOR_REGISTRY,
     KNOWN_STRATEGIES,
     detect_liquidity_sweep,
-    detect_smt_divergence,
     seasonality_stats,
 )
-from utils.binance_client import load_coins_config
+from utils.config_validation import load_stocks_config
 
 _SIMPLE_DETECTORS = DETECTOR_REGISTRY
 
@@ -66,24 +65,13 @@ def detect_signals_for_strategy(
     strategy: str,
     start_ms: int,
     end_ms: int,
-    secondary_symbol: str | None = None,
-    smt_trend_filter: int = 1,
     liq_sweep_use_fib: bool = True,
     liq_sweep_fib_range_close: bool = False,
 ) -> pd.DataFrame | None:
-    """Return signals DataFrame, or None when required data is absent.
+    """Return signals DataFrame.
 
     ohlcv must already be fetched and non-empty by the caller.
-    Returns None only when secondary OHLCV data is missing.
     """
-    if strategy == "smt_divergence":
-        if secondary_symbol is None:
-            return None
-        ohlcv_sec = get_ohlcv(conn, secondary_symbol, timeframe, start_ms, end_ms)
-        if ohlcv_sec.empty:
-            return None
-        return detect_smt_divergence(ohlcv, ohlcv_sec, trend_filter=smt_trend_filter)
-
     if strategy == "liquidity_sweep":
         return detect_liquidity_sweep(
             ohlcv,
@@ -101,21 +89,17 @@ def _collect_signals_map(
     strategies: list[str],
     start_ms: int,
     end_ms: int,
-) -> tuple[
-    dict[tuple[str, str, str], tuple[pd.DataFrame, pd.DataFrame, str | None]], list[str]
-]:
+) -> tuple[dict[tuple[str, str, str], tuple[pd.DataFrame, pd.DataFrame]], list[str]]:
     """Detect signals once for all symbol × TF × strategy combos.
 
     Returns a map keyed by (symbol, timeframe, strategy) →
-    (ohlcv, filtered_signals, secondary_symbol) plus a skipped list.
+    (ohlcv, filtered_signals) plus a skipped list.
     Used by tp_r sweep mode to avoid re-running detection for each tp_r value.
     """
     from analytics.signal_config import _day_filter_to_weekdays
 
     allowed_days = _day_filter_to_weekdays(cfg.day_filter)
-    signals_map: dict[
-        tuple[str, str, str], tuple[pd.DataFrame, pd.DataFrame, str | None]
-    ] = {}
+    signals_map: dict[tuple[str, str, str], tuple[pd.DataFrame, pd.DataFrame]] = {}
     skipped: list[str] = []
     ohlcv_cache: dict[tuple[str, str], pd.DataFrame] = {}
 
@@ -123,11 +107,6 @@ def _collect_signals_map(
         symbols, cfg.timeframes, strategies
     ):
         if strategy == "seasonality":
-            continue
-
-        secondary = cfg.smt_pairs.get(symbol) if strategy == "smt_divergence" else None
-        if strategy == "smt_divergence" and secondary is None:
-            skipped.append(f"{symbol}/{timeframe}/{strategy} (no smt_pair configured)")
             continue
 
         ohlcv_key = (symbol, timeframe)
@@ -148,21 +127,17 @@ def _collect_signals_map(
             strategy,
             start_ms,
             end_ms,
-            secondary,
-            smt_trend_filter=cfg.smt_trend_filter,
             liq_sweep_use_fib=cfg.liq_sweep_use_fib,
             liq_sweep_fib_range_close=cfg.liq_sweep_fib_range_close,
         )
         if signals is None:
-            skipped.append(
-                f"{symbol}/{timeframe}/{strategy} (missing funding/secondary data)"
-            )
+            skipped.append(f"{symbol}/{timeframe}/{strategy} (no data)")
             continue
 
         if allowed_days is not None:
             signals = filter_signals_by_day(signals, allowed_days)
 
-        signals_map[(symbol, timeframe, strategy)] = (ohlcv, signals, secondary)
+        signals_map[(symbol, timeframe, strategy)] = (ohlcv, signals)
 
     return signals_map, skipped
 
@@ -191,11 +166,6 @@ def _collect_sweep_results(
         if strategy == "seasonality":
             continue
 
-        secondary = cfg.smt_pairs.get(symbol) if strategy == "smt_divergence" else None
-        if strategy == "smt_divergence" and secondary is None:
-            skipped.append(f"{symbol}/{timeframe}/{strategy} (no smt_pair configured)")
-            continue
-
         ohlcv_key = (symbol, timeframe)
         if ohlcv_key not in ohlcv_cache:
             ohlcv_cache[ohlcv_key] = get_ohlcv(
@@ -214,15 +184,11 @@ def _collect_sweep_results(
             strategy,
             start_ms,
             end_ms,
-            secondary,
-            smt_trend_filter=cfg.smt_trend_filter,
             liq_sweep_use_fib=cfg.liq_sweep_use_fib,
             liq_sweep_fib_range_close=cfg.liq_sweep_fib_range_close,
         )
         if signals is None:
-            skipped.append(
-                f"{symbol}/{timeframe}/{strategy} (missing funding/secondary data)"
-            )
+            skipped.append(f"{symbol}/{timeframe}/{strategy} (no data)")
             continue
 
         if allowed_days is not None:
@@ -270,8 +236,6 @@ def _collect_sweep_results(
                 tp_r=eff_tp_r,
                 fee_pct=cfg.fee_pct,
                 day_filter=cfg.day_filter,
-                smt_trend_filter=cfg.smt_trend_filter,
-                secondary_symbol=secondary,
                 sweep_id=sweep_id,
                 adr_suppress_threshold=cfg.adr_suppress_threshold,
                 volume_suppress=cfg.effective_volume_suppress(strategy) or None,
@@ -297,8 +261,7 @@ def run_backtest_sweep(
 
     symbols = cfg.symbols
     if symbols is None:
-        coins = load_coins_config()
-        symbols = list(coins.keys())
+        symbols = list(load_stocks_config().keys())
 
     strategies = cfg.strategies if cfg.strategies is not None else _SWEEP_STRATEGIES
 
@@ -349,7 +312,7 @@ def run_backtest_sweep(
             results_by_tp: dict[float, list[BacktestResult]] = {}
             for tp_r in cfg.tp_r_values:
                 tp_results: list[BacktestResult] = []
-                for (sym, tf, strat), (ohlcv, sigs, _sec) in signals_map.items():
+                for (sym, tf, strat), (ohlcv, sigs) in signals_map.items():
                     # tp_r is swept globally; per-strategy sl_pct/atr_sl overrides still apply.
                     bt = run_backtest(
                         ohlcv,
@@ -394,7 +357,7 @@ def run_backtest_sweep(
             results_by_atr: dict[float, list[BacktestResult]] = {}
             for atr_mult in cfg.atr_sl_multiplier_values:
                 atr_results: list[BacktestResult] = []
-                for (sym, tf, strat), (ohlcv, sigs, _sec) in signals_map.items():
+                for (sym, tf, strat), (ohlcv, sigs) in signals_map.items():
                     # atr_sl_multiplier is swept globally; per-strategy tp_r overrides apply.
                     bt = run_backtest(
                         ohlcv,
@@ -465,7 +428,6 @@ def run_backtest_cmd(
     min_sl_pct: float = 0.0,
     atr_sl_multiplier: float | None = None,
     atr_sl_floor: bool = False,
-    secondary_symbol: str | None = None,
     db_path: Path = DEFAULT_DB_PATH,
     save_results: bool = False,
     since_ms: int | None = None,
@@ -501,13 +463,9 @@ def run_backtest_cmd(
             return
 
         signals = detect_signals_for_strategy(
-            conn, ohlcv, symbol, timeframe, strategy, start_ms, end_ms, secondary_symbol
+            conn, ohlcv, symbol, timeframe, strategy, start_ms, end_ms
         )
         if signals is None:
-            if strategy == "smt_divergence":
-                logging.error(
-                    "--secondary-symbol required for smt_divergence strategy."
-                )
             sys.exit(1)
 
         bt_result = run_backtest(
@@ -536,8 +494,6 @@ def run_backtest_cmd(
                 tp_r=tp_r,
                 fee_pct=fee_pct,
                 day_filter="off",
-                smt_trend_filter=1,
-                secondary_symbol=secondary_symbol,
             )
             upsert_backtest_trades(conn, bt_result, run_id)
             print(f"\n  Results saved to DB (run_id={run_id})")
@@ -660,8 +616,7 @@ def run_combo_backtest_cmd(
         cfg = load_backtest_config(config_path)
         symbols = symbols or cfg.symbols or []
         if not symbols:
-            coins = load_coins_config()
-            symbols = list(coins.keys())
+            symbols = list(load_stocks_config().keys())
         timeframes = timeframes or cfg.timeframes or []
         if day_filter == "off":
             day_filter = cfg.day_filter
@@ -902,8 +857,7 @@ def run_cross_tf_combo_backtest_cmd(
         if not symbols:
             symbols = cfg.symbols or []
         if not symbols:
-            coins = load_coins_config()
-            symbols = list(coins.keys())
+            symbols = list(load_stocks_config().keys())
         if day_filter == "off":
             day_filter = cfg.day_filter
         if not sl_pct or sl_pct == 0.02:

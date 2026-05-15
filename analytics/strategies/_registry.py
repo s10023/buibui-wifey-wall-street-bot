@@ -180,31 +180,6 @@ STRATEGY_REGISTRY: dict[str, StrategySpec] = {
         ],
         confidence={"15m": 1, "1d": 1, "1h": 1, "4h": 1},
     ),
-    "smt_divergence": StrategySpec(
-        name="smt_divergence",
-        description="SMT divergence: primary makes new swing extreme but correlated asset does not.",
-        strategy_type="flow",
-        params=[
-            ParamSpec(
-                "lookback",
-                "int",
-                10,
-                2,
-                200,
-                "Rolling window for swing high/low comparison between assets.",
-            ),
-            ParamSpec(
-                "trend_filter",
-                "int",
-                1,
-                0,
-                1,
-                "Require close > EMA(50) for LONG and close < EMA(50) for SHORT (1=on, 0=off).",
-            ),
-        ],
-        requires_secondary=True,
-        confidence={"15m": 4, "1h": 3, "4h": 1},
-    ),
     "eqh_eql": StrategySpec(
         name="eqh_eql",
         description="Equal Highs/Lows: liquidity sweep of a double-top or double-bottom level.",
@@ -654,10 +629,8 @@ def patch_confidence_scores(updates: dict[str, dict[str, int] | int]) -> None:
 
 
 # DETECTOR_REGISTRY — single source of truth for simple (OHLCV-only) detectors.
-# Strategies that require extra data (smt_divergence → secondary OHLCV) are NOT
-# listed here; callers handle those explicitly.  seasonality is also excluded
-# (returns stats, not signals).  fibonacci_retracement is legacy (see comment
-# above the spec block) — its detector still ships in
+# seasonality is excluded (returns stats, not signals).  fibonacci_retracement
+# is legacy (see comment above the spec block) — its detector still ships in
 # `analytics/strategies/fibonacci_retracement.py` for tests and A/B comparison.
 DETECTOR_REGISTRY: dict[str, Callable[[pd.DataFrame], pd.DataFrame]] = {
     "wick_fill": detect_wick_fills,

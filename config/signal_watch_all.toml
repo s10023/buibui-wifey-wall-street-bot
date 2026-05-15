@@ -2,7 +2,7 @@
 # No day filter, no TF suppression. Use for backtesting or 24/7 coverage.
 # Usage: make buibui-signal-watch CONFIG=config/signal_watch_all.toml
 #
-# Inherits: smt_pairs, bias, backtest defaults, and consistent per-strategy flags
+# Inherits: bias, backtest defaults, and consistent per-strategy flags
 # from strategy_params.toml. Only all-days-specific values are defined here.
 
 extends = "strategy_params.toml"
@@ -23,7 +23,6 @@ strategies = [
     'liquidity_sweep',
     'fvg',
     'bos',
-    'smt_divergence',
     'eqh_eql',
     'order_block',
     'trend_day',
@@ -45,7 +44,6 @@ strategies = [
 trend_day        = ["4h", "1d"]          # 15m=-0.03R, 1h≈0.00R excluded
 fib_golden_zone  = ["1h", "4h", "1d"]   # 15m all negative excluded
 eqh_eql          = ["1h", "4h", "1d"]   # 15m=-0.08 to -0.16R excluded
-smt_divergence   = ["15m", "1h", "4h"]  # 1d=4 trades 25% WR excluded
 orb              = ["1h", "4h"]          # 15m all negative; 1d=n/a
 bos              = ["15m", "1h", "4h"]   # 1d=-0.30R to -1.01R excluded
 liquidity_sweep  = ["1h", "1d"]          # 15m/4h all negative
@@ -113,12 +111,6 @@ tp_r_15m = 5.0                # -0.28R (all negative; hard mode will suppress)
 tp_r_1h  = 1.5                # -0.28R (all negative; hard mode will suppress)
 tp_r_4h  = 2.0                # -0.36R (all negative; hard mode will suppress)
 
-[strategy_params.smt_divergence]
-tp_r_15m = 4.5                # sweep peak: +0.80R (was 5.0=+0.72R; clear peak at 4.5)
-tp_r_1h  = 2.5                # sweep peak: +0.54R (noisy pattern; crashes at 3.0R+); was 4.5=-0.05R
-tp_r_4h  = 2.0                # sweep peak: +0.48R (crashes to -1.02R at 2.5R+); was 5.0=-1.02R
-volume_suppress = true        # A14b: normal-vol wins Δ=+0.28R (low +0.54R vs normal +0.82R)
-
 [strategy_params.trend_day]
 tp_r_4h  = 3.5                # WFO OOS: BTC+0.217R ETH+0.041R SOL+0.120R n=52-65 (was 5.0 overfit)
 tp_r_1d  = 4.0                # +0.20R
@@ -154,7 +146,7 @@ tp_r_4h  = 5.0                # -0.04R (all negative; hard mode will suppress)
 tp_r_1d  = 2.0                # +0.02R (barely positive; 210 trades)
 volume_suppress = true        # A14b: normal-vol wins Δ=+0.12R (low -0.15R vs normal -0.03R)
 
-# backtest, smt_pairs, and bias sections live in strategy_params.toml (base).
+# backtest and bias sections live in strategy_params.toml (base).
 # Uncomment below to override specific backtest options for this config:
 # [backtest]
 # save_results = true

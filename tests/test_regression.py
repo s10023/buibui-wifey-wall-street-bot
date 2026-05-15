@@ -32,9 +32,8 @@ from analytics.strategies import (
     detect_liquidity_sweep,
 )
 
-# Strategies that require extra data (secondary OHLCV) or are analytics-only —
-# not covered in Phase 1 of the regression suite.
-_SKIP_STRATEGIES = frozenset({"smt_divergence", "seasonality"})
+# Analytics-only strategies — not covered in Phase 1 of the regression suite.
+_SKIP_STRATEGIES = frozenset({"seasonality"})
 
 FIXTURE_DIR = Path("tests/fixtures")
 CONFIGS: list[tuple[str, str]] = [

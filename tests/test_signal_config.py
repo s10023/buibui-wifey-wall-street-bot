@@ -32,9 +32,7 @@ class TestSignalWatchConfigDefaults:
         assert cfg.tp_r == 2.0
         assert cfg.sl_pct == 0.02
         assert cfg.state_file == "signal_state.json"
-        assert cfg.smt_pairs == {}
         assert cfg.day_filter == "off"
-        assert cfg.smt_trend_filter == 1
 
 
 class TestDayFilterToWeekdays:
@@ -71,10 +69,6 @@ min_sl_pct = 0.01
 tp_r = 3.0
 sl_pct = 0.015
 state_file = "my_state.json"
-
-[smt_pairs]
-BTCUSDT = "ETHUSDT"
-ETHUSDT = "BTCUSDT"
 """
         p = _write_toml(tmp_path, content)
         cfg = load_signal_config(p)
@@ -86,7 +80,6 @@ ETHUSDT = "BTCUSDT"
         assert cfg.tp_r == 3.0
         assert cfg.sl_pct == 0.015
         assert cfg.state_file == "my_state.json"
-        assert cfg.smt_pairs == {"BTCUSDT": "ETHUSDT", "ETHUSDT": "BTCUSDT"}
 
     def test_full_config_day_filter_string_modes(self, tmp_path: Path) -> None:
         for mode in ("off", "weekdays", "tue_thu"):
@@ -94,12 +87,6 @@ ETHUSDT = "BTCUSDT"
             p = _write_toml(tmp_path, content)
             cfg = load_signal_config(p)
             assert cfg.day_filter == mode
-
-    def test_full_config_smt_trend_filter(self, tmp_path: Path) -> None:
-        content = "smt_trend_filter = 0\n"
-        p = _write_toml(tmp_path, content)
-        cfg = load_signal_config(p)
-        assert cfg.smt_trend_filter == 0
 
     def test_file_not_found(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError):
@@ -109,11 +96,6 @@ ETHUSDT = "BTCUSDT"
         p = tmp_path / "bad.toml"
         p.write_text("timeframes = [broken")
         with pytest.raises(tomllib.TOMLDecodeError):
-            load_signal_config(p)
-
-    def test_invalid_smt_pairs_not_table(self, tmp_path: Path) -> None:
-        p = _write_toml(tmp_path, 'smt_pairs = "not a table"\n')
-        with pytest.raises(ValueError, match="smt_pairs must be a TOML table"):
             load_signal_config(p)
 
     def test_accepts_path_object(self, tmp_path: Path) -> None:
@@ -567,11 +549,6 @@ class TestLoadWithExtends:
         cfg_path = Path(__file__).parent.parent / "config" / "signal_watch.toml"
         cfg = load_signal_config(cfg_path)
         # inherited from base
-        assert cfg.smt_pairs == {
-            "BTCUSDT": "ETHUSDT",
-            "ETHUSDT": "BTCUSDT",
-            "SOLUSDT": "ETHUSDT",
-        }
         assert cfg.bias.adr_suppress_threshold == 0.80
         assert cfg.backtest.effective_min_trades("15m") == 20
         assert cfg.backtest.effective_min_trades("4h") == 5
@@ -592,7 +569,7 @@ class TestLoadWithExtends:
         # override anchor for ema (1d EMA-50)
         anchor_ema = cfg.bias.htf_ema_anchor("ema")
         assert anchor_ema.tf == "1d" and anchor_ema.period == 50
-        for strat in ("smt_divergence", "orb", "eqh_eql", "marubozu"):
+        for strat in ("orb", "eqh_eql", "marubozu"):
             assert cfg.bias.htf_ema_anchor(strat).tf == "1d", (
                 f"{strat} should override to 1d anchor"
             )
@@ -728,7 +705,6 @@ tp_r = 3.0
         # suppress = true: strategies where normal-vol signals outperform
         assert cfg.effective_volume_suppress("bos") is True
         assert cfg.effective_volume_suppress("orb") is True
-        assert cfg.effective_volume_suppress("smt_divergence") is True
         assert cfg.effective_volume_suppress("doji") is True
         assert cfg.effective_volume_suppress("liquidity_sweep") is True
         assert cfg.effective_volume_suppress("fib_golden_zone") is True

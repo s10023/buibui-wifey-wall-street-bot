@@ -7,25 +7,24 @@ import datetime
 import pathlib
 
 from analytics import signal_runner
-from cli._common import parse_since_to_ms, parse_smt_pairs
+from cli._common import parse_since_to_ms
 
 
 def run_signal_test(args: argparse.Namespace) -> None:
     from analytics.signal_config import SignalWatchConfig, load_signal_config
     from analytics.signal_test_runner import run_signal_test as _run
     from analytics.strategies import KNOWN_STRATEGIES
+    from utils.config_validation import load_stocks_config
 
     cfg = SignalWatchConfig()
     if getattr(args, "config", None):
         cfg = load_signal_config(args.config)
 
-    from utils.binance_client import load_coins_config
-
-    coins_config = load_coins_config()
+    stocks_config = load_stocks_config()
 
     # CLI flags narrow down; config provides defaults; daemon-matching fallbacks.
-    # Symbols: CLI → config → coins.json (mirrors signal_runner.py behaviour).
-    symbols = args.symbol or cfg.symbols or list(coins_config.keys())
+    # Symbols: CLI → config → stocks.json (mirrors signal_runner.py behaviour).
+    symbols = args.symbol or cfg.symbols or list(stocks_config.keys())
     timeframes = args.timeframe or cfg.timeframes or ["4h"]
     strategies = (
         args.strategy
@@ -35,7 +34,7 @@ def run_signal_test(args: argparse.Namespace) -> None:
 
     if not symbols:
         raise SystemExit(
-            "error: no symbols found — pass --symbol or add symbols to your config/coins.json"
+            "error: no symbols found — pass --symbol or add symbols to your config/stocks.json"
         )
 
     tp_r = args.tp_r if args.tp_r is not None else cfg.tp_r
@@ -55,13 +54,6 @@ def run_signal_test(args: argparse.Namespace) -> None:
                 raise SystemExit(
                     f"error: --at '{args.at}' is not a valid ISO datetime or Unix ms timestamp"
                 ) from None
-
-    # Build secondary_map from coins.json (same as signal_runner.py).
-    secondary_map: dict[str, str] = {
-        sym: coins_config[sym]["smt_secondary"]
-        for sym in symbols
-        if sym in coins_config and "smt_secondary" in coins_config[sym]
-    }
 
     # Resolve since_ms: explicit --since > config's backtest.since (when --lookback
     # is still at its default, meaning the user hasn't explicitly overridden it).
@@ -85,7 +77,6 @@ def run_signal_test(args: argparse.Namespace) -> None:
         "send_telegram": args.telegram,
         "backtest_cfg": cfg.backtest,
         "day_filter": cfg.day_filter,
-        "secondary_map": secondary_map or None,
         "strategy_params": cfg.strategy_params or None,
         "bias_cfg": cfg.bias if cfg.bias.adr_suppress_threshold is not None else None,
         "atr_sl_multiplier": cfg.atr_sl_multiplier,
@@ -114,10 +105,6 @@ def run_signal_watch(args: argparse.Namespace) -> None:
         args.state_file if args.state_file != "signal_state.json" else cfg.state_file
     )
 
-    cli_smt_pairs: dict[str, str] | None = getattr(args, "smt_pairs", None)
-    # CLI --smt-pairs overrides config [smt_pairs] table entirely when provided
-    smt_pairs = cli_smt_pairs if cli_smt_pairs is not None else (cfg.smt_pairs or None)
-
     config_name = (
         pathlib.Path(args.config).stem if getattr(args, "config", None) else None
     )
@@ -130,11 +117,8 @@ def run_signal_watch(args: argparse.Namespace) -> None:
         min_sl_pct=min_sl_pct,
         send_telegram=telegram,
         state_file=state_file,
-        secondary_symbol=args.secondary_symbol,
-        smt_pairs=smt_pairs,
         backtest_cfg=cfg.backtest,
         day_filter=cfg.day_filter,
-        smt_trend_filter=cfg.smt_trend_filter,
         strategy_timeframes=cfg.strategy_timeframes or None,
         strategy_params=cfg.strategy_params or None,
         atr_sl_multiplier=cfg.atr_sl_multiplier,
@@ -167,7 +151,7 @@ def add_signal_subparser(
         "--symbols",
         nargs="+",
         default=None,
-        help="Symbols to scan (default: all from coins.json)",
+        help="Symbols to scan (default: all from stocks.json)",
     )
     watch_parser.add_argument(
         "--timeframes",
@@ -200,22 +184,6 @@ def add_signal_subparser(
         help="Path to candle watermark state file (default: signal_state.json)",
     )
     watch_parser.add_argument(
-        "--secondary-symbol",
-        default=None,
-        dest="secondary_symbol",
-        help="Secondary symbol for SMT divergence strategy (e.g. ETHUSDT) (deprecated — use --smt-pairs)",
-    )
-    watch_parser.add_argument(
-        "--smt-pairs",
-        default=None,
-        dest="smt_pairs",
-        type=parse_smt_pairs,
-        help=(
-            "Per-symbol SMT secondary mappings as comma-separated PRIMARY:SECONDARY tokens "
-            "(e.g. BTCUSDT:ETHUSDT,ETHUSDT:BTCUSDT). Overrides smt_secondary in coins.json."
-        ),
-    )
-    watch_parser.add_argument(
         "--min-sl-pct",
         type=float,
         default=None,
@@ -236,7 +204,7 @@ def add_signal_subparser(
         help="TOML config to inherit symbol/TF/tp_r/sl_pct defaults from.",
     )
     test_parser.add_argument(
-        "--symbol", nargs="+", default=None, help="Symbol(s), e.g. BTCUSDT ETHUSDT"
+        "--symbol", nargs="+", default=None, help="Symbol(s), e.g. AAPL MSFT"
     )
     test_parser.add_argument(
         "--timeframe", nargs="+", default=None, help="Timeframe(s), e.g. 1h 4h"

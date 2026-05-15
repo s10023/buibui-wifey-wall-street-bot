@@ -42,10 +42,6 @@ min_trades = 10         # global fallback; 30d/15m formula: 30×96×0.0016≈5, 
 fee_pct = 0.0005
 # tp_r_values = [1.0, 1.5, 2.0, 2.5, 3.0]  # TP ratio sweep — prints comparison table instead of ranked sweep
 
-[smt_pairs]
-BTCUSDT = "ETHUSDT"
-ETHUSDT = "BTCUSDT"
-
 [backtest]
 mode = "soft"
 days = 30

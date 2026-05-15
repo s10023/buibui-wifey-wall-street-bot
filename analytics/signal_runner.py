@@ -1,7 +1,7 @@
 """Signal daemon runner — thin wrapper over signal_lib.
 
-Creates the Binance client, opens a short-lived DuckDB connection per scan cycle,
-syncs data, scans for signals, then closes the connection before sleeping.
+Opens a short-lived DuckDB connection per scan cycle, syncs data via yfinance,
+scans for signals, then closes the connection before sleeping.
 
 Each cycle: open conn → sync → scan → upsert signals → close conn → sleep.
 This releases the write lock during the sleep window so the web API's read-only
@@ -43,7 +43,7 @@ from analytics.signal_lib import (
     secs_until_next_boundary,
 )
 from signals.cooldown_store import CooldownStore
-from utils.binance_client import create_client, load_coins_config
+from utils.config_validation import load_stocks_config
 
 logger = logging.getLogger(__name__)
 
@@ -106,12 +106,9 @@ def run_signal_watch(
     min_sl_pct: float = 0.0,
     send_telegram: bool = False,
     state_file: str = "signal_state.json",
-    secondary_symbol: str | None = None,
-    smt_pairs: dict[str, str] | None = None,
     db_path: Path = DEFAULT_DB_PATH,
     backtest_cfg: BacktestFilterConfig | None = None,
     day_filter: str = "off",
-    smt_trend_filter: int = 1,
     strategy_timeframes: dict[str, list[str]] | None = None,
     strategy_params: dict[str, StrategyOverride] | None = None,
     atr_sl_multiplier: float | None = None,
@@ -122,36 +119,19 @@ def run_signal_watch(
 ) -> None:
     """Run the signal detection daemon loop.
 
-    On each cycle: syncs new candles from Binance, scans for signals,
+    On each cycle: syncs new candles via yfinance, scans for signals,
     sends Telegram alerts if enabled, then sleeps until the next candle
     boundary across all watched timeframes.
     """
-    from analytics.data_store import get_ohlcv
     from analytics.strategies import KNOWN_STRATEGIES
 
-    client = create_client()
-    coins_config = load_coins_config()
+    stocks_config = load_stocks_config()
 
-    resolved_symbols = symbols or list(coins_config.keys())
+    resolved_symbols = symbols or list(stocks_config.keys())
     resolved_timeframes = timeframes or ["4h"]
     resolved_strategies = strategies or [
         s for s in KNOWN_STRATEGIES if s != "seasonality"
     ]
-
-    # Build secondary_map from coins.json, then overlay CLI --smt-pairs (CLI wins).
-    coins_secondary_map: dict[str, str] = {
-        sym: cfg["smt_secondary"]
-        for sym, cfg in coins_config.items()
-        if sym in resolved_symbols and "smt_secondary" in cfg
-    }
-    # Expand deprecated --secondary-symbol into a map if --smt-pairs not provided.
-    if secondary_symbol and not smt_pairs:
-        smt_pairs = dict.fromkeys(resolved_symbols, secondary_symbol)
-    secondary_map: dict[str, str] = {**coins_secondary_map, **(smt_pairs or {})}
-    if not secondary_map:
-        secondary_map_arg: dict[str, str] | None = None
-    else:
-        secondary_map_arg = secondary_map
 
     store = CooldownStore(state_file)
 
@@ -223,32 +203,6 @@ def run_signal_watch(
                     config_name,
                 )
 
-        # Startup probe: warn (don't abort) for secondaries with no OHLCV yet.
-        # Uses a short-lived connection so the write lock is released immediately.
-        if secondary_map_arg:
-            now_probe_ms = int(time.time() * 1000)
-            start_probe_ms = now_probe_ms - _DEFAULT_BACKFILL_DAYS * 24 * 3600 * 1000
-            seen_secondaries: set[str] = set()
-            with duckdb.connect(str(db_path)) as probe_conn:
-                for sym in resolved_symbols:
-                    sec = secondary_map_arg.get(sym)
-                    if sec and sec not in seen_secondaries:
-                        seen_secondaries.add(sec)
-                        probe_df = get_ohlcv(
-                            probe_conn,
-                            sec,
-                            resolved_timeframes[0],
-                            start_probe_ms,
-                            now_probe_ms,
-                        )
-                        if probe_df.empty:
-                            logger.warning(
-                                "Secondary symbol %s has no OHLCV data yet — "
-                                "run 'analytics backfill --symbols %s' to populate it",
-                                sec,
-                                sec,
-                            )
-
         _cycle_count = 0
         _COMBO_REFRESH_CYCLES = 10  # reload combo_lookup every N cycles
         # In-memory OHLCV cache: (symbol, tf) → DataFrame.
@@ -306,14 +260,14 @@ def run_signal_watch(
                 for symbol in resolved_symbols:
                     for tf in resolved_timeframes:
                         try:
-                            sync(conn, client, symbol, tf)
+                            sync(conn, symbol, tf)
                         except ValueError:
                             logger.info(
                                 "No data for %s/%s — running initial backfill",
                                 symbol,
                                 tf,
                             )
-                            backfill(conn, client, symbol, tf, backfill_start_ms)
+                            backfill(conn, symbol, tf, backfill_start_ms)
                             ohlcv_cache.pop((symbol, tf), None)  # force cold read
                         except duckdb.IOException as exc:
                             logger.warning(
@@ -323,12 +277,8 @@ def run_signal_watch(
                                 exc,
                             )
 
-                # Incrementally refresh OHLCV cache for all primary + secondary symbols.
-                # Secondary symbols (SMT) share the same cache keyed by (symbol, tf).
-                all_symbols_to_cache: set[str] = set(resolved_symbols)
-                if secondary_map_arg:
-                    all_symbols_to_cache.update(secondary_map_arg.values())
-                for symbol in all_symbols_to_cache:
+                # Incrementally refresh OHLCV cache for all primary symbols.
+                for symbol in resolved_symbols:
                     for tf in resolved_timeframes:
                         _update_ohlcv_cache(
                             conn, ohlcv_cache, symbol, tf, cache_start_ms, now_ms
@@ -344,10 +294,8 @@ def run_signal_watch(
                     sl_pct=sl_pct,
                     min_sl_pct=min_sl_pct,
                     send_telegram=send_telegram,
-                    secondary_map=secondary_map_arg,
                     backtest_cfg=backtest_cfg,
                     day_filter=day_filter,
-                    smt_trend_filter=smt_trend_filter,
                     strategy_timeframes=strategy_timeframes,
                     strategy_params=strategy_params,
                     atr_sl_multiplier=atr_sl_multiplier,

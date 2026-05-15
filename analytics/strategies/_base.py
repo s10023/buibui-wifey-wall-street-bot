@@ -22,7 +22,6 @@ class StrategySpec:
     description: str
     params: list[ParamSpec] = field(default_factory=list)
     requires_funding: bool = False
-    requires_secondary: bool = False
     # Taxonomy group for confluence logic. One of: structural, fib, price_action,
     # candlestick, flow, session. Empty string means unclassified.
     strategy_type: str = ""

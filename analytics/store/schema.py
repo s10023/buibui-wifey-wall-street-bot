@@ -73,8 +73,6 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
             tp_r                 DOUBLE  NOT NULL,
             fee_pct              DOUBLE  NOT NULL,
             day_filter           TEXT    NOT NULL,
-            smt_trend_filter     INTEGER NOT NULL,
-            secondary_symbol     TEXT,
             total_signals        INTEGER NOT NULL,
             closed_trades        INTEGER NOT NULL,
             win_count            INTEGER NOT NULL,
@@ -106,6 +104,12 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
             "WHERE table_name = 'backtest_runs'"
         ).fetchall()
     }
+    # Drop legacy SMT columns (T5b: smt_divergence strategy removed in the
+    # equities fork — yfinance OHLCV can't drive SMT pair divergence).
+    for legacy_col in ("smt_trend_filter", "secondary_symbol"):
+        if legacy_col in existing_bt_cols:
+            conn.execute(f"ALTER TABLE backtest_runs DROP COLUMN {legacy_col}")
+            existing_bt_cols.discard(legacy_col)
     for col, dtype in [
         ("long_closed_trades", "INTEGER"),
         ("long_win_count", "INTEGER"),

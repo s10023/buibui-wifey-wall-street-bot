@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from rich.text import Text
+from utils.binance_client import create_client, get_wallet_target, sync_binance_time
 
 from monitor.price_lib import (
     batch_get_asia_open,
@@ -19,7 +20,6 @@ from monitor.price_lib import (
     sort_table_raw,
 )
 from tests.conftest import strip_ansi
-from utils.binance_client import create_client, get_wallet_target, sync_binance_time
 
 
 class TestFormatPct:

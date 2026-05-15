@@ -6,6 +6,7 @@ from typing import Any
 
 from colorama import init
 from tabulate import tabulate
+from utils.binance_client import create_client, load_coins_config
 
 from monitor import live_price
 from monitor.price_lib import (
@@ -15,7 +16,6 @@ from monitor.price_lib import (
     get_price_changes,
     sort_table,
 )
-from utils.binance_client import create_client, load_coins_config
 from utils.telegram import send_telegram_message
 
 init(autoreset=True)

@@ -95,7 +95,6 @@ def run_signal_test(
     db_path: Path = DEFAULT_DB_PATH,
     backtest_cfg: BacktestFilterConfig | None = None,
     day_filter: str = "off",
-    secondary_map: dict[str, str] | None = None,
     strategy_params: dict[str, StrategyOverride] | None = None,
     bias_cfg: BiasConfig | None = None,
     atr_sl_multiplier: float | None = None,
@@ -221,32 +220,9 @@ def run_signal_test(
 
                 for strategy in strategies:
                     plugin = SIGNAL_REGISTRY[strategy]
-                    spec = STRATEGY_REGISTRY.get(strategy)
 
                     try:
-                        if spec and spec.requires_secondary:
-                            sec_symbol = (secondary_map or {}).get(symbol)
-                            if not sec_symbol:
-                                print(
-                                    f"  [{symbol}/{timeframe}/{strategy}] Skipped — "
-                                    "SMT requires secondary symbol; add smt_secondary to "
-                                    "coins.json or pass --config with smt_pairs."
-                                )
-                                continue
-                            sec_df = get_ohlcv(
-                                conn, sec_symbol, timeframe, start_ms, end_ms
-                            )
-                            if sec_df.empty:
-                                print(
-                                    f"  [{symbol}/{timeframe}/{strategy}] Skipped — "
-                                    f"no OHLCV data for secondary {sec_symbol}."
-                                )
-                                continue
-                            if at_ms is not None:
-                                sec_df = sec_df[sec_df["open_time"] <= at_ms].copy()
-                            signals_df = plugin["detector"](closed_df, sec_df)
-                        else:
-                            signals_df = plugin["detector"](closed_df)
+                        signals_df = plugin["detector"](closed_df)
                     except Exception:
                         logger.exception(
                             "Detector %s raised for %s/%s", strategy, symbol, timeframe
@@ -308,7 +284,6 @@ def run_signal_test(
                         bt_result = _compute_backtest(
                             ohlcv_df=ohlcv_df,
                             strategy=strategy,
-                            secondary_df=None,
                             funding_df=None,
                             symbol=symbol,
                             timeframe=timeframe,

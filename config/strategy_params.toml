@@ -12,9 +12,6 @@
 telegram = true
 min_sl_pct = 0.005
 
-# EMA-50 trend gate for smt_divergence: LONG only above EMA, SHORT only below (1=on, 0=off)
-smt_trend_filter = 1
-
 # Backtest sweep runner (make buibui-backtest) reads these top-level keys:
 days = 200              # fallback lookback window (ignored when since is set)
 since = "2025-09-12"    # canonical anchor — matches data backfill start date; overrides days
@@ -33,12 +30,6 @@ min_trades_4h  = 10
 min_trades_1d  = 5
 fee_pct = 0.0005        # 0.05% taker fee per leg; set 0.0 to disable
 
-# SMT divergence pairs — identical across all three main configs.
-[smt_pairs]
-BTCUSDT = "ETHUSDT"
-ETHUSDT = "BTCUSDT"
-SOLUSDT = "ETHUSDT"
-
 # F8 bias layer — identical across all three main configs.
 [bias]
 adr_suppress_threshold = 0.80
@@ -47,7 +38,7 @@ adr_suppress_threshold = 0.80
 # Per-strategy anchors derived from the 24-cell tue_thu sweep (PR #344):
 #   default 4h EMA-50 lifts aggregate avg_r by +0.059 on tue_thu.
 #   Per-strategy 1d EMA-50 override flips strategies that 4h hurts
-#   (ema, smt_divergence, orb, eqh_eql) plus marubozu — net mix
+#   (ema, orb, eqh_eql) plus marubozu — net mix
 #   captures ~+0.074 lift. 4h EMA-200 dropped (-0.001 delta = no benefit).
 #
 # Soft-tested 2026-05-05; flipped to hard 2026-05-06.
@@ -61,7 +52,6 @@ deadband_pct = 0.003           # |slope| < 0.3% over slope_lookback bars → all
 
 [bias.htf_ema.per_strategy]
 ema             = { tf = "1d", period = 50, slope_lookback = 10 }
-smt_divergence  = { tf = "1d", period = 50, slope_lookback = 10 }
 orb             = { tf = "1d", period = 50, slope_lookback = 10 }
 eqh_eql         = { tf = "1d", period = 50, slope_lookback = 10 }
 marubozu        = { tf = "1d", period = 50, slope_lookback = 10 }

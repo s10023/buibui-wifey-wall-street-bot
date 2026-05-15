@@ -84,10 +84,8 @@ def scan_symbol(
     symbol: str,
     timeframe: str,
     strategies: list[str],
-    secondary_df: pd.DataFrame | None = None,
     funding_df: pd.DataFrame | None = None,
     day_filter: str = "off",
-    smt_trend_filter: int = 1,
     strategy_timeframes: dict[str, list[str]] | None = None,
     confidence_override: dict[str, dict[str, int]] | None = None,
     directional_confidence_override: dict[str, dict[str, dict[str, int]]] | None = None,
@@ -133,7 +131,6 @@ def scan_symbol(
 
         spec = STRATEGY_REGISTRY.get(strategy_name)
         requires_funding = spec.requires_funding if spec else False
-        requires_secondary = spec.requires_secondary if spec else False
 
         # Per-strategy timeframe allow-list from TOML [strategy_timeframes].
         # If the strategy is listed, skip it when the current TF is not allowed.
@@ -157,18 +154,6 @@ def scan_symbol(
                     )
                     continue
                 signals_df = plugin["detector"](closed_df, funding_df)
-            elif requires_secondary:
-                if secondary_df is None or secondary_df.empty:
-                    logger.debug(
-                        "Skipping %s for %s — no secondary data", strategy_name, symbol
-                    )
-                    continue
-                if strategy_name == "smt_divergence":
-                    signals_df = plugin["detector"](
-                        closed_df, secondary_df, trend_filter=smt_trend_filter
-                    )
-                else:
-                    signals_df = plugin["detector"](closed_df, secondary_df)
             else:
                 signals_df = plugin["detector"](closed_df)
         except Exception:
@@ -240,11 +225,9 @@ def run_scan_cycle(
     sl_pct: float = 0.02,
     min_sl_pct: float = 0.0,
     send_telegram: bool = False,
-    secondary_map: dict[str, str] | None = None,
     days: int = 90,
     backtest_cfg: BacktestFilterConfig | None = None,
     day_filter: str = "off",
-    smt_trend_filter: int = 1,
     strategy_timeframes: dict[str, list[str]] | None = None,
     strategy_params: dict[str, StrategyOverride] | None = None,
     atr_sl_multiplier: float | None = None,
@@ -269,9 +252,6 @@ def run_scan_cycle(
     Returns list of formatted alert strings for logging/testing regardless of
     whether Telegram is enabled.
 
-    secondary_map: per-symbol mapping of primary → secondary symbol for smt_divergence.
-    Secondaries are fetched once per (secondary_symbol, timeframe) even if shared by
-    multiple primaries.
     day_filter: "off" | "weekdays" | "tue_thu" — suppress signals by weekday.
     strategy_timeframes: optional per-strategy TF allow-list from [strategy_timeframes] TOML.
     """
@@ -300,30 +280,6 @@ def run_scan_cycle(
     # Computed once per symbol (not per TF) to avoid redundant DB queries.
     stats_ctx_cache: dict[str, StatsContext | None] = {}
     now_myt = datetime.datetime.now(tz=datetime.timezone(datetime.timedelta(hours=8)))
-
-    needs_secondary = any(
-        STRATEGY_REGISTRY[s].requires_secondary
-        for s in strategies
-        if s in SIGNAL_REGISTRY and s in STRATEGY_REGISTRY
-    )
-
-    # Pre-fetch secondary OHLCV keyed by (secondary_symbol, tf) to avoid duplicate
-    # DB queries when multiple primaries share the same secondary.
-    # Uses ohlcv_cache when available (daemon hot path) to avoid full DB reads.
-    secondary_dfs: dict[tuple[str, str], pd.DataFrame] = {}
-    if needs_secondary and secondary_map:
-        for symbol in symbols:
-            sec = secondary_map.get(symbol)
-            if sec:
-                for tf in timeframes:
-                    key = (sec, tf)
-                    if key not in secondary_dfs:
-                        if ohlcv_cache and key in ohlcv_cache:
-                            secondary_dfs[key] = ohlcv_cache[key]
-                        else:
-                            secondary_dfs[key] = get_ohlcv(
-                                conn, sec, tf, start_ms, now_ms
-                            )
 
     alerts: list[str] = []
 
@@ -406,8 +362,6 @@ def run_scan_cycle(
     # Closures are safe here: ThreadPoolExecutor shares memory, no pickling needed.
     def _scan_task(_sym: str, _tf: str) -> "tuple[str, str, list[SignalEvent], Any]":
         _ohlcv = ohlcv_map[(_sym, _tf)]
-        _sec_key = ((secondary_map or {}).get(_sym, ""), _tf)
-        _sec = secondary_dfs.get(_sec_key) if needs_secondary else None
         _funding = funding_map.get(_sym)
         _gap = get_overnight_gap(_ohlcv)
         # Slice to _SCAN_WINDOW for detectors — they only need recent candles
@@ -415,20 +369,13 @@ def run_scan_cycle(
         _ohlcv_scan = (
             _ohlcv.iloc[-_SCAN_WINDOW:] if len(_ohlcv) > _SCAN_WINDOW else _ohlcv
         )
-        _sec_scan = (
-            _sec.iloc[-_SCAN_WINDOW:]
-            if _sec is not None and len(_sec) > _SCAN_WINDOW
-            else _sec
-        )
         _events = scan_symbol(
             ohlcv_df=_ohlcv_scan,
             symbol=_sym,
             timeframe=_tf,
             strategies=strategies,
-            secondary_df=_sec_scan,
             funding_df=_funding,
             day_filter=day_filter,
-            smt_trend_filter=smt_trend_filter,
             strategy_timeframes=strategy_timeframes,
             confidence_override=confidence_override,
             directional_confidence_override=directional_confidence_override,
@@ -464,8 +411,6 @@ def run_scan_cycle(
     # bt_cache updates, DB writes (upsert_signals, upsert_backtest_run).
     for symbol, tf, events, overnight_gap in scan_results:
         ohlcv_df = ohlcv_map[(symbol, tf)]
-        sec_key = ((secondary_map or {}).get(symbol, ""), tf)
-        sec_df = secondary_dfs.get(sec_key) if needs_secondary else None
         funding_df = funding_map.get(symbol)
 
         # F9 ATR-as-min-SL floor — widen tight structural SLs and recompute
@@ -587,11 +532,6 @@ def run_scan_cycle(
                 eff_vsb = _resolve_volume_spike_boost(
                     strategy_params, event.strategy, backtest_cfg.volume_spike_boost
                 )
-                secondary_sym = (
-                    (secondary_map or {}).get(symbol)
-                    if event.strategy == "smt_divergence"
-                    else None
-                )
 
                 if backtest_cfg.cache_enabled:
                     run_id = _backtest_run_id(
@@ -603,8 +543,6 @@ def run_scan_cycle(
                         eff_tp_r,
                         backtest_cfg.fee_pct,
                         day_filter,
-                        smt_trend_filter,
-                        secondary_sym,
                         bias_cfg.adr_suppress_threshold if bias_cfg else None,
                         eff_vs or None,
                         backtest_cfg.min_sl_pct,
@@ -631,7 +569,6 @@ def run_scan_cycle(
                             bt_result = _compute_backtest(
                                 ohlcv_df=ohlcv_df,
                                 strategy=event.strategy,
-                                secondary_df=sec_df,
                                 funding_df=funding_df,
                                 symbol=symbol,
                                 timeframe=tf,
@@ -669,7 +606,6 @@ def run_scan_cycle(
                     bt_result = _compute_backtest(
                         ohlcv_df=ohlcv_df,
                         strategy=event.strategy,
-                        secondary_df=sec_df,
                         funding_df=funding_df,
                         symbol=symbol,
                         timeframe=tf,
@@ -1145,9 +1081,6 @@ def run_scan_cycle(
         for (sym, tf, strategy), bt_result in bt_to_save.items():
             if bt_result is None:
                 continue
-            secondary_symbol = (
-                (secondary_map or {}).get(sym) if strategy == "smt_divergence" else None
-            )
             try:
                 upsert_backtest_run(
                     conn,
@@ -1159,8 +1092,6 @@ def run_scan_cycle(
                     tp_r=_resolve_tp_r(strategy_params, strategy, sym, tf, tp_r),
                     fee_pct=backtest_cfg.fee_pct,
                     day_filter=day_filter,
-                    smt_trend_filter=smt_trend_filter,
-                    secondary_symbol=secondary_symbol,
                     adr_suppress_threshold=bias_cfg.adr_suppress_threshold
                     if bias_cfg
                     else None,
