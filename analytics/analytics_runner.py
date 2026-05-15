@@ -1,57 +1,36 @@
-"""Analytics runner — thin wrapper that creates dependencies and delegates to data_sync."""
+"""Analytics runner — thin wrapper that opens the DB and delegates to data_sync."""
 
 import logging
 import sys
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
 
 import duckdb
 
 from analytics.data_store import DEFAULT_DB_PATH, init_schema
-from analytics.data_sync import backfill, sync, sync_funding_rates, sync_open_interest
-from utils.binance_client import create_client, load_coins_config
+from analytics.data_sync import backfill, sync
+from utils.config_validation import load_stocks_config
 
 
 def _resolve_symbols(symbols: list[str] | None) -> list[str]:
     if symbols:
         return symbols
     try:
-        return list(load_coins_config().keys())
+        return list(load_stocks_config().keys())
     except Exception as e:
-        logging.error("Failed to load coins config: %s", e)
+        logging.error("Failed to load stocks config: %s", e)
         sys.exit(1)
 
 
 @contextmanager
-def _open_session(
-    db_path: Path,
-) -> Generator[tuple[Any, duckdb.DuckDBPyConnection]]:
-    try:
-        client: Any = create_client()
-    except Exception as e:
-        logging.error("Failed to create Binance client: %s", e)
-        sys.exit(1)
+def _open_session(db_path: Path) -> Generator[duckdb.DuckDBPyConnection]:
     conn: duckdb.DuckDBPyConnection = duckdb.connect(str(db_path))
     try:
         init_schema(conn)
-        yield client, conn
+        yield conn
     finally:
         conn.close()
-
-
-def _sync_ancillary(
-    conn: duckdb.DuckDBPyConnection,
-    client: Any,
-    symbol: str,
-) -> None:
-    logging.info("Syncing funding rates for %s ...", symbol)
-    total_fr = sync_funding_rates(conn, client, symbol)
-    logging.info("Funding rates complete: %s — %d rows", symbol, total_fr)
-    logging.info("Syncing open interest for %s ...", symbol)
-    total_oi = sync_open_interest(conn, client, symbol)
-    logging.info("Open interest complete: %s — %d rows", symbol, total_oi)
 
 
 def run_backfill(
@@ -61,15 +40,14 @@ def run_backfill(
     db_path: Path = DEFAULT_DB_PATH,
 ) -> None:
     resolved = _resolve_symbols(symbols)
-    with _open_session(db_path) as (client, conn):
+    with _open_session(db_path) as conn:
         for symbol in resolved:
             for timeframe in timeframes:
                 logging.info("Backfilling %s %s ...", symbol, timeframe)
-                total = backfill(conn, client, symbol, timeframe, since_ms)
+                total = backfill(conn, symbol, timeframe, since_ms)
                 logging.info(
                     "Backfill complete: %s %s — %d rows", symbol, timeframe, total
                 )
-            _sync_ancillary(conn, client, symbol)
 
 
 def run_sync(
@@ -78,15 +56,14 @@ def run_sync(
     db_path: Path = DEFAULT_DB_PATH,
 ) -> None:
     resolved = _resolve_symbols(symbols)
-    with _open_session(db_path) as (client, conn):
+    with _open_session(db_path) as conn:
         for symbol in resolved:
             for timeframe in timeframes:
                 logging.info("Syncing %s %s ...", symbol, timeframe)
                 try:
-                    total = sync(conn, client, symbol, timeframe)
+                    total = sync(conn, symbol, timeframe)
                     logging.info(
                         "Sync complete: %s %s — %d new rows", symbol, timeframe, total
                     )
                 except ValueError as e:
                     logging.warning("%s — skipping (run backfill first)", e)
-            _sync_ancillary(conn, client, symbol)

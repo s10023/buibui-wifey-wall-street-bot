@@ -17,7 +17,7 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 
-from analytics.data_store import DEFAULT_DB_PATH, get_funding_rates, get_ohlcv
+from analytics.data_store import DEFAULT_DB_PATH, get_ohlcv
 from analytics.overnight_gap_lib import gap_fill_warning, get_overnight_gap
 from analytics.signal.types import SignalEvent
 from analytics.signal_config import BacktestFilterConfig, BiasConfig, StrategyOverride
@@ -244,21 +244,8 @@ def run_signal_test(
                                 continue
                             if at_ms is not None:
                                 sec_df = sec_df[sec_df["open_time"] <= at_ms].copy()
-                            funding_df = None
                             signals_df = plugin["detector"](closed_df, sec_df)
-                        elif spec and spec.requires_funding:
-                            funding_df = get_funding_rates(
-                                conn, symbol, start_ms, end_ms
-                            )
-                            if funding_df.empty:
-                                print(
-                                    f"  [{symbol}/{timeframe}/{strategy}] Skipped — "
-                                    "no funding data."
-                                )
-                                continue
-                            signals_df = plugin["detector"](closed_df, funding_df)
                         else:
-                            funding_df = None
                             signals_df = plugin["detector"](closed_df)
                     except Exception:
                         logger.exception(
@@ -322,7 +309,7 @@ def run_signal_test(
                             ohlcv_df=ohlcv_df,
                             strategy=strategy,
                             secondary_df=None,
-                            funding_df=funding_df,
+                            funding_df=None,
                             symbol=symbol,
                             timeframe=timeframe,
                             sl_pct=eff_sl_pct,

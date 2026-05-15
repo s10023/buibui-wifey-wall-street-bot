@@ -57,12 +57,12 @@ buibui-wifey-wall-street-bot/
 │   ├── live_price.py                # WebSocket + Rich live mode for price monitor
 │   └── live_position.py             # WebSocket + Rich live mode for position monitor
 ├── analytics/
-│   ├── analytics_runner.py          # Analytics thin wrapper (creates client, opens DB, calls libs)
+│   ├── analytics_runner.py          # Analytics thin wrapper (opens DB, resolves symbols via load_stocks_config, calls data_sync)
 │   ├── backtest_runner.py           # Backtest thin wrapper (opens DB, loads data, calls libs)
 │   ├── backtest_lib.py              # Pure backtest engine: Trade, BacktestResult, run_backtest
 │   ├── data_fetcher.py              # Pure yfinance → canonical OHLCV DataFrames (fetch_bars; 4h synthesised from 1h @ 13:30 UTC)
 │   ├── data_store.py                # Pure DuckDB read/write (schema, upsert, query helpers); tables: ohlcv, signals, signal_alert_outcomes, backtest_runs, backtest_trades, backtest_cache, stats_cache
-│   ├── data_sync.py                 # Backfill + incremental sync orchestration
+│   ├── data_sync.py                 # Backfill + incremental sync orchestration (single fetch_bars call; yfinance returns full configured period)
 │   ├── strategies/                  # Per-detector strategy package (22 active strategies + STRATEGY_REGISTRY + DETECTOR_REGISTRY)
 │   ├── signal_config.py             # Pure config loader: SignalWatchConfig, BacktestFilterConfig, BiasConfig, ComboConfig; TOML extends support
 │   ├── signal_lib.py                # Pure scan lib: scan_symbol(), run_scan_cycle(); injects StatsContext into alerts
@@ -99,9 +99,8 @@ buibui-wifey-wall-street-bot/
 │           ├── pages/               # Chart, Backtest, SignalFeed, Positions, Prices, Stats
 │           └── components/          # Nav, CandleChart, BacktestResult, PriceRow, PositionRow, …
 ├── utils/
-│   ├── binance_client.py            # (stale — deleted; T5 will fix)
-│   ├── yfinance_client.py           # NEW: equity OHLCV via yfinance (Phase A)
-│   ├── config_validation.py         # Validates coins.json/stocks.json schema
+│   ├── yfinance_client.py           # Equity OHLCV via yfinance (Phase A)
+│   ├── config_validation.py         # Validates + loads coins.json/stocks.json (load_stocks_config since T5)
 │   ├── telegram.py                  # Telegram bot messaging
 │   ├── live_store.py                # Shared in-memory store for live WebSocket data
 │   └── live_loop.py                 # Shared Rich live display loop logic
