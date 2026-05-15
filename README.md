@@ -49,13 +49,6 @@ Includes max USD-per-trade cap and wallet-level risk protection.
 ```text
 buibui-wifey-wall-street-bot/
 ├── wifey.py                        # CLI entry point (argparse)
-├── monitor/
-│   ├── price_monitor.py             # Price monitor thin wrapper (creates client, calls lib)
-│   ├── price_lib.py                 # Pure price monitor business logic
-│   ├── position_monitor.py          # Position monitor thin wrapper
-│   ├── position_lib.py              # Pure position monitor business logic
-│   ├── live_price.py                # WebSocket + Rich live mode for price monitor
-│   └── live_position.py             # WebSocket + Rich live mode for position monitor
 ├── analytics/
 │   ├── analytics_runner.py          # Analytics thin wrapper (opens DB, resolves symbols via load_stocks_config, calls data_sync)
 │   ├── backtest_runner.py           # Backtest thin wrapper (opens DB, loads data, calls libs)
@@ -206,124 +199,6 @@ symbol for `smt_divergence` detection on that symbol.
 ---
 
 ## Usage
-
-### Monitor Prices
-
-```bash
-poetry run python wifey.py monitor price
-```
-
-This will run once and exit by default.
-To run in live refresh mode:
-
-```bash
-poetry run python wifey.py monitor price --live
-```
-
-You can also control how the table is sorted using the `--sort` flag:
-
-```bash
-poetry run python wifey.py monitor price --sort change_15m:desc   # Sort by highest 15m % change
-poetry run python wifey.py monitor price --sort change_1h:asc     # Sort by lowest 1h % change
-```
-
-Supported sort keys:
-
-- `default` — Respect order from `config/coins.json`
-- `change_15m` — 15-minute % change
-- `change_1h` — 1-hour % change
-- `change_4h` — 4-hour % change
-- `change_asia` — % change since Asia open (8AM GMT+8)
-- `change_24h` — 24-hour % change
-
-Append `:asc` or `:desc` to control the sort direction (defaults to `desc`).
-
-It shows:
-
-- Live price
-- 15-minute %, 1-hour %, Asia session %, and 24h %
-
-Example Output:
-
-```text
-📈 Crypto Price Snapshot — Buibui Moon Bot
-
-╒════════════╤═════════════╤══════════╤══════════╤══════════════════╤══════════╕
-│ Symbol     │ Last Price  │ 15m %    │ 1h %     │ Since Asia 8AM   │ 24h %    │
-╞════════════╪═════════════╪══════════╪══════════╪══════════════════╪══════════╡
-│ BTCUSDT    │ 62,457.10   │ +0.53%   │ +1.42%   │ +0.88%           │ +2.31%   │
-├────────────┼─────────────┼──────────┼──────────┼──────────────────┼──────────┤
-│ ETHUSDT    │ 3,408.50    │ +0.22%   │ +1.05%   │ +0.71%           │ +1.74%   │
-├────────────┼─────────────┼──────────┼──────────┼──────────────────┼──────────┤
-│ SOLUSDT    │ 143.22      │ -0.08%   │ +0.34%   │ +0.11%           │ +0.89%   │
-╘════════════╧═════════════╧══════════╧══════════╧══════════════════╧══════════╛
-
-🔽 Sorted by: change_15m (descending)
-```
-
-When sorting is active, the sort key and direction are displayed below the table.
-
-### Monitor Positions and PnL
-
-```bash
-poetry run python wifey.py monitor position [--sort key[:asc|desc]] [--hide-empty] [--compact]
-```
-
-Shows:
-
-- Wallet balance
-- Total unrealized PnL
-- Colorized risk table with per-trade metrics
-- Only open positions are shown. Auto-sorted by your `coins.json` order.
-- Use `--hide-empty` to hide rows for symbols with no open positions.
-- Use `--compact` to only show wallet summary without the position table.
-
-Example Output:
-
-```text
-💰 Wallet Balance: $1,123.15
-📊 Total Unrealized PnL: +290.29 (+25.85% of wallet)
-🧾 Wallet w/ Unrealized: $1,413.44
-⚠️ Total SL Risk: -$412.22 (36.71%)
-
-╒══════════════╤════════╤═══════╤═════════╤═════════╤═════════════════════╤═══════════════════════╤════════╤══════════╤═════════╤════════════╤═══════════╤══════════╕
-│ Symbol       │ Side   │   Lev │   Entry │    Mark │   Used Margin (USD) │   Position Size (USD) │    PnL │ PnL%     │ Risk%   │   SL Price │ % to SL   │ SL USD   │
-╞══════════════╪════════╪═══════╪═════════╪═════════╪═════════════════════╪═══════════════════════╪════════╪══════════╪═════════╪════════════╪═══════════╪══════════╡
-│ BTCUSDT      │ SHORT  │    25 │ 110032  │ 108757  │              595.99 │              14,899.7 │ 174.73 │ +29.32%  │ 52.98%  │   109970.0 │ +0.06%    │ $8.45    │
-├──────────────┼────────┼───────┼─────────┼─────────┼─────────────────────┼───────────────────────┼────────┼──────────┼─────────┼────────────┼───────────┼──────────┤
-│ ETHUSDT      │ SHORT  │    20 │ 2616.17 │ 2550.10 │              591.11 │              11,822.3 │ 306.29 │ +51.82%  │ 52.54%  │    2614.80 │ +0.05%    │ $6.18    │
-╘══════════════╧════════╧═══════╧═════════╧═════════╧═════════════════════╧═══════════════════════╧════════╧══════════╧═════════╧════════════╧═══════════╧══════════╛
-
-🔽 Sorted by: pnl_pct (descending)
-```
-
-When sorting is active, the sort key and direction are displayed below the table.
-
-Sorting Options:
-
-```bash
-poetry run python wifey.py monitor position --sort pnl_pct:desc   # Sort by highest PnL%
-poetry run python wifey.py monitor position --sort sl_usd:asc     # Sort by lowest SL risk
-poetry run python wifey.py monitor position --sort default        # Sort by coins.json order (default)
-```
-
-Supported sort keys:
-
-- `default` — Respect order from `config/coins.json`
-- `pnl_pct` — Sort by unrealized profit/loss % (margin-based)
-- `sl_usd` — Sort by USD value at risk based on SL
-
-Append `:asc` or `:desc` to control the sort direction (defaults to `desc`).
-
-> **Known limitation — SL/TP columns require standalone Binance orders.**
-> `SL Price`, `% to SL`, `SL USD`, and `TP Price` are populated by reading open
-> `STOP_MARKET` / `STOP` and `TAKE_PROFIT_MARKET` / `TAKE_PROFIT` orders from the
-> Binance API. Binance's **Position TP/SL** feature (set at order opening or via the
-> TP/SL tab on a position) is stored internally by Binance and is **not exposed
-> through any public REST API** — no endpoint returns this data. Those columns will
-> show `–` and `Total SL Risk` will show `$0.00` when Position TP/SL is used.
-> To see SL/TP data in the monitor, place them as standalone orders from the Binance
-> order form instead of using the TP/SL tab.
 
 ### Analytics — Backfill Historical Data
 
@@ -849,21 +724,6 @@ make poetry-install
 make poetry-update
 ```
 
-**Run monitors:**
-
-```bash
-# Price monitor
-make wifey-monitor-price
-make wifey-monitor-price-live
-make wifey-monitor-price-telegram
-
-# Position monitor (with flexible sorting)
-make wifey-monitor-position                       # Default sort
-make wifey-monitor-position SORT=pnl_pct:desc     # Sort by PnL%
-make wifey-monitor-position SORT=sl_usd:asc       # Sort by SL risk
-make wifey-monitor-position-telegram
-```
-
 **Analytics:**
 
 ```bash
@@ -1008,14 +868,6 @@ bind-mounted at runtime.
 ```bash
 make docker-build                  # Build the image
 
-# Monitors — snapshot (colour output via -t)
-make docker-monitor-price          # Run price monitor (snapshot)
-make docker-monitor-position       # Run position monitor (snapshot)
-
-# Monitors — live mode (interactive TTY via -it)
-make docker-monitor-price-live     # Run price monitor in live mode
-make docker-monitor-position-live  # Run position monitor in live mode
-
 # Analytics — analytics.db is bind-mounted from the host
 make docker-analytics-backfill                       # Backfill from 2023-01-01
 make docker-analytics-backfill SINCE=2024-01-01      # Backfill from custom date
@@ -1046,8 +898,6 @@ make docker-signal-watch STRATEGIES="fvg bos"
 
 ```bash
 # Long-running services (restart: unless-stopped)
-docker-compose up price-monitor
-docker-compose up position-monitor
 docker-compose up signal-watch      # Signal daemon with --telegram enabled
 
 # One-shot analytics (requires touch analytics.db on first use)
@@ -1079,13 +929,6 @@ Runs on every push to `main` and every PR. Uses path filters so only relevant jo
 ### `docker-build.yaml` — Docker build check (always active)
 
 Builds the Docker image on every push and PR to catch any `Dockerfile` or dependency issues early.
-
-### `monitor.yaml` — Scheduled position monitor (disabled placeholder)
-
-Commented-out template for running the position monitor on a 15-minute cron schedule via a
-**self-hosted runner** on an Oracle Cloud VM. GitHub-hosted runners use rotating IPs that
-cannot be whitelisted in Binance — this workflow only makes sense with a static-IP self-hosted
-runner. Enable it once the Oracle Cloud VM is set up.
 
 ---
 
