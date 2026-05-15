@@ -19,8 +19,8 @@ Detailed API reference for `analytics/`. Load this when working on any analytics
 ## data_fetcher.py / data_sync.py / analytics_runner.py
 
 - `data_fetcher.py` — pure fetch: yfinance → canonical OHLCV DataFrames (no DB). `fetch_bars(symbol, interval, start_ms, limit=BARS_MAX_LIMIT)` wraps `utils.yfinance_client.fetch_history`; supported intervals `1h | 4h | 1d | 1wk` (4h synthesised via 1h resample anchored to 13:30 UTC, US RTH open). `OHLCV_COLUMNS` excludes `vwap` and `taker_buy_volume` (yfinance OHLCV has neither). `BARS_MAX_LIMIT = 5000`. Tests patch `analytics.data_fetcher.fetch_history`.
-- `data_sync.py` — pure orchestration: paginated backfill + incremental sync (still Binance-shaped until T5 rewires it to call `fetch_bars`)
-- `analytics_runner.py` — thin wrapper: creates client, opens DB, calls sync lib
+- `data_sync.py` — yfinance-backed orchestration (T5, 2026-05-15). `backfill(conn, symbol, timeframe, start_ms)` is a single `fetch_bars` call (no client param, no pagination loop); `sync(conn, symbol, timeframe)` re-fetches from the latest stored `open_time`. `sync_funding_rates` / `sync_open_interest` removed in T5.
+- `analytics_runner.py` — thin wrapper: opens DB, resolves symbols via `utils.config_validation.load_stocks_config`, delegates to `data_sync`. No client object (yfinance is module-level, no auth).
 
 ## strategies/ — strategy signal detection package
 
