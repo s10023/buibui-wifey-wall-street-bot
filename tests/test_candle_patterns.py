@@ -534,7 +534,6 @@ class TestStrategyRegistration:
         for name in new_strategies:
             spec = STRATEGY_REGISTRY[name]
             assert not spec.requires_funding, f"{name} should not require funding"
-            assert not spec.requires_secondary, f"{name} should not require secondary"
 
     def test_signal_registry_contains_new_strategies(self) -> None:
         from signals.registry import SIGNAL_REGISTRY

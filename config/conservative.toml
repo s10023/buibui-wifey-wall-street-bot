@@ -48,10 +48,6 @@ marubozu = ["1d"]
 engulfing = ["1d"]
 morning_evening_star = ["1d"]
 
-[smt_pairs]
-BTCUSDT = "ETHUSDT"
-ETHUSDT = "BTCUSDT"
-
 [backtest]
 mode = "hard"
 days = 200

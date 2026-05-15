@@ -2,7 +2,7 @@
 # Usage: make buibui-signal-watch CONFIG=config/signal_watch.toml
 #
 # CLI flags always take precedence over values here.
-# Inherits: smt_pairs, bias, backtest defaults, and consistent per-strategy flags
+# Inherits: bias, backtest defaults, and consistent per-strategy flags
 # from strategy_params.toml. Only tue_thu-specific values are defined here.
 
 extends = "strategy_params.toml"
@@ -24,7 +24,6 @@ strategies = [
     'orb',
     'liquidity_sweep',
     'bos',
-    'smt_divergence',
     'eqh_eql',
     'order_block',
     'trend_day',
@@ -59,7 +58,6 @@ strategies = [
 trend_day        = ["4h", "1d"]       # 15m mean_r=-0.082 suppressed
 fib_golden_zone  = ["4h", "1d"]       # 15m mean_r=-0.254, 1h mean_r=-0.195 suppressed
 eqh_eql          = ["1h", "1d"]              # Phase 1: 4h dropped (audit -0.217R, 33% positive); 15m already excluded
-smt_divergence   = ["15m", "1h", "1d"]       # Phase 1: 4h dropped (audit -0.307R, 25% positive)
 orb              = ["1h", "4h", "1d"]        # 15m mean_r=-0.163 suppressed
 bos              = ["15m", "1h", "4h"]       # 1d mean_r=-0.785 suppressed; 4h mean_r=+0.223 re-enabled
 pin_bar          = ["15m", "1h", "4h", "1d"] # audit confirms KEEP all TFs (50–100% positive)
@@ -179,18 +177,6 @@ tp_r_1h = 2.5                 # WFO OOS (tue_thu): +1.182R (2026-04-14); was 3.5
 [strategy_params.ema]
 tp_r = 3.0                    # spec §6 default; tune per-TF after WFO sweep
 
-[strategy_params.smt_divergence]
-tp_r_15m = 4.0                # sweep peak: cross-symbol +0.90R (70 trades, 40% WR) post-spam-fix
-tp_r_1h  = 2.5                # sweep peak: cross-symbol +0.70R (16 trades, 50% WR) post-spam-fix
-# 4h: only 5 trades (below min_trades_4h=10) — discard; hard-mode gate handles suppression
-adr_exempt = true             # trend_filter=1 makes this a pullback-in-trend entry; ADR gate conflicts
-volume_suppress = true        # A14b: normal-vol wins Δ=+0.78R (low +0.63R vs normal +1.41R)
-
-# BTCUSDT 4h: -0.58R (15.1% win rate, 53 trades) — only bad SMT combo post-A18 fix.
-# Hard-mode min_avg_r gate suppresses at runtime. True per-symbol TF exclusion not yet supported.
-[strategy_params.smt_divergence.BTCUSDT]
-# No param override — BTC 4h relies on hard-mode backtest gate to suppress.
-
 # liquidity_sweep 1h re-audit 2026-05-13 (tue_thu, since 2025-09-12, F9 floor on):
 #   BTC OOS +0.213R @ tp_r=1.5 (n=51) · SOL OOS +0.133R @ tp_r=1.0 (n=51) · ETH OOS -0.068R no edge (n=53)
 #   Aggregate (n=156) +0.089R @ tp_r=1.0 — passes +0.05R bar. ETH suppressed by min_avg_r=0.0 live gate.
@@ -208,7 +194,7 @@ tp_r_1h = 1.5                   # 1h re-audit OOS: BTC +0.213R @ 1.5R (diverges 
 # No param override — ETH 1h relies on hard-mode backtest gate to suppress.
 
 # marubozu volume_suppress flags live in strategy_params.toml (base).
-# backtest, smt_pairs, and bias sections also live in strategy_params.toml (base).
+# backtest and bias sections also live in strategy_params.toml (base).
 # Uncomment below to override specific backtest options for this config:
 # [backtest]
 # save_results = true

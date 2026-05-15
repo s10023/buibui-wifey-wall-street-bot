@@ -49,7 +49,6 @@ from analytics.strategies.orb_breakout import detect_orb_breakout
 from analytics.strategies.order_block import detect_order_block
 from analytics.strategies.ote_entry import detect_ote_entry
 from analytics.strategies.pin_bar import detect_pin_bar
-from analytics.strategies.smt_divergence import detect_smt_divergence
 from analytics.strategies.trend_day import detect_trend_day
 from analytics.strategies.wick_fills import detect_wick_fills
 
@@ -88,7 +87,6 @@ __all__ = [
     "detect_order_block",
     "detect_ote_entry",
     "detect_pin_bar",
-    "detect_smt_divergence",
     "detect_trend_day",
     "detect_wick_fills",
     "ema_cross_count",

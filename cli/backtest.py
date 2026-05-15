@@ -113,7 +113,6 @@ def run_backtest(args: argparse.Namespace) -> None:
         else 0.0,
         atr_sl_multiplier=args.atr_sl_multiplier,
         atr_sl_floor=getattr(args, "atr_sl_floor", False),
-        secondary_symbol=args.secondary_symbol,
         save_results=args.save,
         since_ms=parse_since_to_ms(args.since) if args.since else None,
     )
@@ -141,12 +140,6 @@ def add_backtest_subparser(
         "--interval",
         default="4h",
         help="Candle timeframe for single-combo mode (default: 4h)",
-    )
-    backtest_parser.add_argument(
-        "--secondary-symbol",
-        default=None,
-        dest="secondary_symbol",
-        help="Secondary symbol for smt_divergence strategy (e.g., ETHUSDT)",
     )
     # Shared / sweep flags
     backtest_parser.add_argument(

@@ -142,34 +142,6 @@ class TestValidateCoinsConfig:
         with pytest.raises(ValueError, match="sl_percent must be a number"):
             validate_coins_config(config)
 
-    def test_smt_secondary_valid(self) -> None:
-        """smt_secondary as a non-empty string is valid."""
-        config = {
-            "BTCUSDT": {"leverage": 25, "sl_percent": 2.0, "smt_secondary": "ETHUSDT"}
-        }
-        assert validate_coins_config(config) is True
-
-    def test_smt_secondary_empty_string_rejected(self) -> None:
-        """smt_secondary as an empty string raises ValueError."""
-        config = {"BTCUSDT": {"leverage": 25, "sl_percent": 2.0, "smt_secondary": ""}}
-        with pytest.raises(
-            ValueError, match="smt_secondary must be a non-empty string"
-        ):
-            validate_coins_config(config)
-
-    def test_smt_secondary_non_string_rejected(self) -> None:
-        """smt_secondary as a non-string raises ValueError."""
-        config = {"BTCUSDT": {"leverage": 25, "sl_percent": 2.0, "smt_secondary": 123}}
-        with pytest.raises(
-            ValueError, match="smt_secondary must be a non-empty string"
-        ):
-            validate_coins_config(config)
-
-    def test_smt_secondary_absent_is_valid(self) -> None:
-        """smt_secondary is optional — absent is valid."""
-        config = {"BTCUSDT": {"leverage": 25, "sl_percent": 2.0}}
-        assert validate_coins_config(config) is True
-
 
 class TestValidateStocksConfig:
     """Tests for validate_stocks_config()."""

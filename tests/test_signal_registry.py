@@ -34,21 +34,6 @@ def test_all_strategies_have_boolean_flags_in_strategy_registry() -> None:
         assert isinstance(spec.requires_funding, bool), (
             f"{name}: requires_funding not bool"
         )
-        assert isinstance(spec.requires_secondary, bool), (
-            f"{name}: requires_secondary not bool"
-        )
-
-
-def test_smt_divergence_requires_secondary() -> None:
-    assert STRATEGY_REGISTRY["smt_divergence"].requires_secondary is True
-
-
-def test_no_strategy_requires_both_funding_and_secondary() -> None:
-    for name in SIGNAL_REGISTRY:
-        spec = STRATEGY_REGISTRY[name]
-        assert not (spec.requires_funding and spec.requires_secondary), (
-            f"{name} claims both funding and secondary"
-        )
 
 
 def test_all_strategies_have_strategy_type() -> None:

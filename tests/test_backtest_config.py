@@ -22,14 +22,6 @@ tp_r       = 3.0
 min_trades = 10
 """
 
-_SMT_TOML = """\
-symbols = ["BTCUSDT", "ETHUSDT"]
-
-[smt_pairs]
-BTCUSDT = "ETHUSDT"
-ETHUSDT = "BTCUSDT"
-"""
-
 _PARTIAL_TOML = """\
 symbols = ["BTCUSDT"]
 """
@@ -45,9 +37,7 @@ class TestBacktestSweepConfigDefaults:
         assert cfg.sl_pct == 0.02
         assert cfg.tp_r == 2.0
         assert cfg.min_trades == 20
-        assert cfg.smt_pairs == {}
         assert cfg.day_filter == "off"
-        assert cfg.smt_trend_filter == 1
 
 
 class TestLoadBacktestConfig:
@@ -73,12 +63,6 @@ class TestLoadBacktestConfig:
         with pytest.raises(tomllib.TOMLDecodeError):
             load_backtest_config(p)
 
-    def test_load_smt_pairs(self, tmp_path: Path) -> None:
-        p = tmp_path / "smt.toml"
-        p.write_text(_SMT_TOML)
-        cfg = load_backtest_config(p)
-        assert cfg.smt_pairs == {"BTCUSDT": "ETHUSDT", "ETHUSDT": "BTCUSDT"}
-
     def test_load_partial_toml_uses_defaults(self, tmp_path: Path) -> None:
         p = tmp_path / "partial.toml"
         p.write_text(_PARTIAL_TOML)
@@ -88,17 +72,14 @@ class TestLoadBacktestConfig:
         assert cfg.strategies is None
         assert cfg.days == 90
         assert cfg.min_trades == 20
-        assert cfg.smt_pairs == {}
         assert cfg.day_filter == "off"
-        assert cfg.smt_trend_filter == 1
 
     def test_load_day_filter_string_modes(self, tmp_path: Path) -> None:
         for mode in ("off", "weekdays", "tue_thu"):
             p = tmp_path / f"cfg_{mode}.toml"
-            p.write_text(f'symbols = []\nday_filter = "{mode}"\nsmt_trend_filter = 0\n')
+            p.write_text(f'symbols = []\nday_filter = "{mode}"\n')
             cfg = load_backtest_config(p)
             assert cfg.day_filter == mode
-            assert cfg.smt_trend_filter == 0
 
     def test_atr_sl_floor_default(self) -> None:
         cfg = BacktestSweepConfig()

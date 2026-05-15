@@ -334,13 +334,9 @@ class SignalWatchConfig:
     tp_r: float = 2.0
     sl_pct: float = 0.02
     state_file: str = "signal_state.json"
-    # Per-symbol SMT secondary map: {"BTCUSDT": "ETHUSDT", ...}
-    smt_pairs: dict[str, str] = field(default_factory=dict)
     backtest: BacktestFilterConfig = field(default_factory=BacktestFilterConfig)
     # Suppress signals by day: "off" | "weekdays" (Mon–Fri) | "tue_thu" (Tue–Thu only)
     day_filter: str = "off"
-    # EMA-50 trend gate for smt_divergence (1=on, 0=off)
-    smt_trend_filter: int = 1
     # Per-strategy timeframe allow-list: {"trend_day": ["4h", "1d"], ...}
     # Strategies not listed here run on all configured timeframes.
     strategy_timeframes: dict[str, list[str]] = field(default_factory=dict)
@@ -475,16 +471,8 @@ def load_signal_config(path: str | Path) -> SignalWatchConfig:
 
     Raises FileNotFoundError if path does not exist.
     Raises tomllib.TOMLDecodeError if the file is not valid TOML.
-    Raises ValueError if smt_pairs values are not strings.
     """
     data = _load_toml_with_extends(path)
-
-    raw_smt = data.get("smt_pairs", {})
-    if not isinstance(raw_smt, dict):
-        raise ValueError(
-            "smt_pairs must be a TOML table of PRIMARY = 'SECONDARY' entries"
-        )
-    smt_pairs: dict[str, str] = {str(k): str(v) for k, v in raw_smt.items()}
 
     raw_stf = data.get("strategy_timeframes", {})
     if not isinstance(raw_stf, dict):
@@ -737,10 +725,8 @@ def load_signal_config(path: str | Path) -> SignalWatchConfig:
         tp_r=float(data.get("tp_r", 2.0)),
         sl_pct=float(data.get("sl_pct", 0.02)),
         state_file=str(data.get("state_file", "signal_state.json")),
-        smt_pairs=smt_pairs,
         backtest=backtest,
         day_filter=str(data.get("day_filter", "off")),
-        smt_trend_filter=int(data.get("smt_trend_filter", 1)),
         strategy_timeframes=strategy_timeframes,
         strategy_params=strategy_params,
         atr_sl_multiplier=(

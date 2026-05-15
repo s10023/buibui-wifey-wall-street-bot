@@ -87,8 +87,6 @@ def _seed_backtest_runs(conn: duckdb.DuckDBPyConnection) -> None:
             "tp_r": 2.0,
             "fee_pct": 0.0005,
             "day_filter": "off",
-            "smt_trend_filter": 1,
-            "secondary_symbol": None,
             "total_signals": 30,
             "closed_trades": 30,
             "win_count": 18,
@@ -113,8 +111,6 @@ def _seed_backtest_runs(conn: duckdb.DuckDBPyConnection) -> None:
             "tp_r": 2.0,
             "fee_pct": 0.0005,
             "day_filter": "off",
-            "smt_trend_filter": 1,
-            "secondary_symbol": None,
             "total_signals": 20,
             "closed_trades": 20,
             "win_count": 8,
@@ -139,8 +135,6 @@ def _seed_backtest_runs(conn: duckdb.DuckDBPyConnection) -> None:
             "tp_r": 2.0,
             "fee_pct": 0.0,
             "day_filter": "off",
-            "smt_trend_filter": 1,
-            "secondary_symbol": None,
             "total_signals": 5,
             "closed_trades": 5,
             "win_count": 4,
@@ -165,8 +159,6 @@ def _seed_backtest_runs(conn: duckdb.DuckDBPyConnection) -> None:
             "tp_r": 2.0,
             "fee_pct": 0.0005,
             "day_filter": "off",
-            "smt_trend_filter": 1,
-            "secondary_symbol": None,
             "total_signals": 15,
             "closed_trades": 15,
             "win_count": 10,
@@ -190,8 +182,6 @@ def _seed_backtest_runs(conn: duckdb.DuckDBPyConnection) -> None:
             "tp_r": 2.0,
             "fee_pct": 0.0005,
             "day_filter": "off",
-            "smt_trend_filter": 1,
-            "secondary_symbol": None,
             "total_signals": 12,
             "closed_trades": 12,
             "win_count": 4,
@@ -206,7 +196,7 @@ def _seed_backtest_runs(conn: duckdb.DuckDBPyConnection) -> None:
     ]
     conn.executemany(
         "INSERT INTO backtest_runs VALUES "
-        "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+        "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
         "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)",
         [
             [
@@ -221,8 +211,6 @@ def _seed_backtest_runs(conn: duckdb.DuckDBPyConnection) -> None:
                 r["tp_r"],
                 r["fee_pct"],
                 r["day_filter"],
-                r["smt_trend_filter"],
-                r["secondary_symbol"],
                 r["total_signals"],
                 r["closed_trades"],
                 r["win_count"],
@@ -590,7 +578,7 @@ def _seed_directional_runs(conn: duckdb.DuckDBPyConnection) -> None:
     """Seed backtest_runs with directional long/short split data."""
     conn.execute(
         "INSERT INTO backtest_runs VALUES "
-        "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+        "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
         "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             "dir_bos",
@@ -604,8 +592,6 @@ def _seed_directional_runs(conn: duckdb.DuckDBPyConnection) -> None:
             2.0,
             0.0,
             "off",
-            1,
-            None,
             20,
             20,
             12,

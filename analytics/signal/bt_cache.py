@@ -32,7 +32,6 @@ logger = logging.getLogger(__name__)
 def _compute_backtest(
     ohlcv_df: pd.DataFrame,
     strategy: str,
-    secondary_df: pd.DataFrame | None,
     funding_df: pd.DataFrame | None,
     symbol: str,
     timeframe: str,
@@ -83,10 +82,6 @@ def _compute_backtest(
             if funding_df is None or funding_df.empty:
                 return None
             signals_df = plugin["detector"](hist_df, funding_df)
-        elif spec and spec.requires_secondary:
-            if secondary_df is None or secondary_df.empty:
-                return None
-            signals_df = plugin["detector"](hist_df, secondary_df)
         else:
             signals_df = plugin["detector"](hist_df)
     except Exception:

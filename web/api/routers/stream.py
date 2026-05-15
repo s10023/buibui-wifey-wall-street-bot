@@ -8,10 +8,10 @@ from typing import Any
 from binance.client import Client
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
+from utils.binance_client import load_coins_config
 
 from monitor.position_lib import fetch_open_positions
 from monitor.price_lib import get_price_changes
-from utils.binance_client import load_coins_config
 from web.api.deps import get_client, require_token_sse
 from web.api.models.positions import PositionsResponse
 from web.api.routers.positions import row_to_position

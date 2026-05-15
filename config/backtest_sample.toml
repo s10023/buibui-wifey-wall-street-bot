@@ -21,6 +21,3 @@ min_trades_1d = 3
 # liq_sweep_use_fib = true  # set false to compare pivot-sweep mode vs fib-extension mode
 # liq_sweep_fib_range_close = false  # (fib mode only) true = close must be < swing_high (inside range), not just < fib level
 
-[smt_pairs]
-BTCUSDT = "ETHUSDT"
-ETHUSDT = "BTCUSDT"
