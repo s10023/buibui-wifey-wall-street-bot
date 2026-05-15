@@ -61,7 +61,7 @@ buibui-wifey-wall-street-bot/
 │   ├── backtest_runner.py           # Backtest thin wrapper (opens DB, loads data, calls libs)
 │   ├── backtest_lib.py              # Pure backtest engine: Trade, BacktestResult, run_backtest
 │   ├── data_fetcher.py              # Pure yfinance → canonical OHLCV DataFrames (fetch_bars; 4h synthesised from 1h @ 13:30 UTC)
-│   ├── data_store.py                # Pure DuckDB read/write (schema, upsert, query helpers); tables: ohlcv, funding_rates, open_interest, signals, signal_alert_outcomes, backtest_runs, backtest_trades, backtest_cache, stats_cache
+│   ├── data_store.py                # Pure DuckDB read/write (schema, upsert, query helpers); tables: ohlcv, signals, signal_alert_outcomes, backtest_runs, backtest_trades, backtest_cache, stats_cache
 │   ├── data_sync.py                 # Backfill + incremental sync orchestration
 │   ├── strategies/                  # Per-detector strategy package (22 active strategies + STRATEGY_REGISTRY + DETECTOR_REGISTRY)
 │   ├── signal_config.py             # Pure config loader: SignalWatchConfig, BacktestFilterConfig, BiasConfig, ComboConfig; TOML extends support
@@ -328,8 +328,8 @@ Append `:asc` or `:desc` to control the sort direction (defaults to `desc`).
 
 ### Analytics — Backfill Historical Data
 
-The analytics module stores OHLCV candles, funding rates, and open interest in a local
-DuckDB database for offline analysis and strategy backtesting.
+The analytics module stores OHLCV candles in a local DuckDB database for offline
+analysis and strategy backtesting.
 
 **First run — backfill historical data:**
 
