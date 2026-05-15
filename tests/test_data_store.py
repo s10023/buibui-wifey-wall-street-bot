@@ -25,9 +25,7 @@ from analytics.data_store import (
     upsert_backtest_run,
     upsert_backtest_trades,
     upsert_confidence_ratings,
-    upsert_funding_rates,
     upsert_ohlcv,
-    upsert_open_interest,
     upsert_signal_outcome,
     upsert_signals,
 )
@@ -41,7 +39,6 @@ _OHLCV_ROW: dict[str, object] = {
     "low": 29500.0,
     "close": 30500.0,
     "volume": 100.0,
-    "taker_buy_volume": 55.0,
 }
 
 
@@ -78,8 +75,6 @@ class TestInitSchema:
         tables = {r[0] for r in conn.execute("SHOW TABLES").fetchall()}
         assert {
             "ohlcv",
-            "funding_rates",
-            "open_interest",
             "signals",
             "signal_alert_outcomes",
             "backtest_runs",
@@ -96,6 +91,27 @@ class TestInitSchema:
         tables = {r[0] for r in conn.execute("SHOW TABLES").fetchall()}
         assert "ohlcv" in tables
 
+    def test_ohlcv_schema_has_no_taker_buy_volume_or_vwap(
+        self, conn: duckdb.DuckDBPyConnection
+    ) -> None:
+        cols = {
+            r[0]
+            for r in conn.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'ohlcv'"
+            ).fetchall()
+        }
+        assert "taker_buy_volume" not in cols
+        assert "vwap" not in cols
+
+    def test_no_funding_rates_table(self, conn: duckdb.DuckDBPyConnection) -> None:
+        tables = {r[0] for r in conn.execute("SHOW TABLES").fetchall()}
+        assert "funding_rates" not in tables
+
+    def test_no_open_interest_table(self, conn: duckdb.DuckDBPyConnection) -> None:
+        tables = {r[0] for r in conn.execute("SHOW TABLES").fetchall()}
+        assert "open_interest" not in tables
+
 
 class TestUpsertOhlcv:
     def test_inserts_rows(self, conn: duckdb.DuckDBPyConnection) -> None:
@@ -110,48 +126,6 @@ class TestUpsertOhlcv:
     def test_empty_dataframe_is_noop(self, conn: duckdb.DuckDBPyConnection) -> None:
         upsert_ohlcv(conn, pd.DataFrame(columns=list(_OHLCV_ROW.keys())))
         assert _one(conn, "SELECT COUNT(*) FROM ohlcv")[0] == 0
-
-
-class TestUpsertFundingRates:
-    def test_inserts_rows(self, conn: duckdb.DuckDBPyConnection) -> None:
-        df = pd.DataFrame(
-            [
-                {
-                    "symbol": "BTCUSDT",
-                    "funding_time": 1_700_000_000_000,
-                    "funding_rate": 0.0001,
-                }
-            ]
-        )
-        upsert_funding_rates(conn, df)
-        assert _one(conn, "SELECT COUNT(*) FROM funding_rates")[0] == 1
-
-    def test_empty_dataframe_is_noop(self, conn: duckdb.DuckDBPyConnection) -> None:
-        upsert_funding_rates(
-            conn, pd.DataFrame(columns=["symbol", "funding_time", "funding_rate"])
-        )
-        assert _one(conn, "SELECT COUNT(*) FROM funding_rates")[0] == 0
-
-
-class TestUpsertOpenInterest:
-    def test_inserts_rows(self, conn: duckdb.DuckDBPyConnection) -> None:
-        df = pd.DataFrame(
-            [
-                {
-                    "symbol": "BTCUSDT",
-                    "timestamp": 1_700_000_000_000,
-                    "oi_usd": 30_000_000.0,
-                }
-            ]
-        )
-        upsert_open_interest(conn, df)
-        assert _one(conn, "SELECT COUNT(*) FROM open_interest")[0] == 1
-
-    def test_empty_dataframe_is_noop(self, conn: duckdb.DuckDBPyConnection) -> None:
-        upsert_open_interest(
-            conn, pd.DataFrame(columns=["symbol", "timestamp", "oi_usd"])
-        )
-        assert _one(conn, "SELECT COUNT(*) FROM open_interest")[0] == 0
 
 
 class TestGetOhlcv:
@@ -171,51 +145,6 @@ class TestGetOhlcv:
     ) -> None:
         result = get_ohlcv(conn, "BTCUSDT", "1h", 0, 2_000_000_000_000)
         assert result.empty
-
-
-class TestTakerBuyVolume:
-    def test_persists_taker_buy_volume(self, conn: duckdb.DuckDBPyConnection) -> None:
-        upsert_ohlcv(conn, pd.DataFrame([_OHLCV_ROW]))
-        row = conn.execute("SELECT taker_buy_volume FROM ohlcv").fetchone()
-        assert row is not None
-        assert row[0] == 55.0
-
-    def test_null_taker_buy_volume_accepted(
-        self, conn: duckdb.DuckDBPyConnection
-    ) -> None:
-        row = {**_OHLCV_ROW, "taker_buy_volume": None}
-        upsert_ohlcv(conn, pd.DataFrame([row]))
-        result = conn.execute("SELECT taker_buy_volume FROM ohlcv").fetchone()
-        assert result is not None
-        assert result[0] is None
-
-    def test_migration_adds_column_to_existing_db(self) -> None:
-        c = duckdb.connect(":memory:")
-        c.execute("""
-            CREATE TABLE ohlcv (
-                symbol TEXT NOT NULL, timeframe TEXT NOT NULL,
-                open_time BIGINT NOT NULL, open DOUBLE NOT NULL,
-                high DOUBLE NOT NULL, low DOUBLE NOT NULL,
-                close DOUBLE NOT NULL, volume DOUBLE NOT NULL,
-                PRIMARY KEY (symbol, timeframe, open_time)
-            )
-        """)
-        init_schema(c)
-        cols = {
-            r[0]
-            for r in c.execute(
-                "SELECT column_name FROM information_schema.columns WHERE table_name = 'ohlcv'"
-            ).fetchall()
-        }
-        assert "taker_buy_volume" in cols
-
-    def test_get_ohlcv_returns_taker_buy_volume_column(
-        self, conn: duckdb.DuckDBPyConnection
-    ) -> None:
-        upsert_ohlcv(conn, pd.DataFrame([_OHLCV_ROW]))
-        result = get_ohlcv(conn, "BTCUSDT", "1h", 0, 2_000_000_000_000)
-        assert "taker_buy_volume" in result.columns
-        assert result.iloc[0]["taker_buy_volume"] == 55.0
 
 
 class TestUpsertSignals:

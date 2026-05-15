@@ -15,33 +15,7 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
             low              DOUBLE NOT NULL,
             close            DOUBLE NOT NULL,
             volume           DOUBLE NOT NULL,
-            taker_buy_volume DOUBLE,
             PRIMARY KEY (symbol, timeframe, open_time)
-        )
-    """)
-    # Migration guard: add column to existing DBs that were created before this field.
-    existing = {
-        row[0]
-        for row in conn.execute(
-            "SELECT column_name FROM information_schema.columns WHERE table_name = 'ohlcv'"
-        ).fetchall()
-    }
-    if "taker_buy_volume" not in existing:
-        conn.execute("ALTER TABLE ohlcv ADD COLUMN taker_buy_volume DOUBLE")
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS funding_rates (
-            symbol       TEXT   NOT NULL,
-            funding_time BIGINT NOT NULL,
-            funding_rate DOUBLE NOT NULL,
-            PRIMARY KEY (symbol, funding_time)
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS open_interest (
-            symbol    TEXT   NOT NULL,
-            timestamp BIGINT NOT NULL,
-            oi_usd    DOUBLE NOT NULL,
-            PRIMARY KEY (symbol, timestamp)
         )
     """)
     conn.execute("""

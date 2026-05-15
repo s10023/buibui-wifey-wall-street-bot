@@ -33,13 +33,9 @@ from analytics.store.confidence import (
     upsert_confidence_ratings,
 )
 from analytics.store.market_data import (
-    get_funding_rates,
     get_latest_open_time,
     get_ohlcv,
-    get_open_interest,
-    upsert_funding_rates,
     upsert_ohlcv,
-    upsert_open_interest,
 )
 from analytics.store.schema import init_schema
 from analytics.store.signals import (
@@ -65,10 +61,8 @@ __all__ = [
     "get_confidence_ratings",
     "get_cross_tf_combo_lookup",
     "get_directional_confidence_ratings",
-    "get_funding_rates",
     "get_latest_open_time",
     "get_ohlcv",
-    "get_open_interest",
     "get_signals_history",
     "get_stats_cache",
     "get_win_rate_by_strategy",
@@ -83,9 +77,7 @@ __all__ = [
     "upsert_combo_run",
     "upsert_confidence_ratings",
     "upsert_cross_tf_combo_run",
-    "upsert_funding_rates",
     "upsert_ohlcv",
-    "upsert_open_interest",
     "upsert_signal_outcome",
     "upsert_signals",
     "upsert_stats_cache",
