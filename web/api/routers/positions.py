@@ -5,9 +5,9 @@ from typing import Any
 
 from binance.client import Client
 from fastapi import APIRouter, Depends, HTTPException, status
+from monitor.position_lib import fetch_open_positions
 from utils.binance_client import load_coins_config
 
-from monitor.position_lib import fetch_open_positions
 from web.api.deps import get_client, require_token
 from web.api.models.positions import PositionRow, PositionsResponse
 

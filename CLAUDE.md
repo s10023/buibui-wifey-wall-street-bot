@@ -44,13 +44,12 @@ For routine DB refresh after backtest/strategy changes: `make db-update` (= `db-
 
 Each Makefile `wifey-*` target wraps the equivalent CLI invocation.
 
-> The legacy `wifey monitor price | position` subcommand was removed in T1 (live mode + `utils/binance_client` deleted); `monitor/price_monitor.py` and `monitor/position_monitor.py` remain on disk with broken imports and will be either rewired for equities or removed entirely in T16.
+> The legacy `wifey monitor price | position` subcommand and the entire `monitor/` package were removed in T16-partial (2026-05-15). Equity price/position monitoring lives in the FastAPI + Svelte web UI under `web/`.
 
 ## Project Structure
 
 - `wifey.py` — thin CLI entry shim (delegates to `cli.main:main`)
-- `cli/` — argparse subcommand package: `main.py` builds the top-level parser and dispatches to per-subcommand modules (`monitor.py` legacy, `signal.py`, `analytics.py`, `backtest.py`, `digest.py`, `param.py`, `recalibrate.py`, `web.py`); `_common.py` shared helpers
-- `monitor/` — legacy crypto price/position monitor; **non-functional after T1** (`utils/binance_client.py` + `monitor/live_price.py` + `monitor/live_position.py` deleted). Remaining `price_monitor.py` / `position_monitor.py` / `price_lib.py` / `position_lib.py` have broken imports; fate decided in T16 (rewire for equities or delete).
+- `cli/` — argparse subcommand package: `main.py` builds the top-level parser and dispatches to per-subcommand modules (`signal.py`, `analytics.py`, `backtest.py`, `digest.py`, `param.py`, `recalibrate.py`, `web.py`); `_common.py` shared helpers
 - `analytics/` — analytics data layer (DuckDB-backed). See `.claude/context/analytics.md` for full module API reference.
   - `store/` — DB layer split into 8 modules: `schema.py` (`init_schema`, `DEFAULT_DB_PATH`), `market_data.py` (OHLCV upsert + getters), `signals.py` (`upsert_signals`, `get_signals_history`, `upsert_signal_outcome`), `backtest_runs.py` (`upsert_backtest_run`, `upsert_backtest_trades`, `list_backtest_runs`, `get_win_rate_by_strategy`), `backtest_cache.py` (`BacktestSnapshot`, `get/put/prune_backtest_cache`), `confidence.py` (`upsert_confidence_ratings`, combined + directional getters), `combos.py` (combo + cross-TF combo upsert/list/lookup), `stats_cache.py`. `_common.py` holds the sealed `_upsert` register/unregister helper. `data_store.py` is a thin re-export shim for the 30+ external import sites. (T4 dropped `taker_buy_volume` column + `funding_rates` / `open_interest` tables — yfinance OHLCV has no taker data and equities have no funding/OI; legacy migration block removed.)
   - **CRITICAL**: `_upsert` (in `store/_common.py`) uses explicit `conn.register`/`conn.unregister` in try/finally — never switch to implicit replacement scan (causes malloc heap corruption). Never drop the try/finally.
