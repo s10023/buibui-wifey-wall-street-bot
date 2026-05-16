@@ -209,7 +209,8 @@ class TestDetectOrbBreakout:
     """
 
     def test_returns_empty_when_too_few_candles(self) -> None:
-        # Only 2 candles total — range_candles=2 consumes both, leaving none to check.
+        # Default range_candles=1: candle 0 defines range [90, 110]; candle 1
+        # closes at 108 (inside the range) → no breakout signal.
         rows = [
             _candle(_hourly_ts(0), 100, 110, 90, 105),
             _candle(_hourly_ts(1), 102, 112, 95, 108),

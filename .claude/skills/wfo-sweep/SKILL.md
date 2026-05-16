@@ -125,7 +125,6 @@ For each strategy × TF:
 **Cross-config sync:**
 - If sweeping `signal_watch.toml` AND `signal_watch_weekdays.toml` exists:
   - For TFs active in weekdays config, apply the same tp_r changes (they share the same market)
-  - Do NOT apply to `signal_watch_all.toml` — different day_filter distribution
 
 ### Step 5: Apply changes to TOML
 

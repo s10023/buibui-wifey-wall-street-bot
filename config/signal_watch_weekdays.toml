@@ -1,21 +1,24 @@
-# Signal Watch — weekdays profile (Mon–Fri, no weekend signals)
+# Signal Watch — weekdays equity profile (Mon–Fri, no weekend signals)
 # Usage: make buibui-signal-watch CONFIG=config/signal_watch_weekdays.toml
 #
 # Inherits: bias, backtest defaults, and consistent per-strategy flags
 # from strategy_params.toml. Only weekdays-specific values are defined here.
+#
+# T13 (2026-05-17): rewritten for equities. Symbols come from config/stocks.json
+# (omit `symbols`). Timeframes restricted to 4h | 1d | 1wk. tp_r values
+# inherited from the crypto era are a starting guess; T14 (WFO + recalibrate)
+# replaces them with equity-derived numbers.
 
 extends = "strategy_params.toml"
 
-# Symbols to watch — omit to use all symbols from config/coins.json
-# symbols = ["BTCUSDT", "ETHUSDT"]
+# Symbols to watch — omit to use the full watchlist from config/stocks.json.
+# symbols = ["AAPL", "MSFT"]
 
-timeframes = ["15m", "1h", "4h", "1d"]
+timeframes = ["4h", "1d", "1wk"]
 
 # Suppress signals by day: "off" | "weekdays" (Mon–Fri) | "tue_thu" (Tue–Thu only)
 day_filter = "weekdays"
 
-# Same TF suppression as signal_watch.toml — wick_fill, marubozu, fvg excluded
-# Phase 1 (2026-05-07, audit-driven): marubozu + fvg removed entirely (DROP_TF on every TF).
 strategies = [
     'orb',
     'liquidity_sweep',
@@ -34,122 +37,67 @@ strategies = [
 ]
 
 # atr_sl_multiplier = 2.0  # ATR-based SL: SL distance = N × ATR14; overrides sl_pct when set
-# atr_sl_multiplier_values = [0.5, 1.0, 1.5, 2.0, 2.5]  # sweep: comparison table across multipliers
-# tp_r_values = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]  # TP ratio sweep — prints comparison table instead of ranked sweep
+# atr_sl_multiplier_values = [0.5, 1.0, 1.5, 2.0, 2.5]
+# tp_r_values = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]
 
+# T13: see signal_watch.toml — ORB is 4h-only on equity by mechanic.
 [strategy_timeframes]
-trend_day            = ["4h", "1d"]
-fib_golden_zone      = ["4h", "1d"]       # 15m/1h suppressed (negative)
-eqh_eql              = ["1h", "1d"]       # Phase 1: 4h dropped (audit -0.217R, 33% positive)
-orb                  = ["1h", "4h"]        # 15m/1d suppressed (n/a — zero trades on weekdays)
-bos                  = ["15m", "1h", "4h"] # 1d all negative excluded
-pin_bar              = ["15m", "1h", "4h", "1d"]
-liquidity_sweep      = ["1d"]              # Phase 1: 1h dropped (audit -0.250R, 0% positive); 15m/4h already excluded
-doji                 = ["15m", "1h"]       # 4h all negative (-0.03R best); 1d too thin (3 trades)
-order_block          = ["1d"]              # Phase 1: 4h dropped (audit CONFLUENCE_ONLY -0.079R); 15m/1h already excluded
-morning_evening_star = ["15m", "1h", "4h"] # 1d suppressed (negative)
+orb = ["4h"]
 
-# Per-strategy parameter overrides — tp_r and sl_pct.
-# Lookup order: TF-specific key (e.g. tp_r_4h) → strategy-wide tp_r → global tp_r.
-# Derived from TP sweep (200d, weekdays, 3 symbols — BTCUSDT/ETHUSDT/SOLUSDT).
-# Re-run after major data changes: make buibui-backtest CONFIG=config/signal_watch_weekdays.toml SAVE=1
+# Per-strategy overrides — crypto-derived starting guess; T14 recalibrates.
+[strategy_params.engulfing]
+tp_r = 3.5                    # was crypto cross-symbol; revisit in T14
+tp_r_4h = 3.5                 # revisit in T14
+
+[strategy_params.pin_bar]
+tp_r = 3.5                    # fallback
+tp_r_4h = 3.5                 # revisit in T14
+tp_r_1d = 3.5                 # revisit in T14
+
+[strategy_params.hammer_hanging_man]
+tp_r = 4.0                    # fallback
+tp_r_4h = 4.0                 # revisit in T14
+
+[strategy_params.doji]
+tp_r = 3.0                    # fallback
+volume_suppress = true        # A14b crypto finding; revisit in T14
+
+[strategy_params.inside_bar]
+tp_r = 3.0                    # fallback
+tp_r_4h = 3.5                 # revisit in T14
+
+[strategy_params.eqh_eql]
+tp_r_1d = 2.0                 # was crypto baseline; hard mode gates on noise. Revisit in T14.
+
+[strategy_params.fib_golden_zone]
+tp_r_4h = 3.5                 # revisit in T14
+tp_r_1d = 3.5                 # revisit in T14
+
+[strategy_params.bos]
+tp_r = 3.0                    # was crypto-calibrated; revisit in T14
+
+[strategy_params.trend_day]
+tp_r_4h = 3.5                 # revisit in T14
+tp_r_1d = 4.0                 # revisit in T14
+
+[strategy_params.orb]
+tp_r_4h = 5.0                 # was crypto TP sweep peak; revisit in T14
+
+[strategy_params.liquidity_sweep]
+tp_r_1d = 3.5                 # was crypto baseline; revisit in T14
+
+[strategy_params.morning_evening_star]
+tp_r_4h = 5.0                 # revisit in T14
+tp_r_1d = 4.0                 # revisit in T14
+
+[strategy_params.order_block]
+tp_r_1d = 1.5                 # was crypto sweep peak; revisit in T14
 
 [strategy_params.ema]
 tp_r = 3.0                    # spec §6 default; tune per-TF after WFO sweep
-
-[strategy_params.engulfing]
-tp_r_15m = 4.0                # +0.11R
-tp_r_1h  = 4.0                # +0.23R
-tp_r_4h  = 3.5                # +0.44R; ETH see per-symbol
-tp_r_1d  = 3.5                # WFO OOS (weekdays): BTC+0.450R n=3 (2026-04-14); was 3.0; SOL see per-symbol
-volume_suppress = false       # A14b: low-vol edge Δ=-0.07R (low +0.19R vs normal +0.12R)
-
-[strategy_params.engulfing.ETHUSDT]
-tp_r_4h = 4.0                 # WFO OOS (weekdays): +0.825R n=16 (2026-04-14); diverges from global 3.5R
-
-[strategy_params.engulfing.SOLUSDT]
-tp_r_1d = 2.5                 # WFO OOS (weekdays): +0.700R n=2 (2026-04-14); diverges from global 3.5R
-
-[strategy_params.pin_bar]
-tp_r_15m = 4.0                # sweep confirmed: +0.09R@4.0R
-tp_r_1h  = 4.0                # sweep peak: +0.16R; was 5.0=+0.14R (slight improvement, higher WR)
-tp_r_4h  = 3.5                # sweep tied 3.5R/4.0R (+0.08R); higher WR at 3.5R
-tp_r_1d  = 3.5                # sweep confirmed: +1.00R (33 trades); SOL see per-symbol
-
-[strategy_params.pin_bar.SOLUSDT]
-tp_r_1d = 2.5                 # WFO OOS (weekdays): +0.700R n=6 (2026-04-14); diverges from global 3.5R
-
-[strategy_params.hammer_hanging_man]
-tp_r_15m = 3.0                # +0.06R@4.0R but 3.0R also borderline; conservative
-tp_r_1h  = 5.0                # sweep confirmed: +0.26R (monotonically increasing)
-tp_r_4h  = 4.0                # sweep confirmed: +0.03R (barely positive; hard mode gates if negative)
-tp_r_1d  = 4.0                # WFO OOS (weekdays): BTC+1.45R n=3, SOL+1.45R n=2 (2026-04-14); was 3.5
-
-[strategy_params.doji]
-tp_r_15m = 4.5                # sweep peak: +0.27R (287 trades, 24%WR); was 3.5=+0.09R
-tp_r_1h  = 2.5                # sweep peak: +0.43R (42%WR); was 3.0=+0.40R
-# tp_r_4h/tp_r_1d removed — doji restricted to ["15m","1h"] via strategy_timeframes
-volume_suppress = true        # A14b: normal-vol wins Δ=+0.11R (low +0.14R vs normal +0.25R)
-
-[strategy_params.inside_bar]
-tp_r_15m = 4.0                # +0.06R
-tp_r_1h  = 2.5                # +0.08R
-tp_r_4h  = 3.5                # +0.14R
-tp_r_1d  = 2.5                # +0.17R
-
-[strategy_params.eqh_eql]
-tp_r_1h  = 2.5                # WFO OOS (weekdays): BTC+0.47R n=36 (2026-04-14); was 5.0 from unfiltered WFO
-tp_r_4h  = 2.0                # -0.27R (all negative; hard mode will suppress)
-tp_r_1d  = 2.0                # +0.96R (3 trades — noisy; hard mode will gate)
-
-[strategy_params.eqh_eql.BTCUSDT]
-tp_r_1h  = 2.5                # WFO OOS (weekdays): +0.466R n=36 (2026-04-14); was 3.5
-
-[strategy_params.fib_golden_zone]
-tp_r_4h  = 3.5                # +1.03R (was 3.0; clear peak)
-tp_r_1d  = 3.5                # +0.48R (3 trades; 4.0+ drops to -1.02R — 0 wins)
-
-[strategy_params.bos]
-tp_r = 3.0                    # all TFs negative; hard mode suppresses at runtime
-
-[strategy_params.trend_day]
-tp_r_4h  = 3.5                # WFO OOS: BTC+0.217R ETH+0.041R SOL+0.120R n=52-65 (was 5.0 overfit)
-tp_r_1d  = 4.0                # +0.23R
-
-[strategy_params.orb]
-tp_r_1h  = 4.5                # +0.02R (barely positive)
-tp_r_4h  = 5.0                # TP sweep peak: cross-symbol +0.18R (105 trades); was 3.5=+0.05R
-
-[strategy_params.liquidity_sweep]
-tp_r_1h  = 5.0                # -0.25R (all negative; hard mode will suppress)
-tp_r_1d  = 3.5                # +0.87R (21 trades, 43% WR)
-
-[strategy_params.marubozu]
-tp_r_4h  = 4.5                # -0.27R (all negative; hard mode will suppress)
-tp_r_1d  = 2.0                # +0.12R (5 trades — small sample)
-
-[strategy_params.fvg]
-tp_r_15m = 3.0                # -0.18R (all negative; hard mode will suppress)
-tp_r_1h  = 1.5                # -0.15R (all negative; hard mode will suppress)
-tp_r_4h  = 2.5                # -0.23R (all negative; hard mode will suppress)
-tp_r_1d  = 4.5                # -0.14R (all negative; hard mode will suppress)
-volume_suppress = true        # A14b: normal-vol wins Δ=+0.08R (low -0.20R vs normal -0.12R)
-
-[strategy_params.morning_evening_star]
-tp_r_15m = 3.5                # sweep confirmed: +0.06R
-tp_r_1h  = 4.0                # sweep confirmed: +0.08R
-tp_r_4h  = 5.0                # sweep confirmed: +0.27R (monotonically increasing)
-tp_r_1d  = 4.0                # sweep peak: +0.22R (59 trades, 25%WR); was missing
-
-[strategy_params.order_block]
-# 15m/1h excluded via strategy_timeframes
-tp_r_4h  = 2.5                # -0.01R (breakeven; hard mode may gate)
-tp_r_1d  = 1.5                # +0.59R (42 trades, 65% WR)
 
 # backtest and bias sections live in strategy_params.toml (base).
 # Uncomment below to override specific backtest options for this config:
 # [backtest]
 # save_results = true
 # volume_suppress = false
-# liq_sweep_use_fib = true
-# liq_sweep_fib_range_close = true

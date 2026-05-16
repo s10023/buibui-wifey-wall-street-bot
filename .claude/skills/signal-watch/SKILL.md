@@ -158,7 +158,6 @@ duckdb analytics.db "SELECT * FROM signals ORDER BY ts DESC LIMIT 20"
 |------|-------------|
 | `config/signal_watch.toml` | Default: tue_thu filter, curated strategy list |
 | `config/signal_watch_weekdays.toml` | Weekdays (Mon–Fri) |
-| `config/signal_watch_all.toml` | All days — broad coverage |
 
 ## Key implementation files
 

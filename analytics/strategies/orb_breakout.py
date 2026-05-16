@@ -18,7 +18,7 @@ _SESSION_OPEN_SHIFT = pd.Timedelta(hours=13, minutes=30)
 
 def detect_orb_breakout(
     df: pd.DataFrame,
-    range_candles: int = 2,
+    range_candles: int = 1,
     # Legacy params kept so existing callers / tests that pass them don't crash.
     # The session anchor is hardcoded to 13:30 UTC (US RTH open).
     session_hour_utc: int = 0,

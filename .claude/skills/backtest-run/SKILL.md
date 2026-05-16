@@ -18,9 +18,8 @@ Common `buibui backtest` invocations and `make buibui-backtest` targets.
 ```bash
 make buibui-backtest CONFIG=config/signal_watch.toml
 
-# With specific config variants
+# With the weekdays day_filter variant
 make buibui-backtest CONFIG=config/signal_watch_weekdays.toml
-make buibui-backtest CONFIG=config/signal_watch_all.toml
 ```
 
 ### Full sweep + save results to DB
@@ -107,9 +106,8 @@ buibui backtest
 
 | File | Description |
 |------|-------------|
-| `config/signal_watch.toml` | Default: tue_thu day filter, per-strategy tp_r from F6 sweep |
-| `config/signal_watch_weekdays.toml` | Weekdays (Mon–Fri), similar strategy params |
-| `config/signal_watch_all.toml` | All days, all TFs — broad sweep |
+| `config/signal_watch.toml` | Default: tue_thu day filter, equity timeframes (4h/1d/1wk) |
+| `config/signal_watch_weekdays.toml` | Weekdays (Mon–Fri), same equity TF surface |
 
 ## Viewing saved runs
 

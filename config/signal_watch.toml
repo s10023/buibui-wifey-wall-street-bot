@@ -1,26 +1,29 @@
-# Signal Watch — default configuration (Tue–Thu only, noisy TF combos suppressed)
+# Signal Watch — default equity configuration (Tue–Thu only)
 # Usage: make buibui-signal-watch CONFIG=config/signal_watch.toml
 #
 # CLI flags always take precedence over values here.
 # Inherits: bias, backtest defaults, and consistent per-strategy flags
 # from strategy_params.toml. Only tue_thu-specific values are defined here.
+#
+# T13 (2026-05-17): rewritten for equities. Symbols come from config/stocks.json
+# (omit the `symbols` key below). Timeframes restricted to 4h | 1d | 1wk —
+# yfinance free tier caps 1h history at ~730d and lower TFs at 60d, so 15m / 1h
+# are out for Phase A. tp_r values inherited from the crypto era are a starting
+# guess; T14 (WFO + recalibrate) replaces them with equity-derived numbers.
 
 extends = "strategy_params.toml"
 
-# Symbols to watch — omit to use all symbols from config/coins.json
-# symbols = ["BTCUSDT", "ETHUSDT"]
+# Symbols to watch — omit to use the full watchlist from config/stocks.json.
+# symbols = ["AAPL", "MSFT"]
 
-timeframes = ["15m", "1h", "4h", "1d"]
+timeframes = ["4h", "1d", "1wk"]
 
 # Suppress signals by day: "off" | "weekdays" (Mon–Fri) | "tue_thu" (Tue–Thu only)
 # "tue_thu" suppresses Mon and Fri (ICT weekly cycle — manipulation/distribution days)
 day_filter = "tue_thu"
 
 # Strategies to run
-# wick_fill excluded: all TFs negative (pending BOS confluence fix). fvg added with trend_filter=1 (EMA-50 gate); still broadly negative but included for live monitoring — hard-mode filter suppresses at runtime
 strategies = [
-    # Phase 1 cuts (2026-05-07, audit-driven): marubozu + fvg removed entirely
-    # (DROP_TF on every TF in audit; -0.16 to -0.64R wgt_avg_r).
     'orb',
     'liquidity_sweep',
     'bos',
@@ -40,9 +43,7 @@ strategies = [
 # SL/TP defaults
 # sl_pct = 0.02
 # atr_sl_multiplier = 2.0  # ATR-based SL: SL distance = N × ATR14; overrides sl_pct when set
-# atr_sl_multiplier_values = [0.5, 1.0, 1.5, 2.0, 2.5]  # sweep: comparison table across multipliers (like tp_r_values)
-# NOTE (2026-03-28): ATR sweep showed zero impact — all strategies set sl_price (structural SL),
-# so ATR is never reached. Fix needed: use max(structural_sl_dist, atr_sl_dist) as floor first.
+# atr_sl_multiplier_values = [0.5, 1.0, 1.5, 2.0, 2.5]  # sweep: comparison table across multipliers
 # tp_r_values = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]  # TP ratio sweep
 # tp_r = 2.0
 
@@ -52,152 +53,72 @@ strategies = [
 # Per-strategy timeframe allow-list.
 # Strategies listed here are restricted to the specified TFs.
 # Strategies not listed run on all configured timeframes.
-# TF restrictions derived from backtest data: combos with mean_r < -0.05 suppressed.
-# Suppressed combos marked with mean_r in comments — candidates for parameter tuning.
+# T13: ORB mechanically requires range_candles + 1 bars per session — on US RTH
+# 4h synth (13:30 + 17:30) each session has exactly 2 bars, so ORB is 4h-only.
+# Daily / weekly sessions hold a single candle and cannot form an opening range.
+# Other restrictions deferred to T14 (equity WFO recalibration).
 [strategy_timeframes]
-trend_day        = ["4h", "1d"]       # 15m mean_r=-0.082 suppressed
-fib_golden_zone  = ["4h", "1d"]       # 15m mean_r=-0.254, 1h mean_r=-0.195 suppressed
-eqh_eql          = ["1h", "1d"]              # Phase 1: 4h dropped (audit -0.217R, 33% positive); 15m already excluded
-orb              = ["1h", "4h", "1d"]        # 15m mean_r=-0.163 suppressed
-bos              = ["15m", "1h", "4h"]       # 1d mean_r=-0.785 suppressed; 4h mean_r=+0.223 re-enabled
-pin_bar          = ["15m", "1h", "4h", "1d"] # audit confirms KEEP all TFs (50–100% positive)
-liquidity_sweep  = ["1h", "1d"]              # 1h re-enabled 2026-05-13 with F9 floor (atr_sl_multiplier_1h=2.5, atr_sl_floor_1h=true); BTC+SOL net-positive OOS; ETH suppressed by live gate
-doji             = ["15m", "1h"]             # 4h degraded: best 1.5R=+0.04R (16 trades); 1d too thin
-morning_evening_star = ["15m", "1h", "4h"]   # 1d mean_r=-0.105 suppressed
-order_block      = ["1d"]                    # Phase 1: 4h dropped (audit CONFLUENCE_ONLY, -0.079R); 15m/1h already excluded
+orb = ["4h"]                                # T13: mechanical — 4h is the only equity TF with ≥2 bars per session
 
 # Per-strategy parameter overrides — tp_r and sl_pct.
 # Lookup order: TF-specific key (e.g. tp_r_4h) → strategy-wide tp_r → global tp_r.
-# Derived from F6 TP sweep (200d, tue_thu day filter, 3 symbols — BTCUSDT/ETHUSDT/SOLUSDT).
-# Re-run after major data changes: make buibui-backtest CONFIG=config/signal_watch.toml SAVE=1
-#
-# Key differences vs signal_watch_weekdays.toml:
-#   - hammer/morning_evening_star 4h are NOW POSITIVE (Mon/Fri were polluting weekdays)
-#   - pin_bar 4h also positive (+0.40R) — unlocked from strategy_timeframes below
-#   - trend_day and orb now have clear edge — added overrides
-#   - bos 4h excluded anyway; all active TFs (15m/1h) improve at 3.0R
+# T13: TF-15m / TF-1h overrides stripped (TFs dropped). Per-symbol BTC/ETH/SOL
+# overrides stripped (crypto symbols out of scope). 4h/1d crypto-derived values
+# kept as a starting guess; T14 WFO overwrites with equity-derived numbers.
 [strategy_params.engulfing]
 tp_r = 3.0                    # fallback
-tp_r_15m = 4.0                # sweep peak: cross-symbol +0.24R (1466 trades)
-tp_r_1h  = 4.0                # sweep peak: cross-symbol +0.41R (384 trades)
-tp_r_4h = 3.0                 # WFO OOS (tue_thu): BTC+1.132R (2026-04-14); was 3.5
-
-[strategy_params.engulfing.SOLUSDT]
-tp_r_4h = 2.5                 # WFO OOS (tue_thu): +0.700R (2026-04-14); was 4.0
+tp_r_4h = 3.0                 # was BTC WFO OOS (tue_thu); revisit in T14
 
 [strategy_params.pin_bar]
 tp_r = 3.0                    # fallback
-# tp_r_15m removed — let directional from base apply (tp_r_long=5.0 / tp_r_short=3.0); combined plateau 3.0-4.0R (+0.11R)
-tp_r_1h = 3.0                 # WFO OOS (tue_thu): BTC+0.283R (2026-04-14); was 3.5; see per-symbol for ETH/SOL
-tp_r_4h = 4.5                 # sweep peak: +0.40R (140 trades) — confirmed
-tp_r_1d = 4.0                 # WFO OOS (tue_thu): BTC+2.283R n=4; SOL see per-symbol override
-
-[strategy_params.pin_bar.ETHUSDT]
-tp_r_1h = 4.5                 # WFO OOS (tue_thu): +0.450R (2026-04-14); diverges from BTC 3.0R
-
-[strategy_params.pin_bar.SOLUSDT]
-tp_r_1h = 2.5                 # WFO OOS (tue_thu): +0.459R (2026-04-14); diverges from BTC 3.0R
-tp_r_1d = 2.5                 # WFO OOS (tue_thu): +1.575R (2026-04-14); diverges from global 4.0R
+tp_r_4h = 4.5                 # was crypto sweep peak; revisit in T14
+tp_r_1d = 4.0                 # was BTC WFO OOS (tue_thu); revisit in T14
 
 [strategy_params.hammer_hanging_man]
-tp_r = 4.0                    # WFO cross-symbol: BTC/ETH/SOL all positive at 4.0 (15m+1h)
-tp_r_1h = 5.0                 # sweep peak: cross-symbol +0.18R (298 trades); monotonic but per-symbol verified
-tp_r_1d = 3.0                 # WFO OOS: BTC+0.550R n=5 (global 4.0 was overfit; ETH/SOL too thin)
-
-[strategy_params.hammer_hanging_man.ETHUSDT]
-tp_r_1h = 5.0                 # F5 WFO: ETH 1h optimal at 5.0R (confirmed by sweep)
-
-[strategy_params.hammer_hanging_man.SOLUSDT]
-tp_r_4h = 3.0                 # WFO OOS (tue_thu): +0.450R (2026-04-14); global 4.0R was overfit for SOL 4h
+tp_r = 4.0                    # fallback (crypto cross-symbol)
+tp_r_1d = 3.0                 # was BTC WFO OOS; revisit in T14
 
 [strategy_params.doji]
 tp_r = 3.0                    # fallback
-tp_r_15m = 4.5                # sweep peak: +0.45R (4h excluded; 15m 185 trades)
-tp_r_1h  = 3.0                # sweep peak: +0.69R (confirmed; 39 trades)
-# tp_r_4h removed — doji excluded from 4h via strategy_timeframes (best 1.5R=+0.04R, degraded)
-volume_suppress = true        # A14b: normal-vol wins Δ=+0.24R (low +0.26R vs normal +0.50R)
-
-[strategy_params.doji.BTCUSDT]
-tp_r_15m = 3.5                # F5 WFO: BTC 15m optimal at 3.5R (tighter than cross-symbol 4.0)
-
-[strategy_params.doji.ETHUSDT]
-tp_r_15m = 5.0                # WFO OOS (tue_thu): +0.371R (2026-04-14); was 4.5
+volume_suppress = true        # A14b crypto finding; revisit in T14
 
 [strategy_params.inside_bar]
 tp_r = 3.0                    # fallback
-tp_r_4h = 3.5                 # sweep peak: cross-symbol +0.23R (172 trades)
-
-[strategy_params.inside_bar.ETHUSDT]
-tp_r_15m = 4.0                # WFO OOS (tue_thu): +0.184R (2026-04-14); global fallback was 3.0R
+tp_r_4h = 3.5                 # was crypto sweep peak; revisit in T14
 
 [strategy_params.morning_evening_star]
 tp_r = 3.0                    # fallback for 1d
-tp_r_15m = 3.5                # WFO BTC 15m OOS +0.339R (162 trades)
-tp_r_1h  = 4.0                # sweep peak: cross-symbol +0.19R (713 trades); was 3.5
-tp_r_4h  = 5.0                # sweep peak: cross-symbol +0.60R (175 trades), per-symbol consistent; was 2.5
-
-[strategy_params.morning_evening_star.BTCUSDT]
-tp_r_15m = 3.0                # WFO OOS (tue_thu): +0.229R (2026-04-14); was 3.5
-
-[strategy_params.morning_evening_star.ETHUSDT]
-tp_r_15m = 4.0                # F5 WFO: ETH 15m optimal at 4.0R
+tp_r_4h  = 5.0                # was crypto sweep peak; revisit in T14
 
 [strategy_params.fib_golden_zone]
-tp_r_4h = 3.5                 # sweep peak: cross-symbol +0.85R (31 trades); was 3.0
-adr_exempt = true             # BOS + retracement pullback entry — continuation strategy, same case as bos/smt
-volume_suppress = true        # A14b: normal-vol wins Δ=+0.11R (low -0.22R vs normal -0.11R)
-
-[strategy_params.fib_golden_zone.ETHUSDT]
-tp_r_1h = 4.5                 # F5 WFO: ETH 1h optimal at 4.5R
+tp_r_4h = 3.5                 # was crypto sweep peak; revisit in T14
+adr_exempt = true             # BOS + retracement pullback entry — continuation strategy
+volume_suppress = true        # A14b crypto finding; revisit in T14
 
 [strategy_params.bos]
-tp_r = 3.0                    # 15m+0.18R, 1h+0.22R (4h excluded via strategy_timeframes)
+tp_r = 3.0                    # was crypto-calibrated; revisit in T14
 adr_exempt = true             # breakout — fires in continuation direction; ADR gate degrades it
 
 [strategy_params.trend_day]
 tp_r = 3.0                    # fallback
-tp_r_4h = 3.5                 # WFO OOS: BTC+0.217R ETH+0.041R SOL+0.120R n=52-65 (was 5.0 overfit); BTC see per-symbol
-tp_r_1d = 4.5                 # sweep peak: +0.26R (45 trades, 23%WR); was missing (used 3.0R → +0.04R)
-
-[strategy_params.trend_day.BTCUSDT]
-tp_r_4h = 5.0                 # WFO OOS (tue_thu): +0.426R (2026-04-14); ETH/SOL diverge (1.0R/1.5R)
+tp_r_4h = 3.5                 # was crypto WFO OOS; revisit in T14
+tp_r_1d = 4.5                 # was crypto sweep peak; revisit in T14
 
 [strategy_params.orb]
-tp_r = 3.0                    # fallback for 1d
-tp_r_1h = 4.5                 # TP sweep peak: cross-symbol +0.17R (183 trades); was 3.0=+0.14R
-tp_r_4h = 5.0                 # TP sweep peak: cross-symbol +0.26R (119 trades); was 3.0=+0.17R
+tp_r = 3.0                    # fallback
+tp_r_4h = 5.0                 # was crypto TP sweep peak; revisit in T14 with equity data
 
 [strategy_params.eqh_eql]
-tp_r_1h = 2.5                 # WFO OOS (tue_thu): BTC+1.18R SOL+0.24R (2026-04-14); was 5.0 from unfiltered WFO
 adr_exempt = true             # liquidity sweep — fires at structure extremes in continuation direction
-
-[strategy_params.eqh_eql.BTCUSDT]
-tp_r_1h = 2.5                 # WFO OOS (tue_thu): +1.182R (2026-04-14); was 3.5
 
 [strategy_params.ema]
 tp_r = 3.0                    # spec §6 default; tune per-TF after WFO sweep
 
-# liquidity_sweep 1h re-audit 2026-05-13 (tue_thu, since 2025-09-12, F9 floor on):
-#   BTC OOS +0.213R @ tp_r=1.5 (n=51) · SOL OOS +0.133R @ tp_r=1.0 (n=51) · ETH OOS -0.068R no edge (n=53)
-#   Aggregate (n=156) +0.089R @ tp_r=1.0 — passes +0.05R bar. ETH suppressed by min_avg_r=0.0 live gate.
 [strategy_params.liquidity_sweep]
-atr_sl_floor_1h = true          # F9: widen tight structural SL to max(structural, 2.5×ATR14)
-atr_sl_multiplier_1h = 2.5
-tp_r_1h = 1.0                   # SOL OOS pick (cross-symbol default for 1h)
+# atr_sl_floor / atr_sl_multiplier inherited as crypto-calibrated; T14 reviews for equity.
 
-[strategy_params.liquidity_sweep.BTCUSDT]
-tp_r_1h = 1.5                   # 1h re-audit OOS: BTC +0.213R @ 1.5R (diverges from SOL 1.0R)
-
-# ETHUSDT 1h: -0.068R OOS (n=53, tue_thu) — no edge across tp_r ∈ {1.0,1.5,2.0}.
-# Hard-mode min_avg_r=0.0 gate suppresses at runtime. True per-symbol TF exclusion not yet supported.
-[strategy_params.liquidity_sweep.ETHUSDT]
-# No param override — ETH 1h relies on hard-mode backtest gate to suppress.
-
-# marubozu volume_suppress flags live in strategy_params.toml (base).
-# backtest and bias sections also live in strategy_params.toml (base).
+# backtest and bias sections live in strategy_params.toml (base).
 # Uncomment below to override specific backtest options for this config:
 # [backtest]
 # save_results = true
 # volume_suppress = false
-# liq_sweep_use_fib = true
-# liq_sweep_fib_range_close = false
