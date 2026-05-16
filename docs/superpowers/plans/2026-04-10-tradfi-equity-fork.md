@@ -1431,7 +1431,7 @@ to open). This requires making the param functional again.
 
 **No credentials needed for data layer** — yfinance is unauthenticated. Telegram bot tokens are still needed for any alert path, but optional for this smoke test (defer to T12 work).
 
-- [ ] **Step 1: Sanity-check yfinance reachability**
+- [x] **Step 1: Sanity-check yfinance reachability**
 
   Confirm the network + yfinance install work before running anything heavier:
 
@@ -1441,7 +1441,9 @@ to open). This requires making the param functional again.
 
   Expected: 5 rows of recent AAPL daily OHLCV printed. If this fails (rate-limit, geo-block, Yahoo schema break), every other step will too — investigate before continuing.
 
-- [ ] **Step 2: Run the full test suite**
+  **Result (2026-05-16)**: ✓ 5 rows returned, fresh through 2026-05-15. No network or schema issues.
+
+- [x] **Step 2: Run the full test suite**
 
   ```bash
   make test
@@ -1449,52 +1451,61 @@ to open). This requires making the param functional again.
 
   Expected: all tests pass. Fix any remaining import errors (likely culprits: leftover `binance` / `alpaca` imports, stale `vwap` column references in tests).
 
-- [ ] **Step 3: Backfill AAPL daily candles**
+  **Result (2026-05-16)**: ✓ 991 passing / 0 failures / 0 errors in 14.33s on fresh `main` at 929e20c. Three test files skipped via PR #18 paper-over pending T16-full (`test_outcome_backfill.py`, `test_stats_lib.py`, `test_web_*.py`).
+
+- [x] **Step 3: Backfill AAPL daily candles**
 
   ```bash
-  poetry run python [BOTNAME].py sync --symbol AAPL --timeframe 1d --since 2023-01-01
+  poetry run python wifey.py analytics backfill --symbols AAPL --timeframes 1d --since 2023-01-01
   ```
 
   Expected: candles stored in `analytics.db`. Spot-check via DuckDB CLI: `SELECT COUNT(*) FROM ohlcv WHERE symbol = 'AAPL' AND timeframe = '1d';` should be ≥ 500 rows.
 
-- [ ] **Step 4: Backfill AAPL 4h candles (validates resample path)**
+  **Result (2026-05-16)**: ✓ 845 daily rows stored (≥500). `1d` and `1wk` could go back to AAPL's IPO (1980-12) via yfinance — `--since 2023-01-01` is well inside the limit; widen for T14 statistical power.
+
+- [x] **Step 4: Backfill AAPL 4h candles (validates resample path)**
 
   ```bash
-  poetry run python [BOTNAME].py sync --symbol AAPL --timeframe 4h --since 2024-01-01
+  poetry run python wifey.py analytics backfill --symbols AAPL --timeframes 4h --since 2023-01-01
   ```
 
-  Expected: 4h candles stored. **Key validation** — the resample from 1h→4h must produce bars anchored to 13:30 UTC. Spot-check: `SELECT MIN(EXTRACT('hour' FROM make_timestamp(open_time * 1000))) FROM ohlcv WHERE symbol = 'AAPL' AND timeframe = '4h';` — values should be {1, 5, 9, 13, 17, 21} (the 4h grid offset by 13:30 minutes — actually just check the minute portion is 30).
+  Expected: 4h candles stored. **Key validation** — the resample from 1h→4h must produce bars anchored to 13:30 UTC. Spot-check: `EXTRACT('minute' FROM to_timestamp(open_time / 1000)) FROM ohlcv WHERE symbol = 'AAPL' AND timeframe = '4h' GROUP BY 1` — should return `{30}` only.
 
-- [ ] **Step 5: Run a backtest on AAPL 1d**
+  **Result (2026-05-16)**: ✓ 994 rows, all minutes = `:30`, hours = `{13, 17}` UTC (13:30 and 17:30 bars per RTH session). **Caveat**: earliest 4h bar = 2024-05-16, not 2023-01-01 — yfinance free tier caps 1h intraday history to ~730 days, so the 1h→4h resample is capped regardless of `--since`. This is the documented Polygon-$29 trigger; T14 will hit it before T11 does.
+
+- [x] **Step 5: Run a backtest on AAPL 1d**
 
   ```bash
-  poetry run python [BOTNAME].py backtest --symbol AAPL --timeframe 1d --days 365
+  poetry run python wifey.py backtest --symbol AAPL --strategy wick_fill --interval 1d --days 365
   ```
 
   Expected: backtest results printed; no crash. **Expect ratings to be poor** — crypto `tp_r` / `atr_sl_multiplier` defaults don't transfer to equities. This is T14's job to fix, not Task 11's.
 
-- [ ] **Step 6: Run the signal scanner**
+  **Result (2026-05-16)**: ✓ Engine ran end-to-end on `wick_fill` × AAPL 1d × 365d → 99 closed trades, 27.3% WR, +0.02R avg, +2.00R total, -12.00R max DD. Numbers are poor (as predicted), no crash, confirms the backtest pipeline works on equity OHLCV.
+
+- [x] **Step 6: Run the signal scanner**
 
   ```bash
-  poetry run python [BOTNAME].py scan --symbol AAPL --timeframe 1d
+  poetry run python wifey.py signal test --symbol AAPL --timeframe 1d 4h --lookback 200
   ```
 
   Expected: signals printed or "no signals"; no crash. If alerts are wired (T12 complete), Telegram should receive messages on both channels.
 
-- [ ] **Step 7: Start the web dashboard**
+  **Result (2026-05-16)**: ✓ 18 strategies × 2 TFs × 200 candles ran clean, **26 signals fired** on AAPL (wick_fill, marubozu, liquidity_sweep, fvg, bos, eqh_eql, order_block, engulfing, pin_bar, inside_bar, hammer_hanging_man, doji, morning_evening_star, fib_golden_zone, ema, etc.). Star ratings populate from `confidence_ratings` table; alert formatter renders SL/TP/R, candle warnings ("NY Kill Zone", prior-range, equal-highs/lows), and backtest context lines without error. Telegram not exercised (T12 scope).
+
+- [ ] **Step 7: Start the web dashboard** ⏸ blocked until T16-full
 
   ```bash
-  poetry run python [BOTNAME].py web
+  poetry run python wifey.py web
   ```
 
   Visit `http://localhost:8000`. Expected: dashboard loads, Chart tab shows AAPL with daily candles. Positions tab should be **absent** (T16) — if it shows, that's a UI-hygiene leftover.
 
-- [ ] **Step 8: Final commit**
+  **Status (2026-05-16)**: Skipped per CI-skip stop-and-ask gate — `web/api/routers/*.py` all import `utils.binance_client` (deleted in T1) at module top and crash on import. PR #18 papers this over for lint/mypy/pytest; full rewire is T16-full scope.
 
-  ```bash
-  git add -A
-  git commit -m "chore: smoke test passed — equity fork operational on AAPL 1d + 4h"
-  ```
+- [x] **Step 8: Final commit**
+
+  Branch `feat/aapl-smoke-test-t11` documents the run via the plan checkbox updates above. No source code changes (verification-only task).
 
 **What this smoke test does NOT cover (handled by later tasks):**
 
