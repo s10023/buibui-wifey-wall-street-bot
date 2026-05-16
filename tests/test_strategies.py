@@ -193,11 +193,19 @@ class TestDetectMarubozuRetest:
 
 
 class TestDetectOrbBreakout:
-    """Tests for the 00:00 UTC daily-anchor ORB implementation.
+    """Tests for the 13:30 UTC RTH-session-anchor ORB implementation.
 
-    _hourly_ts(N) returns 2024-01-01 00:00 UTC + N hours, so all offsets
-    0–23 fall on the same calendar day (2024-01-01).  Offsets 24+ land on
-    2024-01-02 and are used for multi-day / dedup tests.
+    Bars are partitioned into US trading sessions whose open is 13:30 UTC.
+    Each bar's session date is its UTC timestamp shifted back by 13:30 hours
+    and rounded to a date — so any bar in [13:30 UTC day N, 13:30 UTC day N+1)
+    belongs to session N.
+
+    _hourly_ts(N) returns 2024-01-01 00:00 UTC + N hours. Offsets 0–23 share
+    one wall-clock day but they ALL precede the 13:30 UTC session open on
+    2024-01-01, so they map to the prior session date (2023-12-31). This is
+    intentional — the existing tests only care about within-session grouping
+    and per-session dedup, not the absolute session label. Offsets 24+ cross
+    into 2024-01-02 UTC and land in the next session.
     """
 
     def test_returns_empty_when_too_few_candles(self) -> None:
@@ -318,6 +326,75 @@ class TestDetectOrbBreakout:
         ]
         df = _make_ohlcv(rows)
         assert detect_orb_breakout(df, range_candles=1).empty
+
+
+class TestOrbEquitySessionAnchor:
+    """Tests that ORB groups bars by US RTH session (13:30 UTC open), not by UTC day."""
+
+    def test_range_built_from_first_two_rth_bars(self) -> None:
+        # 13:30, 14:30, 15:30 UTC — three bars inside one RTH session.
+        # First two form the range [88, 115], third closes at 116 → long.
+        rows = [
+            _candle(
+                _hourly_ts(13) + 30 * 60_000, 100, 110, 90, 105
+            ),  # 13:30 UTC, h=110
+            _candle(
+                _hourly_ts(14) + 30 * 60_000, 105, 115, 88, 108
+            ),  # 14:30 UTC, h=115, l=88
+            _candle(
+                _hourly_ts(15) + 30 * 60_000, 116, 120, 113, 116
+            ),  # 15:30 UTC, close>115
+        ]
+        df = _make_ohlcv(rows)
+        result = detect_orb_breakout(df, range_candles=2)
+        assert len(result) == 1
+        assert result.iloc[0]["direction"] == "long"
+        assert float(result.iloc[0]["sl_price"]) == pytest.approx(88.0)
+
+    def test_premarket_bar_belongs_to_prior_session(self) -> None:
+        # A bar at 12:30 UTC on Jan 2 falls BEFORE the 13:30 UTC session-open on
+        # Jan 2 → it belongs to the Jan 1 session. So grouping a 12:30 bar with
+        # 13:30/14:30/15:30 bars on the same calendar day should split them into
+        # two sessions: {12:30 alone, prior session} and {13:30, 14:30, 15:30}.
+        # The 12:30 single bar cannot form a range; the 13:30+ session can.
+        # Net: exactly one long signal from the 13:30 session.
+        ms_30m = 30 * 60_000
+        rows = [
+            # Prior-session tail bar (premarket of Jan 2 wall-clock day):
+            _candle(_hourly_ts(12) + ms_30m, 50, 60, 40, 55),  # 12:30 UTC Jan 1
+            # New session opens 13:30 UTC Jan 1:
+            _candle(_hourly_ts(13) + ms_30m, 100, 110, 90, 105),  # 13:30 UTC
+            _candle(_hourly_ts(14) + ms_30m, 105, 115, 88, 108),  # 14:30 UTC
+            _candle(_hourly_ts(15) + ms_30m, 116, 120, 113, 116),  # 15:30 UTC → long
+        ]
+        df = _make_ohlcv(rows)
+        result = detect_orb_breakout(df, range_candles=2)
+        # The lone 12:30 bar should NOT be folded into the 13:30 session's range.
+        # If it were, the range high/low would include {60, 40} and the test would
+        # see a different SL.
+        assert len(result) == 1
+        assert result.iloc[0]["direction"] == "long"
+        assert float(result.iloc[0]["sl_price"]) == pytest.approx(88.0)
+
+    def test_sessions_split_at_13_30_utc_boundary(self) -> None:
+        # Two independent RTH sessions, each with its own long breakout.
+        # Session A: 2024-01-01 13:30, 14:30, 15:30 UTC
+        # Session B: 2024-01-02 13:30, 14:30, 15:30 UTC (= +24h offsets)
+        ms_30m = 30 * 60_000
+        rows = [
+            # Session A
+            _candle(_hourly_ts(13) + ms_30m, 100, 110, 90, 105),
+            _candle(_hourly_ts(14) + ms_30m, 104, 108, 88, 100),
+            _candle(_hourly_ts(15) + ms_30m, 111, 120, 109, 115),  # long A
+            # Session B (+24h)
+            _candle(_hourly_ts(37) + ms_30m, 200, 210, 190, 205),
+            _candle(_hourly_ts(38) + ms_30m, 204, 208, 188, 200),
+            _candle(_hourly_ts(39) + ms_30m, 211, 220, 209, 215),  # long B
+        ]
+        df = _make_ohlcv(rows)
+        result = detect_orb_breakout(df, range_candles=2)
+        long_signals = result[result["direction"] == "long"]
+        assert len(long_signals) == 2
 
 
 # ---------------------------------------------------------------------------
