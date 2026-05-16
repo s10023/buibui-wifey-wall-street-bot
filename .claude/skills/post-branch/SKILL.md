@@ -340,7 +340,7 @@ docker-compose.yml — no change needed: no new processes
 PR summary         — written to /tmp/pr-<branch>.md
 PR body            — appended "Documentation updates" section
 pre-merge          — clean | <blocker> (see Step 10a)
-handoff prompt     — written to /tmp/next-conversation-prompt.md | declined
+handoff prompt     — written to /tmp/next-conversation-prompt-wifey.md | declined
 ```
 
 Be explicit. "no change needed: internal refactor only" is useful;
@@ -382,7 +382,7 @@ Offer (don't auto-write) to draft a self-contained prompt the user can
 paste into the next conversation. Same shape as `/pr-summary` —
 **file-only output, never inline**.
 
-If the user accepts, write to `/tmp/next-conversation-prompt.md` with this
+If the user accepts, write to `/tmp/next-conversation-prompt-wifey.md` with this
 structure:
 
 ```markdown
