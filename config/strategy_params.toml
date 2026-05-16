@@ -13,22 +13,21 @@ telegram = true
 min_sl_pct = 0.005
 
 # Backtest sweep runner (make buibui-backtest) reads these top-level keys:
-days = 200              # fallback lookback window (ignored when since is set)
-since = "2025-09-12"    # canonical anchor — matches data backfill start date; overrides days
+days = 365              # fallback lookback window (ignored when since is set); equity defaults to 1y
+# T13: legacy crypto anchor "2025-09-12" dropped — equity yfinance covers years.
+# T14 (WFO + recalibrate) sets a fresh `since` anchor tied to the equity backfill window.
+# since = "2024-05-15"
 min_trades = 20         # hide combos with fewer trades in sweep table (global fallback)
-# Per-TF overrides — calibrated from backtest_runs DB (200d window).
-# Signal rate is NOT uniform across TFs; higher TFs fire less per candle:
-#   15m: ~0.0016/candle → 200×96×0.0016≈30
-#   1h:  ~0.0042/candle → 200×24×0.0042≈20
-#   4h:  ~0.0083/candle → 200×6×0.0083≈10
-#   1d:  ~0.025/candle  → 200×1×0.025 ≈5
-# To scale for a different window: new_value = base × (your_days / 200)
-#   e.g. 100d → 15m=15, 1h=10, 4h=5, 1d=3
-min_trades_15m = 30
-min_trades_1h  = 20
+# Per-TF overrides — equity TFs only (4h | 1d | 1wk).
+# Signal rate scales by candles-per-year:
+#   4h:  ~6.5/day × 252 RTH days ≈ 1638 candles/yr
+#   1d:  252 candles/yr
+#   1wk: 52 candles/yr
+# Thresholds are first-pass; T14 WFO refines per equity backtest results.
 min_trades_4h  = 10
 min_trades_1d  = 5
-fee_pct = 0.0005        # 0.05% taker fee per leg; set 0.0 to disable
+min_trades_1wk = 2
+fee_pct = 0.0          # T13: equity fees disabled until broker fee model lands (Phase B)
 
 # F8 bias layer — identical across all three main configs.
 [bias]
@@ -128,13 +127,12 @@ cross_tf_window_hours = 8.0
 [backtest]
 mode = "hard"
 cache_enabled = true
-days = 200              # fallback (ignored when since is set)
-since = "2025-09-12"    # matches data backfill anchor; overrides days
+days = 365              # fallback (equity 1y baseline); T14 may switch to `since` anchor
+# since = "2024-05-15"  # T14 sets equity backfill-anchored start date
 min_trades = 12
-min_trades_15m = 20
-min_trades_1h  = 12
 min_trades_4h  = 5
 min_trades_1d  = 2
+min_trades_1wk = 1
 min_avg_r = 0.0
 
 # Per-strategy flags consistent across all three main configs.

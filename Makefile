@@ -200,18 +200,16 @@ wifey-recalibrate:
 		$(if $(DAY_FILTER),--day-filter $(DAY_FILTER),) \
 		$(if $(APPLY),--apply,)
 
-## Routine DB update: run all-config backtests + recalibrate + regression update
+## Routine DB update: run both signal_watch backtests + recalibrate + regression update
 db-update-backtest:
-	@echo "📊 Running backtest for all 3 signal_watch configs (SINCE=2025-09-12)..."
-	$(MAKE) wifey-backtest CONFIG=config/signal_watch.toml SINCE=2025-09-12 SAVE=1
-	$(MAKE) wifey-backtest CONFIG=config/signal_watch_weekdays.toml SINCE=2025-09-12 SAVE=1
-	$(MAKE) wifey-backtest CONFIG=config/signal_watch_all.toml SINCE=2025-09-12 SAVE=1
+	@echo "📊 Running backtest for both signal_watch configs..."
+	$(MAKE) wifey-backtest CONFIG=config/signal_watch.toml SAVE=1
+	$(MAKE) wifey-backtest CONFIG=config/signal_watch_weekdays.toml SAVE=1
 
 db-update-recalibrate:
-	@echo "⭐ Recalibrating all 3 signal_watch configs..."
+	@echo "⭐ Recalibrating both signal_watch configs..."
 	$(MAKE) wifey-recalibrate CONFIG=config/signal_watch.toml APPLY=1
 	$(MAKE) wifey-recalibrate CONFIG=config/signal_watch_weekdays.toml APPLY=1
-	$(MAKE) wifey-recalibrate CONFIG=config/signal_watch_all.toml APPLY=1
 
 db-update: db-update-backtest db-update-recalibrate regression-update
 	@echo "✅ Routine DB update complete. Review: git diff tests/fixtures/golden_*.json"

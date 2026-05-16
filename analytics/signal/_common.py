@@ -38,8 +38,14 @@ def _fmt_hold(hours: float) -> str:
 
 
 def parse_timeframe_secs(tf: str) -> int:
-    """Convert a timeframe string to seconds (e.g. '4h' → 14400, '15m' → 900)."""
-    units = {"m": 60, "h": 3600, "d": 86400}
+    """Convert a timeframe string to seconds (e.g. '4h' → 14400, '1wk' → 604800).
+
+    Equity timeframes use yfinance's `1wk` (weekly) suffix; treat it the same as
+    a `1w` token for parsing purposes.
+    """
+    units = {"m": 60, "h": 3600, "d": 86400, "w": 604800}
+    if tf.endswith("wk"):
+        tf = tf[:-1]  # "1wk" → "1w"
     return int(tf[:-1]) * units[tf[-1]]
 
 

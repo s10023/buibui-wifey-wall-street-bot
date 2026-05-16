@@ -92,7 +92,7 @@ Each Makefile `wifey-*` target wraps the equivalent CLI invocation.
 - `.claude/context/` — long-form module references (`analytics.md`, `signals.md`, `web.md`) split out to keep this file lean
 - `config/coins.json` — legacy per-symbol crypto config (gitignored; see `coins.json.example`).
 - `config/stocks.json` — Phase A US-equities watchlist (gitignored; see `stocks.json.example`). 13 symbols: AAPL/MSFT/GOOGL/AMZN/META/ORCL/ADBE/NVDA/AMD/TSLA/MSTR/SPY/QQQ. Schema is `{ticker: {sl_pct: float in (0, 1.0)}}` validated by `utils.config_validation.validate_stocks_config`.
-- `config/strategy_params.toml` — shared base config inherited via `extends = "strategy_params.toml"` by `signal_watch.toml`, `signal_watch_all.toml`, `signal_watch_weekdays.toml`. Contains `[bias]`, `[backtest]` defaults, per-strategy `volume_suppress` / `volume_spike_boost` flags, and `tp_r_long` / `tp_r_short` directional overrides. `conservative.toml` / `scalping.toml` / `swing.toml` do **not** extend it — they carry their own `[bias]` / `[backtest]` values.
+- `config/strategy_params.toml` — shared base config inherited via `extends = "strategy_params.toml"` by `signal_watch.toml` and `signal_watch_weekdays.toml`. Contains `[bias]`, `[backtest]` defaults, per-strategy `volume_suppress` / `volume_spike_boost` flags, and `tp_r_long` / `tp_r_short` directional overrides. T13 (2026-05-17) removed the parent crypto era's `signal_watch_all.toml`, `conservative.toml`, `scalping.toml`, `swing.toml`, and `backtest_sample.toml`; the two surviving signal_watch TOMLs cover the equity surface.
 
 ## Code Style
 

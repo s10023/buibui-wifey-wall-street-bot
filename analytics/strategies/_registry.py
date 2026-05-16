@@ -100,21 +100,22 @@ STRATEGY_REGISTRY: dict[str, StrategySpec] = {
         strategy_type="session",
         name="orb",
         description=(
-            "Opening Range Breakout: high/low of the first 2 candles of each UTC day"
-            " defines the range; a breakout signal fires on any later candle that closes"
-            " outside the range (one signal per day per direction)."
+            "Opening Range Breakout: high/low of the first candle of each US RTH"
+            " session (13:30 UTC anchor) defines the range; a breakout signal fires"
+            " on any later candle in the same session that closes outside the range"
+            " (one signal per session per direction)."
         ),
         params=[
             ParamSpec(
                 "range_candles",
                 "int",
-                2,
+                1,
                 1,
                 4,
-                "Number of candles from 00:00 UTC that form the opening range.",
+                "Number of candles from the 13:30 UTC session open that form the opening range.",
             ),
         ],
-        confidence={"15m": 1, "1h": 2, "4h": 2},
+        confidence={"4h": 2, "1d": 2},
     ),
     "liquidity_sweep": StrategySpec(
         name="liquidity_sweep",

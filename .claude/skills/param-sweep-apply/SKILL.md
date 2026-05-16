@@ -51,7 +51,6 @@ Either:
 WFO sweeps are run against a specific config (usually `signal_watch.toml` with `day_filter = tue_thu`).
 - Apply findings to `signal_watch.toml` (tue_thu) freely
 - Apply to `signal_watch_weekdays.toml` only for TFs that were already active there
-- Do NOT apply to `signal_watch_all.toml` (no day filter — different distribution)
 
 ## Execution steps
 

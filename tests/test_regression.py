@@ -39,7 +39,6 @@ FIXTURE_DIR = Path("tests/fixtures")
 CONFIGS: list[tuple[str, str]] = [
     ("signal_watch", "config/signal_watch.toml"),
     ("weekdays", "config/signal_watch_weekdays.toml"),
-    ("all", "config/signal_watch_all.toml"),
 ]
 
 

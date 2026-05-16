@@ -26,19 +26,17 @@ three signal_watch configs. Use it whenever:
 
 ```
 make db-update
-  ├─ db-update-backtest      backtest 3 configs with SINCE=2025-09-12 SAVE=1
+  ├─ db-update-backtest      backtest both signal_watch configs with SAVE=1
   │    ├─ buibui-backtest CONFIG=config/signal_watch.toml          SAVE=1
-  │    ├─ buibui-backtest CONFIG=config/signal_watch_weekdays.toml SAVE=1
-  │    └─ buibui-backtest CONFIG=config/signal_watch_all.toml      SAVE=1
-  ├─ db-update-recalibrate   recalibrate 3 configs with APPLY=1
+  │    └─ buibui-backtest CONFIG=config/signal_watch_weekdays.toml SAVE=1
+  ├─ db-update-recalibrate   recalibrate both configs with APPLY=1
   │    ├─ buibui-recalibrate CONFIG=config/signal_watch.toml          APPLY=1
-  │    ├─ buibui-recalibrate CONFIG=config/signal_watch_weekdays.toml APPLY=1
-  │    └─ buibui-recalibrate CONFIG=config/signal_watch_all.toml      APPLY=1
+  │    └─ buibui-recalibrate CONFIG=config/signal_watch_weekdays.toml APPLY=1
   └─ regression-update       refresh tests/fixtures/golden_*.json
 ```
 
-Anchor date `2025-09-12` is the stable backfill window — use it for every saved
-run so backtest results are comparable across time.
+`signal_watch.toml` (tue_thu) + `signal_watch_weekdays.toml` (weekdays) are the
+two production day_filter profiles — `make db-update` keeps both calibrated.
 
 ## CLI
 

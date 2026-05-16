@@ -121,4 +121,3 @@ make lint-py && make typecheck && make test
 | `analytics/backtest_runner.py` | Passes `cfg.effective_volume_suppress(strategy)` to every `run_backtest()` call |
 | `config/signal_watch.toml` | Per-strategy `volume_suppress` in each `[strategy_params.X]` block |
 | `config/signal_watch_weekdays.toml` | Same — weekdays-specific decisions |
-| `config/signal_watch_all.toml` | Same — all-days decisions (includes wick_fill=true) |

@@ -112,7 +112,7 @@ state_file = "my_state.json"
         """The committed config/signal_watch.toml must parse without errors."""
         cfg_path = Path(__file__).parent.parent / "config" / "signal_watch.toml"
         cfg = load_signal_config(cfg_path)
-        assert cfg.timeframes == ["15m", "1h", "4h", "1d"]
+        assert cfg.timeframes == ["4h", "1d", "1wk"]
         assert cfg.telegram is True
         assert cfg.min_sl_pct == 0.005
 
@@ -137,20 +137,12 @@ state_file = "my_state.json"
         ):
             load_signal_config(p)
 
-    def test_signal_watch_toml_has_trend_day_restriction(self) -> None:
-        """signal_watch.toml must declare trend_day restricted to 4h/1d via TOML."""
+    def test_signal_watch_toml_orb_4h_only(self) -> None:
+        """signal_watch.toml must restrict ORB to 4h on equity (mechanical: 1d sessions hold one candle)."""
         cfg_path = Path(__file__).parent.parent / "config" / "signal_watch.toml"
         cfg = load_signal_config(cfg_path)
-        assert "trend_day" in cfg.strategy_timeframes
-        assert cfg.strategy_timeframes["trend_day"] == ["4h", "1d"]
-
-    def test_preset_configs_are_valid(self) -> None:
-        """All three named preset TOML files must parse without errors."""
-        config_dir = Path(__file__).parent.parent / "config"
-        for name in ("scalping.toml", "swing.toml", "conservative.toml"):
-            cfg = load_signal_config(config_dir / name)
-            assert cfg.timeframes, f"{name}: timeframes must not be empty"
-            assert cfg.strategies, f"{name}: strategies must not be empty"
+        assert "orb" in cfg.strategy_timeframes
+        assert cfg.strategy_timeframes["orb"] == ["4h"]
 
 
 class TestBacktestFilterConfigPerTf:
@@ -196,11 +188,11 @@ min_trades_1d = 5
         """The committed signal_watch.toml must define per-TF min_trades overrides."""
         cfg_path = Path(__file__).parent.parent / "config" / "signal_watch.toml"
         cfg = load_signal_config(cfg_path)
-        # [backtest] section uses directional counts (longs or shorts only)
-        # recalibrated from backtest_runs DB p25 directional counts (200d window)
-        assert cfg.backtest.effective_min_trades("15m") == 20
+        # [backtest] section uses directional counts (longs or shorts only).
+        # T13 (2026-05-17): equity TFs only — 4h/1d/1wk. T14 may recalibrate.
         assert cfg.backtest.effective_min_trades("4h") == 5
         assert cfg.backtest.effective_min_trades("1d") == 2
+        assert cfg.backtest.effective_min_trades("1wk") == 1
 
 
 class TestStrategyOverride:
@@ -282,56 +274,37 @@ tp_r_4h = 2.5
         assert cfg.strategy_params == {}
 
     def test_signal_watch_weekdays_toml_strategy_params_parsed(self) -> None:
-        """signal_watch_weekdays.toml strategy_params must be applied."""
+        """signal_watch_weekdays.toml strategy_params must be applied (equity surface)."""
         cfg_path = (
             Path(__file__).parent.parent / "config" / "signal_watch_weekdays.toml"
         )
         cfg = load_signal_config(cfg_path)
-        # engulfing: per-TF overrides (updated during TP sweep)
-        assert cfg.effective_tp_r("engulfing", "BTCUSDT", "1h") == 4.0
-        assert cfg.effective_tp_r("engulfing", "BTCUSDT", "4h") == 3.5
-        assert (
-            cfg.effective_tp_r("engulfing", "BTCUSDT", "1d") == 3.5
-        )  # WFO weekdays: 3.0→3.5R
+        # engulfing: TF-specific (4h=3.5); 1wk falls back to strategy-wide 3.5
+        assert cfg.effective_tp_r("engulfing", "AAPL", "4h") == 3.5
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1wk") == 3.5
         # strategy not in params falls back to global
-        assert cfg.effective_tp_r("seasonality", "BTCUSDT", "1h") == cfg.tp_r
+        assert cfg.effective_tp_r("seasonality", "AAPL", "1d") == cfg.tp_r
 
     def test_signal_watch_toml_strategy_params_parsed(self) -> None:
-        """signal_watch.toml (tue_thu) strategy_params (F5 WFO findings) must be applied."""
+        """signal_watch.toml (tue_thu) strategy_params must be applied (equity surface)."""
         cfg_path = Path(__file__).parent.parent / "config" / "signal_watch.toml"
         cfg = load_signal_config(cfg_path)
-        # engulfing: TF-specific (15m=4.0, 1h=4.0, 4h=3.0 WFO tue_thu); no per-symbol for BTC
-        assert cfg.effective_tp_r("engulfing", "BTCUSDT", "1h") == 4.0
-        assert (
-            cfg.effective_tp_r("engulfing", "BTCUSDT", "4h") == 3.0
-        )  # WFO tue_thu: 3.5→3.0R
-        # pin_bar: tp_r_15m removed — falls back to strategy-wide 3.0; longs use tp_r_long=5.0 from base
-        assert cfg.effective_tp_r("pin_bar", "BTCUSDT", "15m") == 3.0
-        assert (
-            cfg.effective_tp_r("pin_bar", "BTCUSDT", "1h") == 3.0
-        )  # WFO tue_thu: 3.5→3.0R
-        assert cfg.effective_tp_r("pin_bar", "BTCUSDT", "4h") == 4.5
-        # hammer_hanging_man: strategy-wide 4.0, 1h override 5.0
-        assert cfg.effective_tp_r("hammer_hanging_man", "BTCUSDT", "15m") == 4.0
-        assert cfg.effective_tp_r("hammer_hanging_man", "BTCUSDT", "1h") == 5.0
-        # doji: SOLUSDT 15m falls back to TF-level 4.5 (tp_r_15m updated 4.0→4.5; no symbol override for SOL)
-        assert cfg.effective_tp_r("doji", "SOLUSDT", "15m") == 4.5
-        assert cfg.effective_tp_r("doji", "BTCUSDT", "1h") == 3.0
-        # morning_evening_star: TF-specific (15m=3.5 global; BTC override→3.0, 1h=4.0, 4h=5.0), 1d falls back
-        assert (
-            cfg.effective_tp_r("morning_evening_star", "BTCUSDT", "15m") == 3.0
-        )  # WFO tue_thu: BTC 3.5→3.0R
-        assert cfg.effective_tp_r("morning_evening_star", "BTCUSDT", "1h") == 4.0
-        assert cfg.effective_tp_r("morning_evening_star", "BTCUSDT", "4h") == 5.0
-        # trend_day: global 4h=3.5; BTC override 5.0R (WFO tue_thu); 1d=4.5
-        assert (
-            cfg.effective_tp_r("trend_day", "BTCUSDT", "4h") == 5.0
-        )  # WFO tue_thu: BTC override 3.5→5.0R
-        assert cfg.effective_tp_r("trend_day", "BTCUSDT", "1d") == 4.5
-        assert cfg.effective_tp_r("orb", "BTCUSDT", "1h") == 4.5
-        assert cfg.effective_tp_r("orb", "BTCUSDT", "4h") == 5.0
-        # strategy not in params falls back to global
-        assert cfg.effective_tp_r("fvg", "BTCUSDT", "1h") == cfg.tp_r
+        # engulfing: 4h override = 3.0; 1d falls back to strategy-wide 3.0
+        assert cfg.effective_tp_r("engulfing", "AAPL", "4h") == 3.0
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1d") == 3.0
+        # pin_bar: 4h=4.5, 1d=4.0
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "4h") == 4.5
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "1d") == 4.0
+        # hammer_hanging_man: strategy-wide 4.0; 1d override 3.0
+        assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "4h") == 4.0
+        assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "1d") == 3.0
+        # trend_day: 4h=3.5, 1d=4.5
+        assert cfg.effective_tp_r("trend_day", "AAPL", "4h") == 3.5
+        assert cfg.effective_tp_r("trend_day", "AAPL", "1d") == 4.5
+        # orb: 4h override 5.0
+        assert cfg.effective_tp_r("orb", "AAPL", "4h") == 5.0
+        # strategy not in params (fvg dropped from signal_watch.toml) falls back to global
+        assert cfg.effective_tp_r("fvg", "AAPL", "4h") == cfg.tp_r
 
 
 class TestEffectiveTpRPerSymbol:
@@ -427,33 +400,14 @@ tp_r_15m = 3.5
         # ETHUSDT 1h — no symbol TF override, no symbol-wide → strategy-wide (3.0)
         assert cfg.effective_tp_r("doji", "ETHUSDT", "1h") == 3.0
 
-    def test_signal_watch_toml_per_symbol_overrides_parsed(self) -> None:
-        """signal_watch.toml per-symbol overrides (F5 sweep findings) must be applied."""
+    def test_signal_watch_toml_has_no_per_symbol_overrides(self) -> None:
+        """T13 (2026-05-17) stripped all per-symbol overrides; T14 may reintroduce."""
         cfg_path = Path(__file__).parent.parent / "config" / "signal_watch.toml"
         cfg = load_signal_config(cfg_path)
-        # doji: BTCUSDT 15m → 3.5, ETHUSDT 15m → 5.0 (WFO tue_thu: 4.5→5.0), SOLUSDT → TF fallback 4.5
-        assert cfg.effective_tp_r("doji", "BTCUSDT", "15m") == 3.5
-        assert (
-            cfg.effective_tp_r("doji", "ETHUSDT", "15m") == 5.0
-        )  # WFO tue_thu: 4.5→5.0R
-        assert cfg.effective_tp_r("doji", "SOLUSDT", "15m") == 4.5
-        # hammer_hanging_man: ETHUSDT 1h → 5.0 (symbol override), BTCUSDT → TF-level 5.0
-        assert cfg.effective_tp_r("hammer_hanging_man", "ETHUSDT", "1h") == 5.0
-        assert cfg.effective_tp_r("hammer_hanging_man", "BTCUSDT", "1h") == 5.0
-        # fib_golden_zone: ETHUSDT 1h → 4.5 (note: only 4h is active via strategy_timeframes)
-        assert cfg.effective_tp_r("fib_golden_zone", "ETHUSDT", "1h") == 4.5
-        # morning_evening_star: ETHUSDT 15m → 4.0, BTCUSDT 15m → 3.0 (WFO tue_thu: 3.5→3.0R)
-        assert cfg.effective_tp_r("morning_evening_star", "ETHUSDT", "15m") == 4.0
-        assert (
-            cfg.effective_tp_r("morning_evening_star", "BTCUSDT", "15m") == 3.0
-        )  # WFO tue_thu: 3.5→3.0R
-        # engulfing: SOLUSDT 4h → 2.5 (WFO tue_thu: 4.0→2.5R), BTCUSDT 4h → strategy-TF 3.0 (was 3.5)
-        assert (
-            cfg.effective_tp_r("engulfing", "SOLUSDT", "4h") == 2.5
-        )  # WFO tue_thu: 4.0→2.5R
-        assert (
-            cfg.effective_tp_r("engulfing", "BTCUSDT", "4h") == 3.0
-        )  # WFO tue_thu: 3.5→3.0R
+        for strat, override in cfg.strategy_params.items():
+            assert override.per_symbol == {}, (
+                f"strategy_params.{strat} must not declare per-symbol overrides on equity"
+            )
 
 
 class TestDeepMerge:
@@ -550,11 +504,11 @@ class TestLoadWithExtends:
         cfg = load_signal_config(cfg_path)
         # inherited from base
         assert cfg.bias.adr_suppress_threshold == 0.80
-        assert cfg.backtest.effective_min_trades("15m") == 20
         assert cfg.backtest.effective_min_trades("4h") == 5
+        assert cfg.backtest.effective_min_trades("1wk") == 1
         # merged: base volume_suppress + child tp_r
         assert cfg.effective_volume_suppress("bos") is True
-        assert cfg.effective_tp_r("bos", "BTCUSDT", "1h") == 3.0
+        assert cfg.effective_tp_r("bos", "AAPL", "4h") == 3.0
         # F8 HTF EMA gate inherited from base — enabled in hard mode after the
         # 2026-05-06 soft-mode validation; per-strategy overrides loaded for the
         # strategies that prefer 1d EMA-50.

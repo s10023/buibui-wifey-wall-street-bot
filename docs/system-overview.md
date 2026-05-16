@@ -132,11 +132,10 @@ Symbols watched (default): all from `config/coins.json`. Common: BTCUSDT, ETHUSD
 | `ote_entry` | fib | — | — | — | Registered, never enabled. Audit 2026-05-11: no-edge across all cells. |
 | `seasonality` | — | — | — | — | Not a detector — analytic only. |
 
-There are also three other configs:
+There is one sister config:
 
-- `signal_watch_all.toml` — no day filter
 - `signal_watch_weekdays.toml` — Mon–Fri
-- All three inherit from `config/strategy_params.toml` (base — F8/regime/combo/backtest config).
+- Both inherit from `config/strategy_params.toml` (base — F8/regime/combo/backtest config).
 
 ---
 
