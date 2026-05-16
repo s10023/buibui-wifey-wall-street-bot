@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-13",
+  "generated_at": "2026-05-16",
   "config": "config/signal_watch_all.toml",
   "strategies": {
     "wick_fill": {
@@ -104,36 +104,36 @@
     },
     "orb": {
       "1h": {
-        "trade_count": 124,
-        "long_trade_count": 57,
-        "short_trade_count": 67,
-        "win_rate": 0.2258,
-        "avg_r": 0.1549,
-        "total_r": 19.206,
-        "long_avg_r": 0.1626,
-        "short_avg_r": 0.1484,
-        "long_total_r": 9.2664,
-        "short_total_r": 9.9396,
-        "long_win_rate": 0.2281,
-        "short_win_rate": 0.2239,
-        "max_drawdown_r": 19.5164,
-        "recovery_factor": 0.9841
+        "trade_count": 149,
+        "long_trade_count": 68,
+        "short_trade_count": 81,
+        "win_rate": 0.1678,
+        "avg_r": -0.1541,
+        "total_r": -22.965,
+        "long_avg_r": -0.5166,
+        "short_avg_r": 0.1502,
+        "long_total_r": -35.1306,
+        "short_total_r": 12.1655,
+        "long_win_rate": 0.1029,
+        "short_win_rate": 0.2222,
+        "max_drawdown_r": 43.508,
+        "recovery_factor": -0.5278
       },
       "4h": {
-        "trade_count": 89,
-        "long_trade_count": 41,
-        "short_trade_count": 48,
-        "win_rate": 0.2135,
-        "avg_r": 0.237,
-        "total_r": 21.0904,
-        "long_avg_r": -0.1698,
-        "short_avg_r": 0.5844,
-        "long_total_r": -6.9629,
-        "short_total_r": 28.0533,
-        "long_win_rate": 0.1463,
-        "short_win_rate": 0.2708,
-        "max_drawdown_r": 20.2491,
-        "recovery_factor": 1.0415
+        "trade_count": 73,
+        "long_trade_count": 39,
+        "short_trade_count": 34,
+        "win_rate": 0.2192,
+        "avg_r": 0.2732,
+        "total_r": 19.9458,
+        "long_avg_r": -0.5816,
+        "short_avg_r": 1.2538,
+        "long_total_r": -22.6826,
+        "short_total_r": 42.6284,
+        "long_win_rate": 0.0769,
+        "short_win_rate": 0.3824,
+        "max_drawdown_r": 14.531,
+        "recovery_factor": 1.3726
       }
     },
     "liquidity_sweep": {

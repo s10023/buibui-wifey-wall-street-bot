@@ -263,7 +263,7 @@ poetry run python wifey.py backtest --symbols BTCUSDT ETHUSDT --timeframes 1h 4h
 | `funding_reversion` | Extreme positive/negative funding rate → contrarian signal | ★☆☆☆☆ |
 | `cvd_divergence` | CVD Divergence — price and buying pressure disagree at a swing extreme | ★☆☆☆☆ |
 | `order_block` | ICT Order Block — last up/down candle before displacement; entry on retest | ★☆☆☆☆ |
-| `orb` | Opening Range Breakout — first 2 candles of UTC day form the range; breakout enters | ★☆☆☆☆ |
+| `orb` | Opening Range Breakout — first N candles of US RTH session (13:30 UTC anchor) form the range; breakout enters | ★☆☆☆☆ |
 | `bos` | Break of Structure / Change of Character (BOS/CHoCH) | ★☆☆☆☆ |
 | `wick_fill` | Price revisits a significant wick zone | ★☆☆☆☆ |
 | `marubozu` | Retest of a wickless candle's open price (order block) | ★☆☆☆☆ |
