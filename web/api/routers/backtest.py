@@ -5,7 +5,6 @@ from typing import Any
 
 import duckdb
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from utils.binance_client import load_coins_config
 
 from analytics.backtest_lib import BacktestResult, run_backtest
 from analytics.backtest_runner import detect_signals_for_strategy
@@ -39,22 +38,6 @@ def _resolve_window_ms(body: BacktestRequest) -> tuple[int, int]:
         )
         return int(since_dt.timestamp() * 1000), end_ms
     return end_ms - body.days * _MS_PER_DAY, end_ms
-
-
-def _resolve_smt_secondary(body: BacktestRequest) -> str:
-    """Pick secondary symbol from request or coins.json; raise 422 if missing."""
-    secondary: str | None = body.secondary_symbol
-    if secondary is None:
-        try:
-            secondary = load_coins_config().get(body.symbol, {}).get("smt_secondary")
-        except Exception:
-            secondary = None
-    if secondary is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="smt_divergence requires secondary_symbol or smt_secondary in coins.json.",
-        )
-    return secondary
 
 
 def _result_to_response(result: BacktestResult) -> BacktestResponse:
@@ -151,10 +134,6 @@ def run_backtest_endpoint(
             detail=f"No OHLCV data for {body.symbol} {body.timeframe}. Run 'analytics backfill' first.",
         )
 
-    secondary_symbol = (
-        _resolve_smt_secondary(body) if body.strategy == "smt_divergence" else None
-    )
-
     signals = detect_signals_for_strategy(
         db,
         ohlcv,
@@ -163,7 +142,6 @@ def run_backtest_endpoint(
         body.strategy,
         start_ms,
         end_ms,
-        secondary_symbol,
     )
     if signals is None:
         raise HTTPException(
@@ -192,8 +170,6 @@ def run_backtest_endpoint(
         body.tp_r,
         body.fee_pct,
         "off",
-        0,
-        secondary_symbol,
         volume_suppress=None,
     )
     upsert_backtest_trades(db, result, run_id)

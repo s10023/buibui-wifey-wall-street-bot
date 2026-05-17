@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getOhlcv, getSignals, getZones, type CandleRow, type FundingRow, type OiRow, type SignalRow, type ZonesResponse } from "../api";
+  import { getOhlcv, getSignals, getZones, type CandleRow, type SignalRow, type ZonesResponse } from "../api";
   import { symbols } from "../stores/config";
   import { strategyNames } from "../stores/strategies";
   import { selectedSymbol, selectSymbol } from "../stores/watchlist";
@@ -25,10 +25,8 @@
     eqh_eql:              "EQH/EQL",
     ote_entry:            "OTE Entry",
     fib_golden_zone:      "Fib Zone",
-    smt_divergence:       "SMT Div",
     order_block:          "Ord Block",
     liquidity_sweep:      "Liq Sweep",
-    funding_reversion:    "Fund Rev",
     hammer_hanging_man:   "Hammer/HM",
     morning_evening_star: "M/E Star",
     ema:                  "EMA Pullback",
@@ -40,7 +38,6 @@
     Fibonacci:    ["fib_golden_zone", "ote_entry"],
     "Price Action": ["wick_fill", "marubozu", "inside_bar", "trend_day"],
     Candlestick:  ["engulfing", "pin_bar", "hammer_hanging_man", "doji", "morning_evening_star"],
-    Flow:         ["smt_divergence", "funding_reversion"],
     Session:      ["orb", "seasonality"],
     Trend:        ["ema"],
   };
@@ -58,8 +55,6 @@
   let timeframe = $state("4h");
   let days = $state(90);
   let selectedStrategies = $state<string[]>([]);
-  let showFunding = $state(false);
-  let showOI = $state(false);
 
   // Indicator toggles (C2)
   let showEMA20 = $state(false);
@@ -84,8 +79,6 @@
 
   let candles = $state<CandleRow[]>([]);
   let signals = $state<SignalRow[]>([]);
-  let funding = $state<FundingRow[] | null>(null);
-  let oi = $state<OiRow[] | null>(null);
   let zones = $state<ZonesResponse | null>(null);
   let loading = $state(false);
   let error = $state<string | null>(null);
@@ -116,7 +109,7 @@
     const start_ms = end_ms - days * 24 * 60 * 60 * 1000;
     try {
       const [ohlcvResp, sigResp, zonesResp] = await Promise.all([
-        getOhlcv({ symbol, timeframe, start_ms, end_ms, include_funding: showFunding, include_oi: showOI }),
+        getOhlcv({ symbol, timeframe, start_ms, end_ms }),
         selectedStrategies.length > 0
           ? getSignals({ symbol, timeframe, start_ms, end_ms, strategies: selectedStrategies })
           : Promise.resolve({ signals: [] }),
@@ -126,8 +119,6 @@
       ]);
       candles = ohlcvResp.candles;
       signals = sigResp.signals;
-      funding = ohlcvResp.funding;
-      oi = ohlcvResp.oi;
       zones = zonesResp ?? null;
       loaded = true;
     } catch (e) {
@@ -178,16 +169,6 @@
         <label>Days
           <input type="number" bind:value={days} min="7" max="365" onchange={() => void load()} />
         </label>
-        {#if false}<!-- Funding/OI hidden until CoinGlass API is wired -->
-        <label class="checkbox-label">
-          <input type="checkbox" bind:checked={showFunding} onchange={() => void load()} />
-          <span>Funding</span>
-        </label>
-        <label class="checkbox-label">
-          <input type="checkbox" bind:checked={showOI} onchange={() => void load()} />
-          <span>OI</span>
-        </label>
-        {/if}
       </div>
 
       <!-- C2: Indicator toggles — pill buttons matching strategy pill style -->
@@ -258,10 +239,6 @@
           {signals}
           {symbol}
           {timeframe}
-          {funding}
-          {showFunding}
-          {oi}
-          {showOI}
           {showEMA20}
           {showEMA50}
           {showEMA200}

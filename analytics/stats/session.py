@@ -1,4 +1,4 @@
-"""Session breakdown — Asia/London/NY extreme analysis (MYT hours)."""
+"""Session breakdown — US equity session extreme analysis (ET windows)."""
 
 from dataclasses import dataclass
 
@@ -11,17 +11,38 @@ from analytics.stats._common import _DOW_SHORT, _start_ms
 class SessionRow:
     """Session extreme analysis."""
 
-    session: str  # "Asia" | "London" | "NY"
-    high_pct: float  # fraction of days this session made the daily high
-    low_pct: float  # fraction of days this session made the daily low
+    session: str  # "Pre-Market" | "RTH" | "Power Hour" | "After Hours"
+    high_pct: float  # fraction of trading days this session made the daily high
+    low_pct: float  # fraction of trading days this session made the daily low
     by_dow: dict[str, float]  # session_high_pct keyed by short DOW name
 
 
 @dataclass
 class SessionResult:
-    """Session breakdown for all 3 sessions."""
+    """Session breakdown for all 4 equity sessions."""
 
     rows: list[SessionRow]
+
+
+# Half-open ET minute-since-midnight ranges (mirrors T15 alert formatter):
+#   Pre-Market  [04:00, 09:30) → [240, 569]
+#   RTH         [09:30, 15:00) → [570, 899]
+#   Power Hour  [15:00, 16:00) → [900, 959]
+#   After Hours [16:00, 20:00) → [960, 1199]
+# Overnight 20:00–04:00 ET → 'Off' (excluded from aggregation).
+_SESSION_CASE = """
+    CASE
+        WHEN HOUR(ny) * 60 + MINUTE(ny) BETWEEN 240  AND 569  THEN 'Pre-Market'
+        WHEN HOUR(ny) * 60 + MINUTE(ny) BETWEEN 570  AND 899  THEN 'RTH'
+        WHEN HOUR(ny) * 60 + MINUTE(ny) BETWEEN 900  AND 959  THEN 'Power Hour'
+        WHEN HOUR(ny) * 60 + MINUTE(ny) BETWEEN 960  AND 1199 THEN 'After Hours'
+        ELSE 'Off'
+    END
+"""
+
+_NY_TS = "(epoch_ms(open_time)::TIMESTAMP AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York')"
+
+_SESSION_ORDER = ["Pre-Market", "RTH", "Power Hour", "After Hours"]
 
 
 def compute_session_breakdown(
@@ -29,31 +50,28 @@ def compute_session_breakdown(
     symbol: str,
     days: int = 180,
 ) -> SessionResult:
-    """Compute session breakdown: which session (Asia/London/NY) most often makes daily H/L.
+    """Compute session breakdown: which US equity session most often makes daily H/L.
 
-    Sessions are in MYT hours (UTC+8):
-    - Asia:   08-13  (Tokyo open 08:00 MYT, before London 14:00)
-    - London: 14-21
-    - NY:     >= 20 OR <= 3  (crosses midnight; overlaps with London 20-21)
+    Sessions are in America/New_York wall-clock (DST-aware):
+    - Pre-Market:  04:00–09:30
+    - RTH:         09:30–15:00 (cash open through last hour before close)
+    - Power Hour:  15:00–16:00 (final hour of cash session)
+    - After Hours: 16:00–20:00
+
+    Overnight 20:00–04:00 ET is excluded.
 
     Raises ValueError if no OHLCV data exists for the symbol.
     """
     start = _start_ms(days)
 
-    # Session high/low pct overall
     rows = conn.execute(
-        """
+        f"""
         WITH hourly AS (
             SELECT open_time, high, low,
-                (epoch_ms(open_time)::TIMESTAMP)::DATE                   AS trade_date,
-                dayname((epoch_ms(open_time)::TIMESTAMP)::DATE)          AS dow,
-                CASE
-                    WHEN HOUR((epoch_ms(open_time) + INTERVAL 8 HOUR)::TIMESTAMP) BETWEEN 8  AND 13 THEN 'Asia'
-                    WHEN HOUR((epoch_ms(open_time) + INTERVAL 8 HOUR)::TIMESTAMP) BETWEEN 14 AND 21 THEN 'London'
-                    WHEN HOUR((epoch_ms(open_time) + INTERVAL 8 HOUR)::TIMESTAMP) >= 20
-                      OR HOUR((epoch_ms(open_time) + INTERVAL 8 HOUR)::TIMESTAMP) <= 3             THEN 'NY'
-                    ELSE 'Off'
-                END AS session
+                {_NY_TS} AS ny,
+                {_NY_TS}::DATE AS trade_date,
+                dayname({_NY_TS}::DATE) AS dow,
+                {_SESSION_CASE} AS session
             FROM ohlcv WHERE symbol = $symbol AND timeframe = '1h' AND open_time >= $start_ms
         ),
         daily_ext AS (
@@ -82,20 +100,14 @@ def compute_session_breakdown(
     if not rows:
         raise ValueError(f"No OHLCV data for {symbol}")
 
-    # Session high_pct by DOW
     dow_rows = conn.execute(
-        """
+        f"""
         WITH hourly AS (
             SELECT open_time, high, low,
-                (epoch_ms(open_time)::TIMESTAMP)::DATE                   AS trade_date,
-                dayname((epoch_ms(open_time)::TIMESTAMP)::DATE)          AS dow,
-                CASE
-                    WHEN HOUR((epoch_ms(open_time) + INTERVAL 8 HOUR)::TIMESTAMP) BETWEEN 8  AND 13 THEN 'Asia'
-                    WHEN HOUR((epoch_ms(open_time) + INTERVAL 8 HOUR)::TIMESTAMP) BETWEEN 14 AND 21 THEN 'London'
-                    WHEN HOUR((epoch_ms(open_time) + INTERVAL 8 HOUR)::TIMESTAMP) >= 20
-                      OR HOUR((epoch_ms(open_time) + INTERVAL 8 HOUR)::TIMESTAMP) <= 3             THEN 'NY'
-                    ELSE 'Off'
-                END AS session
+                {_NY_TS} AS ny,
+                {_NY_TS}::DATE AS trade_date,
+                dayname({_NY_TS}::DATE) AS dow,
+                {_SESSION_CASE} AS session
             FROM ohlcv WHERE symbol = $symbol AND timeframe = '1h' AND open_time >= $start_ms
         ),
         daily_ext AS (
@@ -125,8 +137,7 @@ def compute_session_breakdown(
         {"symbol": symbol, "start_ms": start},
     ).fetchall()
 
-    # Build by_dow per session
-    session_dow_map: dict[str, dict[str, float]] = {"Asia": {}, "London": {}, "NY": {}}
+    session_dow_map: dict[str, dict[str, float]] = {s: {} for s in _SESSION_ORDER}
     for session, dow_full, high_pct_dow in dow_rows:
         s = str(session)
         if s not in session_dow_map:
@@ -134,7 +145,6 @@ def compute_session_breakdown(
         short = _DOW_SHORT.get(str(dow_full), str(dow_full)[:3])
         session_dow_map[s][short] = float(high_pct_dow)
 
-    session_order = ["Asia", "London", "NY"]
     session_map: dict[str, SessionRow] = {}
     for session, high_pct, low_pct in rows:
         s = str(session)
@@ -145,5 +155,5 @@ def compute_session_breakdown(
             by_dow=session_dow_map.get(s, {}),
         )
 
-    ordered = [session_map[s] for s in session_order if s in session_map]
+    ordered = [session_map[s] for s in _SESSION_ORDER if s in session_map]
     return SessionResult(rows=ordered)

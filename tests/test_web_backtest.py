@@ -16,7 +16,6 @@ def _make_ohlcv() -> pd.DataFrame:
             "low": [29500.0, 29800.0],
             "close": [30200.0, 30900.0],
             "volume": [100.0, 120.0],
-            "taker_buy_volume": [50.0, 60.0],
         }
     )
 

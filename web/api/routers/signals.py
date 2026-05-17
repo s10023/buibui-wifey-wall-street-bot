@@ -6,7 +6,6 @@ from typing import Any
 import duckdb
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from utils.binance_client import load_coins_config
 
 from analytics.backtest_runner import detect_signals_for_strategy
 from analytics.data_store import get_ohlcv, get_signals_history
@@ -54,19 +53,8 @@ def run_signals(
             detail=f"No OHLCV data for {body.symbol} {body.timeframe}.",
         )
 
-    try:
-        coins = load_coins_config()
-    except Exception:
-        coins = {}
-
     all_signals: list[pd.DataFrame] = []
     for strat in body.strategies:
-        secondary_symbol: str | None = None
-        if strat == "smt_divergence":
-            secondary_symbol = coins.get(body.symbol, {}).get("smt_secondary")
-            if secondary_symbol is None:
-                continue  # skip silently — no secondary configured
-
         signals_df = detect_signals_for_strategy(
             db,
             ohlcv,
@@ -75,7 +63,6 @@ def run_signals(
             strat,
             body.start_ms,
             body.end_ms,
-            secondary_symbol,
         )
         if signals_df is None or signals_df.empty:
             continue

@@ -27,7 +27,6 @@ dependencies = [
     "platformdirs (>=4.9.6,<5.0.0)",
     "propcache (>=0.3.2,<0.4.0)",
     "pycryptodome (>=3.23.0,<4.0.0)",
-    "python-binance (>=1.0.29,<2.0.0)",
     "python-dateutil (>=2.9.0.post0,<3.0.0)",
     "python-dotenv (>=1.1.1,<2.0.0)",
     "regex (>=2024.11.6,<2025.0.0)",
@@ -74,9 +73,6 @@ pytest-timeout = "^2.4.0"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 timeout = 30
-# T16-full: skip known-broken tests until web routers are rewired off utils.binance_client
-# and stats/outcome_backfill fixtures drop the taker_buy_volume column (removed in T4).
-addopts = "--ignore=tests/test_outcome_backfill.py --ignore=tests/test_stats_lib.py --ignore-glob=tests/test_web_*.py"
 
 [tool.mypy]
 python_version = "3.13"
@@ -85,18 +81,6 @@ disallow_untyped_defs = true
 disallow_incomplete_defs = true
 warn_unused_ignores = true
 warn_return_any = true
-# T16-full: exclude modules still importing utils.binance_client / monitor.*
-# (deleted in T1 / T16-partial) and one stale `# type: ignore`.
-exclude = [
-    "^web/api/routers/",
-    "^web/api/main\\.py$",
-    "^debug_orders\\.py$",
-    "^tests/test_overnight_gap_lib\\.py$",
-]
-
-[[tool.mypy.overrides]]
-module = "binance.*"
-ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "duckdb.*"
@@ -104,17 +88,6 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "uvicorn.*"
-ignore_missing_imports = true
-
-# T16-full: silence errors in modules still importing utils.binance_client
-# (deleted in T1) until the web routers are rewired off the crypto client.
-# `exclude` only skips discovery — these are imported transitively from tests.
-[[tool.mypy.overrides]]
-module = ["web.api.main", "web.api.routers.*", "debug_orders", "tests.test_overnight_gap_lib"]
-ignore_errors = true
-
-[[tool.mypy.overrides]]
-module = "utils.binance_client"
 ignore_missing_imports = true
 
 [tool.coverage.run]

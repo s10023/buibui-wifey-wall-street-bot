@@ -38,12 +38,30 @@
     ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date(now + 8 * 3600 * 1000).getUTCDay()]
   );
 
-  // Active sessions based on current MYT hour (sessions non-exclusive — London/NY overlap 20–21)
+  // Active equity session based on current ET wall-clock (DST-aware via toLocaleString).
+  // Half-open windows mirror the T15 alert formatter:
+  //   Pre-Market  [04:00, 09:30)
+  //   RTH         [09:30, 15:00)
+  //   Power Hour  [15:00, 16:00)
+  //   After Hours [16:00, 20:00)
+  const currentETMinutes = $derived.by(() => {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(new Date(now));
+    const h = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10);
+    const m = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0", 10);
+    return h * 60 + m;
+  });
   const activeSessions = $derived(
     [
-      currentMYTHour >= 8 && currentMYTHour <= 13 ? "Asia" : null,
-      currentMYTHour >= 14 && currentMYTHour <= 21 ? "London" : null,
-      (currentMYTHour >= 20 || currentMYTHour <= 3) ? "NY" : null,
+      currentETMinutes >= 240 && currentETMinutes < 570 ? "Pre-Market" : null,
+      currentETMinutes >= 570 && currentETMinutes < 900 ? "RTH" : null,
+      currentETMinutes >= 900 && currentETMinutes < 960 ? "Power Hour" : null,
+      currentETMinutes >= 960 && currentETMinutes < 1200 ? "After Hours" : null,
     ].filter(Boolean) as string[]
   );
 
@@ -69,9 +87,9 @@
       example: "Wed 3.1% range, 58% bull, +1.8% avg → lean longs, size normally. Fri 1.8%, 49%, −0.6% → reduce exposure.",
     },
     session: {
-      what: "Asia (08–13 MYT), London (14–21 MYT), NY (20–03 MYT): fraction of days each session made the daily high or low. Hours 04–07 MYT are a dead zone — not assigned to any session. Sessions are non-exclusive: the London/NY overlap (20–21 MYT) counts in both, so column totals don't sum to 100%. Active sessions shown with ●.",
-      value: "If Asia makes the daily low 41% of the time and price is falling during Asia session, there's meaningful probability you're watching the daily low form.",
-      example: "Asia Lo 41% + price dropping in Asia → probable daily low forming. Watch for reversal.",
+      what: "US equity sessions (America/New_York wall-clock, DST-aware): Pre-Market (04:00–09:30), RTH (09:30–15:00), Power Hour (15:00–16:00), After Hours (16:00–20:00). Overnight 20:00–04:00 ET is excluded. Each column = fraction of trading days that session made the daily high or low. The active session is shown with ●.",
+      value: "If RTH makes the daily low 41% of the time and price is falling during RTH, there's meaningful probability you're watching the daily low form.",
+      example: "RTH Lo 41% + price dropping in RTH → probable daily low forming. Watch for reversal.",
     },
     weekly: {
       what: "Which day of the week most commonly forms the weekly extreme. Bear context shows when the weekly HIGH forms (useful for shorts). Bull context shows when the weekly LOW forms (useful for longs). Bars show % of weeks each DOW made that extreme, normalized to the dominant day.",
@@ -445,7 +463,7 @@
             {/each}
           </tbody>
         </table>
-        <div class="session-note muted">Asia 08–13 MYT · London/NY overlap (20–21 MYT) counted in both — columns don't sum to 100%</div>
+        <div class="session-note muted">Pre-Market 04:00–09:30 · RTH 09:30–15:00 · Power Hour 15:00–16:00 · After Hours 16:00–20:00 (America/New_York)</div>
       </div>
 
       <!-- Weekly P1/P2 -->

@@ -19,9 +19,7 @@ def test_missing_token_returns_403_or_401(web_client: TestClient) -> None:
 
     app.dependency_overrides.pop(require_token, None)
     try:
-        resp = web_client.get(
-            "/api/ohlcv?symbol=BTCUSDT&timeframe=1h&start_ms=0&end_ms=1"
-        )
+        resp = web_client.get("/api/ohlcv?symbol=AAPL&timeframe=1h&start_ms=0&end_ms=1")
         assert resp.status_code in (401, 403)
     finally:
         from web.api.deps import require_token as rt  # re-import to restore
@@ -41,50 +39,14 @@ def test_ohlcv_returns_candles(
             "low": [29500.0],
             "close": [30200.0],
             "volume": [100.0],
-            "taker_buy_volume": [50.0],
         }
     )
     monkeypatch.setattr("web.api.routers.ohlcv.get_ohlcv", lambda *a, **kw: sample)
     resp = web_client.get(
-        "/api/ohlcv?symbol=BTCUSDT&timeframe=1h&start_ms=0&end_ms=9999999999999"
+        "/api/ohlcv?symbol=AAPL&timeframe=1h&start_ms=0&end_ms=9999999999999"
     )
     assert resp.status_code == 200
     data = resp.json()
     assert len(data["candles"]) == 1
     assert data["candles"][0]["open_time"] == 1_700_000_000_000
     assert data["candles"][0]["open"] == 30000.0
-
-
-def test_ohlcv_with_funding(
-    web_client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """OHLCV endpoint includes funding when include_funding=true."""
-    candle_df = pd.DataFrame(
-        {
-            "open_time": [1_700_000_000_000],
-            "open": [30000.0],
-            "high": [30500.0],
-            "low": [29500.0],
-            "close": [30200.0],
-            "volume": [100.0],
-            "taker_buy_volume": [None],
-        }
-    )
-    funding_df = pd.DataFrame(
-        {
-            "funding_time": [1_700_000_000_000],
-            "funding_rate": [0.0001],
-        }
-    )
-    monkeypatch.setattr("web.api.routers.ohlcv.get_ohlcv", lambda *a, **kw: candle_df)
-    monkeypatch.setattr(
-        "web.api.routers.ohlcv.get_funding_rates", lambda *a, **kw: funding_df
-    )
-    resp = web_client.get(
-        "/api/ohlcv?symbol=BTCUSDT&timeframe=1h&start_ms=0&end_ms=9999999999999&include_funding=true"
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["funding"] is not None
-    assert len(data["funding"]) == 1
-    assert data["funding"][0]["funding_rate"] == 0.0001

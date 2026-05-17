@@ -13,19 +13,17 @@ def _no_auth_client() -> Generator[TestClient]:
     """TestClient with auth bypassed but get_db NOT overridden.
 
     This lets get_db run its real logic so we can test its error handling.
-    Lifespan is still patched to avoid touching the real DB or Binance.
+    Lifespan is still patched to avoid touching the real DB.
     """
-    from web.api.deps import require_token, require_token_sse
+    from web.api.deps import require_token
     from web.api.main import app
 
     mock_conn = MagicMock(spec=duckdb.DuckDBPyConnection)
 
     app.dependency_overrides[require_token] = lambda: None
-    app.dependency_overrides[require_token_sse] = lambda: None
 
     with (
         patch("web.api.main.duckdb.connect", return_value=mock_conn),
-        patch("web.api.main.create_client", return_value=MagicMock()),
         patch("web.api.main.init_schema"),
         TestClient(app, raise_server_exceptions=False) as client,
     ):

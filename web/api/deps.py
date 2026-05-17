@@ -1,12 +1,11 @@
-"""FastAPI dependency factories: get_db, get_client, require_token."""
+"""FastAPI dependency factories: get_db, require_token."""
 
 import os
 import secrets
 from collections.abc import Generator
 
 import duckdb
-from binance.client import Client
-from fastapi import HTTPException, Query, Request, Security, status
+from fastapi import HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 _bearer = HTTPBearer()
@@ -28,26 +27,10 @@ def get_db(request: Request) -> Generator[duckdb.DuckDBPyConnection]:
         conn.close()
 
 
-def get_client(request: Request) -> Client:
-    """Return the Binance client from app state."""
-    client: Client = request.app.state.binance_client
-    return client
-
-
 def require_token(
     creds: HTTPAuthorizationCredentials = Security(_bearer),
 ) -> None:
     """Validate Bearer token against API_TOKEN env var."""
     token = os.environ.get("API_TOKEN", "")
     if not token or not secrets.compare_digest(creds.credentials, token):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
-
-
-def require_token_sse(token: str = Query(default="")) -> None:
-    """Validate token from ?token= query param (EventSource cannot send headers).
-
-    If API_TOKEN is not set, all connections are allowed (dev mode).
-    """
-    api_token = os.environ.get("API_TOKEN", "")
-    if api_token and (not token or not secrets.compare_digest(token, api_token)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)

@@ -5,10 +5,10 @@ from typing import Any
 
 import duckdb
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from utils.binance_client import load_coins_config
 
 from analytics.data_store import get_confidence_ratings
 from analytics.strategies import STRATEGY_REGISTRY
+from utils.config_validation import load_stocks_config
 from web.api.deps import get_db, require_token
 from web.api.models.active_config import ActiveConfigResponse
 
@@ -17,15 +17,15 @@ router = APIRouter(dependencies=[Depends(require_token)])
 
 @router.get("/config")
 def get_config() -> dict[str, Any]:
-    """Return per-symbol configuration from coins.json."""
+    """Return per-symbol configuration from stocks.json."""
     try:
-        coins = load_coins_config()
+        stocks = load_stocks_config()
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Failed to load coins config: {exc}",
+            detail=f"Failed to load stocks config: {exc}",
         ) from exc
-    return {symbol: dict(cfg) for symbol, cfg in coins.items()}
+    return {symbol: dict(cfg) for symbol, cfg in stocks.items()}
 
 
 @router.get("/strategies")
