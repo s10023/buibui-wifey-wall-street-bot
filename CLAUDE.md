@@ -34,7 +34,7 @@ For routine DB refresh after backtest/strategy changes: `make db-update` (= `db-
 
 `wifey.py` is the single CLI entry point with subcommands:
 
-- `wifey signal watch | test` — live signal daemon / historical replay (rewire pending T10 — currently imports deleted `utils/binance_client`)
+- `wifey signal watch | test` — live signal daemon / historical replay
 - `wifey analytics backfill | sync` — OHLCV ingestion (will switch to yfinance in T2–T5)
 - `wifey backtest` — run/save backtests (sweep, combo, cross-TF modes)
 - `wifey digest` — pre-canned analytics queries
@@ -82,7 +82,7 @@ Each Makefile `wifey-*` target wraps the equivalent CLI invocation.
   - `live_loop.py` — shared Rich live display loop logic
   - `yfinance_client.py` — yfinance helper (`fetch_history`, `YF_INTERVALS`); no auth, no module-level side effects; normalises Yahoo's tz-aware America/New_York DataFrame to canonical lowercase OHLCV + UTC-naive DatetimeIndex (T2, since 2026-05-14). 4h is not native — callers resample 1h→4h (T4).
 - `web/` — web layer (Phase 4 + 5). See `.claude/context/web.md` for full API + UI reference.
-  - `api/` — FastAPI: routers (config, ohlcv, fib, signals, backtest, positions, prices, stream, stats, zones); `GET /api/active-config`, `GET /api/zones`, `GET /api/backtest/analysis`; stats live fields via `_inject_live_fields()`
+  - `api/` — FastAPI: routers (config, ohlcv, fib, signals, backtest, stats, zones); `GET /api/active-config`, `GET /api/zones`, `GET /api/backtest/analysis`; stats live fields via `_inject_live_fields()`. (T16-full removed the Binance-Futures-only `positions` / `prices` / `stream` routers — Phase B will re-introduce per the equities broker.)
   - `ui/` — Svelte 5 + Vite; pages: Chart, Backtest, SignalFeed, Positions, Prices, Stats; build: `make web-build`
 - `trade/open_trades.py` — legacy Binance Futures order opener (manual/CLI use; wired via `make wifey-open-trades`). **Phase A out of scope** — Phase B will replace with an equities broker adapter (broker TBD).
 - `tools/` — one-shot analysis scripts (not part of the daemon/CLI surface):

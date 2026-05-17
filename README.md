@@ -67,19 +67,19 @@ buibui-wifey-wall-street-bot/
 ├── web/
 │   ├── api/
 │   │   ├── main.py                  # FastAPI app: lifespan, CORS, health, router mounts, StaticFiles
-│   │   ├── deps.py                  # Dependency factories: get_db, get_client, require_token, require_token_sse
+│   │   ├── deps.py                  # Dependency factories: get_db, require_token
 │   │   ├── models/                  # Pydantic request/response models
-│   │   └── routers/                 # Route handlers: config, ohlcv, fib, signals, backtest, positions, prices, stream, stats, zones
+│   │   └── routers/                 # Route handlers: config, ohlcv, fib, signals, backtest, stats, zones
 │   └── ui/                          # Svelte 5 + Vite frontend (Phase 5)
 │       ├── package.json
 │       ├── vite.config.ts           # Vite config — proxies /api to :8000 in dev
 │       ├── tsconfig.json
 │       ├── index.html
 │       └── src/
-│           ├── api.ts               # Typed API client + SSE helper
-│           ├── stores/              # Svelte stores: config, strategies, prices, positions
-│           ├── pages/               # Chart, Backtest, SignalFeed, Positions, Prices, Stats
-│           └── components/          # Nav, CandleChart, BacktestResult, PriceRow, PositionRow, …
+│           ├── api.ts               # Typed API client
+│           ├── stores/              # Svelte stores: config, strategies, activeConfig, watchlist
+│           ├── pages/               # Chart, Backtest, SignalFeed, Stats
+│           └── components/          # Nav, CandleChart, BacktestResult, …
 ├── utils/
 │   ├── yfinance_client.py           # Equity OHLCV via yfinance (Phase A)
 │   ├── config_validation.py         # Validates + loads coins.json/stocks.json (load_stocks_config since T5)
@@ -614,8 +614,6 @@ make wifey-signal-test CONFIG=config/signal_watch.toml STRATEGY=marubozu TIMEFRA
 - `--config` — TOML file to inherit symbol/TF/tp_r/sl_pct defaults
 - `--telegram` — send the alert via Telegram (in addition to printing)
 
-> **Note:** `smt_divergence` is supported — the secondary symbol is resolved automatically from `coins.json` (`smt_secondary` field). No extra flag needed.
-
 ### Web API — FastAPI Backend
 
 A JSON REST API and SSE streaming backend for the Phase 5 Svelte frontend (or any HTTP client).
@@ -638,26 +636,23 @@ make web-full CONFIG=config/signal_watch.toml   # build UI then start server
 ```
 
 **Authentication:** All endpoints except `/api/health` require a Bearer token. Set `API_TOKEN` in `.env`.
-SSE stream endpoints accept `?token=<API_TOKEN>` query param instead (browser `EventSource` cannot send headers).
 
 **Endpoints:**
 
 | Method | Path | Description |
 | ------ | ---- | ----------- |
 | `GET` | `/api/health` | Health check — no auth required |
-| `GET` | `/api/config` | Per-symbol config from `coins.json` |
+| `GET` | `/api/config` | Per-symbol config from `stocks.json` |
 | `GET` | `/api/active-config` | Active TOML config the server was started with (empty defaults when no `--config` passed) |
 | `GET` | `/api/strategies` | All strategy specs with params and confidence (auto-uses active config's star ratings) |
 | `GET` | `/api/ohlcv` | OHLCV candles (`?symbol=&timeframe=&start_ms=&end_ms=`) |
 | `POST` | `/api/signals` | Detect strategy signals on historical data |
 | `GET` | `/api/backtest/runs` | All saved backtest runs from DB, newest first |
 | `POST` | `/api/backtest` | Run a backtest (auto-saved to DB) for a symbol/timeframe/strategy |
-| `GET` | `/api/positions` | Fetch open futures positions |
-| `GET` | `/api/prices` | Latest price changes for all configured symbols |
-| `GET` | `/api/stream/prices` | SSE — live prices every 5 s (`?token=`) |
-| `GET` | `/api/stream/positions` | SSE — live positions every 10 s (`?token=`) |
 | `GET` | `/api/stats/{symbol}` | Computed stats bundle (P1/P2, ADR, DOW, session, weekly) for a symbol |
 | `GET` | `/api/zones` | Structural zones for a symbol+timeframe (FVG, OB, EQH/EQL, BOS, Fib, OTE, swings) |
+
+Phase A (signals-only) does not ship `/api/positions`, `/api/prices`, or `/api/stream/*` — the Binance-Futures variants were removed in T16-full and Phase B will re-introduce equivalents against the chosen equities broker.
 
 **CORS:** Defaults to `http://localhost:5173` (Vite dev server). Override with `CORS_ORIGINS` env var (comma-separated). If you change `DEV_PORT`, update `CORS_ORIGINS` accordingly (e.g. `CORS_ORIGINS=http://localhost:3000`).
 
@@ -670,7 +665,7 @@ SSE stream endpoints accept `?token=<API_TOKEN>` query param instead (browser `E
 ### Web Frontend — Svelte 5
 
 A single-page trading terminal UI. Dark theme, no component library, no SSR.
-Pages: Chart (candlesticks + signal markers + structural zone overlays), Backtest (DB-backed sortable/filterable results table + collapsible run form), Signal Feed (poll + filters), Positions (SSE), Prices (SSE).
+Pages: Chart (candlesticks + signal markers + structural zone overlays), Backtest (DB-backed sortable/filterable results table + collapsible run form), Signal Feed (poll + filters), Stats.
 
 Chart overlays include EMA 20/50/200, RSI sub-panel, Range Levels (MO/DO/WO + PDH/PDL/PWH/PWL/Mon H·L), CME Gap (15m/1h only), Fibonacci retracement, and **Structural Zones** (7 toggles: FVG boxes, Order Block boxes, EQH·EQL lines, BOS levels, Fib Golden Zone box, OTE box, swing pivot dots — powered by `GET /api/zones`).
 
