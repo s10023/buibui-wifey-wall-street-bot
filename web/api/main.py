@@ -12,7 +12,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from utils.binance_client import create_client
 
 from analytics.data_store import DEFAULT_DB_PATH, init_schema
 from web.api.routers import (
@@ -20,11 +19,8 @@ from web.api.routers import (
     config,
     fib,
     ohlcv,
-    positions,
-    prices,
     signals,
     stats,
-    stream,
     zones,
 )
 
@@ -76,7 +72,7 @@ def _load_active_config(config_path: str) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    """Open DB (brief RW for schema, then read-only) and Binance client on startup."""
+    """Open DB (brief RW for schema, then read-only) on startup."""
     # Brief RW open to ensure schema is initialised. Skip gracefully if the
     # signal-watch daemon already holds the write lock (schema must exist).
     try:
@@ -86,7 +82,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         pass
 
     app.state.db_path = str(DEFAULT_DB_PATH)
-    app.state.binance_client = create_client()
     app.state.config_name = None
     app.state.active_config = None
 
@@ -117,10 +112,7 @@ for module in (
     fib,
     signals,
     backtest,
-    positions,
-    prices,
     stats,
-    stream,
     zones,
 ):
     app.include_router(module.router, prefix="/api")

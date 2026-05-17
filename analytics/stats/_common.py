@@ -1,9 +1,10 @@
 """Shared constants and helpers for the stats package.
 
 Day/week boundaries: grouped by UTC date so each "day" matches exactly one
-Binance daily candle (00:00 UTC – 23:59 UTC = 08:00 MYT – 07:59 MYT).
+daily candle (00:00 UTC – 23:59 UTC = 08:00 MYT – 07:59 MYT).
 Hour display in the kill-zone chart uses MYT (+8h) to show local time-of-day.
-Session labels (Asia/London/NY) are defined in MYT hours.
+Session labels (Pre-Market / RTH / Power Hour / After Hours) are defined in
+America/New_York wall-clock, mirroring the T15 alert formatter.
 """
 
 from datetime import UTC, datetime, timedelta

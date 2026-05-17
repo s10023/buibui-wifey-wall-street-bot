@@ -6,8 +6,6 @@
     { href: "#/chart",     label: "Chart" },
     { href: "#/backtest",  label: "Backtest" },
     { href: "#/signals",   label: "Signals" },
-    { href: "#/positions", label: "Positions" },
-    { href: "#/prices",    label: "Prices" },
     { href: "#/stats",     label: "Stats" },
   ];
 

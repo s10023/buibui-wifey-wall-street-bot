@@ -86,7 +86,6 @@ def _make_candles() -> list[dict]:
                     "low": low,
                     "close": _OPEN_PRICE,
                     "volume": 100.0,
-                    "taker_buy_volume": 50.0,
                 }
             )
     return rows
@@ -101,8 +100,8 @@ def conn() -> duckdb.DuckDBPyConnection:
     for row in rows:
         c.execute(
             "INSERT OR REPLACE INTO ohlcv "
-            "(symbol, timeframe, open_time, open, high, low, close, volume, taker_buy_volume) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "(symbol, timeframe, open_time, open, high, low, close, volume) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 row["symbol"],
                 row["timeframe"],
@@ -112,7 +111,6 @@ def conn() -> duckdb.DuckDBPyConnection:
                 row["low"],
                 row["close"],
                 row["volume"],
-                row["taker_buy_volume"],
             ],
         )
     return c
@@ -179,14 +177,15 @@ def test_compute_dow_patterns_has_rows(conn: duckdb.DuckDBPyConnection) -> None:
 def test_compute_session_breakdown_has_sessions(
     conn: duckdb.DuckDBPyConnection,
 ) -> None:
-    """Session breakdown should include at least one session."""
+    """Session breakdown should include all four US equity sessions."""
     result = compute_session_breakdown(conn, _SYMBOL, days=30)
     assert len(result.rows) > 0
     sessions = {r.session for r in result.rows}
-    # All three sessions should appear given 24h coverage
-    assert "Asia" in sessions
-    assert "London" in sessions
-    assert "NY" in sessions
+    # All four equity sessions should appear given 24h hourly coverage
+    assert "Pre-Market" in sessions
+    assert "RTH" in sessions
+    assert "Power Hour" in sessions
+    assert "After Hours" in sessions
     for row in result.rows:
         assert row.high_pct >= 0.0
         assert row.low_pct >= 0.0
@@ -252,9 +251,9 @@ def _insert_candle(
 ) -> None:
     conn.execute(
         "INSERT OR REPLACE INTO ohlcv "
-        "(symbol, timeframe, open_time, open, high, low, close, volume, taker_buy_volume) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [_SYMBOL, "1h", open_time_ms, open_, high, low, close, 100.0, 50.0],
+        "(symbol, timeframe, open_time, open, high, low, close, volume) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [_SYMBOL, "1h", open_time_ms, open_, high, low, close, 100.0],
     )
 
 

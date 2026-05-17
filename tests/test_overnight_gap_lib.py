@@ -10,7 +10,7 @@ from analytics.overnight_gap_lib import (
 )
 
 
-def _make_df(rows: list[dict]) -> pd.DataFrame:  # type: ignore[type-arg]
+def _make_df(rows: list[dict[str, float | int]]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 

@@ -20,7 +20,6 @@ def _make_row(open_time: int, close: float, volume: float) -> dict:
         "low": close - 10,
         "close": close,
         "volume": volume,
-        "taker_buy_volume": volume / 2,
     }
 
 

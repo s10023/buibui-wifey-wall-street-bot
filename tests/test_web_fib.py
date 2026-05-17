@@ -26,7 +26,6 @@ def _make_candles(n: int = 30) -> pd.DataFrame:
                 "low": mid - 300,
                 "close": mid + 100,
                 "volume": 100.0,
-                "taker_buy_volume": 50.0,
             }
         )
     return pd.DataFrame(rows)
@@ -113,7 +112,6 @@ def test_fib_swing_not_found(
                 "low": price - 50,
                 "close": price,
                 "volume": 100.0,
-                "taker_buy_volume": 50.0,
             }
         )
     mono_df = pd.DataFrame(rows)

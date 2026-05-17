@@ -1,10 +1,4 @@
-"""Shared fixtures for tests.
-
-Now that business logic lives in price_lib / position_lib with dependency
-injection, we no longer need import-time patching of the Binance client
-or builtins.open.  Tests import from the lib modules directly and pass
-mock dependencies as parameters.
-"""
+"""Shared fixtures for tests."""
 
 import json
 import re
@@ -47,7 +41,6 @@ _OHLCV_COLS = [
     "low",
     "close",
     "volume",
-    "taker_buy_volume",
 ]
 
 
@@ -58,7 +51,6 @@ def _candle(
     low: float,
     close: float,
     volume: float = 100.0,
-    taker_buy_volume: float = 50.0,
     symbol: str = "BTCUSDT",
     timeframe: str = "4h",
 ) -> dict[str, object]:
@@ -71,7 +63,6 @@ def _candle(
         "low": low,
         "close": close,
         "volume": volume,
-        "taker_buy_volume": taker_buy_volume,
     }
 
 
@@ -79,35 +70,24 @@ def _make_ohlcv(rows: list[dict[str, object]]) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=_OHLCV_COLS)
 
 
-def _create_mock_client() -> MagicMock:
-    """Create a mock Binance client with common stubs."""
-    client = MagicMock()
-    client.get_server_time.return_value = {"serverTime": 1700000000000}
-    client.TIME_OFFSET = 0
-    return client
-
-
 @pytest.fixture()
 def web_client() -> Generator[TestClient]:
-    """TestClient with lifespan patched to avoid touching the real DB or Binance.
+    """TestClient with lifespan patched to avoid touching the real DB.
 
-    Patches duckdb.connect and create_client in web.api.main so the lifespan
-    never opens analytics.db (which may be locked by signal watch) or calls
-    the Binance API. get_db and require_token are overridden so route handlers
-    receive a mock connection and skip auth.
+    Patches duckdb.connect in web.api.main so the lifespan never opens
+    analytics.db (which may be locked by signal watch). get_db and require_token
+    are overridden so route handlers receive a mock connection and skip auth.
     """
-    from web.api.deps import get_db, require_token, require_token_sse
+    from web.api.deps import get_db, require_token
     from web.api.main import app
 
     mock_conn = MagicMock(spec=duckdb.DuckDBPyConnection)
 
     app.dependency_overrides[get_db] = lambda: mock_conn
     app.dependency_overrides[require_token] = lambda: None
-    app.dependency_overrides[require_token_sse] = lambda: None
 
     with (
         patch("web.api.main.duckdb.connect", return_value=mock_conn),
-        patch("web.api.main.create_client", return_value=MagicMock()),
         patch("web.api.main.init_schema"),
         TestClient(app, raise_server_exceptions=True) as client,
     ):
@@ -126,137 +106,6 @@ def sample_coins_config() -> dict[str, Any]:
 def sample_coin_order() -> list[str]:
     """Coin order from config."""
     return SAMPLE_COIN_ORDER.copy()
-
-
-@pytest.fixture
-def mock_binance_client() -> MagicMock:
-    """Fresh mock Binance Client."""
-    return _create_mock_client()
-
-
-@pytest.fixture
-def mock_ticker_data() -> list[dict[str, Any]]:
-    """Sample ticker response from Binance."""
-    return [
-        {
-            "symbol": "BTCUSDT",
-            "lastPrice": "62457.10",
-            "priceChangePercent": "2.31",
-        },
-        {
-            "symbol": "ETHUSDT",
-            "lastPrice": "3408.50",
-            "priceChangePercent": "1.74",
-        },
-        {
-            "symbol": "SOLUSDT",
-            "lastPrice": "143.22",
-            "priceChangePercent": "0.89",
-        },
-    ]
-
-
-@pytest.fixture
-def mock_kline_data() -> list[Any]:
-    """Sample kline (candlestick) data."""
-    return [
-        1700000000000,  # open time
-        "62000.00",  # open
-        "62500.00",  # high
-        "61800.00",  # low
-        "62457.10",  # close
-        "1000.0",  # volume
-        1700000060000,  # close time
-        "62000000.0",  # quote asset volume
-        500,  # number of trades
-        "500.0",  # taker buy base volume
-        "31000000.0",  # taker buy quote volume
-        "0",  # ignore
-    ]
-
-
-@pytest.fixture
-def mock_futures_balance() -> list[dict[str, Any]]:
-    """Sample futures account balance response."""
-    return [
-        {
-            "asset": "USDT",
-            "balance": "1123.15",
-            "crossUnPnl": "290.29",
-            "availableBalance": "450.30",
-        },
-        {
-            "asset": "BNB",
-            "balance": "0.50",
-            "crossUnPnl": "0.00",
-        },
-    ]
-
-
-@pytest.fixture
-def mock_positions_data() -> list[dict[str, Any]]:
-    """Sample futures position information response (hedge mode, SHORT positions)."""
-    return [
-        {
-            "symbol": "BTCUSDT",
-            "positionSide": "SHORT",
-            "positionAmt": "-0.135",
-            "entryPrice": "110032.0",
-            "markPrice": "108757.0",
-            "notional": "-14899.70",
-            "positionInitialMargin": "595.99",
-            "unRealizedProfit": "174.73",
-        },
-        {
-            "symbol": "ETHUSDT",
-            "positionSide": "SHORT",
-            "positionAmt": "-4.5",
-            "entryPrice": "2616.17",
-            "markPrice": "2550.10",
-            "notional": "-11822.30",
-            "positionInitialMargin": "591.11",
-            "unRealizedProfit": "306.29",
-        },
-        {
-            "symbol": "SOLUSDT",
-            "positionSide": "BOTH",
-            "positionAmt": "0",
-            "entryPrice": "0.0",
-            "markPrice": "143.22",
-            "notional": "0",
-            "positionInitialMargin": "0",
-            "unRealizedProfit": "0.0",
-        },
-    ]
-
-
-@pytest.fixture
-def mock_stop_loss_orders() -> list[dict[str, Any]]:
-    """Sample open orders with stop-loss (reduceOnly style, hedge mode SHORT)."""
-    return [
-        {
-            "symbol": "BTCUSDT",
-            "type": "STOP_MARKET",
-            "positionSide": "SHORT",
-            "reduceOnly": True,
-            "stopPrice": "109970.0",
-        },
-    ]
-
-
-@pytest.fixture
-def mock_close_position_sl_orders() -> list[dict[str, Any]]:
-    """Sample open orders with stop-loss set via Binance UI (closePosition style)."""
-    return [
-        {
-            "symbol": "BTCUSDT",
-            "type": "STOP_MARKET",
-            "positionSide": "SHORT",
-            "reduceOnly": False,
-            "closePosition": True,
-            "stopPrice": "109970.0",
-        },
-    ]
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

@@ -14,7 +14,6 @@ def _make_ohlcv() -> pd.DataFrame:
             "low": [29500.0],
             "close": [30200.0],
             "volume": [100.0],
-            "taker_buy_volume": [50.0],
         }
     )
 
@@ -42,8 +41,6 @@ def test_signals_returns_list(
         "web.api.routers.signals.detect_signals_for_strategy",
         lambda *a, **kw: _make_signals_df(),
     )
-    monkeypatch.setattr("web.api.routers.signals.load_coins_config", dict)
-
     resp = web_client.post(
         "/api/signals",
         json={
@@ -110,8 +107,6 @@ def test_signals_empty_result(
         "web.api.routers.signals.detect_signals_for_strategy",
         lambda *a, **kw: pd.DataFrame(),
     )
-    monkeypatch.setattr("web.api.routers.signals.load_coins_config", dict)
-
     resp = web_client.post(
         "/api/signals",
         json={

@@ -4,9 +4,9 @@ Detailed reference for `web/`. Load this when working on the FastAPI backend or 
 
 ## Backend — `web/api/`
 
-- `main.py` — app + StaticFiles mount; reads `WIFEY_CONFIG` env var (set by `buibui web --config <toml>`); stores `app.state.config_name` + `app.state.active_config`
-- `deps.py` — `require_token`, `require_token_sse` (SSE query-param auth)
-- `routers/` — config, ohlcv, fib, signals, backtest, positions, prices, stream, stats, zones
+- `main.py` — app + StaticFiles mount; reads `WIFEY_CONFIG` env var (set by `wifey web --config <toml>`); stores `app.state.config_name` + `app.state.active_config`
+- `deps.py` — `get_db` (per-request read-only DuckDB conn) + `require_token` (Bearer auth)
+- `routers/` — config, ohlcv, fib, signals, backtest, stats, zones (T16-full removed the Binance-Futures-only `positions` / `prices` / `stream` routers; Phase B will re-introduce per the equities broker)
 - `models/` — Pydantic models per router; `active_config.py` → `ActiveConfigResponse` + `StrategyParamsModel`; `zones.py` → `ZoneBox`, `ZoneLine`, `SwingPoint`, `ZonesResponse`
 
 ### Key endpoints
@@ -25,8 +25,8 @@ Build: `make web-build` → `web/ui/dist/` served by FastAPI StaticFiles.
 ### Key files
 
 - `src/api.ts` — typed client; `getStrategies(configName?)`, `getActiveConfig()`
-- `src/stores/` — config, strategies, prices SSE, positions SSE, `activeConfig.ts` (exposes `activeConfigStore`, `configName`, `configDefaultSymbol`)
-- `src/pages/` — Chart, Backtest, SignalFeed, Positions, Prices, Stats
+- `src/stores/` — config, strategies, watchlist, `activeConfig.ts` (exposes `activeConfigStore`, `configName`, `configDefaultSymbol`)
+- `src/pages/` — Chart, Backtest, SignalFeed, Stats
 - `src/components/` — Nav, CandleChart, BacktestResult, …
 
 ### Backtest page
@@ -42,7 +42,7 @@ Build: `make web-build` → `web/ui/dist/` served by FastAPI StaticFiles.
 ### Chart page
 
 - Watchlist sidebar; timeframe/days selectors
-- **Strategies row** — 6 collapsible group toggles: Structure (bos/liquidity_sweep/eqh_eql/order_block/fvg), Fibonacci (fib_golden_zone/ote_entry), Price Action (wick_fill/marubozu/inside_bar/trend_day), Candlestick (engulfing/pin_bar/hammer_hanging_man/doji/morning_evening_star), Flow (smt_divergence/cvd_divergence/funding_reversion), Session (orb/seasonality); taxonomy in `STRATEGY_GROUPS` in `Chart.svelte`; groups absent from active TOML hidden
+- **Strategies row** — collapsible group toggles: Structure (bos/liquidity_sweep/eqh_eql/order_block/fvg), Fibonacci (fib_golden_zone/ote_entry), Price Action (wick_fill/marubozu/inside_bar/trend_day), Candlestick (engulfing/pin_bar/hammer_hanging_man/doji/morning_evening_star), Session (orb/seasonality), Trend (ema); taxonomy in `STRATEGY_GROUPS` in `Chart.svelte`; groups absent from active TOML hidden. (T5b/T7 stripped smt_divergence + cvd_divergence; T16-full dropped funding_reversion + the Flow group.)
 - **Indicators row** — EMA 20/50/200, RSI 14, **Zones** (7 toggles: FVG, OB, EQH·EQL, BOS, Fib Zone, OTE, Swings)
   - FVG/OB/Fib/OTE — HTML overlay divs; EQH/EQL/BOS — line series
   - Active zones extend to right edge; inactive end at `close_ms` (dimmed)
@@ -50,7 +50,7 @@ Build: `make web-build` → `web/ui/dist/` served by FastAPI StaticFiles.
 - **Range Levels** — MO, DO, PDH/PDL, WO, PWH/PWL, Mon H/L; solid lines from origin to right edge; HTML labels
 - **CME Gap** — semi-transparent box for most recent Fri 21:00–Sun 22:00 UTC window; **15m and 1h only** (pill hidden on 4h/1d — `timeToCoordinate` returns null for inter-candle timestamps on coarser TFs)
 - Time axis + crosshair: **MYT (UTC+8)** via `localization.timeFormatter`
-- Signal markers; funding/OI sub-panels; Fib overlay; live candle via SSE + 30s seed refresh
+- Signal markers + Fib overlay. (T16-full removed funding/OI sub-panels + the SSE / `/api/ohlcv/live` live-candle seed — yfinance has no realtime equivalent; the UI now seeds the current candle from the last DB row.)
 
 ### Stats page
 

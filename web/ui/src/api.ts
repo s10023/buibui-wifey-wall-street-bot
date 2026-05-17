@@ -3,9 +3,7 @@
 // ── Config ────────────────────────────────────────────────────────────────────
 
 export interface SymbolConfig {
-  leverage: number;
-  sl_percent: number;
-  smt_secondary?: string;
+  sl_pct: number;
 }
 
 export type ConfigResponse = Record<string, SymbolConfig>;
@@ -41,23 +39,10 @@ export interface CandleRow {
   low: number;
   close: number;
   volume: number;
-  taker_buy_volume: number | null;
-}
-
-export interface FundingRow {
-  funding_time: number; // Unix ms
-  funding_rate: number;
-}
-
-export interface OiRow {
-  timestamp: number; // Unix ms
-  oi_usd: number;
 }
 
 export interface OhlcvResponse {
   candles: CandleRow[];
-  funding: FundingRow[] | null;
-  oi: OiRow[] | null;
 }
 
 // ── Fibonacci ─────────────────────────────────────────────────────────────────
@@ -169,60 +154,6 @@ export interface BacktestResponse {
   trades: TradeModel[];
 }
 
-// ── Prices ────────────────────────────────────────────────────────────────────
-
-export interface PriceRow {
-  symbol: string;
-  last_price: string;
-  change_15m: string;
-  change_1h: string;
-  change_4h: string;
-  change_asia: string;
-  change_24h: string;
-}
-
-export interface PricesResponse {
-  prices: PriceRow[];
-}
-
-// ── Positions ─────────────────────────────────────────────────────────────────
-
-export interface PositionRow {
-  symbol: string;
-  side: string;
-  position_side: string;
-  leverage: number | null;
-  margin_type: string | null;
-  entry_price: number | null;
-  mark_price: number | null;
-  liq_price: number | null;
-  margin: number | null;
-  notional: number | null;
-  pnl: number | null;
-  pnl_pct: number | null;
-  risk_pct: string | null;
-  tp_price: number | null;
-  sl_price: number | null;
-  sl_size: string | null;
-  sl_usd: string | null;
-}
-
-export interface PositionsResponse {
-  positions: PositionRow[];
-  wallet_balance: number;
-  unrealized_pnl: number;
-  available_balance: number;
-  total_risk_usd: number;
-}
-
-// ── SSE stream shapes ─────────────────────────────────────────────────────────
-
-// /api/stream/prices emits: PriceRow[] (same as REST PriceRow)
-export type PriceStreamFrame = PriceRow[];
-
-// /api/stream/positions emits: PositionsResponse (same shape)
-export type PositionsStreamFrame = PositionsResponse;
-
 // ── Core fetch helper ─────────────────────────────────────────────────────────
 
 const TOKEN = (import.meta.env.VITE_API_TOKEN as string | undefined) ?? "";
@@ -290,23 +221,14 @@ export const getOhlcv = (params: {
   timeframe: string;
   start_ms: number;
   end_ms: number;
-  include_funding?: boolean;
-  include_oi?: boolean;
 }) => {
   const q = new URLSearchParams({
     symbol: params.symbol,
     timeframe: params.timeframe,
     start_ms: String(params.start_ms),
     end_ms: String(params.end_ms),
-    ...(params.include_funding ? { include_funding: "true" } : {}),
-    ...(params.include_oi ? { include_oi: "true" } : {}),
   });
   return apiFetch<OhlcvResponse>(`/api/ohlcv?${q}`);
-};
-
-export const getLiveCandle = (params: { symbol: string; timeframe: string }) => {
-  const q = new URLSearchParams({ symbol: params.symbol, timeframe: params.timeframe });
-  return apiFetch<CandleRow>(`/api/ohlcv/live?${q}`);
 };
 
 export const getSignals = (params: {
@@ -363,7 +285,6 @@ export const runBacktest = (params: {
   sl_pct: number;
   tp_r: number;
   fee_pct?: number;
-  secondary_symbol?: string;
   [key: string]: unknown;
 }) =>
   apiFetch<BacktestResponse>("/api/backtest", {
@@ -551,28 +472,3 @@ export interface StatsResponse {
 
 export const getStats = (symbol: string, days: number = 180) =>
   apiFetch<StatsResponse>(`/api/stats/${symbol}?days=${days}`);
-
-// ── SSE helper ────────────────────────────────────────────────────────────────
-
-// EventSource cannot send Authorization headers — token passed as ?token= query param.
-export function createSSEStream<T>(
-  path: string,
-  onMessage: (data: T) => void,
-  onError: (err: Event) => void,
-  onOpen?: () => void
-): () => void {
-  const url = TOKEN ? `${path}?token=${encodeURIComponent(TOKEN)}` : path;
-  const es = new EventSource(url);
-  es.onopen = () => onOpen?.();
-  es.onmessage = (e: MessageEvent) => {
-    try {
-      onMessage(JSON.parse(e.data as string) as T);
-    } catch {
-      /* ignore malformed frames */
-    }
-  };
-  es.onerror = (err) => {
-    onError(err);
-  };
-  return () => es.close();
-}

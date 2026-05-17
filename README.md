@@ -1,6 +1,8 @@
 # Buibui Wifey Wall Street Bot
 
-A tactical crypto trading bot designed for fast, risk-managed, and confident entries — with live price monitoring and position tracking. Built for degens who trade smart. LFG.
+A yfinance-backed US-equities **signal bot** (Phase A: signals only). Multi-strategy detection on 4h / 1d / 1wk bars, Telegram alerts with statistical context, and a FastAPI + Svelte web UI for charts, backtests, signal history, and stats. Phase B (order layer + equities broker) is deferred.
+
+Forked from the parent `buibui-moon-trader-bot` (crypto / Binance Futures); the analytics + signals engine carries over, the data source is yfinance, and the live order layer has been removed.
 
 ---
 
@@ -8,39 +10,26 @@ A tactical crypto trading bot designed for fast, risk-managed, and confident ent
 
 ### Core Tools
 
-- **Live Price Monitor**
-  See real-time prices, 15m / 1h / 24h % changes, and intraday % change since Asia open (8AM GMT+8).
-  Color-coded for clarity.
-
-- **Live Position Tracker**
-  Track open positions with wallet balance, used margin, PnL, %PnL, and risk exposure per trade.
-  Table auto-sorted by your config list.
-
-- **15-Min Telegram Updates** *(optional)*
-  Get regular position snapshots via Telegram bot.
-
 - **24/7 Signal Detection Daemon**
-  Polls closed candles every 5 minutes, runs 20 strategies (FVG, BOS, liquidity sweep, SMT divergence,
-  CVD divergence, and more — 19 actionable, plus `seasonality` stats), and sends Telegram alerts with computed SL/TP levels. Two-layer dedup prevents spam.
-  Alerts include a 2-line statistical context: direction-aware P1/P2 day bias, ADR consumed %, per-DOW empirical peak hour, and weekly P2 timing probability.
+  Polls closed candles, runs 19 actionable equity strategies (FVG, BOS, ORB, liquidity sweep, EQH/EQL, order block, FVG, OTE, marubozu, wick fill, trend day, engulfing, pin bar, inside bar, hammer/hanging man, doji, morning/evening star, fib golden zone, EMA pullback — plus `seasonality` stats), and sends Telegram alerts with computed SL/TP levels. Two-layer dedup prevents spam.
+  Alerts include a session-tagged header (Pre-Market / RTH / Power Hour / After Hours), `$CASHTAG` symbol, and a 2-line statistical context: direction-aware P1/P2 day bias, ADR consumed %, per-DOW empirical peak hour, and weekly P2 timing probability.
 
-- **Statistical Context Engine** *(new)*
-  BrighterData-style probability dashboard computed from historical OHLCV. Per-symbol stats:
+- **Statistical Context Engine**
+  Probability dashboard computed from historical OHLCV. Per-symbol stats:
   P1/P2 daily (was low made before high? by day-of-week), hourly extreme distribution (empirical kill zones),
-  average daily range + today's consumed %, day-of-week patterns, session (Asia/London/NY) breakdown, and
+  average daily range + today's consumed %, day-of-week patterns, US equity session breakdown
+  (Pre-Market / RTH / Power Hour / After Hours, America/New_York wall-clock), and
   weekly P1/P2, avg return by day-of-week, and weekly P2 timing with P1 flip risk. Cached in DB, served via `GET /api/stats/{symbol}`, shown on the Stats web page.
+
+- **Backtest Engine**
+  Sweep, combo, and cross-TF backtest modes against the same detectors that drive the live scanner. Walk-forward optimisation (`wifey param-sweep`) for per-strategy `tp_r` tuning.
 
 ---
 
-## Risk Rules (Preconfigured)
+## Risk Rules
 
-| Asset Type  | Leverage | Stop Loss |
-|-------------|----------|-----------|
-| BTC         | 25x      | 2.0%      |
-| ETH         | 20x      | 2.5%      |
-| Altcoins    | 20x      | 3.5%      |
-
-Includes max USD-per-trade cap and wallet-level risk protection.
+Per-symbol `sl_pct` defined in `config/stocks.json` (see `stocks.json.example`).
+Live SL flows from the active signal-watch TOML; per-symbol overrides take precedence.
 
 ---
 
@@ -78,19 +67,19 @@ buibui-wifey-wall-street-bot/
 ├── web/
 │   ├── api/
 │   │   ├── main.py                  # FastAPI app: lifespan, CORS, health, router mounts, StaticFiles
-│   │   ├── deps.py                  # Dependency factories: get_db, get_client, require_token, require_token_sse
+│   │   ├── deps.py                  # Dependency factories: get_db, require_token
 │   │   ├── models/                  # Pydantic request/response models
-│   │   └── routers/                 # Route handlers: config, ohlcv, fib, signals, backtest, positions, prices, stream, stats, zones
+│   │   └── routers/                 # Route handlers: config, ohlcv, fib, signals, backtest, stats, zones
 │   └── ui/                          # Svelte 5 + Vite frontend (Phase 5)
 │       ├── package.json
 │       ├── vite.config.ts           # Vite config — proxies /api to :8000 in dev
 │       ├── tsconfig.json
 │       ├── index.html
 │       └── src/
-│           ├── api.ts               # Typed API client + SSE helper
-│           ├── stores/              # Svelte stores: config, strategies, prices, positions
-│           ├── pages/               # Chart, Backtest, SignalFeed, Positions, Prices, Stats
-│           └── components/          # Nav, CandleChart, BacktestResult, PriceRow, PositionRow, …
+│           ├── api.ts               # Typed API client
+│           ├── stores/              # Svelte stores: config, strategies, activeConfig, watchlist
+│           ├── pages/               # Chart, Backtest, SignalFeed, Stats
+│           └── components/          # Nav, CandleChart, BacktestResult, …
 ├── utils/
 │   ├── yfinance_client.py           # Equity OHLCV via yfinance (Phase A)
 │   ├── config_validation.py         # Validates + loads coins.json/stocks.json (load_stocks_config since T5)
@@ -123,7 +112,7 @@ The Stats page (`#/stats`) shows BrighterData-style probability tables computed 
 | **Average Daily Range (ADR)** | ADR(14) = 2-week average (short-term vol). ADR(30) = monthly baseline. Today's range consumed as a progress bar; turns red + warning if ≥80%. | — |
 | **Hourly Extreme Distribution** | Which MYT hour (0–23) most often produces the daily high (green) vs low (red). Empirically-derived kill zones. | Current MYT hour highlighted with accent border. |
 | **Day-of-Week Patterns** | Average range (relative bar), bull/bear split bar + %, avg return, and **Str H / Str L** columns — fraction of days each day-of-week formed a strong high (upper wick < 20% of range) or strong low (lower wick < 20% of range). | Today's DOW row highlighted. |
-| **Session Breakdown** | Which session (Asia 00–07 / London 14–21 / NY 20–03 MYT) most often makes the daily high vs low. Columns don't sum to 100% — London/NY overlap (20–21 MYT) is counted in both. | Active sessions shown with a pulsing ● indicator. |
+| **Session Breakdown** | Which US equity session (Pre-Market 04:00–09:30 / RTH 09:30–15:00 / Power Hour 15:00–16:00 / After Hours 16:00–20:00, America/New_York) most often makes the daily high vs low. Overnight 20:00–04:00 ET is excluded. | Active session shown with a pulsing ● indicator. |
 | **Weekly P1/P2** | Which day of the week most commonly forms the weekly high vs low, shown as a per-DOW bar chart. | Toggle **Bear** (when does weekly HIGH form?) or **Bull** (when does weekly LOW form?). Defaults to Bear. Today's DOW highlighted. |
 | **Avg Return by Day** | Average `(close−open)/open` per weekday — shows which days are historically bullish or bearish. Bars grow from bottom; green = positive, red = negative. | Today's DOW highlighted. |
 | **Weekly P2 Timing** | 5-column per-DOW table: how often the weekly low/high is still ahead after each DOW (still-ahead %) and how often the running P1 gets undercut later in the week (flip risk %). Conditioned view shows P(P2 still ahead \| P1 direction, DOW). | Today's DOW highlighted; flip risk ≥ 30% shown in amber. Toggle **All / Bullish P1 / Bearish P1** to condition on which extreme was set first. |
@@ -625,8 +614,6 @@ make wifey-signal-test CONFIG=config/signal_watch.toml STRATEGY=marubozu TIMEFRA
 - `--config` — TOML file to inherit symbol/TF/tp_r/sl_pct defaults
 - `--telegram` — send the alert via Telegram (in addition to printing)
 
-> **Note:** `smt_divergence` is supported — the secondary symbol is resolved automatically from `coins.json` (`smt_secondary` field). No extra flag needed.
-
 ### Web API — FastAPI Backend
 
 A JSON REST API and SSE streaming backend for the Phase 5 Svelte frontend (or any HTTP client).
@@ -649,26 +636,23 @@ make web-full CONFIG=config/signal_watch.toml   # build UI then start server
 ```
 
 **Authentication:** All endpoints except `/api/health` require a Bearer token. Set `API_TOKEN` in `.env`.
-SSE stream endpoints accept `?token=<API_TOKEN>` query param instead (browser `EventSource` cannot send headers).
 
 **Endpoints:**
 
 | Method | Path | Description |
 | ------ | ---- | ----------- |
 | `GET` | `/api/health` | Health check — no auth required |
-| `GET` | `/api/config` | Per-symbol config from `coins.json` |
+| `GET` | `/api/config` | Per-symbol config from `stocks.json` |
 | `GET` | `/api/active-config` | Active TOML config the server was started with (empty defaults when no `--config` passed) |
 | `GET` | `/api/strategies` | All strategy specs with params and confidence (auto-uses active config's star ratings) |
 | `GET` | `/api/ohlcv` | OHLCV candles (`?symbol=&timeframe=&start_ms=&end_ms=`) |
 | `POST` | `/api/signals` | Detect strategy signals on historical data |
 | `GET` | `/api/backtest/runs` | All saved backtest runs from DB, newest first |
 | `POST` | `/api/backtest` | Run a backtest (auto-saved to DB) for a symbol/timeframe/strategy |
-| `GET` | `/api/positions` | Fetch open futures positions |
-| `GET` | `/api/prices` | Latest price changes for all configured symbols |
-| `GET` | `/api/stream/prices` | SSE — live prices every 5 s (`?token=`) |
-| `GET` | `/api/stream/positions` | SSE — live positions every 10 s (`?token=`) |
 | `GET` | `/api/stats/{symbol}` | Computed stats bundle (P1/P2, ADR, DOW, session, weekly) for a symbol |
 | `GET` | `/api/zones` | Structural zones for a symbol+timeframe (FVG, OB, EQH/EQL, BOS, Fib, OTE, swings) |
+
+Phase A (signals-only) does not ship `/api/positions`, `/api/prices`, or `/api/stream/*` — the Binance-Futures variants were removed in T16-full and Phase B will re-introduce equivalents against the chosen equities broker.
 
 **CORS:** Defaults to `http://localhost:5173` (Vite dev server). Override with `CORS_ORIGINS` env var (comma-separated). If you change `DEV_PORT`, update `CORS_ORIGINS` accordingly (e.g. `CORS_ORIGINS=http://localhost:3000`).
 
@@ -681,7 +665,7 @@ SSE stream endpoints accept `?token=<API_TOKEN>` query param instead (browser `E
 ### Web Frontend — Svelte 5
 
 A single-page trading terminal UI. Dark theme, no component library, no SSR.
-Pages: Chart (candlesticks + signal markers + structural zone overlays), Backtest (DB-backed sortable/filterable results table + collapsible run form), Signal Feed (poll + filters), Positions (SSE), Prices (SSE).
+Pages: Chart (candlesticks + signal markers + structural zone overlays), Backtest (DB-backed sortable/filterable results table + collapsible run form), Signal Feed (poll + filters), Stats.
 
 Chart overlays include EMA 20/50/200, RSI sub-panel, Range Levels (MO/DO/WO + PDH/PDL/PWH/PWL/Mon H·L), CME Gap (15m/1h only), Fibonacci retracement, and **Structural Zones** (7 toggles: FVG boxes, Order Block boxes, EQH·EQL lines, BOS levels, Fib Golden Zone box, OTE box, swing pivot dots — powered by `GET /api/zones`).
 

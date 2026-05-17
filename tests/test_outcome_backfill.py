@@ -31,7 +31,6 @@ def _insert_ohlcv(
                 "low": r["low"],
                 "close": r["close"],
                 "volume": 1.0,
-                "taker_buy_volume": None,
             }
             for r in rows
         ]
