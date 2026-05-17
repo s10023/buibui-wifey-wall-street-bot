@@ -279,8 +279,8 @@ tp_r_4h = 2.5
             Path(__file__).parent.parent / "config" / "signal_watch_weekdays.toml"
         )
         cfg = load_signal_config(cfg_path)
-        # engulfing: TF-specific (4h=3.5); 1wk falls back to strategy-wide 3.5
-        assert cfg.effective_tp_r("engulfing", "AAPL", "4h") == 3.5
+        # engulfing: TF-specific (4h=5.0 after T14 AAPL WFO); 1wk falls back to strategy-wide 3.5
+        assert cfg.effective_tp_r("engulfing", "AAPL", "4h") == 5.0
         assert cfg.effective_tp_r("engulfing", "AAPL", "1wk") == 3.5
         # strategy not in params falls back to global
         assert cfg.effective_tp_r("seasonality", "AAPL", "1d") == cfg.tp_r
@@ -298,9 +298,9 @@ tp_r_4h = 2.5
         # hammer_hanging_man: strategy-wide 4.0; 1d override 3.0
         assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "4h") == 4.0
         assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "1d") == 3.0
-        # trend_day: 4h=3.5, 1d=4.5
+        # trend_day: 4h=3.5; 1d=3.0 (T14 AAPL WFO, was 4.5)
         assert cfg.effective_tp_r("trend_day", "AAPL", "4h") == 3.5
-        assert cfg.effective_tp_r("trend_day", "AAPL", "1d") == 4.5
+        assert cfg.effective_tp_r("trend_day", "AAPL", "1d") == 3.0
         # orb: 4h override 5.0
         assert cfg.effective_tp_r("orb", "AAPL", "4h") == 5.0
         # strategy not in params (fvg dropped from signal_watch.toml) falls back to global

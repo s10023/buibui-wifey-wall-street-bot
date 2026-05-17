@@ -143,8 +143,8 @@ def upsert_backtest_run(
             "win_rate, avg_r, total_r, max_drawdown_r, run_at_ms, sweep_id, "
             "long_closed_trades, long_win_count, long_win_rate, long_avg_r, "
             "short_closed_trades, short_win_count, short_win_rate, short_avg_r, "
-            "adr_suppress_threshold, long_total_r, short_total_r, recovery_factor, "
-            "volume_suppress "
+            "long_total_r, short_total_r, volume_suppress, adr_suppress_threshold, "
+            "recovery_factor "
             "FROM _bt_run_upsert_df"
         )
     finally:
