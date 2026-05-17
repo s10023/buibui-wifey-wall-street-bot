@@ -23,127 +23,179 @@ def _utc_summer(hour: int, minute: int = 0) -> datetime:
 
 
 class TestGetSessionLabel:
-    # --- Asia Kill Zone: 8 PM – 11 PM ET ---
-    # Winter (EST, UTC-5): 20:00 ET = 01:00 UTC next day; use Jan 14 UTC to land on Jan 15 ET
-    # For simplicity: test in UTC hours that correspond to ET 8 PM–11 PM in winter
-    # 8 PM ET (EST) = 01:00 UTC  |  11 PM ET (EST) = 04:00 UTC (exclusive end)
+    # US equity sessions in ET (DST-aware via America/New_York):
+    #   Pre-Market   04:00–09:30 ET
+    #   RTH          09:30–15:00 ET
+    #   Power Hour   15:00–16:00 ET
+    #   After Hours  16:00–20:00 ET
+    # Winter (EST, UTC-5) — these tests use Jan 15 UTC, which lands the ET hour at UTC-5.
 
-    def test_asia_start(self) -> None:
-        # 01:00 UTC = 8 PM ET (EST) — Asia KZ start
-        assert _get_session_label(_utc(1, 0)) == "Asia"
+    # --- Pre-Market: 04:00–09:30 ET ---
+    # 04:00 ET (EST) = 09:00 UTC  |  09:30 ET (EST) = 14:30 UTC (exclusive end)
 
-    def test_asia_mid(self) -> None:
-        # 02:30 UTC = 9:30 PM ET (EST)
-        assert _get_session_label(_utc(2, 30)) == "Asia"
+    def test_pre_market_start(self) -> None:
+        # 09:00 UTC = 04:00 ET (EST) — Pre-Market start
+        assert _get_session_label(_utc(9, 0)) == "Pre-Market"
 
-    def test_asia_end(self) -> None:
-        # 03:59 UTC = 10:59 PM ET (EST) — last minute of Asia KZ
-        assert _get_session_label(_utc(3, 59)) == "Asia"
+    def test_pre_market_mid(self) -> None:
+        # 12:00 UTC = 07:00 ET (EST)
+        assert _get_session_label(_utc(12, 0)) == "Pre-Market"
 
-    # --- London Kill Zone: 2 AM – 5 AM ET ---
-    # Winter (EST, UTC-5): 2 AM ET = 07:00 UTC  |  5 AM ET = 10:00 UTC (exclusive end)
+    def test_pre_market_end_minute(self) -> None:
+        # 14:29 UTC = 09:29 ET (EST) — last minute of Pre-Market
+        assert _get_session_label(_utc(14, 29)) == "Pre-Market"
 
-    def test_london_start(self) -> None:
-        # 07:00 UTC = 2 AM ET (EST) — London KZ start
-        assert _get_session_label(_utc(7, 0)) == "London"
+    # --- RTH: 09:30–15:00 ET ---
+    # 09:30 ET (EST) = 14:30 UTC  |  15:00 ET (EST) = 20:00 UTC (exclusive end)
 
-    def test_london_mid(self) -> None:
-        # 08:30 UTC = 3:30 AM ET (EST) — around London open
-        assert _get_session_label(_utc(8, 30)) == "London"
+    def test_rth_start_at_open(self) -> None:
+        # 14:30 UTC = 09:30 ET (EST) — RTH cash open
+        assert _get_session_label(_utc(14, 30)) == "RTH"
 
-    def test_london_end(self) -> None:
-        # 09:59 UTC = 4:59 AM ET (EST) — last minute of London KZ
-        assert _get_session_label(_utc(9, 59)) == "London"
+    def test_rth_mid(self) -> None:
+        # 17:00 UTC = 12:00 ET (EST) — midday
+        assert _get_session_label(_utc(17, 0)) == "RTH"
 
-    # --- NY Kill Zone: 7 AM – 10 AM ET ---
-    # Winter (EST, UTC-5): 7 AM ET = 12:00 UTC  |  10 AM ET = 15:00 UTC (exclusive end)
+    def test_rth_end_minute(self) -> None:
+        # 19:59 UTC = 14:59 ET (EST) — last minute of RTH before Power Hour
+        assert _get_session_label(_utc(19, 59)) == "RTH"
 
-    def test_ny_start(self) -> None:
-        # 12:00 UTC = 7 AM ET (EST) — NY KZ start
-        assert _get_session_label(_utc(12, 0)) == "NY"
+    # --- Power Hour: 15:00–16:00 ET ---
+    # 15:00 ET (EST) = 20:00 UTC  |  16:00 ET (EST) = 21:00 UTC (exclusive end)
 
-    def test_ny_mid(self) -> None:
-        # 14:30 UTC = 9:30 AM ET (EST) — NY open itself
-        assert _get_session_label(_utc(14, 30)) == "NY"
+    def test_power_hour_start(self) -> None:
+        # 20:00 UTC = 15:00 ET (EST) — Power Hour start
+        assert _get_session_label(_utc(20, 0)) == "Power Hour"
 
-    def test_ny_end(self) -> None:
-        # 14:59 UTC = 9:59 AM ET (EST) — last minute of NY KZ
-        assert _get_session_label(_utc(14, 59)) == "NY"
+    def test_power_hour_mid(self) -> None:
+        # 20:30 UTC = 15:30 ET (EST)
+        assert _get_session_label(_utc(20, 30)) == "Power Hour"
 
-    # --- Outside windows ---
+    def test_power_hour_end_minute(self) -> None:
+        # 20:59 UTC = 15:59 ET (EST) — last minute of Power Hour
+        assert _get_session_label(_utc(20, 59)) == "Power Hour"
 
-    def test_outside_between_asia_and_london(self) -> None:
-        # 05:00 UTC = midnight ET (EST) — between Asia KZ end and London KZ start
-        assert _get_session_label(_utc(5, 0)) == ""
+    # --- After Hours: 16:00–20:00 ET ---
+    # 16:00 ET (EST) = 21:00 UTC  |  20:00 ET (EST) = 01:00 UTC next day (exclusive end)
 
-    def test_outside_between_london_and_ny(self) -> None:
-        # 10:00 UTC = 5 AM ET (EST) — between London KZ end and NY KZ start
-        assert _get_session_label(_utc(10, 0)) == ""
+    def test_after_hours_start(self) -> None:
+        # 21:00 UTC = 16:00 ET (EST) — After Hours start
+        assert _get_session_label(_utc(21, 0)) == "After Hours"
 
-    def test_outside_after_ny(self) -> None:
-        # 15:00 UTC = 10 AM ET (EST) — just after NY KZ ends
-        assert _get_session_label(_utc(15, 0)) == ""
+    def test_after_hours_mid(self) -> None:
+        # 23:00 UTC = 18:00 ET (EST)
+        assert _get_session_label(_utc(23, 0)) == "After Hours"
 
-    def test_outside_before_asia(self) -> None:
-        # 00:30 UTC = 7:30 PM ET (EST) — before Asia KZ starts at 8 PM
-        assert _get_session_label(_utc(0, 30)) == ""
+    # --- Outside (overnight 20:00–04:00 ET) ---
+
+    def test_outside_late_night(self) -> None:
+        # 03:00 UTC = 22:00 ET (EST) on prior day in ET — overnight, no label
+        assert _get_session_label(_utc(3, 0)) == ""
+
+    def test_outside_early_morning(self) -> None:
+        # 08:59 UTC = 03:59 ET (EST) — last minute before Pre-Market opens
+        assert _get_session_label(_utc(8, 59)) == ""
 
     # --- DST: Summer 2024 (EDT, UTC-4) ---
-    # Asia KZ:   8 PM EDT = 00:00 UTC  |  11 PM EDT = 03:00 UTC (exclusive)
-    # London KZ: 2 AM EDT = 06:00 UTC  |   5 AM EDT = 09:00 UTC (exclusive)
-    # NY KZ:     7 AM EDT = 11:00 UTC  |  10 AM EDT = 14:00 UTC (exclusive)
+    # Same ET clock times, but ET = UTC-4, so the equivalent UTC hours shift by 1.
+    #   Pre-Market   08:00–13:30 UTC
+    #   RTH          13:30–19:00 UTC
+    #   Power Hour   19:00–20:00 UTC
+    #   After Hours  20:00–00:00 UTC
 
-    def test_asia_summer_dst(self) -> None:
-        # 00:30 UTC on 2024-07-15 = 8:30 PM EDT — inside Asia KZ
-        assert _get_session_label(_utc_summer(0, 30)) == "Asia"
+    def test_pre_market_summer_dst(self) -> None:
+        # 12:00 UTC on 2024-07-15 = 08:00 EDT — inside Pre-Market
+        assert _get_session_label(_utc_summer(12, 0)) == "Pre-Market"
 
-    def test_london_summer_dst(self) -> None:
-        # 06:30 UTC on 2024-07-15 = 2:30 AM EDT — inside London KZ
-        assert _get_session_label(_utc_summer(6, 30)) == "London"
+    def test_rth_open_summer_dst(self) -> None:
+        # 13:30 UTC on 2024-07-15 = 09:30 EDT — RTH cash open
+        assert _get_session_label(_utc_summer(13, 30)) == "RTH"
 
-    def test_ny_summer_dst(self) -> None:
-        # 13:30 UTC on 2024-07-15 = 9:30 AM EDT — NY open, inside NY KZ
-        assert _get_session_label(_utc_summer(13, 30)) == "NY"
+    def test_power_hour_summer_dst(self) -> None:
+        # 19:30 UTC on 2024-07-15 = 15:30 EDT — inside Power Hour
+        assert _get_session_label(_utc_summer(19, 30)) == "Power Hour"
 
-    def test_outside_summer_that_was_ny_in_winter(self) -> None:
-        # 14:30 UTC on 2024-07-15 = 10:30 AM EDT — outside NY KZ in summer
-        # (same UTC time IS inside NY KZ in winter: 14:30 UTC = 9:30 AM EST)
-        assert _get_session_label(_utc_summer(14, 30)) == ""
+    def test_after_hours_summer_dst(self) -> None:
+        # 22:00 UTC on 2024-07-15 = 18:00 EDT — inside After Hours
+        assert _get_session_label(_utc_summer(22, 0)) == "After Hours"
 
 
 class TestFormatSignalAlertSessionTag:
     def _make_event(self, open_time_ms: int) -> SignalEvent:
         return SignalEvent(
-            symbol="BTCUSDT",
-            timeframe="1h",
+            symbol="AAPL",
+            timeframe="4h",
             strategy="fvg",
             direction="long",
-            reason="fvg_long@43200.00-43350.00",
+            reason="fvg_long@200.00-202.00",
             open_time=open_time_ms,
-            price=43000.0,
-            sl_price=42000.0,
+            price=201.50,
+            sl_price=198.00,
         )
 
-    def test_session_tag_in_message_london(self) -> None:
-        # 2024-01-15 08:00 UTC = 3 AM ET (EST) — London Kill Zone
-        dt = datetime(2024, 1, 15, 8, 0, tzinfo=_UTC)
+    def test_session_tag_pre_market(self) -> None:
+        # 2024-01-15 13:00 UTC = 08:00 ET (EST) — Pre-Market
+        dt = datetime(2024, 1, 15, 13, 0, tzinfo=_UTC)
         ts_ms = int(dt.timestamp() * 1000)
         msg = format_signal_alert(self._make_event(ts_ms))
-        assert "🇬🇧 London Kill Zone" in msg
+        assert "🌅 Pre-Market" in msg
+        assert "Kill Zone" not in msg
 
-    def test_session_tag_in_message_ny(self) -> None:
-        # 2024-01-15 14:30 UTC = 9:30 AM ET (EST) — NY Kill Zone (NY open)
+    def test_session_tag_rth(self) -> None:
+        # 2024-01-15 14:30 UTC = 09:30 ET (EST) — RTH cash open
         dt = datetime(2024, 1, 15, 14, 30, tzinfo=_UTC)
         ts_ms = int(dt.timestamp() * 1000)
         msg = format_signal_alert(self._make_event(ts_ms))
-        assert "🗽 NY Kill Zone" in msg
+        assert "🏛️ RTH" in msg
+        assert "Kill Zone" not in msg
 
-    def test_no_session_tag_outside_windows(self) -> None:
-        # 2024-01-15 11:00 UTC = 6 AM ET (EST) — between London KZ and NY KZ
-        dt = datetime(2024, 1, 15, 11, 0, tzinfo=_UTC)
+    def test_session_tag_power_hour(self) -> None:
+        # 2024-01-15 20:30 UTC = 15:30 ET (EST) — Power Hour
+        dt = datetime(2024, 1, 15, 20, 30, tzinfo=_UTC)
         ts_ms = int(dt.timestamp() * 1000)
         msg = format_signal_alert(self._make_event(ts_ms))
-        assert "Kill Zone" not in msg
+        assert "⚡ Power Hour" in msg
+
+    def test_session_tag_after_hours(self) -> None:
+        # 2024-01-15 23:00 UTC = 18:00 ET (EST) — After Hours
+        dt = datetime(2024, 1, 15, 23, 0, tzinfo=_UTC)
+        ts_ms = int(dt.timestamp() * 1000)
+        msg = format_signal_alert(self._make_event(ts_ms))
+        assert "🌙 After Hours" in msg
+
+    def test_no_session_tag_outside_windows(self) -> None:
+        # 2024-01-15 03:00 UTC = 22:00 ET (EST prior day) — overnight, closed
+        dt = datetime(2024, 1, 15, 3, 0, tzinfo=_UTC)
+        ts_ms = int(dt.timestamp() * 1000)
+        msg = format_signal_alert(self._make_event(ts_ms))
+        for label in ("Pre-Market", "RTH", "Power Hour", "After Hours"):
+            assert label not in msg
+
+
+class TestCashtagHeader:
+    """The header renders the ticker as $TICKER (fintwit cashtag convention)."""
+
+    _RTH_TS_MS = int(datetime(2024, 1, 15, 17, 0, tzinfo=_UTC).timestamp() * 1000)
+
+    def _event(self, symbol: str) -> SignalEvent:
+        return SignalEvent(
+            symbol=symbol,
+            timeframe="4h",
+            strategy="fvg",
+            direction="long",
+            reason="fvg_long@200.00-202.00",
+            open_time=self._RTH_TS_MS,
+            price=201.50,
+            sl_price=198.00,
+        )
+
+    def test_cashtag_prefix_in_header(self) -> None:
+        msg = format_signal_alert(self._event("AAPL"))
+        assert "SIGNAL — $AAPL 4h" in msg
+
+    def test_cashtag_for_multi_letter_ticker(self) -> None:
+        msg = format_signal_alert(self._event("GOOGL"))
+        assert "SIGNAL — $GOOGL 4h" in msg
 
 
 class TestStatsContextFormat:

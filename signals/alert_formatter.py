@@ -20,29 +20,34 @@ _ET = ZoneInfo("America/New_York")
 
 
 _SESSION_EMOJI = {
-    "Asia": "🌏",
-    "London": "🇬🇧",
-    "NY": "🗽",
+    "Pre-Market": "🌅",
+    "RTH": "🏛️",
+    "Power Hour": "⚡",
+    "After Hours": "🌙",
 }
 
-# ICT kill zone windows in ET hours (start inclusive, end exclusive).
+# US equity session windows in ET minutes-since-midnight (start inclusive, end exclusive).
 # Using ET (America/New_York) handles EST/EDT automatically so the windows stay
 # anchored to real-world session opens year-round.
-#   Asia    (Accumulation):  20:00–22:59 ET — around Tokyo open
-#   London  (Manipulation):  02:00–04:59 ET — before/around London open (~03:00 ET)
-#   NY      (Distribution):  07:00–09:59 ET — before/around NY open (09:30 ET)
-_KILL_ZONES: list[tuple[str, int, int]] = [
-    ("Asia", 20, 23),
-    ("London", 2, 5),
-    ("NY", 7, 10),
+#   Pre-Market:   04:00–09:30 ET — ECN open through RTH cash open
+#   RTH:          09:30–15:00 ET — regular trading hours, ex-Power-Hour
+#   Power Hour:   15:00–16:00 ET — last hour of cash, distinct volatility regime
+#   After Hours:  16:00–20:00 ET — post-close ECN
+# Outside 20:00–04:00 ET: overnight/closed, no session label emitted.
+_EQUITY_SESSIONS: list[tuple[str, int, int]] = [
+    ("Pre-Market", 4 * 60, 9 * 60 + 30),
+    ("RTH", 9 * 60 + 30, 15 * 60),
+    ("Power Hour", 15 * 60, 16 * 60),
+    ("After Hours", 16 * 60, 20 * 60),
 ]
 
 
 def _get_session_label(dt: datetime) -> str:
-    """Return the ICT kill zone label for a datetime, or empty string if outside."""
-    hour = dt.astimezone(_ET).hour
-    for label, start, end in _KILL_ZONES:
-        if start <= hour < end:
+    """Return the US equity session label for a datetime, or empty string if outside."""
+    et = dt.astimezone(_ET)
+    minutes = et.hour * 60 + et.minute
+    for label, start, end in _EQUITY_SESSIONS:
+        if start <= minutes < end:
             return label
     return ""
 
@@ -360,7 +365,7 @@ def _format_header(events: list["SignalEvent"], direction_label: str) -> str:
         stars = f"  {_stars(ev.confidence)}" if ev.confidence else ""
         conflict_tag = " ⚠️ conflict" if ev.conflict else ""
         header = (
-            f"<b>SIGNAL — {ev.symbol} {ev.timeframe}  ·  {direction_label}</b>\n"
+            f"<b>SIGNAL — ${ev.symbol} {ev.timeframe}  ·  {direction_label}</b>\n"
             f"<code>{ev.strategy}</code>{stars}{conflict_tag}\n"
             f"<code>{ev.reason}</code>\n"
         )
@@ -369,7 +374,7 @@ def _format_header(events: list["SignalEvent"], direction_label: str) -> str:
         return header
 
     header = (
-        f"<b>SIGNAL — {first.symbol} {first.timeframe}  ·  {direction_label}</b>\n"
+        f"<b>SIGNAL — ${first.symbol} {first.timeframe}  ·  {direction_label}</b>\n"
         f"Confluence: {len(events)} strategies\n"
     )
     for ev in events:
@@ -432,7 +437,7 @@ def format_confluence_alert(
 
     Layout (sections separated by blank lines):
       1. Header — symbol/tf/direction, strategy, stars, reason, context
-      2. Entry — price, time, session kill zone
+      2. Entry — price, time, equity session label
       3. Levels — SL and TP
       4. Warnings — consolidated notes block (volume, candle shape, structure, momentum)
       5. Edge — backtest summary + co-firing confluence blockquote
@@ -445,7 +450,7 @@ def format_confluence_alert(
 
     signal_dt = datetime.fromtimestamp(first.open_time / 1000, tz=_MYT)
     session = _get_session_label(signal_dt)
-    session_line = f"{_SESSION_EMOJI[session]} {session} Kill Zone\n" if session else ""
+    session_line = f"{_SESSION_EMOJI[session]} {session}\n" if session else ""
 
     # Levels: widest structural SL, floored by min_sl_pct; TP prefers structural tp_price.
     sl_price = _apply_min_sl_floor(
