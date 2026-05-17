@@ -1096,13 +1096,6 @@
     padding: 3px 6px;
   }
 
-  .filter-tail {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-left: auto;
-  }
-
   /* ── Active filter token bar ─────────────────────────────────────────── */
   .filter-tokens {
     display: flex;

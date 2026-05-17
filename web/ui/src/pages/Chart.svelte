@@ -354,19 +354,6 @@
     gap: 10px;
   }
 
-  .checkbox-label {
-    flex-direction: row !important;
-    align-items: center;
-    gap: 6px;
-    font-size: 10px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--muted);
-    cursor: pointer;
-  }
-
-  .checkbox-label input { width: auto; }
-
   .pill-row {
     display: flex;
     flex-wrap: wrap;
