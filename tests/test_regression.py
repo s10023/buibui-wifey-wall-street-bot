@@ -36,6 +36,8 @@ from analytics.strategies import (
 _SKIP_STRATEGIES = frozenset({"seasonality"})
 
 FIXTURE_DIR = Path("tests/fixtures")
+FIXTURE_SYMBOL = "AAPL"
+FIXTURE_TIMEFRAMES = ["4h", "1d", "1wk"]
 CONFIGS: list[tuple[str, str]] = [
     ("signal_watch", "config/signal_watch.toml"),
     ("weekdays", "config/signal_watch_weekdays.toml"),
@@ -54,8 +56,9 @@ def _load_fixtures(tfs: list[str]) -> dict[str, pd.DataFrame]:
     plain object avoids that.
     """
     result: dict[str, pd.DataFrame] = {}
+    symbol_slug = FIXTURE_SYMBOL.lower()
     for tf in tfs:
-        path = FIXTURE_DIR / f"btc_{tf}_200d.parquet"
+        path = FIXTURE_DIR / f"{symbol_slug}_{tf}.parquet"
         if not path.exists():
             pytest.skip(
                 f"Fixture missing: {path}. "
@@ -154,7 +157,7 @@ def test_golden_metrics(
     update: bool = request.config.getoption("--update-golden")
     cfg = load_signal_config(config_path)
 
-    fixtures = _load_fixtures(["15m", "1h", "4h", "1d"])
+    fixtures = _load_fixtures(FIXTURE_TIMEFRAMES)
 
     results: dict[str, dict[str, Any]] = {}
 
@@ -174,17 +177,17 @@ def test_golden_metrics(
             result = run_backtest(
                 ohlcv,
                 signals,
-                symbol="BTCUSDT",
+                symbol=FIXTURE_SYMBOL,
                 timeframe=tf,
                 strategy=strategy,
                 sl_pct=cfg.sl_pct,
-                tp_r=cfg.effective_tp_r(strategy, "BTCUSDT", tf),
+                tp_r=cfg.effective_tp_r(strategy, FIXTURE_SYMBOL, tf),
                 fee_pct=cfg.backtest.fee_pct,
                 min_sl_pct=cfg.min_sl_pct,
                 volume_suppress=cfg.effective_volume_suppress(strategy),
                 volume_spike_boost=cfg.effective_volume_spike_boost(strategy),
-                tp_r_long=cfg.effective_tp_r(strategy, "BTCUSDT", tf, "long"),
-                tp_r_short=cfg.effective_tp_r(strategy, "BTCUSDT", tf, "short"),
+                tp_r_long=cfg.effective_tp_r(strategy, FIXTURE_SYMBOL, tf, "long"),
+                tp_r_short=cfg.effective_tp_r(strategy, FIXTURE_SYMBOL, tf, "short"),
             )
 
             if not result.closed_trades:
