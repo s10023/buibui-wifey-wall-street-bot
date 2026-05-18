@@ -520,6 +520,30 @@ class TestUpsertBacktestRun:
         upsert_backtest_run(conn, result, **params_b)
         assert _one(conn, "SELECT COUNT(*) FROM backtest_runs")[0] == 2
 
+    def test_tail_columns_land_in_correct_slots(
+        self, conn: duckdb.DuckDBPyConnection
+    ) -> None:
+        # Regression: the SELECT column order in upsert_backtest_run used to
+        # be misaligned with the table layout starting at long_total_r, so
+        # adr_suppress_threshold ended up holding recovery_factor values and
+        # vice versa. Assert each named column reads back what we passed.
+        result = _FakeResult("BTCUSDT", "4h", "bos")
+        upsert_backtest_run(
+            conn,
+            result,
+            **{**_BT_PARAMS, "adr_suppress_threshold": 0.8, "volume_suppress": True},
+        )
+        row = _one(
+            conn,
+            "SELECT adr_suppress_threshold, volume_suppress, long_total_r, "
+            "short_total_r, recovery_factor FROM backtest_runs",
+        )
+        assert abs(row[0] - 0.8) < 1e-6
+        assert row[1] is True
+        assert abs(row[2] - result.long_total_r) < 1e-6
+        assert abs(row[3] - result.short_total_r) < 1e-6
+        assert abs(row[4] - result.recovery_factor) < 1e-6
+
 
 class TestUpsertBacktestTrades:
     def test_inserts_trade_rows(self, conn: duckdb.DuckDBPyConnection) -> None:

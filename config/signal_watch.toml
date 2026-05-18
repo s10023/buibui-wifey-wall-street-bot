@@ -8,8 +8,13 @@
 # T13 (2026-05-17): rewritten for equities. Symbols come from config/stocks.json
 # (omit the `symbols` key below). Timeframes restricted to 4h | 1d | 1wk —
 # yfinance free tier caps 1h history at ~730d and lower TFs at 60d, so 15m / 1h
-# are out for Phase A. tp_r values inherited from the crypto era are a starting
-# guess; T14 (WFO + recalibrate) replaces them with equity-derived numbers.
+# are out for Phase A.
+#
+# T14 (2026-05-17): WFO sweep on AAPL × 4h/1d (since 2024-05-16 / 2023-01-03,
+# day_filter=tue_thu, fee_pct=0.0). 6 tp_r values updated where AAPL showed
+# OOS edge (ema/engulfing 4h, morning_evening_star 4h, doji/trend_day/order_block
+# 1d). Strategies marked "T14 AAPL: no_edge; multi-symbol pending" still carry
+# crypto-era values until a 4-symbol or 13-symbol WFO runs.
 
 extends = "strategy_params.toml"
 
@@ -67,55 +72,60 @@ orb = ["4h"]                                # T13: mechanical — 4h is the only
 # kept as a starting guess; T14 WFO overwrites with equity-derived numbers.
 [strategy_params.engulfing]
 tp_r = 3.0                    # fallback
-tp_r_4h = 3.0                 # was BTC WFO OOS (tue_thu); revisit in T14
+tp_r_4h = 3.0                 # T14 AAPL WFO OOS: +0.250R, n=16 (2026-05-17, equity-confirmed)
 
 [strategy_params.pin_bar]
 tp_r = 3.0                    # fallback
-tp_r_4h = 4.5                 # was crypto sweep peak; revisit in T14
-tp_r_1d = 4.0                 # was BTC WFO OOS (tue_thu); revisit in T14
+tp_r_4h = 4.5                 # T14 AAPL: no_edge; multi-symbol pending
+tp_r_1d = 4.0                 # T14 AAPL: no_edge; multi-symbol pending
 
 [strategy_params.hammer_hanging_man]
 tp_r = 4.0                    # fallback (crypto cross-symbol)
-tp_r_1d = 3.0                 # was BTC WFO OOS; revisit in T14
+tp_r_1d = 3.0                 # T14 AAPL: no_edge; multi-symbol pending
 
 [strategy_params.doji]
 tp_r = 3.0                    # fallback
-volume_suppress = true        # A14b crypto finding; revisit in T14
+tp_r_1d = 2.5                 # T14 AAPL WFO OOS: +0.313R, n=8 (2026-05-17)
+volume_suppress = true        # A14b crypto finding; T14 AAPL volume split not re-tested
 
 [strategy_params.inside_bar]
 tp_r = 3.0                    # fallback
-tp_r_4h = 3.5                 # was crypto sweep peak; revisit in T14
+tp_r_4h = 3.5                 # T14 AAPL: no_edge; multi-symbol pending
 
 [strategy_params.morning_evening_star]
-tp_r = 3.0                    # fallback for 1d
-tp_r_4h  = 5.0                # was crypto sweep peak; revisit in T14
+tp_r = 3.0                    # fallback for 1d (T14 AAPL 1d: all configs OVERFIT, kept current)
+tp_r_4h  = 2.0                # T14 AAPL WFO OOS: +0.143R, n=21 (2026-05-17, was 5.0 crypto peak)
 
 [strategy_params.fib_golden_zone]
-tp_r_4h = 3.5                 # was crypto sweep peak; revisit in T14
+tp_r_4h = 3.5                 # T14 AAPL: no_data (no signals fired OOS); multi-symbol pending
 adr_exempt = true             # BOS + retracement pullback entry — continuation strategy
-volume_suppress = true        # A14b crypto finding; revisit in T14
+volume_suppress = true        # A14b crypto finding; T14 AAPL volume split not re-tested
 
 [strategy_params.bos]
-tp_r = 3.0                    # was crypto-calibrated; revisit in T14
+tp_r = 3.0                    # T14 AAPL: no_edge; multi-symbol pending
 adr_exempt = true             # breakout — fires in continuation direction; ADR gate degrades it
 
 [strategy_params.trend_day]
 tp_r = 3.0                    # fallback
-tp_r_4h = 3.5                 # was crypto WFO OOS; revisit in T14
-tp_r_1d = 4.5                 # was crypto sweep peak; revisit in T14
+tp_r_4h = 3.5                 # T14 AAPL: no_edge; multi-symbol pending
+tp_r_1d = 3.0                 # T14 AAPL WFO OOS: +0.524R, n=21 (2026-05-17, was 4.5 crypto peak)
 
 [strategy_params.orb]
 tp_r = 3.0                    # fallback
-tp_r_4h = 5.0                 # was crypto TP sweep peak; revisit in T14 with equity data
+tp_r_4h = 5.0                 # T14 AAPL: no_edge; multi-symbol pending
 
 [strategy_params.eqh_eql]
 adr_exempt = true             # liquidity sweep — fires at structure extremes in continuation direction
 
 [strategy_params.ema]
-tp_r = 3.0                    # spec §6 default; tune per-TF after WFO sweep
+tp_r = 3.0                    # spec §6 default
+tp_r_4h = 4.0                 # T14 AAPL WFO OOS: +0.667R, n=9 (2026-05-17)
+
+[strategy_params.order_block]
+tp_r_1d = 5.0                 # T14 AAPL WFO OOS: +0.294R, n=17 (2026-05-17)
 
 [strategy_params.liquidity_sweep]
-# atr_sl_floor / atr_sl_multiplier inherited as crypto-calibrated; T14 reviews for equity.
+# T14 AAPL: no_edge; atr_sl_floor / atr_sl_multiplier inherited as crypto-calibrated, multi-symbol pending
 
 # backtest and bias sections live in strategy_params.toml (base).
 # Uncomment below to override specific backtest options for this config:
