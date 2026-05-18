@@ -15,6 +15,12 @@
 # OOS edge (ema/engulfing 4h, morning_evening_star 4h, doji/trend_day/order_block
 # 1d). Strategies marked "T14 AAPL: no_edge; multi-symbol pending" still carry
 # crypto-era values until a 4-symbol or 13-symbol WFO runs.
+#
+# T-A (2026-05-18): 4-symbol pooled-trades WFO (AAPL+MSFT+SPY+QQQ) closes out
+# the "multi-symbol pending" markers from T14. Pooling rule: per tp_r, concat
+# OOS closed_trades across symbols → pick tp_r with the highest pooled OOS
+# avg_r subject to pooled_n ≥ 10. Cells where no tp_r reaches positive pooled
+# avg_r are kept at current value and retagged "no_edge confirmed".
 
 extends = "strategy_params.toml"
 
@@ -76,12 +82,12 @@ tp_r_4h = 3.0                 # T14 AAPL WFO OOS: +0.250R, n=16 (2026-05-17, equ
 
 [strategy_params.pin_bar]
 tp_r = 3.0                    # fallback
-tp_r_4h = 4.5                 # T14 AAPL: no_edge; multi-symbol pending
-tp_r_1d = 4.0                 # T14 AAPL: no_edge; multi-symbol pending
+tp_r_4h = 5.0                 # T-A 4-sym WFO OOS: +0.028R, n=72 (was 4.5)
+tp_r_1d = 3.5                 # T-A 4-sym WFO OOS: +0.345R, n=55 (was 4.0)
 
 [strategy_params.hammer_hanging_man]
 tp_r = 4.0                    # fallback (crypto cross-symbol)
-tp_r_1d = 3.0                 # T14 AAPL: no_edge; multi-symbol pending
+tp_r_1d = 2.5                 # T-A 4-sym WFO OOS: +0.288R, n=33 (was 3.0)
 
 [strategy_params.doji]
 tp_r = 3.0                    # fallback
@@ -90,29 +96,29 @@ volume_suppress = true        # A14b crypto finding; T14 AAPL volume split not r
 
 [strategy_params.inside_bar]
 tp_r = 3.0                    # fallback
-tp_r_4h = 3.5                 # T14 AAPL: no_edge; multi-symbol pending
+tp_r_4h = 3.5                 # T-A 4-sym: no_edge confirmed (best -0.059R, n=68); value retained as fallback
 
 [strategy_params.morning_evening_star]
 tp_r = 3.0                    # fallback for 1d (T14 AAPL 1d: all configs OVERFIT, kept current)
 tp_r_4h  = 2.0                # T14 AAPL WFO OOS: +0.143R, n=21 (2026-05-17, was 5.0 crypto peak)
 
 [strategy_params.fib_golden_zone]
-tp_r_4h = 3.5                 # T14 AAPL: no_data (no signals fired OOS); multi-symbol pending
+tp_r_4h = 5.0                 # T-A 4-sym WFO OOS: +0.250R, n=24 (was 3.5)
 adr_exempt = true             # BOS + retracement pullback entry — continuation strategy
 volume_suppress = true        # A14b crypto finding; T14 AAPL volume split not re-tested
 
 [strategy_params.bos]
-tp_r = 3.0                    # T14 AAPL: no_edge; multi-symbol pending
+tp_r = 3.0                    # T-A 4-sym: 4h no_edge confirmed (best -0.143R); 1d edge +0.481R at tp_r=3.0 (n=27) — combined value retained
 adr_exempt = true             # breakout — fires in continuation direction; ADR gate degrades it
 
 [strategy_params.trend_day]
 tp_r = 3.0                    # fallback
-tp_r_4h = 3.5                 # T14 AAPL: no_edge; multi-symbol pending
+tp_r_4h = 4.5                 # T-A 4-sym WFO OOS: +0.325R, n=146 (was 3.5)
 tp_r_1d = 3.0                 # T14 AAPL WFO OOS: +0.524R, n=21 (2026-05-17, was 4.5 crypto peak)
 
 [strategy_params.orb]
 tp_r = 3.0                    # fallback
-tp_r_4h = 5.0                 # T14 AAPL: no_edge; multi-symbol pending
+tp_r_4h = 3.5                 # T-A 4-sym WFO OOS: +0.300R, n=100 (was 5.0)
 
 [strategy_params.eqh_eql]
 adr_exempt = true             # liquidity sweep — fires at structure extremes in continuation direction
@@ -125,7 +131,7 @@ tp_r_4h = 4.0                 # T14 AAPL WFO OOS: +0.667R, n=9 (2026-05-17)
 tp_r_1d = 5.0                 # T14 AAPL WFO OOS: +0.294R, n=17 (2026-05-17)
 
 [strategy_params.liquidity_sweep]
-# T14 AAPL: no_edge; atr_sl_floor / atr_sl_multiplier inherited as crypto-calibrated, multi-symbol pending
+# T-A covered tp_r only; atr_sl_floor / atr_sl_multiplier remain crypto-calibrated — needs an /atr-sweep follow-up
 
 # backtest and bias sections live in strategy_params.toml (base).
 # Uncomment below to override specific backtest options for this config:

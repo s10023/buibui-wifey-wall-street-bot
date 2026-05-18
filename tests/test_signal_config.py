@@ -292,17 +292,17 @@ tp_r_4h = 2.5
         # engulfing: 4h override = 3.0; 1d falls back to strategy-wide 3.0
         assert cfg.effective_tp_r("engulfing", "AAPL", "4h") == 3.0
         assert cfg.effective_tp_r("engulfing", "AAPL", "1d") == 3.0
-        # pin_bar: 4h=4.5, 1d=4.0
-        assert cfg.effective_tp_r("pin_bar", "AAPL", "4h") == 4.5
-        assert cfg.effective_tp_r("pin_bar", "AAPL", "1d") == 4.0
-        # hammer_hanging_man: strategy-wide 4.0; 1d override 3.0
+        # pin_bar: 4h=5.0, 1d=3.5 (T-A 4-sym WFO)
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "4h") == 5.0
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "1d") == 3.5
+        # hammer_hanging_man: strategy-wide 4.0; 1d override 2.5 (T-A 4-sym WFO)
         assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "4h") == 4.0
-        assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "1d") == 3.0
-        # trend_day: 4h=3.5; 1d=3.0 (T14 AAPL WFO, was 4.5)
-        assert cfg.effective_tp_r("trend_day", "AAPL", "4h") == 3.5
+        assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "1d") == 2.5
+        # trend_day: 4h=4.5 (T-A 4-sym WFO); 1d=3.0 (T14 AAPL WFO)
+        assert cfg.effective_tp_r("trend_day", "AAPL", "4h") == 4.5
         assert cfg.effective_tp_r("trend_day", "AAPL", "1d") == 3.0
-        # orb: 4h override 5.0
-        assert cfg.effective_tp_r("orb", "AAPL", "4h") == 5.0
+        # orb: 4h override 3.5 (T-A 4-sym WFO, was 5.0)
+        assert cfg.effective_tp_r("orb", "AAPL", "4h") == 3.5
         # strategy not in params (fvg dropped from signal_watch.toml) falls back to global
         assert cfg.effective_tp_r("fvg", "AAPL", "4h") == cfg.tp_r
 
