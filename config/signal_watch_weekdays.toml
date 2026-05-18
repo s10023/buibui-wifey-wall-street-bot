@@ -19,6 +19,14 @@
 # concat'd across symbols → pick the tp_r with the highest pooled OOS avg_r
 # subject to pooled_n ≥ 10. Cells with no positive pooled tp_r are kept at
 # current value and retagged "no_edge confirmed".
+#
+# Task C (2026-05-18): /atr-sweep on liquidity_sweep × 4-sym cohort × 4h+1d+1wk
+# × [0.5,1.0,1.5,2.0,2.5] × since 2023-01-03 × --atr-sl-floor on. Result: net
+# negative at every multiplier on every TF — committed least-bad multipliers
+# (4h=2.0×, 1d=0.5×) plus per-strategy `atr_sl_floor = true` under
+# [strategy_params.liquidity_sweep]. Top-level atr_sl_floor stays off so no
+# other strategy sees a behavior change. Other strategies' ATR floors are
+# still owed a /atr-sweep follow-up.
 
 extends = "strategy_params.toml"
 
@@ -98,6 +106,17 @@ tp_r_4h = 3.5                 # T-A 4-sym WFO OOS: +0.090R, n=162 (was 5.0)
 
 [strategy_params.liquidity_sweep]
 tp_r_1d = 5.0                 # T14 AAPL WFO OOS: +0.231R, n=13 (was 3.5)
+# Task C ATR sweep (2026-05-18, /atr-sweep liquidity_sweep × AAPL+MSFT+SPY+QQQ
+# × 4h+1d+1wk × [0.5,1.0,1.5,2.0,2.5] × since 2023-01-03 × --atr-sl-floor on).
+# Findings (weekdays): 4h tied -0.18R @ 0.5×/2.0× (n=55). 1d clear winner
+# -0.11R @ 0.5× (n=27). 1wk all -1.00R, n=3 (sample too thin). Strategy is
+# net negative on this cohort at every multiplier on every TF — values
+# minimize loss, do not deliver edge. Removal candidate if live cofiring
+# gates don't rescue it.
+atr_sl_floor = true           # Task C: ATR floor on; widens tight structural SLs to N × ATR14
+atr_sl_multiplier_4h = 2.0    # Task C 4-sym: tied -0.18R @ 0.5×/2.0× (n=55); 2.0× kept for parity with tt
+atr_sl_multiplier_1d = 0.5    # Task C 4-sym: clear wd winner -0.11R, n=27
+# 1wk: no commit — n=3 all-stopped on weekdays, 0 signals on tue_thu
 
 [strategy_params.morning_evening_star]
 tp_r_4h = 2.5                 # T14 AAPL WFO OOS: +0.375R, n=32 (was 5.0)
