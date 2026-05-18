@@ -8,10 +8,9 @@ Usage:
     poetry run python scripts/extract_regression_fixture.py
 
 Output:
-    tests/fixtures/btc_15m_200d.parquet
-    tests/fixtures/btc_1h_200d.parquet
-    tests/fixtures/btc_4h_200d.parquet
-    tests/fixtures/btc_1d_200d.parquet
+    tests/fixtures/aapl_4h.parquet
+    tests/fixtures/aapl_1d.parquet
+    tests/fixtures/aapl_1wk.parquet
 """
 
 from __future__ import annotations
@@ -22,15 +21,16 @@ from pathlib import Path
 
 import duckdb
 
-# Repo root is one level up from scripts/
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from analytics.data_store import DEFAULT_DB_PATH, get_ohlcv  # noqa: E402
 
-SYMBOL = "BTCUSDT"
-SINCE = "2025-09-12"  # canonical anchor — matches `--since` backfill date
-TIMEFRAMES = ["15m", "1h", "4h", "1d"]
+SYMBOL = "AAPL"
+# Monday after 4h data start (2024-05-16) — gives clean weekly alignment and
+# ~2 years of 4h coverage (the limiting timeframe under yfinance).
+SINCE = "2024-06-03"
+TIMEFRAMES = ["4h", "1d", "1wk"]
 OUTPUT_DIR = REPO_ROOT / "tests" / "fixtures"
 
 
@@ -47,6 +47,7 @@ def main() -> None:
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+    symbol_slug = SYMBOL.lower()
     conn = duckdb.connect(str(db_path), read_only=True)
     try:
         for tf in TIMEFRAMES:
@@ -60,7 +61,7 @@ def main() -> None:
             for col in ("symbol", "timeframe"):
                 if col in df.columns:
                     df[col] = df[col].astype(object)
-            out = OUTPUT_DIR / f"btc_{tf}_200d.parquet"
+            out = OUTPUT_DIR / f"{symbol_slug}_{tf}.parquet"
             df.to_parquet(out, index=False)
             print(f"  wrote {out.name}  ({len(df)} rows)")
     finally:
