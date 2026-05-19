@@ -163,8 +163,8 @@ Detailed API reference for `analytics/`. Load this when working on any analytics
 - `BacktestFilterConfig`: `fee_pct`, `min_sl_pct`, `min_avg_r`, `min_avg_r_long/short: float | None`, `since: str | None`
 - Hard-mode gate uses `min_avg_r_long/short` when set, falls back to `min_avg_r`
 - `SymbolOverride` — per-symbol tp_r/sl_pct/atr_sl overrides
-- `StrategyOverride`: `tp_r_long/short`, `adr_exempt`, `volume_suppress/spike_boost` (symmetric + directional long/short)
-- `SignalWatchConfig.effective_tp_r(strategy, symbol, tf, direction="")` — resolution: `symbol+TF → symbol → TF → directional → strategy → global`
+- `StrategyOverride`: `tp_r_long/short` (per-strategy directional), `tp_r_long_per_tf` / `tp_r_short_per_tf` (per-TF directional, Task A 2026-05-18 — TOML keys `tp_r_long_4h`, `tp_r_short_1d`, …), `adr_exempt`, `volume_suppress/spike_boost` (symmetric + directional long/short)
+- `SignalWatchConfig.effective_tp_r(strategy, symbol, tf, direction="")` — resolution (Task A): `symbol+TF+dir → symbol+TF → symbol → strategy+TF+dir → strategy+TF → strategy+dir → strategy → global`. The loader regex excludes `tp_r_long_*` / `tp_r_short_*` from `tp_r_per_tf` so the directional per-TF keys don't silently mis-parse.
 - `effective_volume_suppress/spike_boost(strategy)` — per-strategy → global; directional variants return `bool | None`
 - `BiasConfig` from `[bias]`: `adr_suppress_threshold`, `dow_soft_suppress`, `dow_suppress_min_abs_return`; F8 fields `htf_ema_enabled/mode/default_tf/default_period/default_slope_lookback/deadband_pct/per_strategy` (+ `htf_ema_anchor(strategy)` resolver); regime fields `regime_enabled/mode/htf_tf/enabled_regimes/per_strategy` (+ `regime_allowed(strategy, strategy_type, regime)` resolver — `unknown` regime + unmapped types fall open)
 - `ComboConfig`: same-TF `window=5`, `min_avg_r=1.0`; cross-TF `cross_tf_pairs`, `cross_tf_window_hours=4.0`, `cross_tf_min_avg_r=1.0`
