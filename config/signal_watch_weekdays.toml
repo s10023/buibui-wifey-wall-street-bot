@@ -38,6 +38,11 @@
 # confirmed no_edge — tp_r_4h dropped. Several Task A 4-sym directional
 # commits revert to combined under 13-sym where wider cohort dilutes
 # single-symbol edges.
+#
+# inside_bar audit (2026-05-19): retires crypto tp_r_long=4.0/tp_r_short=2.0
+# leak in strategy_params.toml (was directionally backwards — 13-sym shows
+# shorts drive 4h, longs drive 1d/1wk). 6-cell 13-sym pooled WFO refreshed all
+# inside_bar entries; first-ever tp_r_1wk commit. Stale crypto lines dropped.
 
 extends = "strategy_params.toml"
 
@@ -99,8 +104,11 @@ volume_suppress = true        # A14b crypto finding; T14 AAPL volume split not r
 
 [strategy_params.inside_bar]
 tp_r = 3.0                    # fallback
-tp_r_4h = 3.5                 # T14 AAPL WFO OOS: +0.452R, n=31 (equity-confirmed)
-tp_r_1d = 2.5                 # T14 AAPL WFO OOS: +0.353R, n=17 (new)
+tp_r_4h = 3.0                 # inside_bar audit 13-sym: combined 3.0@+0.076R, n=314 (was 3.5; shorts drive — long no_edge)
+tp_r_1d = 2.0                 # inside_bar audit 13-sym: combined 2.0@+0.009R, n=219 (was 2.5; T14 AAPL n=17 thin sample diluted)
+tp_r_long_1d = 5.0            # inside_bar audit 13-sym directional: longs +0.158R, n=114 at 5.0 (short no_edge → falls to combined 2.0)
+tp_r_1wk = 4.5                # inside_bar audit 13-sym: combined 4.5@+0.362R, n=58 (first 1wk commit; long-driven)
+tp_r_long_1wk = 5.0           # inside_bar audit 13-sym directional: longs +1.194R, n=31 at 5.0 (short no_edge → falls to combined 4.5)
 
 [strategy_params.eqh_eql]
 tp_r_4h = 2.0                 # T14 AAPL WFO OOS: +0.385R, n=13 (new)

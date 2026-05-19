@@ -336,6 +336,18 @@ tp_r_4h = 2.5
         assert cfg.effective_tp_r("bos", "AAPL", "1d") == 2.5
         # orb 4h combined 2.5 (Task E, was 3.5).
         assert cfg.effective_tp_r("orb", "AAPL", "4h") == 2.5
+        # inside_bar audit 13-sym: 4h combined 3.0 (was 3.5; long no_edge, short=combined);
+        # 1d combined 2.0 (was 2.5) + tp_r_long_1d=5.0 (short no_edge → falls to combined);
+        # 1wk combined 4.5 (new) + tp_r_long_1wk=5.0 (short no_edge → falls to combined).
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "4h") == 3.0
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "4h", direction="long") == 3.0
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "4h", direction="short") == 3.0
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "1d") == 2.0
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "1d", direction="long") == 5.0
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "1d", direction="short") == 2.0
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "1wk") == 4.5
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "1wk", direction="long") == 5.0
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "1wk", direction="short") == 4.5
         # strategy not in params falls back to global.
         assert cfg.effective_tp_r("seasonality", "AAPL", "1d") == cfg.tp_r
 
@@ -393,6 +405,18 @@ tp_r_4h = 2.5
         assert cfg.effective_tp_r("fib_golden_zone", "AAPL", "4h") == cfg.tp_r
         # orb 4h kept at 3.5 (only weekdays moved to 2.5).
         assert cfg.effective_tp_r("orb", "AAPL", "4h") == 3.5
+        # inside_bar audit 13-sym: 4h combined 3.0 (was 3.5; long no_edge, short=combined);
+        # 1d combined 2.0 (was leaking stale 4.0/2.0) + tp_r_long_1d=5.0;
+        # 1wk insufficient sample (n<10) — falls back to strategy-wide tp_r=3.0.
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "4h") == 3.0
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "4h", direction="long") == 3.0
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "4h", direction="short") == 3.0
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "1d") == 2.0
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "1d", direction="long") == 5.0
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "1d", direction="short") == 2.0
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "1wk") == 3.0
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "1wk", direction="long") == 3.0
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "1wk", direction="short") == 3.0
         # strategy not in params (fvg dropped from signal_watch.toml) falls back to global
         assert cfg.effective_tp_r("fvg", "AAPL", "4h") == cfg.tp_r
 
