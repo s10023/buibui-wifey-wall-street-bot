@@ -155,8 +155,10 @@ volume_suppress = false       # A14b: low-vol edge Δ=-0.22R
 volume_suppress = false       # A14b: low-vol edge Δ=-0.35R
 
 [strategy_params.morning_evening_star]
-tp_r_long = 4.0               # WFO 200d: BTC 15m ↑+0.364R, ETH 15m ↑+0.467R — longs dominate
-tp_r_short = 3.0              # WFO 200d: shorts negative on 15m across BTC+ETH; 3.0 = hard-mode fallback
+# Task A (2026-05-18): retired stale crypto-era tp_r_long=4.0 / tp_r_short=3.0
+# (BTC/ETH 15m-derived). Equity per-TF directional / combined keys committed
+# in signal_watch{,_weekdays}.toml now cover all production (TF × day_filter)
+# cells. Re-introduce here only via a new equity-validated sweep.
 volume_suppress = false       # A14b: low-vol edge (reversal confirmed)
 
 [strategy_params.orb]
