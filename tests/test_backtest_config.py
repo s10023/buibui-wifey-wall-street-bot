@@ -170,6 +170,60 @@ tp_r_4h = 2.5
         cfg = load_backtest_config(p)
         assert cfg.strategy_params == {}
 
+    def test_effective_tp_r_per_tf_directional_beats_per_tf_combined(self) -> None:
+        """tp_r_long_4h / tp_r_short_4h beat tp_r_4h on the same TF."""
+        cfg = BacktestSweepConfig(
+            tp_r=2.0,
+            strategy_params={
+                "trend_day": StrategyOverride(
+                    tp_r_per_tf={"4h": 4.0},
+                    tp_r_long_per_tf={"4h": 3.5},
+                    tp_r_short_per_tf={"4h": 5.0},
+                )
+            },
+        )
+        assert cfg.effective_tp_r("trend_day", "AAPL", "4h", direction="long") == 3.5
+        assert cfg.effective_tp_r("trend_day", "AAPL", "4h", direction="short") == 5.0
+        # No direction → falls through to per-TF combined.
+        assert cfg.effective_tp_r("trend_day", "AAPL", "4h") == 4.0
+
+    def test_effective_tp_r_per_tf_directional_does_not_leak_to_other_tfs(
+        self,
+    ) -> None:
+        """tp_r_long_4h must NOT affect 1d / 1wk trades."""
+        cfg = BacktestSweepConfig(
+            tp_r=2.0,
+            strategy_params={
+                "ema": StrategyOverride(
+                    tp_r=3.0,
+                    tp_r_long_per_tf={"4h": 2.0},
+                )
+            },
+        )
+        assert cfg.effective_tp_r("ema", "AAPL", "4h", direction="long") == 2.0
+        assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="long") == 3.0
+        assert cfg.effective_tp_r("ema", "AAPL", "1wk", direction="long") == 3.0
+
+    def test_load_tp_r_long_per_tf_from_toml(self, tmp_path: Path) -> None:
+        content = """\
+[strategy_params.trend_day]
+tp_r_4h = 4.0
+tp_r_long_4h = 3.5
+tp_r_short_4h = 5.0
+tp_r_long_1wk = 2.0
+"""
+        p = tmp_path / "cfg.toml"
+        p.write_text(content)
+        cfg = load_backtest_config(p)
+        override = cfg.strategy_params["trend_day"]
+        assert override.tp_r_per_tf == {"4h": 4.0}
+        assert override.tp_r_long_per_tf == {"4h": 3.5, "1wk": 2.0}
+        assert override.tp_r_short_per_tf == {"4h": 5.0}
+        # Guard against the silent mis-parse bug.
+        assert "long_4h" not in override.tp_r_per_tf
+        assert "short_4h" not in override.tp_r_per_tf
+        assert "long_1wk" not in override.tp_r_per_tf
+
 
 class TestEffectiveTpRPerSymbolBacktestConfig:
     def test_symbol_tf_override_wins_over_strategy_tf(self) -> None:

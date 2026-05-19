@@ -279,28 +279,66 @@ tp_r_4h = 2.5
             Path(__file__).parent.parent / "config" / "signal_watch_weekdays.toml"
         )
         cfg = load_signal_config(cfg_path)
-        # engulfing: TF-specific (4h=5.0 after T14 AAPL WFO); 1wk falls back to strategy-wide 3.5
-        assert cfg.effective_tp_r("engulfing", "AAPL", "4h") == 5.0
+        # engulfing: 4h combined 3.0 (Task A 4-sym n=87 supersedes T14 AAPL n=21);
+        # 1wk falls back to strategy-wide 3.5.
+        assert cfg.effective_tp_r("engulfing", "AAPL", "4h") == 3.0
         assert cfg.effective_tp_r("engulfing", "AAPL", "1wk") == 3.5
-        # strategy not in params falls back to global
+        # engulfing 1d directional split (Task A Δ=0.70R): long=3.0, short=2.5.
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="long") == 3.0
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="short") == 2.5
+        # trend_day 1wk long directional override; short falls back to combined 3.0.
+        assert cfg.effective_tp_r("trend_day", "AAPL", "1wk", direction="long") == 2.5
+        assert (
+            cfg.effective_tp_r("trend_day", "AAPL", "1wk", direction="short")
+            == cfg.tp_r
+        )
+        # morning_evening_star: stale crypto tp_r_long=4.0 retired (now falls
+        # through to per-TF combined 3.5 for 1d longs).
+        assert (
+            cfg.effective_tp_r("morning_evening_star", "AAPL", "1d", direction="long")
+            == 3.5
+        )
+        # ema 1d long directional override (Task A: +0.920R, n=25).
+        assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="long") == 5.0
+        # strategy not in params falls back to global.
         assert cfg.effective_tp_r("seasonality", "AAPL", "1d") == cfg.tp_r
 
     def test_signal_watch_toml_strategy_params_parsed(self) -> None:
         """signal_watch.toml (tue_thu) strategy_params must be applied (equity surface)."""
         cfg_path = Path(__file__).parent.parent / "config" / "signal_watch.toml"
         cfg = load_signal_config(cfg_path)
-        # engulfing: 4h override = 3.0; 1d falls back to strategy-wide 3.0
+        # engulfing: 4h override = 3.0; 1d falls back to strategy-wide 3.0 (no direction).
         assert cfg.effective_tp_r("engulfing", "AAPL", "4h") == 3.0
         assert cfg.effective_tp_r("engulfing", "AAPL", "1d") == 3.0
+        # engulfing 4h directional: short override 3.5, long falls back to combined 3.0.
+        assert cfg.effective_tp_r("engulfing", "AAPL", "4h", direction="short") == 3.5
+        assert cfg.effective_tp_r("engulfing", "AAPL", "4h", direction="long") == 3.0
+        # engulfing 1d directional split (Task A Δ=0.78R): long=3.5, short=2.5.
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="long") == 3.5
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="short") == 2.5
         # pin_bar: 4h=5.0, 1d=3.5 (T-A 4-sym WFO)
         assert cfg.effective_tp_r("pin_bar", "AAPL", "4h") == 5.0
         assert cfg.effective_tp_r("pin_bar", "AAPL", "1d") == 3.5
         # hammer_hanging_man: strategy-wide 4.0; 1d override 2.5 (T-A 4-sym WFO)
         assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "4h") == 4.0
         assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "1d") == 2.5
-        # trend_day: 4h=4.5 (T-A 4-sym WFO); 1d=3.0 (T14 AAPL WFO)
+        # trend_day: 4h=4.5 (T-A 4-sym confirmed by Task A); 1d directional split.
         assert cfg.effective_tp_r("trend_day", "AAPL", "4h") == 4.5
-        assert cfg.effective_tp_r("trend_day", "AAPL", "1d") == 3.0
+        assert cfg.effective_tp_r("trend_day", "AAPL", "1d", direction="long") == 5.0
+        assert cfg.effective_tp_r("trend_day", "AAPL", "1d", direction="short") == 3.5
+        # morning_evening_star: 4h updated 2.0 → 3.5 (Task A 4-sym n=76 supersedes T14).
+        assert cfg.effective_tp_r("morning_evening_star", "AAPL", "4h") == 3.5
+        # morning_evening_star 1d long directional; short falls back to strategy-wide 3.0.
+        assert (
+            cfg.effective_tp_r("morning_evening_star", "AAPL", "1d", direction="long")
+            == 5.0
+        )
+        assert (
+            cfg.effective_tp_r("morning_evening_star", "AAPL", "1d", direction="short")
+            == 3.0
+        )
+        # ema 1d long directional (Task A: +1.769R, n=13).
+        assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="long") == 5.0
         # orb: 4h override 3.5 (T-A 4-sym WFO, was 5.0)
         assert cfg.effective_tp_r("orb", "AAPL", "4h") == 3.5
         # strategy not in params (fvg dropped from signal_watch.toml) falls back to global
@@ -750,6 +788,121 @@ tp_r_4h = 4.0
         assert override.tp_r_per_tf == {"4h": 4.0}
         assert override.tp_r_long == 2.5
         assert override.tp_r_short == 3.5
+
+    def test_effective_tp_r_per_tf_directional_beats_per_tf_combined(self) -> None:
+        """tp_r_long_4h / tp_r_short_4h beat tp_r_4h on the same TF."""
+        cfg = SignalWatchConfig(
+            tp_r=2.0,
+            strategy_params={
+                "trend_day": StrategyOverride(
+                    tp_r_per_tf={"4h": 4.0},
+                    tp_r_long_per_tf={"4h": 3.5},
+                    tp_r_short_per_tf={"4h": 5.0},
+                )
+            },
+        )
+        assert cfg.effective_tp_r("trend_day", "AAPL", "4h", direction="long") == 3.5
+        assert cfg.effective_tp_r("trend_day", "AAPL", "4h", direction="short") == 5.0
+        # No direction → falls through per-TF directional to per-TF combined.
+        assert cfg.effective_tp_r("trend_day", "AAPL", "4h") == 4.0
+
+    def test_effective_tp_r_per_tf_directional_does_not_leak_to_other_tfs(
+        self,
+    ) -> None:
+        """tp_r_long_4h must NOT affect 1d / 1wk trades."""
+        cfg = SignalWatchConfig(
+            tp_r=2.0,
+            strategy_params={
+                "ema": StrategyOverride(
+                    tp_r=3.0,
+                    tp_r_long_per_tf={"4h": 2.0},
+                )
+            },
+        )
+        # 4h long uses the per-TF directional override.
+        assert cfg.effective_tp_r("ema", "AAPL", "4h", direction="long") == 2.0
+        # 1d long has no per-TF directional → falls back to strategy-wide tp_r.
+        assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="long") == 3.0
+        # 1wk same.
+        assert cfg.effective_tp_r("ema", "AAPL", "1wk", direction="long") == 3.0
+
+    def test_effective_tp_r_per_tf_directional_supports_1wk(self) -> None:
+        """Per-TF directional must work for 1wk (Task C: 1wk under coverage)."""
+        cfg = SignalWatchConfig(
+            tp_r=2.0,
+            strategy_params={
+                "engulfing": StrategyOverride(
+                    tp_r=3.0,
+                    tp_r_short_per_tf={"1wk": 4.5},
+                )
+            },
+        )
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1wk", direction="short") == 4.5
+        # Long on 1wk falls back to strategy-wide.
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1wk", direction="long") == 3.0
+
+    def test_effective_tp_r_per_tf_directional_falls_back_to_flat_directional(
+        self,
+    ) -> None:
+        """When per-TF directional is absent, flat tp_r_long / tp_r_short still applies."""
+        cfg = SignalWatchConfig(
+            tp_r=2.0,
+            strategy_params={
+                "morning_evening_star": StrategyOverride(
+                    tp_r=3.0,
+                    tp_r_long=4.0,
+                    tp_r_long_per_tf={"4h": 2.5},
+                )
+            },
+        )
+        # 4h long: per-TF directional wins.
+        assert (
+            cfg.effective_tp_r("morning_evening_star", "AAPL", "4h", direction="long")
+            == 2.5
+        )
+        # 1d long: no per-TF directional → flat tp_r_long applies.
+        assert (
+            cfg.effective_tp_r("morning_evening_star", "AAPL", "1d", direction="long")
+            == 4.0
+        )
+
+    def test_load_tp_r_long_4h_from_toml(self, tmp_path: Path) -> None:
+        content = """\
+[strategy_params.trend_day]
+tp_r_4h = 4.0
+tp_r_long_4h = 3.5
+tp_r_short_4h = 5.0
+tp_r_long_1wk = 2.0
+"""
+        p = _write_toml(tmp_path, content)
+        cfg = load_signal_config(p)
+        override = cfg.strategy_params["trend_day"]
+        assert override.tp_r_per_tf == {"4h": 4.0}
+        assert override.tp_r_long_per_tf == {"4h": 3.5, "1wk": 2.0}
+        assert override.tp_r_short_per_tf == {"4h": 5.0}
+
+    def test_load_tp_r_long_4h_not_in_tp_r_per_tf(self, tmp_path: Path) -> None:
+        """tp_r_long_<tf> / tp_r_short_<tf> must be excluded from tp_r_per_tf
+        (else they'd be mis-parsed as tp_r_per_tf['long_4h']).
+        """
+        content = """\
+[strategy_params.engulfing]
+tp_r_4h = 3.5
+tp_r_long_4h = 2.0
+tp_r_short_4h = 4.5
+tp_r_long_1wk = 1.5
+"""
+        p = _write_toml(tmp_path, content)
+        cfg = load_signal_config(p)
+        override = cfg.strategy_params["engulfing"]
+        # tp_r_per_tf must NOT carry "long_4h" / "short_4h" / "long_1wk".
+        assert override.tp_r_per_tf == {"4h": 3.5}
+        assert "long_4h" not in override.tp_r_per_tf
+        assert "short_4h" not in override.tp_r_per_tf
+        assert "long_1wk" not in override.tp_r_per_tf
+        # And the directional per-TF dicts are correctly populated.
+        assert override.tp_r_long_per_tf == {"4h": 2.0, "1wk": 1.5}
+        assert override.tp_r_short_per_tf == {"4h": 4.5}
 
     def test_min_avg_r_directional_parsed_from_toml(self, tmp_path: Path) -> None:
         content = """\

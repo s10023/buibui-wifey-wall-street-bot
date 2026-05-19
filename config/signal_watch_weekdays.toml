@@ -66,7 +66,9 @@ orb = ["4h"]
 # Per-strategy overrides — T14 (2026-05-17) WFO on AAPL day_filter=weekdays.
 [strategy_params.engulfing]
 tp_r = 3.5                    # fallback
-tp_r_4h = 5.0                 # T14 AAPL WFO OOS: +0.429R, n=21 (was 3.5)
+tp_r_4h = 3.0                 # Task A 4-sym n=87 +0.126R (supersedes T14 AAPL n=21 +0.429R @ 5.0)
+tp_r_long_1d = 3.0            # Task A 4-sym directional: longs +0.824R, n=34 at 3.0 (Δ=0.70R)
+tp_r_short_1d = 2.5           # Task A 4-sym directional: shorts +0.129R, n=31 at 2.5
 
 [strategy_params.pin_bar]
 tp_r = 3.5                    # fallback
@@ -98,8 +100,9 @@ tp_r_1d = 4.5                 # T-A 4-sym WFO OOS: +0.540R, n=25 (was 3.5)
 tp_r = 3.0                    # T-A 4-sym: 4h no_edge confirmed (best -0.221R); 1d edge +0.191R at tp_r=3.0 (n=47) — combined value retained
 
 [strategy_params.trend_day]
-tp_r_4h = 4.0                 # T-A 4-sym WFO OOS: +0.072R, n=237 (was 3.5)
-tp_r_1d = 3.0                 # T14 AAPL WFO OOS: +0.659R, n=41 (was 4.0)
+tp_r_4h = 4.0                 # T-A 4-sym WFO OOS: +0.072R, n=237; Task A confirmed (|Δ_dir|=0.01R <0.5R)
+tp_r_1d = 3.0                 # T-A 4-sym +0.213R, n=211; Task A directional Δ=0.13R <0.5R — combined kept
+tp_r_long_1wk = 2.5           # Task A 4-sym directional: longs +0.591R, n=22 at 2.5 (shorts n=14 no edge)
 
 [strategy_params.orb]
 tp_r_4h = 3.5                 # T-A 4-sym WFO OOS: +0.090R, n=162 (was 5.0)
@@ -119,15 +122,17 @@ atr_sl_multiplier_1d = 0.5    # Task C 4-sym: clear wd winner -0.11R, n=27
 # 1wk: no commit — n=3 all-stopped on weekdays, 0 signals on tue_thu
 
 [strategy_params.morning_evening_star]
-tp_r_4h = 2.5                 # T14 AAPL WFO OOS: +0.375R, n=32 (was 5.0)
-tp_r_1d = 3.5                 # T-A 4-sym WFO OOS: +0.406R, n=112 (was 4.0)
+tp_r_4h = 3.5                 # Task A 4-sym n=110 +0.409R (supersedes T14 AAPL n=32 +0.375R @ 2.5)
+tp_r_1d = 3.5                 # T-A 4-sym +0.406R, n=112; Task A long n=62 +1.032R also wins at 3.5
+tp_r_1wk = 2.5                # Task A 4-sym n=20 +0.225R at 2.5 (shorts n=11 +0.273R; longs n=9 fail floor)
 
 [strategy_params.order_block]
 tp_r_1d = 3.0                 # T14 AAPL WFO OOS: +0.630R, n=27 (was 1.5)
 
 [strategy_params.ema]
 tp_r = 3.0                    # spec §6 default
-tp_r_4h = 4.0                 # T-A 4-sym WFO OOS: +0.042R, n=24 (was 3.0); thin sample, AAPL-heavy
+tp_r_4h = 4.0                 # T-A 4-sym n=24 +0.042R; Task A confirms — longs +0.875R at n=9 (just under floor)
+tp_r_long_1d = 5.0            # Task A 4-sym directional: longs +0.920R, n=25 at 5.0 (shorts n=8 fail floor)
 
 # backtest and bias sections live in strategy_params.toml (base).
 # Uncomment below to override specific backtest options for this config:

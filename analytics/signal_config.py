@@ -63,6 +63,8 @@ class SymbolOverride:
     atr_sl_multiplier: float | None = None
     atr_sl_floor: bool | None = None
     tp_r_per_tf: dict[str, float] = field(default_factory=dict)
+    tp_r_long_per_tf: dict[str, float] = field(default_factory=dict)
+    tp_r_short_per_tf: dict[str, float] = field(default_factory=dict)
     sl_pct_per_tf: dict[str, float] = field(default_factory=dict)
     atr_sl_multiplier_per_tf: dict[str, float] = field(default_factory=dict)
     atr_sl_floor_per_tf: dict[str, bool] = field(default_factory=dict)
@@ -95,6 +97,10 @@ class StrategyOverride:
     atr_sl_multiplier: float | None = None
     atr_sl_floor: bool | None = None
     tp_r_per_tf: dict[str, float] = field(default_factory=dict)
+    # Per-TF directional overrides. Precedence: these win over tp_r_per_tf for
+    # their direction. Example TOML key: `tp_r_long_4h = 3.5`.
+    tp_r_long_per_tf: dict[str, float] = field(default_factory=dict)
+    tp_r_short_per_tf: dict[str, float] = field(default_factory=dict)
     sl_pct_per_tf: dict[str, float] = field(default_factory=dict)
     atr_sl_multiplier_per_tf: dict[str, float] = field(default_factory=dict)
     atr_sl_floor_per_tf: dict[str, bool] = field(default_factory=dict)
@@ -360,15 +366,34 @@ class SignalWatchConfig:
     def effective_tp_r(
         self, strategy: str, symbol: str, tf: str, direction: str = ""
     ) -> float:
-        """Resolve tp_r: symbol+TF → symbol → TF-specific → directional → strategy-wide → global."""
+        """Resolve tp_r.
+
+        Precedence (highest first):
+          1. symbol + TF + direction (sym.tp_r_long_per_tf[tf] / sym.tp_r_short_per_tf[tf])
+          2. symbol + TF (sym.tp_r_per_tf[tf])
+          3. symbol (sym.tp_r)
+          4. strategy + TF + direction (override.tp_r_long_per_tf[tf] / override.tp_r_short_per_tf[tf])
+          5. strategy + TF (override.tp_r_per_tf[tf])
+          6. strategy + direction (override.tp_r_long / override.tp_r_short)
+          7. strategy-wide (override.tp_r)
+          8. global (self.tp_r)
+        """
         override = self.strategy_params.get(strategy)
         if override is not None:
             sym = override.per_symbol.get(symbol)
             if sym is not None:
+                if direction == "long" and tf in sym.tp_r_long_per_tf:
+                    return sym.tp_r_long_per_tf[tf]
+                if direction == "short" and tf in sym.tp_r_short_per_tf:
+                    return sym.tp_r_short_per_tf[tf]
                 if tf in sym.tp_r_per_tf:
                     return sym.tp_r_per_tf[tf]
                 if sym.tp_r is not None:
                     return sym.tp_r
+            if direction == "long" and tf in override.tp_r_long_per_tf:
+                return override.tp_r_long_per_tf[tf]
+            if direction == "short" and tf in override.tp_r_short_per_tf:
+                return override.tp_r_short_per_tf[tf]
             if tf in override.tp_r_per_tf:
                 return override.tp_r_per_tf[tf]
             if direction == "long" and override.tp_r_long is not None:
@@ -531,7 +556,19 @@ def load_signal_config(path: str | Path) -> SignalWatchConfig:
             for k, v in vals.items()
             if k.startswith("tp_r_")
             and k not in ("tp_r", "tp_r_long", "tp_r_short")
+            and not k.startswith("tp_r_long_")
+            and not k.startswith("tp_r_short_")
             and not isinstance(v, dict)
+        }
+        tp_r_long_per_tf = {
+            k[len("tp_r_long_") :]: float(v)
+            for k, v in vals.items()
+            if k.startswith("tp_r_long_") and not isinstance(v, dict)
+        }
+        tp_r_short_per_tf = {
+            k[len("tp_r_short_") :]: float(v)
+            for k, v in vals.items()
+            if k.startswith("tp_r_short_") and not isinstance(v, dict)
         }
         sl_pct_per_tf = {
             k[len("sl_pct_") :]: float(v)
@@ -562,7 +599,20 @@ def load_signal_config(path: str | Path) -> SignalWatchConfig:
                 sym_tp_r_per_tf = {
                     k[len("tp_r_") :]: float(v)
                     for k, v in sym_vals.items()
-                    if k.startswith("tp_r_") and k != "tp_r"
+                    if k.startswith("tp_r_")
+                    and k not in ("tp_r", "tp_r_long", "tp_r_short")
+                    and not k.startswith("tp_r_long_")
+                    and not k.startswith("tp_r_short_")
+                }
+                sym_tp_r_long_per_tf = {
+                    k[len("tp_r_long_") :]: float(v)
+                    for k, v in sym_vals.items()
+                    if k.startswith("tp_r_long_")
+                }
+                sym_tp_r_short_per_tf = {
+                    k[len("tp_r_short_") :]: float(v)
+                    for k, v in sym_vals.items()
+                    if k.startswith("tp_r_short_")
                 }
                 sym_sl_pct_per_tf = {
                     k[len("sl_pct_") :]: float(v)
@@ -597,6 +647,8 @@ def load_signal_config(path: str | Path) -> SignalWatchConfig:
                         else None
                     ),
                     tp_r_per_tf=sym_tp_r_per_tf,
+                    tp_r_long_per_tf=sym_tp_r_long_per_tf,
+                    tp_r_short_per_tf=sym_tp_r_short_per_tf,
                     sl_pct_per_tf=sym_sl_pct_per_tf,
                     atr_sl_multiplier_per_tf=sym_atr_sl_per_tf,
                     atr_sl_floor_per_tf=sym_atr_sl_floor_per_tf,
@@ -619,6 +671,8 @@ def load_signal_config(path: str | Path) -> SignalWatchConfig:
                 bool(atr_sl_floor_val) if atr_sl_floor_val is not None else None
             ),
             tp_r_per_tf=tp_r_per_tf,
+            tp_r_long_per_tf=tp_r_long_per_tf,
+            tp_r_short_per_tf=tp_r_short_per_tf,
             sl_pct_per_tf=sl_pct_per_tf,
             atr_sl_multiplier_per_tf=atr_sl_per_tf,
             atr_sl_floor_per_tf=atr_sl_floor_per_tf,
