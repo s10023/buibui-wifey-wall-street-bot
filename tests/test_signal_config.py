@@ -284,16 +284,10 @@ tp_r_4h = 2.5
         assert cfg.effective_tp_r("engulfing", "AAPL", "4h") == 3.0
         assert cfg.effective_tp_r("engulfing", "AAPL", "1wk") == 3.5
         # engulfing 1d directional split (Task A Δ=0.70R): long=3.0, short=2.5.
-        assert (
-            cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="long") == 3.0
-        )
-        assert (
-            cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="short") == 2.5
-        )
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="long") == 3.0
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="short") == 2.5
         # trend_day 1wk long directional override; short falls back to combined 3.0.
-        assert (
-            cfg.effective_tp_r("trend_day", "AAPL", "1wk", direction="long") == 2.5
-        )
+        assert cfg.effective_tp_r("trend_day", "AAPL", "1wk", direction="long") == 2.5
         assert (
             cfg.effective_tp_r("trend_day", "AAPL", "1wk", direction="short")
             == cfg.tp_r
@@ -301,9 +295,7 @@ tp_r_4h = 2.5
         # morning_evening_star: stale crypto tp_r_long=4.0 retired (now falls
         # through to per-TF combined 3.5 for 1d longs).
         assert (
-            cfg.effective_tp_r(
-                "morning_evening_star", "AAPL", "1d", direction="long"
-            )
+            cfg.effective_tp_r("morning_evening_star", "AAPL", "1d", direction="long")
             == 3.5
         )
         # ema 1d long directional override (Task A: +0.920R, n=25).
@@ -319,19 +311,11 @@ tp_r_4h = 2.5
         assert cfg.effective_tp_r("engulfing", "AAPL", "4h") == 3.0
         assert cfg.effective_tp_r("engulfing", "AAPL", "1d") == 3.0
         # engulfing 4h directional: short override 3.5, long falls back to combined 3.0.
-        assert (
-            cfg.effective_tp_r("engulfing", "AAPL", "4h", direction="short") == 3.5
-        )
-        assert (
-            cfg.effective_tp_r("engulfing", "AAPL", "4h", direction="long") == 3.0
-        )
+        assert cfg.effective_tp_r("engulfing", "AAPL", "4h", direction="short") == 3.5
+        assert cfg.effective_tp_r("engulfing", "AAPL", "4h", direction="long") == 3.0
         # engulfing 1d directional split (Task A Δ=0.78R): long=3.5, short=2.5.
-        assert (
-            cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="long") == 3.5
-        )
-        assert (
-            cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="short") == 2.5
-        )
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="long") == 3.5
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="short") == 2.5
         # pin_bar: 4h=5.0, 1d=3.5 (T-A 4-sym WFO)
         assert cfg.effective_tp_r("pin_bar", "AAPL", "4h") == 5.0
         assert cfg.effective_tp_r("pin_bar", "AAPL", "1d") == 3.5
@@ -340,25 +324,17 @@ tp_r_4h = 2.5
         assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "1d") == 2.5
         # trend_day: 4h=4.5 (T-A 4-sym confirmed by Task A); 1d directional split.
         assert cfg.effective_tp_r("trend_day", "AAPL", "4h") == 4.5
-        assert (
-            cfg.effective_tp_r("trend_day", "AAPL", "1d", direction="long") == 5.0
-        )
-        assert (
-            cfg.effective_tp_r("trend_day", "AAPL", "1d", direction="short") == 3.5
-        )
+        assert cfg.effective_tp_r("trend_day", "AAPL", "1d", direction="long") == 5.0
+        assert cfg.effective_tp_r("trend_day", "AAPL", "1d", direction="short") == 3.5
         # morning_evening_star: 4h updated 2.0 → 3.5 (Task A 4-sym n=76 supersedes T14).
         assert cfg.effective_tp_r("morning_evening_star", "AAPL", "4h") == 3.5
         # morning_evening_star 1d long directional; short falls back to strategy-wide 3.0.
         assert (
-            cfg.effective_tp_r(
-                "morning_evening_star", "AAPL", "1d", direction="long"
-            )
+            cfg.effective_tp_r("morning_evening_star", "AAPL", "1d", direction="long")
             == 5.0
         )
         assert (
-            cfg.effective_tp_r(
-                "morning_evening_star", "AAPL", "1d", direction="short"
-            )
+            cfg.effective_tp_r("morning_evening_star", "AAPL", "1d", direction="short")
             == 3.0
         )
         # ema 1d long directional (Task A: +1.769R, n=13).
