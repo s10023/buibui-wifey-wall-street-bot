@@ -29,6 +29,17 @@
 # [strategy_params.liquidity_sweep]. Top-level atr_sl_floor stays off so no
 # other strategy sees a behavior change. Other strategies' ATR floors are
 # still owed a /atr-sweep follow-up.
+#
+# Task E (2026-05-19): full 13-symbol watchlist (AAPL/MSFT/GOOGL/AMZN/META/ORCL/
+# ADBE/NVDA/AMD/TSLA/MSTR/SPY/QQQ) pooled-trades WFO across Task A directional
+# cells AND T-A combined cells. Decision rule (additive): pooled_n ≥ 10 per
+# direction AND avg_r > 0 — commit combined per-TF; ADDITIONALLY commit
+# tp_r_long_<tf> / tp_r_short_<tf> when that direction's winner differs from
+# combined. 13-sym roughly 3.25× the trade count vs T-A 4-sym, reopening cells
+# Task A's strict rule had to skip (e.g. trend_day 1wk directional). Some
+# Task A directional commits revert to combined under 13-sym where the wider
+# cohort dilutes single-symbol edges. fib_golden_zone 4h confirmed no_edge —
+# tp_r_4h dropped, fallback retained.
 
 extends = "strategy_params.toml"
 
@@ -86,14 +97,14 @@ orb = ["4h"]                                # T13: mechanical — 4h is the only
 # kept as a starting guess; T14 WFO overwrites with equity-derived numbers.
 [strategy_params.engulfing]
 tp_r = 3.0                    # fallback
-tp_r_4h = 3.0                 # T14 AAPL WFO OOS: +0.250R, n=16; T-Aᴅ 4-sym n=57 +0.228R confirms 3.0
-tp_r_short_4h = 3.5           # Task A 4-sym directional: shorts +0.636R, n=33 at 3.5 (longs no edge)
-tp_r_long_1d = 3.5            # Task A 4-sym directional: longs +1.000R, n=19 at 3.5 (Δ=0.78R)
-tp_r_short_1d = 2.5           # Task A 4-sym directional: shorts +0.217R, n=23 at 2.5
+tp_r_4h = 2.5                 # Task E 13-sym: combined 2.5@+0.226R, n=190 (supersedes T-A 4-sym 3.0)
+tp_r_1d = 2.5                 # Task E 13-sym: combined 2.5@+0.234R, n=137
+tp_r_long_1d = 4.0            # Task E 13-sym directional: longs +0.533R, n=60 at 4.0 (was 3.5)
+tp_r_short_1d = 1.5           # Task E 13-sym directional: shorts +0.201R, n=77 at 1.5 (was 2.5)
 
 [strategy_params.pin_bar]
 tp_r = 3.0                    # fallback
-tp_r_4h = 5.0                 # T-A 4-sym WFO OOS: +0.028R, n=72 (was 4.5)
+tp_r_4h = 3.5                 # Task E 13-sym: combined 3.5@+0.256R, n=227 (was 5.0; wider cohort confirms)
 tp_r_1d = 3.5                 # T-A 4-sym WFO OOS: +0.345R, n=55 (was 4.0)
 
 [strategy_params.hammer_hanging_man]
@@ -110,12 +121,16 @@ tp_r = 3.0                    # fallback
 tp_r_4h = 3.5                 # T-A 4-sym: no_edge confirmed (best -0.059R, n=68); value retained as fallback
 
 [strategy_params.morning_evening_star]
-tp_r = 3.0                    # fallback (1d shorts use this; long uses tp_r_long_1d)
-tp_r_4h = 3.5                 # Task A 4-sym n=76 +0.362R (supersedes T14 AAPL n=21 +0.143R @ 2.0)
-tp_r_long_1d = 5.0            # Task A 4-sym directional: longs +1.357R, n=28 at 5.0 (shorts n=46 no edge)
+tp_r = 3.0                    # fallback
+tp_r_4h = 2.5                 # Task E 13-sym: combined 2.5@+0.137R, n=252 (was 3.5)
+tp_r_long_4h = 5.0            # Task E 13-sym directional: longs +0.155R, n=116 at 5.0
+tp_r_short_4h = 3.5           # Task E 13-sym directional: shorts +0.162R, n=130 at 3.5
+tp_r_1d = 2.5                 # Task E 13-sym: combined 2.5@+0.091R, n=208
+tp_r_long_1d = 5.0            # Task E 13-sym directional: longs +0.361R, n=97 at 5.0 (kept from Task A)
+tp_r_short_1d = 2.0           # Task E 13-sym directional: shorts +0.081R, n=111 at 2.0
 
 [strategy_params.fib_golden_zone]
-tp_r_4h = 5.0                 # T-A 4-sym WFO OOS: +0.250R, n=24 (was 3.5)
+# Task E 13-sym: 4h no_edge confirmed (best -0.030R) — tp_r_4h dropped, fallback retained
 adr_exempt = true             # BOS + retracement pullback entry — continuation strategy
 volume_suppress = true        # A14b crypto finding; T14 AAPL volume split not re-tested
 
@@ -125,9 +140,11 @@ adr_exempt = true             # breakout — fires in continuation direction; AD
 
 [strategy_params.trend_day]
 tp_r = 3.0                    # fallback
-tp_r_4h = 4.5                 # T-A 4-sym WFO OOS: +0.325R, n=146; Task A confirmed (|Δ_dir|=0.08R <0.5R)
-tp_r_long_1d = 5.0            # Task A 4-sym directional: longs +0.705R, n=61 at 5.0 (Δ=0.56R)
-tp_r_short_1d = 3.5           # Task A 4-sym directional: shorts +0.142R, n=53 at 3.5
+tp_r_4h = 4.5                 # Task E 13-sym confirms: combined 4.5@+0.252R, n=451
+tp_r_long_4h = 5.0            # Task E 13-sym directional: longs +0.305R, n=187 at 5.0
+tp_r_short_4h = 2.0           # Task E 13-sym directional: shorts +0.307R, n=264 at 2.0
+tp_r_long_1d = 5.0            # Task E 13-sym directional: longs +0.571R, n=163 at 5.0 (kept from Task A; Δ=0.505R)
+tp_r_short_1d = 3.0           # Task E 13-sym directional: shorts +0.066R, n=212 at 3.0 (was 3.5)
 
 [strategy_params.orb]
 tp_r = 3.0                    # fallback
@@ -138,8 +155,11 @@ adr_exempt = true             # liquidity sweep — fires at structure extremes 
 
 [strategy_params.ema]
 tp_r = 3.0                    # spec §6 default
-tp_r_4h = 4.0                 # T14 AAPL n=9; Task A 4-sym n=20 +0.250R confirms 4.0
-tp_r_long_1d = 5.0            # Task A 4-sym directional: longs +1.769R, n=13 at 5.0 (shorts n=3 fail floor)
+tp_r_4h = 2.5                 # Task E 13-sym: combined 2.5@+0.424R, n=85 (was 4.0)
+tp_r_long_4h = 5.0            # Task E 13-sym directional: longs +0.517R, n=29 at 5.0
+tp_r_short_4h = 4.5           # Task E 13-sym directional: shorts +0.402R, n=51 at 4.5
+tp_r_long_1d = 5.0            # Task E 13-sym directional: longs +1.483R, n=29 at 5.0 (kept from Task A)
+tp_r_short_1d = 4.0           # Task E 13-sym directional: shorts +0.448R, n=29 at 4.0 (Δ=1.035R)
 
 [strategy_params.order_block]
 tp_r_1d = 5.0                 # T14 AAPL WFO OOS: +0.294R, n=17 (2026-05-17)

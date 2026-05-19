@@ -36,7 +36,21 @@ from analytics.backtest_lib import BacktestResult, Trade
 from analytics.data_store import DEFAULT_DB_PATH
 from analytics.param_sweep import ParamRange, _float_range, run_param_sweep
 
-SYMBOLS = ("AAPL", "MSFT", "SPY", "QQQ")
+SYMBOLS = (
+    "AAPL",
+    "MSFT",
+    "GOOGL",
+    "AMZN",
+    "META",
+    "ORCL",
+    "ADBE",
+    "NVDA",
+    "AMD",
+    "TSLA",
+    "MSTR",
+    "SPY",
+    "QQQ",
+)
 
 # Per-TF history anchors: matches T14 (data start = earliest yfinance candle
 # the watchlist covers uniformly). 1wk uses the 1d anchor — it just gives us
@@ -45,11 +59,12 @@ SINCE_4H = "2024-05-16"
 SINCE_1D = "2023-01-03"
 SINCE_1WK = "2023-01-03"
 
-# Cohort-pooled minimum trade count gate. With 4 symbols, ≥ 10 pooled trades
-# is roughly "≥ 2–3 per symbol on average" — enough to trust the pooled avg_r
-# without letting one outlier symbol dominate. Applied PER DIRECTION when in
-# directional mode (so a 20-trade combined sample with 10 long + 10 short
-# clears, but a 12-trade sample with 11 long + 1 short does not for short).
+# Cohort-pooled minimum trade count gate. Kept at 10 across cohort sizes so
+# the decision rule stays comparable to T-A (4-sym) and Task A (4-sym): we
+# want enough samples to trust the pooled avg_r but not so many that thin-edge
+# strategies get filtered out. Applied PER DIRECTION when in directional mode
+# (so a 20-trade combined sample with 10 long + 10 short clears, but a
+# 12-trade sample with 11 long + 1 short does not for short).
 MIN_POOLED_N = 10
 
 TP_R_RANGE = ParamRange("tp_r", _float_range(1.0, 5.0, 0.5))
@@ -267,7 +282,7 @@ def _print_pooled_grid(
     print(
         f"\n  [{direction_label}]"
         f"  {'tp_r':>5}  {'pooled n':>9}  {'pooled avg_r':>13}  {'pooled wr':>10}  "
-        f"per-symbol n (AAPL, MSFT, SPY, QQQ)"
+        f"per-symbol n ({', '.join(SYMBOLS)})"
     )
     print("  " + "─" * 110)
     for p in pooled:
