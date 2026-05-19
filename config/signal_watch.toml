@@ -40,6 +40,12 @@
 # Task A directional commits revert to combined under 13-sym where the wider
 # cohort dilutes single-symbol edges. fib_golden_zone 4h confirmed no_edge —
 # tp_r_4h dropped, fallback retained.
+#
+# inside_bar audit (2026-05-19): retires crypto tp_r_long=4.0/tp_r_short=2.0
+# leak in strategy_params.toml (was directionally backwards — 13-sym shows
+# shorts drive 4h, longs drive 1d/1wk). 6-cell 13-sym pooled WFO refreshed all
+# inside_bar entries; 1wk tue_thu n<10 falls back to tp_r=3.0. Stale crypto
+# lines dropped.
 
 extends = "strategy_params.toml"
 
@@ -117,8 +123,10 @@ tp_r_1d = 2.5                 # T14 AAPL WFO OOS: +0.313R, n=8 (2026-05-17)
 volume_suppress = true        # A14b crypto finding; T14 AAPL volume split not re-tested
 
 [strategy_params.inside_bar]
-tp_r = 3.0                    # fallback
-tp_r_4h = 3.5                 # T-A 4-sym: no_edge confirmed (best -0.059R, n=68); value retained as fallback
+tp_r = 3.0                    # fallback (also covers 1wk: inside_bar audit 13-sym n<10 — insufficient sample)
+tp_r_4h = 3.0                 # inside_bar audit 13-sym: combined 3.0@+0.108R, n=195 (was 3.5; shorts drive — long no_edge)
+tp_r_1d = 2.0                 # inside_bar audit 13-sym: combined 2.0@+0.063R, n=142 (new; thin combined, long drives)
+tp_r_long_1d = 5.0            # inside_bar audit 13-sym directional: longs +0.354R, n=65 at 5.0 (short no_edge → falls to combined 2.0)
 
 [strategy_params.morning_evening_star]
 tp_r = 3.0                    # fallback

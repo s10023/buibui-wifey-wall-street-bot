@@ -168,8 +168,10 @@ volume_suppress = true        # A14b: normal-vol wins Δ=+0.33R
 volume_suppress = true        # A14b: normal-vol wins Δ=+0.17R
 
 [strategy_params.inside_bar]
-tp_r_long = 4.0               # WFO 200d: BTC 1h ↑+0.237R@3.0, SOL 1h ↑+0.286R@4.5 — cross-sym 4.0
-tp_r_short = 2.0              # WFO 200d: BTC 1h ↓+0.229R@2.0, SOL 1h ↓+0.303R@1.5 — shorts want fast exit
+# inside_bar audit (2026-05-19, 13-sym pooled WFO): retires the crypto-era
+# tp_r_long=4.0 / tp_r_short=2.0 directional override (BTC 1h / SOL 1h derived).
+# 13-sym cohort flips the directional polarity — shorts drive 4h edge, longs
+# drive 1d/1wk edge. Per-(tf, dir) commits now live in signal_watch{,_weekdays}.toml.
 
 [strategy_params.marubozu]
 volume_suppress = false       # A14b: low-vol edge Δ=-0.43R
