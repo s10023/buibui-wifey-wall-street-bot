@@ -348,6 +348,18 @@ tp_r_4h = 2.5
         assert cfg.effective_tp_r("inside_bar", "AAPL", "1wk") == 4.5
         assert cfg.effective_tp_r("inside_bar", "AAPL", "1wk", direction="long") == 5.0
         assert cfg.effective_tp_r("inside_bar", "AAPL", "1wk", direction="short") == 4.5
+        # pin_bar audit 13-sym: 4h combined 3.5 (was 5.0; T-A thin margin diluted) + tp_r_long_4h=3.0;
+        # 1d combined 2.5 (was 4.0) + tp_r_long_1d=5.0 (short=combined → falls to 2.5);
+        # 1wk combined 4.5 (NEW) + tp_r_long_1wk=3.0 + tp_r_short_1wk=5.0 (both directions diverge).
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "4h") == 3.5
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "4h", direction="long") == 3.0
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "4h", direction="short") == 3.5
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "1d") == 2.5
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "1d", direction="long") == 5.0
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "1d", direction="short") == 2.5
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "1wk") == 4.5
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "1wk", direction="long") == 3.0
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "1wk", direction="short") == 5.0
         # strategy not in params falls back to global.
         assert cfg.effective_tp_r("seasonality", "AAPL", "1d") == cfg.tp_r
 
@@ -364,9 +376,18 @@ tp_r_4h = 2.5
         # engulfing 1d directional (Task E): long=4.0 (was 3.5), short=1.5 (was 2.5).
         assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="long") == 4.0
         assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="short") == 1.5
-        # pin_bar 4h: Task E confirms 3.5 (was 5.0); 1d kept at 3.5.
+        # pin_bar audit 13-sym: 4h combined 3.5 (Task E confirms; long=short=combined);
+        # 1d combined 3.5 (kept; long/short diverge) + tp_r_long_1d=5.0 + tp_r_short_1d=2.5;
+        # 1wk falls back to strategy-wide tp_r=3.0 (n=0 — Fri close × tue_thu suppression).
         assert cfg.effective_tp_r("pin_bar", "AAPL", "4h") == 3.5
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "4h", direction="long") == 3.5
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "4h", direction="short") == 3.5
         assert cfg.effective_tp_r("pin_bar", "AAPL", "1d") == 3.5
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "1d", direction="long") == 5.0
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "1d", direction="short") == 2.5
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "1wk") == 3.0
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "1wk", direction="long") == 3.0
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "1wk", direction="short") == 3.0
         # hammer_hanging_man: strategy-wide 4.0; 1d override 2.5 (kept from T-A).
         assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "4h") == 4.0
         assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "1d") == 2.5

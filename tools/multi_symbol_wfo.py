@@ -20,9 +20,12 @@ Cell lists are hardcoded:
   --cells inside-bar inside_bar audit — full 6-cell directional sweep (3 TFs ×
                      2 day_filters) on the 13-sym cohort. Retires the crypto-era
                      tp_r_long=4.0 / tp_r_short=2.0 leak in strategy_params.toml.
+  --cells pin-bar    pin_bar audit — full 6-cell directional sweep (3 TFs ×
+                     2 day_filters) on the 13-sym cohort. Retires the crypto-era
+                     tp_r_long=5.0 / tp_r_short=3.0 leak in strategy_params.toml.
 
 Usage:
-    PYTHONPATH=. poetry run python tools/multi_symbol_wfo.py [--direction long|short|both] [--cells task-a|t-a|inside-bar] [--db PATH]
+    PYTHONPATH=. poetry run python tools/multi_symbol_wfo.py [--direction long|short|both] [--cells task-a|t-a|inside-bar|pin-bar] [--db PATH]
 """
 
 from __future__ import annotations
@@ -199,6 +202,46 @@ CELLS_INSIDE_BAR: list[tuple[str, str, str, float, str]] = [
         3.0,
         "signal_watch_weekdays.toml",
     ),  # tp_r=3.0 fallback
+]
+
+# pin_bar audit — full 6-cell directional sweep (3 TFs × 2 day_filters) on the
+# 13-sym cohort. Retires the stale crypto-era directional override
+# (tp_r_long=5.0 / tp_r_short=3.0 in strategy_params.toml — ETH 1h+15m / SOL 1h
+# derived, 2026-05-14 fork era) that currently leaks into 2 of 6 production
+# cells (1wk tue_thu, 1wk weekdays — no per-TF combined commit). The 4 of 6
+# cells with per-TF combined (`tp_r_4h` / `tp_r_1d` on both signal_watch
+# TOMLs) already shadow the stale override, but those per-TF values are
+# themselves single-name (T14 AAPL) or 4-sym pre-Task E commits that warrant
+# 13-sym re-validation in the same sweep.
+# current_tp_r reflects the *combined* per-TF effective value (per-TF commit
+# where present; fallback tp_r=3.0 / tp_r=3.5 otherwise).
+CELLS_PIN_BAR: list[tuple[str, str, str, float, str]] = [
+    # signal_watch.toml (tue_thu)
+    ("pin_bar", "4h", "tue_thu", 3.5, "signal_watch.toml"),  # tp_r_4h=3.5 (Task E)
+    ("pin_bar", "1d", "tue_thu", 3.5, "signal_watch.toml"),  # tp_r_1d=3.5 (T-A 4-sym)
+    ("pin_bar", "1wk", "tue_thu", 3.0, "signal_watch.toml"),  # tp_r=3.0 fallback
+    # signal_watch_weekdays.toml
+    (
+        "pin_bar",
+        "4h",
+        "weekdays",
+        5.0,
+        "signal_watch_weekdays.toml",
+    ),  # tp_r_4h=5.0 (T-A 4-sym thin margin +0.010R n=99)
+    (
+        "pin_bar",
+        "1d",
+        "weekdays",
+        4.0,
+        "signal_watch_weekdays.toml",
+    ),  # tp_r_1d=4.0 (T14 AAPL)
+    (
+        "pin_bar",
+        "1wk",
+        "weekdays",
+        3.5,
+        "signal_watch_weekdays.toml",
+    ),  # tp_r=3.5 fallback
 ]
 
 
@@ -430,12 +473,14 @@ def main() -> None:
     )
     parser.add_argument(
         "--cells",
-        choices=("task-a", "t-a", "inside-bar"),
+        choices=("task-a", "t-a", "inside-bar", "pin-bar"),
         default="task-a",
         help="Cell list to sweep. task-a (default) = 4 directional-gap cells "
         "× 3 TFs × 2 day_filters. t-a = original T-A combined-direction cells. "
         "inside-bar = inside_bar audit, 6-cell directional sweep retiring the "
-        "stale crypto tp_r_long/tp_r_short override.",
+        "stale crypto tp_r_long/tp_r_short override. pin-bar = pin_bar audit, "
+        "same 6-cell shape, retiring the crypto tp_r_long=5.0/tp_r_short=3.0 "
+        "override.",
     )
     parser.add_argument(
         "--direction",
@@ -458,8 +503,10 @@ def main() -> None:
         all_cells = CELLS_TASK_A
     elif args.cells == "t-a":
         all_cells = CELLS_T_A
-    else:
+    elif args.cells == "inside-bar":
         all_cells = CELLS_INSIDE_BAR
+    else:
+        all_cells = CELLS_PIN_BAR
 
     if args.cell:
         parts = args.cell.split("/")
