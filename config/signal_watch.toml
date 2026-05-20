@@ -46,6 +46,18 @@
 # shorts drive 4h, longs drive 1d/1wk). 6-cell 13-sym pooled WFO refreshed all
 # inside_bar entries; 1wk tue_thu n<10 falls back to tp_r=3.0. Stale crypto
 # lines dropped.
+#
+# Task C-followup (2026-05-20): /atr-sweep extended from liquidity_sweep (Task C
+# 4-sym) to ALL active strategies × 13-sym × 4h+1d+1wk × [0.5,1.0,1.5,2.0,2.5]
+# × since 2023-01-03 × --atr-sl-floor on. Per-strategy `atr_sl_floor = true`
+# + `atr_sl_multiplier_<tf>` committed under each [strategy_params.X] block
+# (top-level floor still off). 1wk rows all n/a on tue_thu (Fri close × tue_thu
+# suppression — same dead-cell class as Task C / pin_bar audit). Decision rule:
+# pick column where avg R peaks; commit least-bad when all multipliers net-neg
+# (Task C precedent); skip cells with n<10. 13-sym revises Task C 4-sym
+# liquidity_sweep finding: 4h winner flips 2.0×→0.5×. Reminder: tp_r values
+# were calibrated WITHOUT the ATR floor — a tp_r re-sweep at the committed
+# multipliers is the natural follow-up but deferred to a future task.
 
 extends = "strategy_params.toml"
 
@@ -107,6 +119,9 @@ tp_r_4h = 2.5                 # Task E 13-sym: combined 2.5@+0.226R, n=190 (supe
 tp_r_1d = 2.5                 # Task E 13-sym: combined 2.5@+0.234R, n=137
 tp_r_long_1d = 4.0            # Task E 13-sym directional: longs +0.533R, n=60 at 4.0 (was 3.5)
 tp_r_short_1d = 1.5           # Task E 13-sym directional: shorts +0.201R, n=77 at 1.5 (was 2.5)
+atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on (structural SL widened to N × ATR14 when tighter)
+atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: +0.21R, n=370
+atr_sl_multiplier_1d = 1.0    # Task C-followup 13-sym: -0.12R least-bad, n=312
 
 [strategy_params.pin_bar]
 tp_r = 3.0                    # fallback (also covers 1wk: pin_bar audit 13-sym n=0 — Fri close × tue_thu suppression)
@@ -114,21 +129,33 @@ tp_r_4h = 3.5                 # pin_bar audit 13-sym: combined 3.5@+0.256R, n=22
 tp_r_1d = 3.5                 # pin_bar audit 13-sym: combined 3.5@+0.184R, n=179 (confirmed; long/short diverge — directional overrides below)
 tp_r_long_1d = 5.0            # pin_bar audit 13-sym directional: longs +0.219R, n=105 at 5.0
 tp_r_short_1d = 2.5           # pin_bar audit 13-sym directional: shorts +0.218R, n=71 at 2.5
+atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
+atr_sl_multiplier_4h = 1.5    # Task C-followup 13-sym: +0.14R, n=761
+atr_sl_multiplier_1d = 0.5    # Task C-followup 13-sym: +0.24R, n=586
 
 [strategy_params.hammer_hanging_man]
 tp_r = 4.0                    # fallback (crypto cross-symbol)
 tp_r_1d = 2.5                 # T-A 4-sym WFO OOS: +0.288R, n=33 (was 3.0)
+atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
+atr_sl_multiplier_4h = 1.5    # Task C-followup 13-sym: -0.01R least-bad (tied 1.0/1.5), n=433
+atr_sl_multiplier_1d = 1.0    # Task C-followup 13-sym: -0.06R least-bad, n=336
 
 [strategy_params.doji]
 tp_r = 3.0                    # fallback
 tp_r_1d = 2.5                 # T14 AAPL WFO OOS: +0.313R, n=8 (2026-05-17)
 volume_suppress = true        # A14b crypto finding; T14 AAPL volume split not re-tested
+atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
+atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: +0.20R, n=40
+atr_sl_multiplier_1d = 2.5    # Task C-followup 13-sym: +0.29R, n=20
 
 [strategy_params.inside_bar]
 tp_r = 3.0                    # fallback (also covers 1wk: inside_bar audit 13-sym n<10 — insufficient sample)
 tp_r_4h = 3.0                 # inside_bar audit 13-sym: combined 3.0@+0.108R, n=195 (was 3.5; shorts drive — long no_edge)
 tp_r_1d = 2.0                 # inside_bar audit 13-sym: combined 2.0@+0.063R, n=142 (new; thin combined, long drives)
 tp_r_long_1d = 5.0            # inside_bar audit 13-sym directional: longs +0.354R, n=65 at 5.0 (short no_edge → falls to combined 2.0)
+atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
+atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: +0.19R, n=629
+atr_sl_multiplier_1d = 1.0    # Task C-followup 13-sym: +0.07R, n=497
 
 [strategy_params.morning_evening_star]
 tp_r = 3.0                    # fallback
@@ -138,15 +165,24 @@ tp_r_short_4h = 3.5           # Task E 13-sym directional: shorts +0.162R, n=130
 tp_r_1d = 2.5                 # Task E 13-sym: combined 2.5@+0.091R, n=208
 tp_r_long_1d = 5.0            # Task E 13-sym directional: longs +0.361R, n=97 at 5.0 (kept from Task A)
 tp_r_short_1d = 2.0           # Task E 13-sym directional: shorts +0.081R, n=111 at 2.0
+atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
+atr_sl_multiplier_4h = 1.0    # Task C-followup 13-sym: +0.15R, n=815
+atr_sl_multiplier_1d = 1.0    # Task C-followup 13-sym: +0.10R, n=683
 
 [strategy_params.fib_golden_zone]
 # Task E 13-sym: 4h no_edge confirmed (best -0.030R) — tp_r_4h dropped, fallback retained
 adr_exempt = true             # BOS + retracement pullback entry — continuation strategy
 volume_suppress = true        # A14b crypto finding; T14 AAPL volume split not re-tested
+atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on (removal candidate)
+atr_sl_multiplier_4h = 2.5    # Task C-followup 13-sym: +0.14R, n=21 (others +0.00; structural SL wider than floor at lower multipliers)
+atr_sl_multiplier_1d = 2.0    # Task C-followup 13-sym: +0.20R, n=15 (others +0.00; thin sample)
 
 [strategy_params.bos]
 tp_r = 3.0                    # T-A 4-sym: 4h no_edge confirmed (best -0.143R); 1d edge +0.481R at tp_r=3.0 (n=27) — combined value retained
 adr_exempt = true             # breakout — fires in continuation direction; ADR gate degrades it
+atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
+atr_sl_multiplier_4h = 2.0    # Task C-followup 13-sym: -0.29R least-bad (tied 0.5/1.0/2.0), n=153
+atr_sl_multiplier_1d = 2.0    # Task C-followup 13-sym: +0.04R, n=85
 
 [strategy_params.trend_day]
 tp_r = 3.0                    # fallback
@@ -155,13 +191,21 @@ tp_r_long_4h = 5.0            # Task E 13-sym directional: longs +0.305R, n=187 
 tp_r_short_4h = 2.0           # Task E 13-sym directional: shorts +0.307R, n=264 at 2.0
 tp_r_long_1d = 5.0            # Task E 13-sym directional: longs +0.571R, n=163 at 5.0 (kept from Task A; Δ=0.505R)
 tp_r_short_1d = 3.0           # Task E 13-sym directional: shorts +0.066R, n=212 at 3.0 (was 3.5)
+atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
+atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: +0.16R, n=1508
+atr_sl_multiplier_1d = 1.0    # Task C-followup 13-sym: +0.16R, n=1380
 
 [strategy_params.orb]
 tp_r = 3.0                    # fallback
 tp_r_4h = 3.5                 # T-A 4-sym WFO OOS: +0.300R, n=100 (was 5.0)
+atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
+atr_sl_multiplier_4h = 1.5    # Task C-followup 13-sym: +0.17R (tied 0.5/1.0/1.5), n=77
 
 [strategy_params.eqh_eql]
 adr_exempt = true             # liquidity sweep — fires at structure extremes in continuation direction
+atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
+atr_sl_multiplier_4h = 2.5    # Task C-followup 13-sym: -0.12R least-bad (tied 0.5/1.0/1.5/2.5), n=99
+atr_sl_multiplier_1d = 2.5    # Task C-followup 13-sym: +0.29R, n=77
 
 [strategy_params.ema]
 tp_r = 3.0                    # spec §6 default
@@ -170,22 +214,29 @@ tp_r_long_4h = 5.0            # Task E 13-sym directional: longs +0.517R, n=29 a
 tp_r_short_4h = 4.5           # Task E 13-sym directional: shorts +0.402R, n=51 at 4.5
 tp_r_long_1d = 5.0            # Task E 13-sym directional: longs +1.483R, n=29 at 5.0 (kept from Task A)
 tp_r_short_1d = 4.0           # Task E 13-sym directional: shorts +0.448R, n=29 at 4.0 (Δ=1.035R)
+atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
+atr_sl_multiplier_4h = 2.5    # Task C-followup 13-sym: +0.27R, n=266
+atr_sl_multiplier_1d = 0.5    # Task C-followup 13-sym: +0.39R, n=216
 
 [strategy_params.order_block]
 tp_r_1d = 5.0                 # T14 AAPL WFO OOS: +0.294R, n=17 (2026-05-17)
+atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
+atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: -0.01R least-bad, n=803
+atr_sl_multiplier_1d = 2.5    # Task C-followup 13-sym: +0.16R, n=774
 
 [strategy_params.liquidity_sweep]
-# Task C ATR sweep (2026-05-18, /atr-sweep liquidity_sweep × AAPL+MSFT+SPY+QQQ
-# × 4h+1d+1wk × [0.5,1.0,1.5,2.0,2.5] × since 2023-01-03 × --atr-sl-floor on).
-# Findings (tue_thu): 4h best -0.14R @ 2.0× (n=28). 1d 0.00R @ 0.5×/1.5× but
-# n=12 (below n≥20 commit floor; weekdays' 0.5× used instead). 1wk: 0 signals
-# (Fri close vs tue_thu suppression). Strategy is net negative on this cohort
-# at every multiplier on every TF — values minimize loss, do not deliver edge.
-# Removal candidate if live cofiring gates don't rescue it.
+# Task C ATR sweep (2026-05-18, /atr-sweep liquidity_sweep × 4-sym cohort) found
+# net negative at every multiplier on every TF; committed 4h=2.0×, 1d=0.5×.
+# Task C-followup (2026-05-20, 13-sym cohort) revises 4h: best tt -0.18R @ 0.5×
+# (was -0.14R @ 2.0× on 4-sym — winner flips). 1d 0.5× confirmed (-0.06R least-
+# bad). 1wk still 0 signals on tue_thu (Fri close × tue_thu suppression).
+# Strategy is still net negative on this cohort at every TF — values minimize
+# loss, do not deliver edge. Removal candidate if live cofiring gates don't
+# rescue it.
 atr_sl_floor = true           # Task C: ATR floor on; widens tight structural SLs to N × ATR14
-atr_sl_multiplier_4h = 2.0    # Task C 4-sym: best tt -0.14R, n=28 (tied wd at 0.5×/2.0×, n=55)
-atr_sl_multiplier_1d = 0.5    # Task C 4-sym: wd winner -0.11R, n=27 (tt n=12 thin, deferred to wd)
-# 1wk: no commit — 0 signals on tue_thu, n=3 all-losing on weekdays
+atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: -0.18R least-bad (was 2.0× on 4-sym; 13-sym flips winner), n=150
+atr_sl_multiplier_1d = 0.5    # Task C-followup 13-sym: -0.06R least-bad (confirms Task C 4-sym 0.5×), n=67
+# 1wk: no commit — 0 signals on tue_thu (Fri close × tue_thu suppression)
 
 # backtest and bias sections live in strategy_params.toml (base).
 # Uncomment below to override specific backtest options for this config:
