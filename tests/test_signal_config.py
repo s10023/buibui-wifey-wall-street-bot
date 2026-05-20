@@ -441,6 +441,151 @@ tp_r_4h = 2.5
         # strategy not in params (fvg dropped from signal_watch.toml) falls back to global
         assert cfg.effective_tp_r("fvg", "AAPL", "4h") == cfg.tp_r
 
+    def test_signal_watch_toml_atr_overrides_parsed(self) -> None:
+        """Task C-followup 13-sym: per-strategy atr_sl_floor + atr_sl_multiplier_<tf>."""
+        cfg_path = Path(__file__).parent.parent / "config" / "signal_watch.toml"
+        cfg = load_signal_config(cfg_path)
+        # Top-level floor stays off (Task C precedent — no other strategy affected).
+        assert cfg.atr_sl_floor is False
+        # All 14 active strategies carry per-strategy atr_sl_floor=true.
+        active = [
+            "bos",
+            "doji",
+            "ema",
+            "engulfing",
+            "eqh_eql",
+            "fib_golden_zone",
+            "hammer_hanging_man",
+            "inside_bar",
+            "liquidity_sweep",
+            "morning_evening_star",
+            "orb",
+            "order_block",
+            "pin_bar",
+            "trend_day",
+        ]
+        for s in active:
+            assert cfg.effective_atr_sl_floor(s, "AAPL", "4h") is True, s
+        # Per-strategy × TF multipliers (Task C-followup winners, tue_thu).
+        assert cfg.effective_atr_sl_multiplier("bos", "AAPL", "4h") == 2.0
+        assert cfg.effective_atr_sl_multiplier("bos", "AAPL", "1d") == 2.0
+        assert cfg.effective_atr_sl_multiplier("doji", "AAPL", "4h") == 0.5
+        assert cfg.effective_atr_sl_multiplier("doji", "AAPL", "1d") == 2.5
+        assert cfg.effective_atr_sl_multiplier("ema", "AAPL", "4h") == 2.5
+        assert cfg.effective_atr_sl_multiplier("ema", "AAPL", "1d") == 0.5
+        assert cfg.effective_atr_sl_multiplier("engulfing", "AAPL", "4h") == 0.5
+        assert cfg.effective_atr_sl_multiplier("engulfing", "AAPL", "1d") == 1.0
+        assert cfg.effective_atr_sl_multiplier("eqh_eql", "AAPL", "4h") == 2.5
+        assert cfg.effective_atr_sl_multiplier("eqh_eql", "AAPL", "1d") == 2.5
+        assert cfg.effective_atr_sl_multiplier("fib_golden_zone", "AAPL", "4h") == 2.5
+        assert cfg.effective_atr_sl_multiplier("fib_golden_zone", "AAPL", "1d") == 2.0
+        assert (
+            cfg.effective_atr_sl_multiplier("hammer_hanging_man", "AAPL", "4h") == 1.5
+        )
+        assert (
+            cfg.effective_atr_sl_multiplier("hammer_hanging_man", "AAPL", "1d") == 1.0
+        )
+        assert cfg.effective_atr_sl_multiplier("inside_bar", "AAPL", "4h") == 0.5
+        assert cfg.effective_atr_sl_multiplier("inside_bar", "AAPL", "1d") == 1.0
+        # liquidity_sweep — Task C 4-sym → Task C-followup 13-sym 4h winner flips 2.0→0.5.
+        assert cfg.effective_atr_sl_multiplier("liquidity_sweep", "AAPL", "4h") == 0.5
+        assert cfg.effective_atr_sl_multiplier("liquidity_sweep", "AAPL", "1d") == 0.5
+        assert (
+            cfg.effective_atr_sl_multiplier("morning_evening_star", "AAPL", "4h") == 1.0
+        )
+        assert (
+            cfg.effective_atr_sl_multiplier("morning_evening_star", "AAPL", "1d") == 1.0
+        )
+        assert cfg.effective_atr_sl_multiplier("orb", "AAPL", "4h") == 1.5
+        assert cfg.effective_atr_sl_multiplier("order_block", "AAPL", "4h") == 0.5
+        assert cfg.effective_atr_sl_multiplier("order_block", "AAPL", "1d") == 2.5
+        assert cfg.effective_atr_sl_multiplier("pin_bar", "AAPL", "4h") == 1.5
+        assert cfg.effective_atr_sl_multiplier("pin_bar", "AAPL", "1d") == 0.5
+        assert cfg.effective_atr_sl_multiplier("trend_day", "AAPL", "4h") == 0.5
+        assert cfg.effective_atr_sl_multiplier("trend_day", "AAPL", "1d") == 1.0
+
+    def test_signal_watch_weekdays_toml_atr_overrides_parsed(self) -> None:
+        """Task C-followup 13-sym: per-strategy ATR overrides on weekdays config (1wk has data)."""
+        cfg_path = (
+            Path(__file__).parent.parent / "config" / "signal_watch_weekdays.toml"
+        )
+        cfg = load_signal_config(cfg_path)
+        assert cfg.atr_sl_floor is False  # top-level off
+        active = [
+            "bos",
+            "doji",
+            "ema",
+            "engulfing",
+            "eqh_eql",
+            "fib_golden_zone",
+            "hammer_hanging_man",
+            "inside_bar",
+            "liquidity_sweep",
+            "morning_evening_star",
+            "orb",
+            "order_block",
+            "pin_bar",
+            "trend_day",
+        ]
+        for s in active:
+            assert cfg.effective_atr_sl_floor(s, "AAPL", "4h") is True, s
+        # 4h multipliers
+        assert cfg.effective_atr_sl_multiplier("bos", "AAPL", "4h") == 2.0
+        assert cfg.effective_atr_sl_multiplier("doji", "AAPL", "4h") == 0.5
+        assert cfg.effective_atr_sl_multiplier("ema", "AAPL", "4h") == 2.5
+        assert cfg.effective_atr_sl_multiplier("engulfing", "AAPL", "4h") == 0.5
+        assert cfg.effective_atr_sl_multiplier("eqh_eql", "AAPL", "4h") == 1.5
+        assert cfg.effective_atr_sl_multiplier("fib_golden_zone", "AAPL", "4h") == 0.5
+        assert (
+            cfg.effective_atr_sl_multiplier("hammer_hanging_man", "AAPL", "4h") == 1.0
+        )
+        assert cfg.effective_atr_sl_multiplier("inside_bar", "AAPL", "4h") == 0.5
+        assert cfg.effective_atr_sl_multiplier("liquidity_sweep", "AAPL", "4h") == 0.5
+        assert (
+            cfg.effective_atr_sl_multiplier("morning_evening_star", "AAPL", "4h") == 2.5
+        )
+        assert cfg.effective_atr_sl_multiplier("orb", "AAPL", "4h") == 2.5
+        assert cfg.effective_atr_sl_multiplier("order_block", "AAPL", "4h") == 2.5
+        assert cfg.effective_atr_sl_multiplier("pin_bar", "AAPL", "4h") == 1.5
+        assert cfg.effective_atr_sl_multiplier("trend_day", "AAPL", "4h") == 1.0
+        # 1d multipliers
+        assert cfg.effective_atr_sl_multiplier("bos", "AAPL", "1d") == 2.0
+        assert cfg.effective_atr_sl_multiplier("doji", "AAPL", "1d") == 2.5
+        assert cfg.effective_atr_sl_multiplier("ema", "AAPL", "1d") == 1.0
+        assert cfg.effective_atr_sl_multiplier("engulfing", "AAPL", "1d") == 0.5
+        assert cfg.effective_atr_sl_multiplier("eqh_eql", "AAPL", "1d") == 1.5
+        assert cfg.effective_atr_sl_multiplier("fib_golden_zone", "AAPL", "1d") == 1.0
+        assert (
+            cfg.effective_atr_sl_multiplier("hammer_hanging_man", "AAPL", "1d") == 1.0
+        )
+        assert cfg.effective_atr_sl_multiplier("inside_bar", "AAPL", "1d") == 1.0
+        # liquidity_sweep 1d wd: Task C 4-sym 0.5 → Task C-followup 13-sym 1.5.
+        assert cfg.effective_atr_sl_multiplier("liquidity_sweep", "AAPL", "1d") == 1.5
+        assert (
+            cfg.effective_atr_sl_multiplier("morning_evening_star", "AAPL", "1d") == 1.0
+        )
+        assert cfg.effective_atr_sl_multiplier("order_block", "AAPL", "1d") == 0.5
+        assert cfg.effective_atr_sl_multiplier("pin_bar", "AAPL", "1d") == 0.5
+        assert cfg.effective_atr_sl_multiplier("trend_day", "AAPL", "1d") == 2.5
+        # 1wk multipliers — first sweep cohort to cover 1wk (Task C tt had no 1wk data).
+        assert cfg.effective_atr_sl_multiplier("bos", "AAPL", "1wk") == 2.5
+        assert cfg.effective_atr_sl_multiplier("ema", "AAPL", "1wk") == 2.0
+        assert cfg.effective_atr_sl_multiplier("engulfing", "AAPL", "1wk") == 0.5
+        assert cfg.effective_atr_sl_multiplier("fib_golden_zone", "AAPL", "1wk") == 2.5
+        assert (
+            cfg.effective_atr_sl_multiplier("hammer_hanging_man", "AAPL", "1wk") == 1.0
+        )
+        assert cfg.effective_atr_sl_multiplier("inside_bar", "AAPL", "1wk") == 2.5
+        # liquidity_sweep 1wk wd: first commit (Task C n=3 too thin; 13-sym n=23 enables it).
+        assert cfg.effective_atr_sl_multiplier("liquidity_sweep", "AAPL", "1wk") == 1.5
+        assert (
+            cfg.effective_atr_sl_multiplier("morning_evening_star", "AAPL", "1wk")
+            == 1.0
+        )
+        assert cfg.effective_atr_sl_multiplier("order_block", "AAPL", "1wk") == 2.0
+        assert cfg.effective_atr_sl_multiplier("pin_bar", "AAPL", "1wk") == 2.5
+        assert cfg.effective_atr_sl_multiplier("trend_day", "AAPL", "1wk") == 1.0
+
 
 class TestEffectiveTpRPerSymbol:
     def test_symbol_tf_override_wins_over_strategy_tf(self) -> None:
