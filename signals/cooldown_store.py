@@ -11,8 +11,12 @@ from contextlib import suppress
 from pathlib import Path
 
 
-def _key(symbol: str, timeframe: str, strategy: str) -> str:
-    return f"{symbol}:{timeframe}:{strategy}"
+def _key(symbol: str, timeframe: str, strategy: str, channel: str = "primary") -> str:
+    # Primary channel keeps the legacy `{sym}:{tf}:{strategy}` shape so existing
+    # signal_state.json files remain readable without migration. Wife (and any
+    # future channel) gets a suffixed key so its watermark moves independently.
+    base = f"{symbol}:{timeframe}:{strategy}"
+    return base if channel == "primary" else f"{base}:{channel}"
 
 
 class CooldownStore:
@@ -33,14 +37,27 @@ class CooldownStore:
         self._path.write_text(json.dumps({"watermarks": self._watermarks}, indent=2))
 
     def is_new_candle(
-        self, symbol: str, timeframe: str, strategy: str, open_time: int
+        self,
+        symbol: str,
+        timeframe: str,
+        strategy: str,
+        open_time: int,
+        channel: str = "primary",
     ) -> bool:
         """Return True if open_time is newer than the last alerted candle."""
-        return self._watermarks.get(_key(symbol, timeframe, strategy), -1) < open_time
+        return (
+            self._watermarks.get(_key(symbol, timeframe, strategy, channel), -1)
+            < open_time
+        )
 
     def mark_candle(
-        self, symbol: str, timeframe: str, strategy: str, open_time: int
+        self,
+        symbol: str,
+        timeframe: str,
+        strategy: str,
+        open_time: int,
+        channel: str = "primary",
     ) -> None:
         """Record open_time as the last alerted candle and persist."""
-        self._watermarks[_key(symbol, timeframe, strategy)] = open_time
+        self._watermarks[_key(symbol, timeframe, strategy, channel)] = open_time
         self._save()
