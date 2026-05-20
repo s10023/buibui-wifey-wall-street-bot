@@ -14,6 +14,7 @@ Detailed reference for `signals/`. Load this when working on alert formatting, c
   1. Candle watermark per `(symbol, tf, strategy)` — prevents re-firing same candle
   2. Cooldown timer per `(symbol, strategy, direction)` — time-based suppression
 - JSON-persisted to `signal_state.json`
+- `is_new_candle` / `mark_candle` take `channel: str = "primary"` (Task D, 2026-05-20). Primary preserves the legacy `{sym}:{tf}:{strategy}` key shape so existing state files load without migration; wife uses `{sym}:{tf}:{strategy}:wife`. Scanner marks `channel="wife"` only on successful wife dispatch so the wife watermark moves independently of the primary watermark.
 
 ## alert_formatter.py
 
@@ -49,3 +50,10 @@ Detailed reference for `signals/`. Load this when working on alert formatting, c
 - `_format_stats_line(ctx, direction)` — direction-aware; line 1: `📐` bull%/P1/ADR; line 2: `🎯` TP window/weekly timing
 - Same-TF confluence renders `> ⚡⚡ CONFLUENCE`; cross-TF renders `> ⚡⚡ CONFLUENCE (4h → 15m)`
 - `orderflow_signals` is a step-5 extension point for CoinGlass/NPOC lines
+
+### Wife-channel formatter (Task D, 2026-05-20)
+
+- `format_wife_alert()` / `format_wife_confluence_alert()` — minimal BUY/HOLD wife-channel variant. Strips strategy name, reason, stars, candle warnings, edge backtest summary, and stats line.
+- LONG → header `BUY — $SYM TF` + entry price + time + SL/TP block (same widest-structural-SL / floor / structural-TP-or-tp_r logic as the primary formatter).
+- SHORT → header `HOLD — $SYM TF` + price + time + `(regime caution — sit tight)`. No SL/TP — wife is not expected to action shorts; HOLD is regime context only.
+- Dispatched via `utils.telegram_router.dispatch_to_channel(msg, "wife")`; `TELEGRAM_WIFE_DRY_RUN=1` logs the first line at INFO instead of sending.
