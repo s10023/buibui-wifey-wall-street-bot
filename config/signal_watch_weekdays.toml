@@ -91,8 +91,13 @@ tp_r_short_1wk = 4.5          # Task E 13-sym short-only: 4.5@+0.108R, n=37 (com
 
 [strategy_params.pin_bar]
 tp_r = 3.5                    # fallback
-tp_r_4h = 5.0                 # T-A 4-sym WFO OOS: +0.010R, n=99 (was 3.5); thin margin — only positive tp_r in the grid
-tp_r_1d = 4.0                 # T14 AAPL WFO OOS: +0.207R, n=29 (was 3.5)
+tp_r_4h = 3.5                 # pin_bar audit 13-sym: combined 3.5@+0.155R, n=352 (was 5.0; T-A 4-sym thin margin diluted)
+tp_r_long_4h = 3.0            # pin_bar audit 13-sym directional: longs +0.109R, n=193 at 3.0 (short=combined → falls to 3.5)
+tp_r_1d = 2.5                 # pin_bar audit 13-sym: combined 2.5@+0.145R, n=262 (was 4.0; T14 AAPL n=29 diluted; short=combined)
+tp_r_long_1d = 5.0            # pin_bar audit 13-sym directional: longs +0.245R, n=151 at 5.0
+tp_r_1wk = 4.5                # pin_bar audit 13-sym: first 1wk pin_bar commit — combined 4.5@+0.119R, n=63
+tp_r_long_1wk = 3.0           # pin_bar audit 13-sym directional: longs +0.417R, n=24 at 3.0 (vs combined 4.5)
+tp_r_short_1wk = 5.0          # pin_bar audit 13-sym directional: shorts +0.128R, n=39 at 5.0 (vs combined 4.5)
 
 [strategy_params.hammer_hanging_man]
 tp_r = 4.0                    # fallback

@@ -109,9 +109,11 @@ tp_r_long_1d = 4.0            # Task E 13-sym directional: longs +0.533R, n=60 a
 tp_r_short_1d = 1.5           # Task E 13-sym directional: shorts +0.201R, n=77 at 1.5 (was 2.5)
 
 [strategy_params.pin_bar]
-tp_r = 3.0                    # fallback
-tp_r_4h = 3.5                 # Task E 13-sym: combined 3.5@+0.256R, n=227 (was 5.0; wider cohort confirms)
-tp_r_1d = 3.5                 # T-A 4-sym WFO OOS: +0.345R, n=55 (was 4.0)
+tp_r = 3.0                    # fallback (also covers 1wk: pin_bar audit 13-sym n=0 — Fri close × tue_thu suppression)
+tp_r_4h = 3.5                 # pin_bar audit 13-sym: combined 3.5@+0.256R, n=227 (confirmed; long=short=combined)
+tp_r_1d = 3.5                 # pin_bar audit 13-sym: combined 3.5@+0.184R, n=179 (confirmed; long/short diverge — directional overrides below)
+tp_r_long_1d = 5.0            # pin_bar audit 13-sym directional: longs +0.219R, n=105 at 5.0
+tp_r_short_1d = 2.5           # pin_bar audit 13-sym directional: shorts +0.218R, n=71 at 2.5
 
 [strategy_params.hammer_hanging_man]
 tp_r = 4.0                    # fallback (crypto cross-symbol)

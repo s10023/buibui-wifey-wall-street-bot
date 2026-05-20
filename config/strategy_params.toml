@@ -147,8 +147,10 @@ volume_suppress_long = true   # directional: LONG low-vol -0.13R→+0.22R (tue_t
 volume_spike_boost = true     # A15 spike sweep: spike +0.59R vs normal +0.23R (73 spikes)
 
 [strategy_params.pin_bar]
-tp_r_long = 5.0               # WFO 200d: ETH 1h+15m ↑+0.715R, SOL 1h ↑+0.325R — longs dominate
-tp_r_short = 3.0              # WFO 200d: ETH 1h ↓+0.093R; shorts suppressed by hard mode where negative
+# pin_bar audit (2026-05-19): retired stale crypto-era tp_r_long=5.0 / tp_r_short=3.0
+# (ETH 1h+15m / SOL 1h derived). Equity per-TF directional / combined keys committed
+# in signal_watch{,_weekdays}.toml now cover all production (TF × day_filter) cells.
+# Re-introduce here only via a new equity-validated sweep.
 volume_suppress = false       # A14b: low-vol edge Δ=-0.22R
 
 [strategy_params.hammer_hanging_man]
