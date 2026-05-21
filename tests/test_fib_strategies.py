@@ -1,4 +1,4 @@
-"""Tests for D3 (fib_golden_zone), D4 (ote_entry), and D5 (volume_confirm gate)."""
+"""Tests for D4 (ote_entry) and D5 (volume_confirm gate)."""
 
 import pandas as pd
 
@@ -6,7 +6,6 @@ from analytics.strategies import (
     SIGNAL_COLUMNS,
     STRATEGY_REGISTRY,
     detect_engulfing,
-    detect_fib_golden_zone,
     detect_hammer_hanging_man,
     detect_ote_entry,
     detect_pin_bar,
@@ -234,91 +233,6 @@ class TestVolumeGateHammerHangingMan:
 
 
 # ---------------------------------------------------------------------------
-# D3: fib_golden_zone
-# ---------------------------------------------------------------------------
-
-
-class TestDetectFibGoldenZone:
-    def test_returns_empty_on_short_df(self) -> None:
-        df = _make_ohlcv([_candle(_t(i), 100, 101, 99, 100) for i in range(5)])
-        result = detect_fib_golden_zone(df)
-        assert result.empty
-        _assert_signal_columns(result)
-
-    def test_long_signal_in_golden_zone(self) -> None:
-        """Bullish BOS at swing_high=110, swing_low=90.
-        Golden zone: 110 - 0.5*20=100 to 110 - 0.618*20=97.64.
-        Retrace close at 99.0 (inside 97.64–100.0).
-        """
-        swing_low = 90.0
-        swing_high = 110.0
-        # fib_0_5 = 110 - 0.5*20 = 100.0
-        # fib_0_618 = 110 - 0.618*20 = 97.64
-        retrace = 99.0  # inside [97.64, 100.0]
-        df = _make_bullish_bos_df(
-            swing_low=swing_low, swing_high=swing_high, retrace_close=retrace
-        )
-        result = detect_fib_golden_zone(
-            df, swing_lookback=_SWING_LB, bos_lookback=_BOS_LB
-        )
-        long_sigs = result[result["direction"] == "long"]
-        assert not long_sigs.empty, "Expected a LONG signal in the golden zone"
-        row = long_sigs.iloc[-1]
-        assert "fib_golden_zone_bos" in row["reason"]
-        assert "BOS:" in row["context"]
-        assert "1.618 ext" in row["context"]
-        # SL should be at or near swing_low
-        assert float(row["sl_price"]) <= swing_low + 1.0
-
-    def test_no_signal_outside_golden_zone(self) -> None:
-        """Close above fib_0.5 (100.0) — not in zone — no signal."""
-        swing_low = 90.0
-        swing_high = 110.0
-        retrace = 105.0  # above fib_0_5=100.0 → not in zone
-        df = _make_bullish_bos_df(
-            swing_low=swing_low, swing_high=swing_high, retrace_close=retrace
-        )
-        result = detect_fib_golden_zone(
-            df, swing_lookback=_SWING_LB, bos_lookback=_BOS_LB
-        )
-        long_sigs = result[result["direction"] == "long"]
-        assert long_sigs.empty
-
-    def test_short_signal_in_golden_zone(self) -> None:
-        """Bearish BOS at swing_low=90, swing_high=110.
-        Golden zone (short): 90 + 0.5*20=100 to 90 + 0.618*20=102.36.
-        Retrace close at 101.0 (inside zone).
-        """
-        swing_low = 90.0
-        swing_high = 110.0
-        retrace = 101.0  # inside [100.0, 102.36]
-        df = _make_bearish_bos_df(
-            swing_low=swing_low, swing_high=swing_high, retrace_close=retrace
-        )
-        result = detect_fib_golden_zone(
-            df, swing_lookback=_SWING_LB, bos_lookback=_BOS_LB
-        )
-        short_sigs = result[result["direction"] == "short"]
-        assert not short_sigs.empty, "Expected a SHORT signal in the golden zone"
-        row = short_sigs.iloc[-1]
-        assert "fib_golden_zone_bos" in row["reason"]
-        assert float(row["sl_price"]) >= swing_high - 1.0
-
-    def test_strategy_registry_entry(self) -> None:
-        assert "fib_golden_zone" in STRATEGY_REGISTRY
-        spec = STRATEGY_REGISTRY["fib_golden_zone"]
-        assert spec.get_confidence("4h") >= 1
-        param_names = [p.name for p in spec.params]
-        assert "swing_lookback" in param_names
-        assert "bos_lookback" in param_names
-
-    def test_signal_registry_entry(self) -> None:
-        from signals.registry import SIGNAL_REGISTRY
-
-        assert "fib_golden_zone" in SIGNAL_REGISTRY
-
-
-# ---------------------------------------------------------------------------
 # D4: ote_entry
 # ---------------------------------------------------------------------------
 
@@ -396,24 +310,13 @@ class TestDetectOteEntry:
 
         assert "ote_entry" in SIGNAL_REGISTRY
 
-    def test_ote_more_selective_than_golden_zone(self) -> None:
-        """OTE zone and golden zone are non-overlapping; both produce valid DataFrames."""
-        # Use _make_bullish_bos_df with retrace in OTE zone
+    def test_ote_fires_in_zone(self) -> None:
+        """OTE produces a valid DataFrame and fires in its zone."""
         df_ote = _make_bullish_bos_df(
             swing_low=90.0, swing_high=110.0, retrace_close=96.0
-        )
-        # Use _make_bullish_bos_df with retrace in golden zone
-        df_golden = _make_bullish_bos_df(
-            swing_low=90.0, swing_high=110.0, retrace_close=99.0
-        )
-        golden_result = detect_fib_golden_zone(
-            df_golden, swing_lookback=_SWING_LB, bos_lookback=_BOS_LB
         )
         ote_result = detect_ote_entry(
             df_ote, swing_lookback=_SWING_LB, bos_lookback=_BOS_LB
         )
-        assert isinstance(golden_result, pd.DataFrame)
         assert isinstance(ote_result, pd.DataFrame)
-        # Both should fire for their respective zones
-        assert not golden_result.empty
         assert not ote_result.empty

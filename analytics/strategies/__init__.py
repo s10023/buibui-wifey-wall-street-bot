@@ -35,7 +35,6 @@ from analytics.strategies.doji import detect_doji
 from analytics.strategies.ema import detect_ema
 from analytics.strategies.engulfing import detect_engulfing
 from analytics.strategies.eqh_eql import detect_eqh_eql
-from analytics.strategies.fib_golden_zone import detect_fib_golden_zone
 from analytics.strategies.fibonacci_retracement import detect_fibonacci_retracement
 from analytics.strategies.funding_extreme import detect_funding_extreme
 from analytics.strategies.fvg import detect_fvg
@@ -73,7 +72,6 @@ __all__ = [
     "detect_ema",
     "detect_engulfing",
     "detect_eqh_eql",
-    "detect_fib_golden_zone",
     "detect_fibonacci_retracement",
     "detect_funding_extreme",
     "detect_fvg",

@@ -34,10 +34,9 @@
 # commit tp_r_long_<tf> / tp_r_short_<tf> when that direction's winner
 # differs from combined. 13-sym roughly 3.25× the trade count vs T-A 4-sym,
 # reopening 1wk cells Task A's strict rule had to skip (engulfing short-only,
-# trend_day directional, morning_evening_star long-only). fib_golden_zone 4h
-# confirmed no_edge — tp_r_4h dropped. Several Task A 4-sym directional
-# commits revert to combined under 13-sym where wider cohort dilutes
-# single-symbol edges.
+# trend_day directional, morning_evening_star long-only). Several Task A
+# 4-sym directional commits revert to combined under 13-sym where wider
+# cohort dilutes single-symbol edges.
 #
 # inside_bar audit (2026-05-19): retires crypto tp_r_long=4.0/tp_r_short=2.0
 # leak in strategy_params.toml (was directionally backwards — 13-sym shows
@@ -79,7 +78,6 @@ strategies = [
     'hammer_hanging_man',
     'doji',
     'morning_evening_star',
-    'fib_golden_zone',
     'ema'
 ]
 
@@ -154,14 +152,6 @@ atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 1.5    # Task C-followup 13-sym: -0.01R least-bad, n=154
 atr_sl_multiplier_1d = 1.5    # Task C-followup 13-sym: +0.43R (tied 0.5/1.0/1.5), n=126
 # 1wk: no commit — n=8 (below n>=10 floor)
-
-[strategy_params.fib_golden_zone]
-# Task E 13-sym: 4h no_edge confirmed (best -0.014R) — tp_r_4h dropped
-tp_r_1d = 2.0                 # Task E 13-sym: combined 2.0@+0.136R, n=88 (was 4.5; 13-sym dilutes T-A 4-sym edge)
-atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on (removal candidate confirmed — 1wk all net-neg)
-atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: -0.01R least-bad, n=286
-atr_sl_multiplier_1d = 1.0    # Task C-followup 13-sym: +0.11R, n=271
-atr_sl_multiplier_1wk = 2.5   # Task C-followup 13-sym: -0.42R least-bad (all multipliers net-neg), n=39
 
 [strategy_params.bos]
 tp_r = 3.0                    # T-A 4-sym: 4h no_edge confirmed (best -0.221R); fallback retained

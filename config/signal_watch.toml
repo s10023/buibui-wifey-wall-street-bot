@@ -38,8 +38,7 @@
 # combined. 13-sym roughly 3.25× the trade count vs T-A 4-sym, reopening cells
 # Task A's strict rule had to skip (e.g. trend_day 1wk directional). Some
 # Task A directional commits revert to combined under 13-sym where the wider
-# cohort dilutes single-symbol edges. fib_golden_zone 4h confirmed no_edge —
-# tp_r_4h dropped, fallback retained.
+# cohort dilutes single-symbol edges.
 #
 # inside_bar audit (2026-05-19): retires crypto tp_r_long=4.0/tp_r_short=2.0
 # leak in strategy_params.toml (was directionally backwards — 13-sym shows
@@ -84,7 +83,6 @@ strategies = [
     'hammer_hanging_man',
     'doji',
     'morning_evening_star',
-    'fib_golden_zone',
     'ema'
 ]
 
@@ -168,14 +166,6 @@ tp_r_short_1d = 2.0           # Task E 13-sym directional: shorts +0.081R, n=111
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 1.0    # Task C-followup 13-sym: +0.15R, n=815
 atr_sl_multiplier_1d = 1.0    # Task C-followup 13-sym: +0.10R, n=683
-
-[strategy_params.fib_golden_zone]
-# Task E 13-sym: 4h no_edge confirmed (best -0.030R) — tp_r_4h dropped, fallback retained
-adr_exempt = true             # BOS + retracement pullback entry — continuation strategy
-volume_suppress = true        # A14b crypto finding; T14 AAPL volume split not re-tested
-atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on (removal candidate)
-atr_sl_multiplier_4h = 2.5    # Task C-followup 13-sym: +0.14R, n=21 (others +0.00; structural SL wider than floor at lower multipliers)
-atr_sl_multiplier_1d = 2.0    # Task C-followup 13-sym: +0.20R, n=15 (others +0.00; thin sample)
 
 [strategy_params.bos]
 tp_r = 3.0                    # T-A 4-sym: 4h no_edge confirmed (best -0.143R); 1d edge +0.481R at tp_r=3.0 (n=27) — combined value retained

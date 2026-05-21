@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-20",
+  "generated_at": "2026-05-21",
   "config": "config/signal_watch_weekdays.toml",
   "strategies": {
     "wick_fill": {
@@ -670,56 +670,6 @@
         "short_win_rate": 0.6667,
         "max_drawdown_r": 2.0,
         "recovery_factor": 1.5
-      }
-    },
-    "fib_golden_zone": {
-      "4h": {
-        "trade_count": 18,
-        "long_trade_count": 13,
-        "short_trade_count": 5,
-        "win_rate": 0.3333,
-        "avg_r": 0.0,
-        "total_r": 0.0,
-        "long_avg_r": 0.3846,
-        "short_avg_r": -1.0,
-        "long_total_r": 5.0,
-        "short_total_r": -5.0,
-        "long_win_rate": 0.4615,
-        "short_win_rate": 0.0,
-        "max_drawdown_r": 4.0,
-        "recovery_factor": 0.0
-      },
-      "1d": {
-        "trade_count": 6,
-        "long_trade_count": 3,
-        "short_trade_count": 3,
-        "win_rate": 0.3333,
-        "avg_r": 0.0,
-        "total_r": 0.0,
-        "long_avg_r": 0.0,
-        "short_avg_r": 0.0,
-        "long_total_r": 0.0,
-        "short_total_r": 0.0,
-        "long_win_rate": 0.3333,
-        "short_win_rate": 0.3333,
-        "max_drawdown_r": 2.0,
-        "recovery_factor": 0.0
-      },
-      "1wk": {
-        "trade_count": 2,
-        "long_trade_count": 1,
-        "short_trade_count": 1,
-        "win_rate": 0.5,
-        "avg_r": 0.5,
-        "total_r": 1.0,
-        "long_avg_r": -1.0,
-        "short_avg_r": 2.0,
-        "long_total_r": -1.0,
-        "short_total_r": 2.0,
-        "long_win_rate": 0.0,
-        "short_win_rate": 1.0,
-        "max_drawdown_r": 1.0,
-        "recovery_factor": 1.0
       }
     },
     "ote_entry": {

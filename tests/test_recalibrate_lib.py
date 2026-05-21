@@ -146,12 +146,12 @@ def _seed_backtest_runs(conn: duckdb.DuckDBPyConnection) -> None:
             "run_at_ms": 1000,
             "sweep_id": None,
         },
-        # fib_golden_zone: 4h=0.7 (4★), 1h=-0.2 (1★) — different ratings per TF
+        # engulfing: 4h=0.7 (4★), 1h=-0.2 (1★) — different ratings per TF
         {
             "run_id": "ddd",
             "symbol": "BTCUSDT",
             "timeframe": "4h",
-            "strategy": "fib_golden_zone",
+            "strategy": "engulfing",
             "data_start_ms": 0,
             "data_end_ms": 1,
             "days": 90,
@@ -174,7 +174,7 @@ def _seed_backtest_runs(conn: duckdb.DuckDBPyConnection) -> None:
             "run_id": "eee",
             "symbol": "BTCUSDT",
             "timeframe": "1h",
-            "strategy": "fib_golden_zone",
+            "strategy": "engulfing",
             "data_start_ms": 0,
             "data_end_ms": 1,
             "days": 90,
@@ -276,16 +276,16 @@ class TestComputeRecalibratedRatings:
         _seed_backtest_runs(conn)
         result = compute_recalibrated_ratings(conn, min_trades=10)
         conn.close()
-        # fib_golden_zone: 4h=4★, 1h=1★ — different per TF
-        assert result["fib_golden_zone"]["4h"] == 4
-        assert result["fib_golden_zone"]["1h"] == 1
+        # engulfing: 4h=4★, 1h=1★ — different per TF
+        assert result["engulfing"]["4h"] == 4
+        assert result["engulfing"]["1h"] == 1
 
     def test_returns_only_strategies_with_data(self) -> None:
         conn = self._make_conn()
         _seed_backtest_runs(conn)
         result = compute_recalibrated_ratings(conn, min_trades=10)
         conn.close()
-        assert set(result.keys()) == {"bos", "fvg", "fib_golden_zone"}
+        assert set(result.keys()) == {"bos", "fvg", "engulfing"}
 
 
 # ---------------------------------------------------------------------------
@@ -366,10 +366,8 @@ class TestFormatRecalibrationReport:
 
     def test_per_tf_dict_old_ratings_resolved_correctly(self) -> None:
         # old has per-TF dict; new has different rating for 4h
-        old: dict[str, dict[str, int] | int] = {
-            "fib_golden_zone": {"default": 1, "4h": 3}
-        }
-        new: dict[str, dict[str, int]] = {"fib_golden_zone": {"4h": 4}}
+        old: dict[str, dict[str, int] | int] = {"engulfing": {"default": 1, "4h": 3}}
+        new: dict[str, dict[str, int]] = {"engulfing": {"4h": 4}}
         win_rates = pd.DataFrame(
             columns=["strategy", "timeframe", "total_trades", "win_rate", "avg_r"]
         )

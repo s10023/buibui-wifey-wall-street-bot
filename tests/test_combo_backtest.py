@@ -162,14 +162,10 @@ def test_run_combo_backtest_zero_trades_when_no_cofire() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_incompatible_pairs_contains_bos_fib() -> None:
-    assert frozenset({"fib_golden_zone", "bos"}) in INCOMPATIBLE_PAIRS
-
-
 def test_incompatible_pairs_contains_bos_ote() -> None:
     assert frozenset({"ote_entry", "bos"}) in INCOMPATIBLE_PAIRS
 
 
 def test_compatible_pair_not_in_incompatible() -> None:
     assert frozenset({"bos", "fvg"}) not in INCOMPATIBLE_PAIRS
-    assert frozenset({"engulfing", "fib_golden_zone"}) not in INCOMPATIBLE_PAIRS
+    assert frozenset({"engulfing", "ote_entry"}) not in INCOMPATIBLE_PAIRS

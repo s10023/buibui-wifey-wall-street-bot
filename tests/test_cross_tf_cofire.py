@@ -619,7 +619,7 @@ def test_confluence_data_htf_ltf_fields() -> None:
 def test_same_tf_confluence_data_empty_tf_fields() -> None:
     """Same-TF ConfluenceData has empty htf_tf/ltf_tf by default."""
     cd = ConfluenceData(
-        co_strategy="fib_golden_zone",
+        co_strategy="ote_entry",
         candles_ago=2,
         avg_r=1.63,
         trades=9,

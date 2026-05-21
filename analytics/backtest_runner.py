@@ -601,7 +601,7 @@ def run_combo_backtest_cmd(
     """Run all valid strategy-pair co-firing backtests and print a ranked table.
 
     Loads a TOML config when config_path is set; otherwise uses the provided
-    symbols/timeframes directly.  Incompatible pairs (e.g. bos + fib_golden_zone)
+    symbols/timeframes directly.  Incompatible pairs (e.g. bos + ote_entry)
     are skipped automatically.
 
     workers controls parallelism over symbol×TF chunks.  Defaults to

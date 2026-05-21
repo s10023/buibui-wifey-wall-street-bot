@@ -53,7 +53,7 @@ def _make_combo_lookup(
     symbol: str = "ETHUSDT",
     tf: str = "4h",
     strategy_a: str = "fvg",
-    strategy_b: str = "fib_golden_zone",
+    strategy_b: str = "pin_bar",
     avg_r: float = 1.63,
     win_rate: float = 0.889,
     closed_trades: int = 9,
@@ -113,7 +113,7 @@ class TestFindLiveCofire:
         current_time = int(ohlcv["open_time"].iloc[-1])
         events = [
             _make_event("fvg", open_time=current_time),
-            _make_event("fib_golden_zone", open_time=current_time),
+            _make_event("pin_bar", open_time=current_time),
         ]
         lookup = _make_combo_lookup()
         conn = _conn_with_signals([])
@@ -137,7 +137,7 @@ class TestFindLiveCofire:
                 {
                     "symbol": "ETHUSDT",
                     "timeframe": "4h",
-                    "strategy": "fib_golden_zone",
+                    "strategy": "pin_bar",
                     "open_time": co_time,
                     "direction": "long",
                     "entry_price": 100.0,
@@ -150,7 +150,7 @@ class TestFindLiveCofire:
         )
         result = _find_live_cofire(events, ohlcv, conn, lookup, "ETHUSDT", "4h", 5, 1.0)
         assert result is not None
-        assert result.co_strategy == "fib_golden_zone"
+        assert result.co_strategy == "pin_bar"
         assert result.candles_ago == 2
         conn.close()
 
@@ -166,7 +166,7 @@ class TestFindLiveCofire:
                 {
                     "symbol": "ETHUSDT",
                     "timeframe": "4h",
-                    "strategy": "fib_golden_zone",
+                    "strategy": "pin_bar",
                     "open_time": co_time,
                     "direction": "long",
                     "entry_price": 100.0,
@@ -189,7 +189,7 @@ class TestFindLiveCofire:
             _make_event("fvg", open_time=current_time),
             _make_event("engulfing", open_time=current_time),
         ]
-        lookup = _make_combo_lookup(strategy_a="fvg", strategy_b="fib_golden_zone")
+        lookup = _make_combo_lookup(strategy_a="fvg", strategy_b="pin_bar")
         conn = _conn_with_signals([])
         result = _find_live_cofire(events, ohlcv, conn, lookup, "ETHUSDT", "4h", 5, 1.0)
         assert result is None  # fvg+engulfing not in lookup
@@ -201,7 +201,7 @@ class TestFindLiveCofire:
         current_time = int(ohlcv["open_time"].iloc[-1])
         events = [
             _make_event("fvg", open_time=current_time),
-            _make_event("fib_golden_zone", open_time=current_time),
+            _make_event("pin_bar", open_time=current_time),
         ]
         lookup = _make_combo_lookup(avg_r=0.8)
         conn = _conn_with_signals([])
@@ -215,16 +215,16 @@ class TestFindLiveCofire:
         current_time = int(ohlcv["open_time"].iloc[-1])
         events = [
             _make_event("fvg", open_time=current_time),
-            _make_event("fib_golden_zone", open_time=current_time),
+            _make_event("pin_bar", open_time=current_time),
             _make_event("bos", open_time=current_time),
         ]
         lookup: dict = {
-            ("ETHUSDT", "4h", frozenset({"fvg", "fib_golden_zone"})): {
+            ("ETHUSDT", "4h", frozenset({"fvg", "pin_bar"})): {
                 "avg_r": 1.63,
                 "win_rate": 0.889,
                 "closed_trades": 9,
                 "strategy_a": "fvg",
-                "strategy_b": "fib_golden_zone",
+                "strategy_b": "pin_bar",
             },
             ("ETHUSDT", "4h", frozenset({"fvg", "bos"})): {
                 "avg_r": 1.20,
@@ -252,7 +252,7 @@ class TestFindLiveCofire:
                 {
                     "symbol": "ETHUSDT",
                     "timeframe": "4h",
-                    "strategy": "fib_golden_zone",
+                    "strategy": "pin_bar",
                     "open_time": co_time,
                     "direction": "short",  # wrong direction
                     "entry_price": 100.0,
@@ -299,7 +299,7 @@ class TestConfluenceAlertFormatting:
     def test_blockquote_present_when_cofire_set(self) -> None:
         ev = self._base_event()
         ev.confluence_combo = ConfluenceData(
-            co_strategy="fib_golden_zone",
+            co_strategy="pin_bar",
             candles_ago=2,
             avg_r=1.63,
             trades=9,
@@ -309,7 +309,7 @@ class TestConfluenceAlertFormatting:
         )
         msg = format_confluence_alert([ev])
         assert "> ⚡⚡ CONFLUENCE" in msg
-        assert "fib_golden_zone co-fired 2 candles ago" in msg
+        assert "pin_bar co-fired 2 candles ago" in msg
         assert "+1.63R" in msg
         assert "9 trades" in msg
         assert "88.9% win" in msg
@@ -353,7 +353,7 @@ class TestConfluenceAlertFormatting:
     def test_blockquote_after_backtest_summary_before_stats(self) -> None:
         ev = self._base_event()
         ev.confluence_combo = ConfluenceData(
-            co_strategy="fib_golden_zone",
+            co_strategy="pin_bar",
             candles_ago=2,
             avg_r=1.63,
             trades=9,
@@ -373,7 +373,7 @@ class TestConfluenceAlertFormatting:
         """Formatter picks the ConfluenceData with highest avg_r across events."""
         ev1 = self._base_event("fvg")
         ev1.confluence_combo = ConfluenceData(
-            co_strategy="fib_golden_zone",
+            co_strategy="pin_bar",
             candles_ago=2,
             avg_r=1.63,
             trades=9,
@@ -392,13 +392,13 @@ class TestConfluenceAlertFormatting:
             type_b="structural",
         )
         msg = format_confluence_alert([ev1, ev2])
-        assert "fib_golden_zone" in msg
+        assert "pin_bar" in msg
         assert "1.63" in msg
 
     def test_orderflow_signals_appended(self) -> None:
         ev = self._base_event()
         ev.confluence_combo = ConfluenceData(
-            co_strategy="fib_golden_zone",
+            co_strategy="pin_bar",
             candles_ago=0,
             avg_r=1.63,
             trades=9,
@@ -433,11 +433,11 @@ class TestGetComboLookup:
         # Build two minimal ComboBacktestResult-like objects to upsert via SQL directly.
         # It's simpler to INSERT directly than to construct ComboBacktestResult.
         def _insert(day_filter: str, avg_r: float) -> None:
-            combo_id = f"ETHUSDT|4h|fvg+fib_golden_zone|w5|{day_filter}"
+            combo_id = f"ETHUSDT|4h|fvg+pin_bar|w5|{day_filter}"
             conn.execute(
                 """
                 INSERT OR REPLACE INTO backtest_combos VALUES (
-                    ?, 'ETHUSDT', '4h', 'fvg', 'fib_golden_zone', 5,
+                    ?, 'ETHUSDT', '4h', 'fvg', 'pin_bar', 5,
                     0, 0, 200, 0.02, 2.0, 0.0005, ?,
                     30, 20, 16, 0.80, ?, 10.0, 2.0, 1.0,
                     10, 0.80, ?, 10, 0.80, ?, epoch_ms(now())
@@ -450,7 +450,7 @@ class TestGetComboLookup:
         _insert("tue_thu", 1.63)  # higher avg_r — should win
 
         result = get_combo_lookup(conn)
-        key = ("ETHUSDT", "4h", frozenset({"fvg", "fib_golden_zone"}))
+        key = ("ETHUSDT", "4h", frozenset({"fvg", "pin_bar"}))
         assert key in result
         assert result[key]["avg_r"] == pytest.approx(1.63)
         conn.close()

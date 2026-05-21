@@ -15,9 +15,8 @@ def detect_ote_entry(
 ) -> pd.DataFrame:
     """Detect OTE (Optimal Trade Entry) — 0.618–0.786 retracement after a confirmed BOS.
 
-    Same structure as detect_fib_golden_zone but uses the deeper OTE zone
-    (61.8%–78.6% retracement).  This is more selective and targets the
-    high-probability ICT OTE level.
+    BOS-anchored retracement entry using the deeper OTE zone
+    (61.8%–78.6% retracement). Targets the high-probability ICT OTE level.
 
     LONG (bullish BOS):
     - Entry zone: fib 0.786 ≤ close ≤ fib 0.618.

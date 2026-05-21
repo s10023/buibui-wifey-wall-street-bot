@@ -26,19 +26,19 @@ Detailed API reference for `analytics/`. Load this when working on any analytics
 
 (After strat-3 the prior `indicators_lib.py` shim is removed; the 22 detect_* functions and the registries live in `analytics/strategies/`. Public entry: `from analytics.strategies import ...`.)
 
-- **Per-detector modules**: `wick_fills.py`, `marubozu_retest.py`, `orb_breakout.py`, `liquidity_sweep.py`, `fvg.py`, `market_structure.py` (= `bos`), `funding_extreme.py`, `smt_divergence.py`, `eqh_eql.py`, `order_block.py`, `cvd_divergence.py`, `trend_day.py`, `engulfing.py`, `pin_bar.py`, `inside_bar.py`, `hammer_hanging_man.py`, `doji.py`, `morning_evening_star.py`, `fibonacci_retracement.py` (legacy), `fib_golden_zone.py`, `ote_entry.py`, `ema.py` — one file per `detect_*` function
+- **Per-detector modules**: `wick_fills.py`, `marubozu_retest.py`, `orb_breakout.py`, `liquidity_sweep.py`, `fvg.py`, `market_structure.py` (= `bos`), `funding_extreme.py`, `eqh_eql.py`, `order_block.py`, `trend_day.py`, `engulfing.py`, `pin_bar.py`, `inside_bar.py`, `hammer_hanging_man.py`, `doji.py`, `morning_evening_star.py`, `fibonacci_retracement.py` (legacy), `ote_entry.py`, `ema.py` — one file per `detect_*` function (`smt_divergence` / `cvd_divergence` / `fib_golden_zone` removed)
 - **`_base.py`** — `ParamSpec`, `StrategySpec`, `SIGNAL_COLUMNS`
 - **`_shared.py`** — `_find_bos_swing`, `volume_confirm`, `compute_ema`, `ema_cross_count`, `is_trending`, `_empty_signals`, `_signals_to_df`, `_fmt_time`
 - **`_seasonality.py`** — `seasonality_stats`, `SEASONALITY_COLUMNS` (returns stats DataFrame, not signals)
-- **`_registry.py`** — explicit-tuple-driven assembler holding `STRATEGY_REGISTRY` (21 entries), `DETECTOR_REGISTRY` (19 entries; `seasonality` / `smt_divergence` / legacy `fibonacci_retracement` excluded), `KNOWN_STRATEGIES`, `KNOWN_STRATEGY_TYPES`, `STRATEGY_TYPE_GROUPS`, `INCOMPATIBLE_PAIRS`, `patch_confidence_scores`
+- **`_registry.py`** — explicit-tuple-driven assembler holding `STRATEGY_REGISTRY` (18 entries), `DETECTOR_REGISTRY` (17 entries; `seasonality` and legacy `fibonacci_retracement` excluded), `KNOWN_STRATEGIES`, `KNOWN_STRATEGY_TYPES`, `STRATEGY_TYPE_GROUPS`, `INCOMPATIBLE_PAIRS`, `patch_confidence_scores`
 - **`__init__.py`** — eager re-exports of every leaf + registry symbol; the public entry for callers
-- 21 active strategies in `STRATEGY_REGISTRY`: `seasonality`, `wick_fill`, `marubozu`, `orb`, `liquidity_sweep`, `fvg`, `bos`, `smt_divergence`, `eqh_eql`, `order_block`, `cvd_divergence`, `trend_day`, `engulfing`, `pin_bar`, `inside_bar`, `hammer_hanging_man`, `doji`, `morning_evening_star`, `fib_golden_zone`, `ote_entry`, `ema` (`fibonacci_retracement` legacy/commented-out; `funding_extreme` exists as a function but isn't registered — needs a 2-arg signature, called directly)
+- 18 active strategies in `STRATEGY_REGISTRY`: `seasonality`, `wick_fill`, `marubozu`, `orb`, `liquidity_sweep`, `fvg`, `bos`, `eqh_eql`, `order_block`, `trend_day`, `engulfing`, `pin_bar`, `inside_bar`, `hammer_hanging_man`, `doji`, `morning_evening_star`, `ote_entry`, `ema` (`fibonacci_retracement` / `fib_golden_zone` / `smt_divergence` / `cvd_divergence` removed; `funding_extreme` exists as a function but isn't registered — needs a 2-arg signature, called directly)
 - `StrategySpec.confidence: dict[str, int] | int` — use `get_confidence(tf)` (falls back to `"default"` key then `3`)
 - `StrategySpec.tp_r_long/tp_r_short: float | None` — Gate 3 direction-split TP; use `get_tp_r(direction)` (falls back to 2.0)
 - `StrategySpec.strategy_type` — one of `structural`, `fib`, `price_action`, `candlestick`, `flow`, `session`, `trend`
 - `KNOWN_STRATEGY_TYPES`, `STRATEGY_TYPE_GROUPS: dict[str, list[str]]` — type → strategy names
-- `INCOMPATIBLE_PAIRS` — blocks bos+fib_golden_zone, bos+ote_entry (both embed BOS internally)
-- `SIGNAL_COLUMNS` includes `tp_price` — fib_golden_zone/ote_entry populate with 1.618 ext; others leave `0.0`
+- `INCOMPATIBLE_PAIRS` — blocks bos+ote_entry (embeds BOS internally)
+- `SIGNAL_COLUMNS` includes `tp_price` — `ote_entry` populates with 1.618 ext; others leave `0.0`
 - `_candle_too_small(high, low, close, min_range_pct)` — filter for `(high-low)/close < min_range_pct`
 - `min_range_pct: float = 0.0` added to all 6 candlestick detectors (default 0.0 = disabled); each has a `ParamSpec` in `STRATEGY_REGISTRY` for TOML tuning
 
@@ -51,7 +51,7 @@ Detailed API reference for `analytics/`. Load this when working on any analytics
 - `Trade.low_volume` / `Trade.volume_spike` tag volume tier per trade
 - `BacktestResult` exposes: `low/normal/spike_vol_closed_trades` + `*_avg_r`; 6 directional×volume cross-tabs (`long/short_low/normal/spike_vol_*`)
 - `format_volume_split()` — 3-way table; `format_directional_volume_split()` — ↑/↓ × Low/Normal/Spike
-- Rolling detectors (fib_golden_zone, ote_entry, order_block, eqh_eql, cvd_divergence) fire at every historical candle; last-candle-only detectors fire at most once per run
+- Rolling detectors (ote_entry, order_block, eqh_eql) fire at every historical candle; last-candle-only detectors fire at most once per run
 - `BacktestResult` directional split: `long/short_closed_trades`, `long/short_win_count/rate/avg_r/total_r`
 - `max_drawdown_r` (peak-to-trough) + `recovery_factor` (total_r / max_drawdown_r, 0.0 when no drawdown)
 - **D10 same-TF**: `ComboBacktestResult`; `_find_cofire_signals` — greedy ±N-candle, same direction, each B once; `run_combo_backtest`; `format_combo_table`

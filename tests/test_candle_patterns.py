@@ -500,7 +500,7 @@ class TestStrategyRegistration:
             "hammer_hanging_man",
             "doji",
             "morning_evening_star",
-            # "fibonacci_retracement" — legacy, superseded by fib_golden_zone
+            # "fibonacci_retracement" — legacy, not in STRATEGY_REGISTRY
         ]
         for name in new_strategies:
             assert name in STRATEGY_REGISTRY, f"{name!r} missing from STRATEGY_REGISTRY"
@@ -513,7 +513,7 @@ class TestStrategyRegistration:
             "hammer_hanging_man",
             "doji",
             "morning_evening_star",
-            # "fibonacci_retracement" — legacy, superseded by fib_golden_zone
+            # "fibonacci_retracement" — legacy, not in STRATEGY_REGISTRY
         ]
         for name in new_strategies:
             spec = STRATEGY_REGISTRY[name]
@@ -529,7 +529,7 @@ class TestStrategyRegistration:
             "hammer_hanging_man",
             "doji",
             "morning_evening_star",
-            # "fibonacci_retracement" — legacy, superseded by fib_golden_zone
+            # "fibonacci_retracement" — legacy, not in STRATEGY_REGISTRY
         ]
         for name in new_strategies:
             spec = STRATEGY_REGISTRY[name]
@@ -545,7 +545,7 @@ class TestStrategyRegistration:
             "hammer_hanging_man",
             "doji",
             "morning_evening_star",
-            # "fibonacci_retracement" — legacy, superseded by fib_golden_zone
+            # "fibonacci_retracement" — legacy, not in STRATEGY_REGISTRY
         ]
         for name in new_strategies:
             assert name in SIGNAL_REGISTRY, f"{name!r} missing from SIGNAL_REGISTRY"
