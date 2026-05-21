@@ -62,7 +62,7 @@ class TestFormatSweepTable:
         results = [
             _make_result("BTCUSDT", "4h", "fvg", 30, 18, 0.8),
             _make_result("ETHUSDT", "1d", "bos", 25, 20, 0.5),
-            _make_result("SOLUSDT", "1h", "liquidity_sweep", 22, 18, 0.3),
+            _make_result("SOLUSDT", "1h", "order_block", 22, 18, 0.3),
         ]
         table = format_sweep_table(results, min_trades=10)
         assert "Symbol" in table
@@ -75,7 +75,7 @@ class TestFormatSweepTable:
         results = [
             _make_result("BTCUSDT", "4h", "fvg", 20, 20, 0.3),
             _make_result("ETHUSDT", "4h", "bos", 30, 10, 1.2),
-            _make_result("SOLUSDT", "4h", "liquidity_sweep", 25, 15, 0.7),
+            _make_result("SOLUSDT", "4h", "order_block", 25, 15, 0.7),
         ]
         table = format_sweep_table(results, min_trades=5)
         eth_pos = table.index("ETHUSDT")

@@ -166,16 +166,6 @@ class BacktestSweepConfig:
     # to make the ATR multiplier actually bite on strategies that emit
     # structural sl_price (all current production strategies).
     atr_sl_floor: bool = False
-    # liquidity_sweep entry mode:
-    #   True  (default) — fib-extension mode: entry at 1.13/1.27 fib extension of range
-    #   False           — pivot-sweep mode: entry on wick above pivot high + close inside
-    # Set to false in TOML to compare win rates between the two approaches.
-    liq_sweep_use_fib: bool = True
-    # fib-mode close variant (only applies when liq_sweep_use_fib=True):
-    #   False (default) — close must come back below the fib extension level (1.13/1.27)
-    #   True            — close must come back below the original swing_high (inside range)
-    # Stricter confirmation: wick reaches fib zone but body closes fully inside the range.
-    liq_sweep_fib_range_close: bool = False
     # ADR bias gate: when set, suppress signals where today's range >= this fraction of ADR-14
     # in the chasing direction (same logic as live BiasConfig.adr_suppress_threshold).
     # Mirrors the [bias] TOML section used by the signal watcher.
@@ -444,8 +434,8 @@ def load_backtest_config(path: str | Path) -> BacktestSweepConfig:
             tp_r_short=float(raw_tp_r_short) if raw_tp_r_short is not None else None,
         )
 
-    # Some signal_watch configs place liq_sweep_use_fib inside a [backtest]
-    # sub-table; fall back to that if not present at the top level.
+    # Some signal_watch configs place flags inside a [backtest] sub-table;
+    # fall back to that if not present at the top level.
     _bt_section: dict[str, object] = data.get("backtest", {})
 
     # volume_suppress: [backtest] sub-table takes precedence over top-level
@@ -477,15 +467,6 @@ def load_backtest_config(path: str | Path) -> BacktestSweepConfig:
         ),
         atr_sl_floor=bool(
             data.get("atr_sl_floor", _bt_section.get("atr_sl_floor", False))
-        ),
-        liq_sweep_use_fib=bool(
-            data.get("liq_sweep_use_fib", _bt_section.get("liq_sweep_use_fib", True))
-        ),
-        liq_sweep_fib_range_close=bool(
-            data.get(
-                "liq_sweep_fib_range_close",
-                _bt_section.get("liq_sweep_fib_range_close", False),
-            )
         ),
         adr_suppress_threshold=(
             float(data["bias"]["adr_suppress_threshold"])

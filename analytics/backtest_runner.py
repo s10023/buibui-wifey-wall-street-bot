@@ -47,7 +47,6 @@ from analytics.signal_lib import _filter_signals_by_adr
 from analytics.strategies import (
     DETECTOR_REGISTRY,
     KNOWN_STRATEGIES,
-    detect_liquidity_sweep,
     seasonality_stats,
 )
 from utils.config_validation import load_stocks_config
@@ -65,20 +64,11 @@ def detect_signals_for_strategy(
     strategy: str,
     start_ms: int,
     end_ms: int,
-    liq_sweep_use_fib: bool = True,
-    liq_sweep_fib_range_close: bool = False,
 ) -> pd.DataFrame | None:
     """Return signals DataFrame.
 
     ohlcv must already be fetched and non-empty by the caller.
     """
-    if strategy == "liquidity_sweep":
-        return detect_liquidity_sweep(
-            ohlcv,
-            use_fib_extension=liq_sweep_use_fib,
-            fib_require_range_close=liq_sweep_fib_range_close,
-        )
-
     return _SIMPLE_DETECTORS[strategy](ohlcv)
 
 
@@ -127,8 +117,6 @@ def _collect_signals_map(
             strategy,
             start_ms,
             end_ms,
-            liq_sweep_use_fib=cfg.liq_sweep_use_fib,
-            liq_sweep_fib_range_close=cfg.liq_sweep_fib_range_close,
         )
         if signals is None:
             skipped.append(f"{symbol}/{timeframe}/{strategy} (no data)")
@@ -184,8 +172,6 @@ def _collect_sweep_results(
             strategy,
             start_ms,
             end_ms,
-            liq_sweep_use_fib=cfg.liq_sweep_use_fib,
-            liq_sweep_fib_range_close=cfg.liq_sweep_fib_range_close,
         )
         if signals is None:
             skipped.append(f"{symbol}/{timeframe}/{strategy} (no data)")

@@ -54,6 +54,10 @@
 # 1wk gets first commit at 1.5×. Reminder: tp_r values were calibrated WITHOUT
 # the ATR floor — a tp_r re-sweep at the committed multipliers is the natural
 # follow-up but deferred to a future task.
+#
+# liquidity_sweep removal (2026-05-21): full prune. 4h/1d net-neg both configs;
+# only 1wk weekdays +0.17R n=23 was positive. 0 combo usage in
+# backtest_combos / backtest_cross_tf_combos pre-check.
 
 extends = "strategy_params.toml"
 
@@ -67,7 +71,6 @@ day_filter = "weekdays"
 
 strategies = [
     'orb',
-    'liquidity_sweep',
     'bos',
     'eqh_eql',
     'order_block',
@@ -178,19 +181,9 @@ tp_r_4h = 2.5                 # Task E 13-sym: combined 2.5@+0.091R, n=498 (was 
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 2.5    # Task C-followup 13-sym: +0.06R, n=125
 
-[strategy_params.liquidity_sweep]
-tp_r_1d = 5.0                 # T14 AAPL WFO OOS: +0.231R, n=13 (was 3.5)
-# Task C ATR sweep (2026-05-18, /atr-sweep liquidity_sweep × 4-sym cohort) found
-# net negative at every multiplier on every TF; committed 4h=2.0×, 1d=0.5×.
-# Task C-followup (2026-05-20, 13-sym cohort) revises 4h: best -0.08R @ 0.5×
-# (was -0.18R @ 2.0× on 4-sym — winner flips, same as tt). 1d 1.5× (-0.06R)
-# supersedes 0.5× (-0.26R on 13-sym vs -0.11R on 4-sym). 1wk first commit at
-# 1.5× (+0.17R, n=23) — only positive cell on the strategy. Net negative on
-# 4h/1d still — values minimize loss, do not deliver edge. Removal candidate.
-atr_sl_floor = true           # Task C: ATR floor on; widens tight structural SLs to N × ATR14
-atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: -0.08R least-bad (was 2.0× on 4-sym; 13-sym flips winner), n=271
-atr_sl_multiplier_1d = 1.5    # Task C-followup 13-sym: -0.06R least-bad (was 0.5× on 4-sym), n=121
-atr_sl_multiplier_1wk = 1.5   # Task C-followup 13-sym: +0.17R (first 1wk commit; only positive cell), n=23
+# liquidity_sweep removed (2026-05-21): only 1wk wd +0.17R n=23 was positive;
+# 4h/1d net-neg both configs. Strategies list above and the
+# [strategy_params.liquidity_sweep] block both stripped.
 
 [strategy_params.morning_evening_star]
 tp_r_4h = 3.0                 # Task E 13-sym: combined 3.0@+0.036R, n=388 (was 3.5)

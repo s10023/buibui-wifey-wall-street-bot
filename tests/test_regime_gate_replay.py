@@ -92,10 +92,8 @@ class TestSuppressionLabelling:
         assert out["suppressed"].iloc[0] is True or out["suppressed"].iloc[0] == True  # noqa: E712
 
     def test_reversion_in_range_is_kept(self) -> None:
-        # liquidity_sweep (type=structural) → enabled in range.
-        out = annotate_suppression(
-            self._row("liquidity_sweep", "range"), _bias().regime_allowed
-        )
+        # fvg (type=structural) → enabled in range.
+        out = annotate_suppression(self._row("fvg", "range"), _bias().regime_allowed)
         assert not out["suppressed"].iloc[0]
 
     def test_unknown_regime_falls_open(self) -> None:

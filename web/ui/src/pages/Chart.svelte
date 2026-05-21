@@ -26,7 +26,6 @@
     ote_entry:            "OTE Entry",
     fib_golden_zone:      "Fib Zone",
     order_block:          "Ord Block",
-    liquidity_sweep:      "Liq Sweep",
     hammer_hanging_man:   "Hammer/HM",
     morning_evening_star: "M/E Star",
     ema:                  "EMA Pullback",
@@ -34,7 +33,7 @@
 
   // Strategy taxonomy — reviewed against detector logic in indicators_lib.py
   const STRATEGY_GROUPS: Record<string, string[]> = {
-    Structure:    ["bos", "liquidity_sweep", "eqh_eql", "order_block", "fvg"],
+    Structure:    ["bos", "eqh_eql", "order_block", "fvg"],
     Fibonacci:    ["fib_golden_zone", "ote_entry"],
     "Price Action": ["wick_fill", "marubozu", "inside_bar", "trend_day"],
     Candlestick:  ["engulfing", "pin_bar", "hammer_hanging_man", "doji", "morning_evening_star"],

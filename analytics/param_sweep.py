@@ -2,7 +2,7 @@
 
 Usage:
     poetry run python -m analytics.param_sweep \\
-        --strategy liq_sweep --symbol BTCUSDT --tf 1h \\
+        --strategy bos --symbol BTCUSDT --tf 1h \\
         [--param tp_r=1.0:5.0:0.5] [--param sl_pct=0.005:0.03:0.005] \\
         [--wfo-split 0.7] [--min-trades 5] [--top-n 10] [--days 180] \\
         [--fee-pct 0.0005] [--db PATH]
@@ -889,7 +889,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         description="WFO parameter sweep for a single strategy × symbol × TF.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("--strategy", required=True, help="Strategy name (e.g. liq_sweep)")
+    p.add_argument("--strategy", required=True, help="Strategy name (e.g. bos)")
     p.add_argument("--symbol", required=True, help="Symbol (e.g. BTCUSDT)")
     p.add_argument("--tf", required=True, dest="timeframe", help="Timeframe (e.g. 1h)")
     p.add_argument(

@@ -288,18 +288,18 @@ class TestFormatConfluenceAlert:
     def test_two_events_shows_confluence_header(self) -> None:
         events = [
             self._make_event("fvg", sl_price=90.0),
-            self._make_event("liquidity_sweep", sl_price=88.0),
+            self._make_event("pin_bar", sl_price=88.0),
         ]
         msg = format_confluence_alert(events)
         assert "Confluence: 2 strategies" in msg
         assert "fvg" in msg
-        assert "liquidity_sweep" in msg
+        assert "pin_bar" in msg
 
     def test_confluence_uses_widest_sl_long(self) -> None:
         # Two longs: sl_price 90 and 85. Widest = lowest = 85 (most conservative).
         events = [
             self._make_event("fvg", sl_price=90.0),
-            self._make_event("liquidity_sweep", sl_price=85.0),
+            self._make_event("pin_bar", sl_price=85.0),
         ]
         msg = format_confluence_alert(events)
         assert "85.00" in msg
@@ -342,7 +342,7 @@ class TestFormatConfluenceAlert:
             self._make_event(
                 "fvg", sl_price=90.0, context="Gap: 17-Nov 10:00 · 10:05 · 10:10"
             ),
-            self._make_event("liquidity_sweep", sl_price=88.0),
+            self._make_event("pin_bar", sl_price=88.0),
         ]
         msg = format_confluence_alert(events)
         assert "Gap: 17-Nov 10:00" in msg
@@ -391,9 +391,9 @@ class TestFormatConfluenceAlert:
             SignalEvent(
                 symbol="BTCUSDT",
                 timeframe="15m",
-                strategy="liquidity_sweep",
+                strategy="pin_bar",
                 direction="long",
-                reason="liquidity_sweep_long@test",
+                reason="pin_bar_long@test",
                 open_time=1700000000000,
                 price=100.0,
                 sl_price=88.0,

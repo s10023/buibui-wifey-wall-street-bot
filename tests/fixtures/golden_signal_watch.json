@@ -120,40 +120,6 @@
         "recovery_factor": -0.4
       }
     },
-    "liquidity_sweep": {
-      "4h": {
-        "trade_count": 16,
-        "long_trade_count": 5,
-        "short_trade_count": 11,
-        "win_rate": 0.3125,
-        "avg_r": -0.0625,
-        "total_r": -1.0,
-        "long_avg_r": 0.2,
-        "short_avg_r": -0.1818,
-        "long_total_r": 1.0,
-        "short_total_r": -2.0,
-        "long_win_rate": 0.4,
-        "short_win_rate": 0.2727,
-        "max_drawdown_r": 6.0,
-        "recovery_factor": -0.1667
-      },
-      "1d": {
-        "trade_count": 3,
-        "long_trade_count": 1,
-        "short_trade_count": 2,
-        "win_rate": 0.0,
-        "avg_r": -1.0,
-        "total_r": -3.0,
-        "long_avg_r": -1.0,
-        "short_avg_r": -1.0,
-        "long_total_r": -1.0,
-        "short_total_r": -2.0,
-        "long_win_rate": 0.0,
-        "short_win_rate": 0.0,
-        "max_drawdown_r": 3.0,
-        "recovery_factor": -1.0
-      }
-    },
     "fvg": {
       "4h": {
         "trade_count": 116,

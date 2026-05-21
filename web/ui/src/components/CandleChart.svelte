@@ -28,7 +28,6 @@
     ote_entry:            "OTE Entry",
     fib_golden_zone:      "Fib Zone",
     order_block:          "Ord Block",
-    liquidity_sweep:      "Liq Sweep",
     hammer_hanging_man:   "Hammer/HM",
     morning_evening_star: "M/E Star",
   };

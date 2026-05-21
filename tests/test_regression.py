@@ -27,10 +27,7 @@ import pytest
 
 from analytics.backtest_lib import BacktestResult, run_backtest
 from analytics.signal_config import SignalWatchConfig, load_signal_config
-from analytics.strategies import (
-    DETECTOR_REGISTRY,
-    detect_liquidity_sweep,
-)
+from analytics.strategies import DETECTOR_REGISTRY
 
 # Analytics-only strategies — not covered in Phase 1 of the regression suite.
 _SKIP_STRATEGIES = frozenset({"seasonality"})
@@ -85,8 +82,6 @@ def _detect(
     cfg: SignalWatchConfig,
 ) -> pd.DataFrame:
     """Call the correct detector for strategy, applying any TOML flags."""
-    if strategy == "liquidity_sweep":
-        return detect_liquidity_sweep(ohlcv, use_fib_extension=True)
     return DETECTOR_REGISTRY[strategy](ohlcv)
 
 

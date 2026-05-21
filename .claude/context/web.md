@@ -42,7 +42,7 @@ Build: `make web-build` → `web/ui/dist/` served by FastAPI StaticFiles.
 ### Chart page
 
 - Watchlist sidebar; timeframe/days selectors
-- **Strategies row** — collapsible group toggles: Structure (bos/liquidity_sweep/eqh_eql/order_block/fvg), Fibonacci (ote_entry), Price Action (wick_fill/marubozu/inside_bar/trend_day), Candlestick (engulfing/pin_bar/hammer_hanging_man/doji/morning_evening_star), Session (orb/seasonality), Trend (ema); taxonomy in `STRATEGY_GROUPS` in `Chart.svelte`; groups absent from active TOML hidden. (T5b/T7 stripped smt_divergence + cvd_divergence; T16-full dropped funding_reversion + the Flow group; `fib_golden_zone` removed — only `ote_entry` survives in the Fibonacci group.)
+- **Strategies row** — collapsible group toggles: Structure (bos/eqh_eql/order_block/fvg), Fibonacci (ote_entry), Price Action (wick_fill/marubozu/inside_bar/trend_day), Candlestick (engulfing/pin_bar/hammer_hanging_man/doji/morning_evening_star), Session (orb/seasonality), Trend (ema); taxonomy in `STRATEGY_GROUPS` in `Chart.svelte`; groups absent from active TOML hidden. (T5b/T7 stripped smt_divergence + cvd_divergence; T16-full dropped funding_reversion + the Flow group; `fib_golden_zone` removed — only `ote_entry` survives in the Fibonacci group; `liquidity_sweep` removed.)
 - **Indicators row** — EMA 20/50/200, RSI 14, **Zones** (7 toggles: FVG, OB, EQH·EQL, BOS, Fib Zone, OTE, Swings)
   - FVG/OB/Fib/OTE — HTML overlay divs; EQH/EQL/BOS — line series
   - Active zones extend to right edge; inactive end at `close_ms` (dimmed)

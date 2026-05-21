@@ -442,7 +442,8 @@ tp_r_4h = 2.5
         cfg = load_signal_config(cfg_path)
         # Top-level floor stays off (Task C precedent — no other strategy affected).
         assert cfg.atr_sl_floor is False
-        # All 13 active strategies carry per-strategy atr_sl_floor=true.
+        # All 12 active strategies carry per-strategy atr_sl_floor=true
+        # (liquidity_sweep removed 2026-05-21 — no_edge on 4h/1d both configs).
         active = [
             "bos",
             "doji",
@@ -451,7 +452,6 @@ tp_r_4h = 2.5
             "eqh_eql",
             "hammer_hanging_man",
             "inside_bar",
-            "liquidity_sweep",
             "morning_evening_star",
             "orb",
             "order_block",
@@ -479,9 +479,6 @@ tp_r_4h = 2.5
         )
         assert cfg.effective_atr_sl_multiplier("inside_bar", "AAPL", "4h") == 0.5
         assert cfg.effective_atr_sl_multiplier("inside_bar", "AAPL", "1d") == 1.0
-        # liquidity_sweep — Task C 4-sym → Task C-followup 13-sym 4h winner flips 2.0→0.5.
-        assert cfg.effective_atr_sl_multiplier("liquidity_sweep", "AAPL", "4h") == 0.5
-        assert cfg.effective_atr_sl_multiplier("liquidity_sweep", "AAPL", "1d") == 0.5
         assert (
             cfg.effective_atr_sl_multiplier("morning_evening_star", "AAPL", "4h") == 1.0
         )
@@ -503,6 +500,8 @@ tp_r_4h = 2.5
         )
         cfg = load_signal_config(cfg_path)
         assert cfg.atr_sl_floor is False  # top-level off
+        # liquidity_sweep removed 2026-05-21 — was the only positive 1wk cell on
+        # this config but 4h/1d net-neg; full retirement.
         active = [
             "bos",
             "doji",
@@ -511,7 +510,6 @@ tp_r_4h = 2.5
             "eqh_eql",
             "hammer_hanging_man",
             "inside_bar",
-            "liquidity_sweep",
             "morning_evening_star",
             "orb",
             "order_block",
@@ -530,7 +528,6 @@ tp_r_4h = 2.5
             cfg.effective_atr_sl_multiplier("hammer_hanging_man", "AAPL", "4h") == 1.0
         )
         assert cfg.effective_atr_sl_multiplier("inside_bar", "AAPL", "4h") == 0.5
-        assert cfg.effective_atr_sl_multiplier("liquidity_sweep", "AAPL", "4h") == 0.5
         assert (
             cfg.effective_atr_sl_multiplier("morning_evening_star", "AAPL", "4h") == 2.5
         )
@@ -548,8 +545,6 @@ tp_r_4h = 2.5
             cfg.effective_atr_sl_multiplier("hammer_hanging_man", "AAPL", "1d") == 1.0
         )
         assert cfg.effective_atr_sl_multiplier("inside_bar", "AAPL", "1d") == 1.0
-        # liquidity_sweep 1d wd: Task C 4-sym 0.5 → Task C-followup 13-sym 1.5.
-        assert cfg.effective_atr_sl_multiplier("liquidity_sweep", "AAPL", "1d") == 1.5
         assert (
             cfg.effective_atr_sl_multiplier("morning_evening_star", "AAPL", "1d") == 1.0
         )
@@ -564,8 +559,6 @@ tp_r_4h = 2.5
             cfg.effective_atr_sl_multiplier("hammer_hanging_man", "AAPL", "1wk") == 1.0
         )
         assert cfg.effective_atr_sl_multiplier("inside_bar", "AAPL", "1wk") == 2.5
-        # liquidity_sweep 1wk wd: first commit (Task C n=3 too thin; 13-sym n=23 enables it).
-        assert cfg.effective_atr_sl_multiplier("liquidity_sweep", "AAPL", "1wk") == 1.5
         assert (
             cfg.effective_atr_sl_multiplier("morning_evening_star", "AAPL", "1wk")
             == 1.0
@@ -928,7 +921,6 @@ tp_r = 3.0
         assert cfg.effective_volume_suppress("bos") is True
         assert cfg.effective_volume_suppress("orb") is True
         assert cfg.effective_volume_suppress("doji") is True
-        assert cfg.effective_volume_suppress("liquidity_sweep") is True
         # suppress = false: strategies where low-vol signals have edge
         assert cfg.effective_volume_suppress("pin_bar") is False
         assert cfg.effective_volume_suppress("hammer_hanging_man") is False

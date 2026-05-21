@@ -4,6 +4,7 @@ Maps strategy name to plugin metadata. Excluded strategies:
 - seasonality: produces stats, not actionable entry signals
 - fibonacci_retracement: legacy, removed alongside fib_golden_zone.
 - fib_golden_zone: removed (confirmed no_edge across 3 sweeps).
+- liquidity_sweep: removed (4h/1d net-neg both configs; only 1wk wd cell positive).
 
 `requires_funding` and `confidence` flags live on
 `analytics.strategies.STRATEGY_REGISTRY`; they are not duplicated here.
@@ -23,7 +24,6 @@ from analytics.strategies import (
     detect_fvg,
     detect_hammer_hanging_man,
     detect_inside_bar,
-    detect_liquidity_sweep,
     detect_market_structure,
     detect_marubozu_retest,
     detect_morning_evening_star,
@@ -46,7 +46,6 @@ _DETECTORS: dict[str, DetectorFn] = {
     "wick_fill": detect_wick_fills,
     "marubozu": detect_marubozu_retest,
     "orb": detect_orb_breakout,
-    "liquidity_sweep": detect_liquidity_sweep,
     "fvg": detect_fvg,
     "bos": detect_market_structure,
     "eqh_eql": detect_eqh_eql,

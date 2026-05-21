@@ -32,11 +32,11 @@ All `--at` timestamps are **interpreted as UTC**. The output displays in **MYT (
 ### Single strategy, single symbol + TF, pinned to a candle
 
 ```bash
-make buibui-signal-test SYMBOL=BTCUSDT TIMEFRAME=1h STRATEGY=liquidity_sweep AT="2026-04-08 13:00:00"
+make buibui-signal-test SYMBOL=BTCUSDT TIMEFRAME=1h STRATEGY=order_block AT="2026-04-08 13:00:00"
 
 # Equivalent direct call
 poetry run python wifey.py signal test \
-  --symbol BTCUSDT --timeframe 1h --strategy liquidity_sweep \
+  --symbol BTCUSDT --timeframe 1h --strategy order_block \
   --at "2026-04-08 13:00:00"
 ```
 
@@ -46,7 +46,7 @@ poetry run python wifey.py signal test \
 make buibui-signal-test \
   SYMBOL="BTCUSDT ETHUSDT" \
   TIMEFRAME="1h 4h" \
-  STRATEGY="liquidity_sweep bos fvg" \
+  STRATEGY="order_block bos fvg" \
   AT="2026-04-08 13:00:00"
 ```
 
