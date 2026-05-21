@@ -57,6 +57,12 @@
 # liquidity_sweep finding: 4h winner flips 2.0×→0.5×. Reminder: tp_r values
 # were calibrated WITHOUT the ATR floor — a tp_r re-sweep at the committed
 # multipliers is the natural follow-up but deferred to a future task.
+#
+# liquidity_sweep removal (2026-05-21): full prune. 4h/1d net-neg both configs
+# under Task C-followup ATR 13-sym sweep; only 1wk weekdays +0.17R n=23 was
+# positive (too thin to keep a strategy alive). Same removal pattern as
+# fib_golden_zone (PR #35) — 0 combo usage in backtest_combos /
+# backtest_cross_tf_combos pre-check, no rescue from co-fire gates.
 
 extends = "strategy_params.toml"
 
@@ -72,7 +78,6 @@ day_filter = "tue_thu"
 # Strategies to run
 strategies = [
     'orb',
-    'liquidity_sweep',
     'bos',
     'eqh_eql',
     'order_block',
@@ -214,19 +219,9 @@ atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: -0.01R least-bad, n=803
 atr_sl_multiplier_1d = 2.5    # Task C-followup 13-sym: +0.16R, n=774
 
-[strategy_params.liquidity_sweep]
-# Task C ATR sweep (2026-05-18, /atr-sweep liquidity_sweep × 4-sym cohort) found
-# net negative at every multiplier on every TF; committed 4h=2.0×, 1d=0.5×.
-# Task C-followup (2026-05-20, 13-sym cohort) revises 4h: best tt -0.18R @ 0.5×
-# (was -0.14R @ 2.0× on 4-sym — winner flips). 1d 0.5× confirmed (-0.06R least-
-# bad). 1wk still 0 signals on tue_thu (Fri close × tue_thu suppression).
-# Strategy is still net negative on this cohort at every TF — values minimize
-# loss, do not deliver edge. Removal candidate if live cofiring gates don't
-# rescue it.
-atr_sl_floor = true           # Task C: ATR floor on; widens tight structural SLs to N × ATR14
-atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: -0.18R least-bad (was 2.0× on 4-sym; 13-sym flips winner), n=150
-atr_sl_multiplier_1d = 0.5    # Task C-followup 13-sym: -0.06R least-bad (confirms Task C 4-sym 0.5×), n=67
-# 1wk: no commit — 0 signals on tue_thu (Fri close × tue_thu suppression)
+# liquidity_sweep removed (no_edge on 4h/1d both configs; only 1wk wd +0.17R n=23
+# was positive — too thin to keep the strategy alive). Strategies list above and
+# the [strategy_params.liquidity_sweep] block both stripped.
 
 # backtest and bias sections live in strategy_params.toml (base).
 # Uncomment below to override specific backtest options for this config:

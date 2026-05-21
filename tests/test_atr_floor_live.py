@@ -51,7 +51,7 @@ def _event(
     entry: float,
     sl: float,
     tp: float,
-    strategy: str = "liquidity_sweep",
+    strategy: str = "bos",
     symbol: str = "BTCUSDT",
     tf: str = "1h",
 ) -> SignalEvent:
@@ -141,7 +141,7 @@ class TestApplyAtrFloorWidens:
         """When tp_r_long differs from global tp_r, TP must use the directional value."""
         df = _make_ohlcv(atr=2.0)
         # tp_r_long=3.0 overrides global tp_r=2.0 for long events.
-        params = {"liquidity_sweep": StrategyOverride(tp_r_long=3.0)}
+        params = {"bos": StrategyOverride(tp_r_long=3.0)}
         ev = _event("long", entry=100.0, sl=99.5, tp=101.0)
         _apply_atr_floor([ev], df, "BTCUSDT", "1h", params, 2.0, 2.5, True)
         assert ev.sl_price == pytest.approx(95.0)
@@ -151,11 +151,7 @@ class TestApplyAtrFloorWidens:
     def test_per_strategy_floor_override_on(self) -> None:
         """Strategy-level atr_sl_floor=True wins over global False."""
         df = _make_ohlcv(atr=2.0)
-        params = {
-            "liquidity_sweep": StrategyOverride(
-                atr_sl_floor=True, atr_sl_multiplier=2.5
-            )
-        }
+        params = {"bos": StrategyOverride(atr_sl_floor=True, atr_sl_multiplier=2.5)}
         ev = _event("long", entry=100.0, sl=99.5, tp=101.0)
         _apply_atr_floor([ev], df, "BTCUSDT", "1h", params, 2.0, None, False)
         assert ev.sl_price == pytest.approx(95.0)
@@ -164,7 +160,7 @@ class TestApplyAtrFloorWidens:
     def test_per_strategy_floor_override_off_beats_global_on(self) -> None:
         """Strategy-level atr_sl_floor=False wins over global True."""
         df = _make_ohlcv(atr=2.0)
-        params = {"liquidity_sweep": StrategyOverride(atr_sl_floor=False)}
+        params = {"bos": StrategyOverride(atr_sl_floor=False)}
         ev = _event("long", entry=100.0, sl=99.5, tp=101.0)
         _apply_atr_floor([ev], df, "BTCUSDT", "1h", params, 2.0, 2.5, True)
         assert ev.sl_price == 99.5  # unchanged
@@ -174,7 +170,7 @@ class TestApplyAtrFloorWidens:
         df = _make_ohlcv(atr=2.0)
         # Floor on for 1h only; 4h request still uses global (off).
         params = {
-            "liquidity_sweep": StrategyOverride(
+            "bos": StrategyOverride(
                 atr_sl_floor_per_tf={"1h": True}, atr_sl_multiplier=2.5
             )
         }
@@ -188,7 +184,7 @@ class TestApplyAtrFloorWidens:
     def test_per_symbol_floor_override_wins(self) -> None:
         df = _make_ohlcv(atr=2.0)
         params = {
-            "liquidity_sweep": StrategyOverride(
+            "bos": StrategyOverride(
                 atr_sl_multiplier=2.5,
                 atr_sl_floor=False,
                 per_symbol={"BTCUSDT": SymbolOverride(atr_sl_floor=True)},
@@ -255,14 +251,14 @@ class TestLoadSignalConfigAtrSlFloor:
         p = self._write(
             tmp_path,
             """\
-[strategy_params.liquidity_sweep]
+[strategy_params.bos]
 atr_sl_multiplier = 2.5
 atr_sl_floor = true
 atr_sl_floor_1h = true
 """,
         )
         cfg = load_signal_config(p)
-        ov = cfg.strategy_params["liquidity_sweep"]
+        ov = cfg.strategy_params["bos"]
         assert ov.atr_sl_floor is True
         assert ov.atr_sl_floor_per_tf == {"1h": True}
         assert ov.atr_sl_multiplier == 2.5
@@ -271,13 +267,13 @@ atr_sl_floor_1h = true
         p = self._write(
             tmp_path,
             """\
-[strategy_params.liquidity_sweep.BTCUSDT]
+[strategy_params.bos.BTCUSDT]
 atr_sl_floor = true
 atr_sl_floor_1h = true
 """,
         )
         cfg = load_signal_config(p)
-        sym = cfg.strategy_params["liquidity_sweep"].per_symbol["BTCUSDT"]
+        sym = cfg.strategy_params["bos"].per_symbol["BTCUSDT"]
         assert sym.atr_sl_floor is True
         assert sym.atr_sl_floor_per_tf == {"1h": True}
 
@@ -285,15 +281,15 @@ atr_sl_floor_1h = true
         cfg = SignalWatchConfig(
             atr_sl_floor=False,
             strategy_params={
-                "liquidity_sweep": StrategyOverride(
+                "bos": StrategyOverride(
                     atr_sl_floor_per_tf={"1h": True},
                     per_symbol={"ETHUSDT": SymbolOverride(atr_sl_floor=False)},
                 )
             },
         )
         # 1h TF override wins for BTC
-        assert cfg.effective_atr_sl_floor("liquidity_sweep", "BTCUSDT", "1h") is True
+        assert cfg.effective_atr_sl_floor("bos", "BTCUSDT", "1h") is True
         # 4h falls back to global (False)
-        assert cfg.effective_atr_sl_floor("liquidity_sweep", "BTCUSDT", "4h") is False
+        assert cfg.effective_atr_sl_floor("bos", "BTCUSDT", "4h") is False
         # ETH per-symbol override beats the strategy-level per-tf
-        assert cfg.effective_atr_sl_floor("liquidity_sweep", "ETHUSDT", "1h") is False
+        assert cfg.effective_atr_sl_floor("bos", "ETHUSDT", "1h") is False

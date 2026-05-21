@@ -161,9 +161,6 @@ volume_suppress = false       # A14b: low-vol edge (reversal confirmed)
 [strategy_params.orb]
 volume_suppress = true        # A14b: normal-vol wins Δ=+0.33R
 
-[strategy_params.liquidity_sweep]
-volume_suppress = true        # A14b: normal-vol wins Δ=+0.17R
-
 [strategy_params.inside_bar]
 # inside_bar audit (2026-05-19, 13-sym pooled WFO): retires the crypto-era
 # tp_r_long=4.0 / tp_r_short=2.0 directional override (BTC 1h / SOL 1h derived).

@@ -40,7 +40,6 @@ from analytics.strategies.funding_extreme import detect_funding_extreme
 from analytics.strategies.fvg import detect_fvg
 from analytics.strategies.hammer_hanging_man import detect_hammer_hanging_man
 from analytics.strategies.inside_bar import detect_inside_bar
-from analytics.strategies.liquidity_sweep import detect_liquidity_sweep
 from analytics.strategies.market_structure import detect_market_structure
 from analytics.strategies.marubozu_retest import detect_marubozu_retest
 from analytics.strategies.morning_evening_star import detect_morning_evening_star
@@ -77,7 +76,6 @@ __all__ = [
     "detect_fvg",
     "detect_hammer_hanging_man",
     "detect_inside_bar",
-    "detect_liquidity_sweep",
     "detect_market_structure",
     "detect_marubozu_retest",
     "detect_morning_evening_star",

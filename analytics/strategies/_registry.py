@@ -21,7 +21,6 @@ from analytics.strategies.eqh_eql import detect_eqh_eql
 from analytics.strategies.fvg import detect_fvg
 from analytics.strategies.hammer_hanging_man import detect_hammer_hanging_man
 from analytics.strategies.inside_bar import detect_inside_bar
-from analytics.strategies.liquidity_sweep import detect_liquidity_sweep
 from analytics.strategies.market_structure import detect_market_structure
 from analytics.strategies.marubozu_retest import detect_marubozu_retest
 from analytics.strategies.morning_evening_star import detect_morning_evening_star
@@ -116,22 +115,10 @@ STRATEGY_REGISTRY: dict[str, StrategySpec] = {
         ],
         confidence={"4h": 2, "1d": 2},
     ),
-    "liquidity_sweep": StrategySpec(
-        name="liquidity_sweep",
-        description="Signals when a wick sweeps the rolling high/low but the candle closes back inside.",
-        strategy_type="structural",
-        params=[
-            ParamSpec(
-                "lookback",
-                "int",
-                20,
-                2,
-                200,
-                "Rolling window size for swing high/low detection.",
-            ),
-        ],
-        confidence={"15m": 1, "1d": 4, "1h": 1, "4h": 1},
-    ),
+    # liquidity_sweep removed: 4h/1d net-neg both configs across Task C-followup
+    # ATR 13-sym sweep; only 1wk weekdays cell was positive (+0.17R n=23). Same
+    # full-removal path as fib_golden_zone — 0 combo usage in backtest_combos /
+    # backtest_cross_tf_combos pre-check, no production dependency to preserve.
     "fvg": StrategySpec(
         name="fvg",
         description="Fair Value Gap: signals when price fills a 3-candle imbalance zone.",
@@ -602,7 +589,6 @@ DETECTOR_REGISTRY: dict[str, Callable[[pd.DataFrame], pd.DataFrame]] = {
     "wick_fill": detect_wick_fills,
     "marubozu": detect_marubozu_retest,
     "orb": detect_orb_breakout,
-    "liquidity_sweep": detect_liquidity_sweep,
     "fvg": detect_fvg,
     "bos": detect_market_structure,
     "eqh_eql": detect_eqh_eql,

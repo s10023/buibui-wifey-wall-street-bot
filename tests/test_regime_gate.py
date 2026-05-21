@@ -83,10 +83,10 @@ class TestRegimeGate:
 
     def test_reversion_passes_in_range(self) -> None:
         cache: dict[str, Regime] = {"BTCUSDT": "range"}
-        # liquidity_sweep (flow), eqh_eql (structural), pin_bar (candlestick),
+        # fvg + eqh_eql (structural), pin_bar (candlestick),
         # wick_fills (price_action) all enabled in range.
         events = [
-            _evt("liquidity_sweep", "long"),
+            _evt("fvg", "long"),
             _evt("eqh_eql", "short"),
             _evt("pin_bar", "long"),
             _evt("wick_fills", "short"),
@@ -104,7 +104,7 @@ class TestRegimeGate:
     def test_unknown_regime_falls_open(self) -> None:
         cache: dict[str, Regime] = {"BTCUSDT": "unknown"}
         # ema (trend) would normally be dropped in non-trend, but unknown → allow.
-        events = [_evt("ema", "long"), _evt("liquidity_sweep", "short")]
+        events = [_evt("ema", "long"), _evt("fvg", "short")]
         out = _apply_regime_gate(events, _bias(mode="hard"), cache, "BTCUSDT", "1h")
         assert len(out) == 2
 
