@@ -85,3 +85,32 @@ class TestJsonPersistence:
         store = CooldownStore(str(path))
         assert store.is_new_candle("BTCUSDT", "1h", "fvg", 5_000) is False
         assert store.is_new_candle("BTCUSDT", "1h", "fvg", 6_000) is True
+
+
+class TestPerChannelWatermarks:
+    """Wife channel watermark moves independently from primary."""
+
+    def test_wife_and_primary_are_independent(self, tmp_path: Any) -> None:
+        store = CooldownStore(str(tmp_path / "state.json"))
+        store.mark_candle("AAPL", "1d", "engulfing", 1_000, channel="primary")
+        # Wife channel has not seen this candle yet.
+        assert (
+            store.is_new_candle("AAPL", "1d", "engulfing", 1_000, channel="wife")
+            is True
+        )
+
+    def test_primary_default_keeps_legacy_key_shape(self, tmp_path: Any) -> None:
+        """Primary keys MUST stay `{sym}:{tf}:{strategy}` so live state files load."""
+        path = tmp_path / "state.json"
+        store = CooldownStore(str(path))
+        store.mark_candle("AAPL", "1d", "engulfing", 1_000)
+        data = json.loads(path.read_text())
+        assert "AAPL:1d:engulfing" in data["watermarks"]
+
+    def test_wife_key_uses_channel_suffix(self, tmp_path: Any) -> None:
+        path = tmp_path / "state.json"
+        store = CooldownStore(str(path))
+        store.mark_candle("AAPL", "1d", "engulfing", 2_000, channel="wife")
+        data = json.loads(path.read_text())
+        assert "AAPL:1d:engulfing:wife" in data["watermarks"]
+        assert data["watermarks"]["AAPL:1d:engulfing:wife"] == 2_000

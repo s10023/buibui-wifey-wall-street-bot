@@ -13,6 +13,8 @@ __all__ = [
     "StatsContext",
     "format_confluence_alert",
     "format_signal_alert",
+    "format_wife_alert",
+    "format_wife_confluence_alert",
 ]
 
 _MYT = timezone(timedelta(hours=8))
@@ -515,4 +517,71 @@ def format_confluence_alert(
         + warnings_block
         + edge_block
         + stats_block
+    )
+
+
+# ---------------------------------------------------------------------------
+# Wife-channel formatter (BUY / HOLD lexicon, minimal layout)
+# ---------------------------------------------------------------------------
+
+
+def format_wife_alert(
+    event: "SignalEvent",
+    sl_pct: float = 0.02,
+    tp_r: float = 2.0,
+    min_sl_pct: float = 0.0,
+) -> str:
+    """Render a single SignalEvent for the wife channel."""
+    return format_wife_confluence_alert(
+        [event], sl_pct=sl_pct, tp_r=tp_r, min_sl_pct=min_sl_pct
+    )
+
+
+def format_wife_confluence_alert(
+    events: list["SignalEvent"],
+    sl_pct: float = 0.02,
+    tp_r: float = 2.0,
+    min_sl_pct: float = 0.0,
+) -> str:
+    """Render the minimal BUY / HOLD wife-channel alert.
+
+    Layout for LONG (BUY): header, price + time, SL/TP block.
+    Layout for SHORT (HOLD): header, price + time, "sit tight" line — no SL/TP
+    since the spouse is not expected to action short signals; HOLD is regime
+    context only.
+
+    Drops all primary-channel sections that aren't actionable for the spouse:
+    strategy/reason/stars, candle warnings, edge backtest summary, stats line.
+    """
+    first = events[0]
+    direction = first.direction
+    price = first.price
+
+    signal_dt_str = _fmt_time(first.open_time)
+
+    if direction == "long":
+        sl_price = _apply_min_sl_floor(
+            price,
+            _widest_sl(events, direction, price, sl_pct),
+            direction,
+            min_sl_pct,
+        )
+        sl_dist = price - sl_price
+        structural_tp = first.tp_price if first.tp_price > price else 0.0
+        tp_price = structural_tp if structural_tp > 0 else price + sl_dist * tp_r
+        sl_pct_display = abs(sl_dist / price) * 100
+        actual_r = abs(tp_price - price) / sl_dist if sl_dist > 0 else tp_r
+        tp_pct_display = abs(tp_price - price) / price * 100
+
+        return (
+            f"<b>BUY — ${first.symbol} {first.timeframe}</b>\n"
+            f"{price:,.2f}  ·  {signal_dt_str} MYT\n"
+            f"\nSL: {sl_price:,.2f}  ({sl_pct_display:.1f}%)\n"
+            f"TP: {tp_price:,.2f}  ({tp_pct_display:.1f}%  ·  {actual_r:.1f}R)"
+        )
+
+    return (
+        f"<b>HOLD — ${first.symbol} {first.timeframe}</b>\n"
+        f"{price:,.2f}  ·  {signal_dt_str} MYT\n"
+        f"(regime caution — sit tight)"
     )

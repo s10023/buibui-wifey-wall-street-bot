@@ -1,6 +1,6 @@
 # Buibui Wifey Wall Street Bot
 
-A yfinance-backed US-equities **signal bot** (Phase A: signals only). Multi-strategy detection on 4h / 1d / 1wk bars, Telegram alerts with statistical context, and a FastAPI + Svelte web UI for charts, backtests, signal history, and stats. Phase B (order layer + equities broker) is deferred.
+A yfinance-backed US-equities **signal bot** (Phase A: signals only). Multi-strategy detection on 4h / 1d / 1wk bars, dual-channel Telegram alerts with statistical context (primary trader-facing + minimal BUY/HOLD-relabelled wife channel), and a FastAPI + Svelte web UI for charts, backtests, signal history, and stats. Phase B (order layer + equities broker) is deferred.
 
 Forked from the parent `buibui-moon-trader-bot` (crypto / Binance Futures); the analytics + signals engine carries over, the data source is yfinance, and the live order layer has been removed.
 
@@ -62,8 +62,8 @@ buibui-wifey-wall-street-bot/
 │   └── regime.py                    # Regime classifier (trend/range/high_vol/unknown); §6 of v2 redesign; Phase 2 live gate (soft mode)
 ├── signals/
 │   ├── registry.py                  # SignalPlugin TypedDict + SIGNAL_REGISTRY (20 actionable strategies; seasonality/funding_reversion/fibonacci_retracement excluded)
-│   ├── cooldown_store.py            # Two-layer dedup: candle watermark + cooldown timer
-│   └── alert_formatter.py           # SignalEvent, StatsContext, ConfluenceData; 6-section alert layout; W1–W8 candle warnings
+│   ├── cooldown_store.py            # Two-layer dedup: candle watermark + cooldown timer; per-channel keys (primary | wife)
+│   └── alert_formatter.py           # SignalEvent, StatsContext, ConfluenceData; 6-section alert layout (primary); minimal BUY/HOLD wife variant
 ├── web/
 │   ├── api/
 │   │   ├── main.py                  # FastAPI app: lifespan, CORS, health, router mounts, StaticFiles
@@ -83,7 +83,8 @@ buibui-wifey-wall-street-bot/
 ├── utils/
 │   ├── yfinance_client.py           # Equity OHLCV via yfinance (Phase A)
 │   ├── config_validation.py         # Validates + loads coins.json/stocks.json (load_stocks_config since T5)
-│   ├── telegram.py                  # Telegram bot messaging
+│   ├── telegram.py                  # Low-level Telegram send (single channel, retry)
+│   ├── telegram_router.py           # Dual-channel dispatcher (primary | wife); reads TELEGRAM_BOT_TOKEN_2/_CHAT_ID_2; TELEGRAM_WIFE_DRY_RUN=1 logs instead of sending
 │   ├── live_store.py                # Shared in-memory store for live WebSocket data
 │   └── live_loop.py                 # Shared Rich live display loop logic
 ├── config/

@@ -39,9 +39,13 @@ from analytics.signal_lib import (
     parse_timeframe_secs,
 )
 from analytics.strategies import STRATEGY_REGISTRY
-from signals.alert_formatter import format_confluence_alert
+from signals.alert_formatter import (
+    format_confluence_alert,
+    format_wife_confluence_alert,
+)
 from signals.registry import SIGNAL_REGISTRY
 from utils.telegram import send_telegram_message
+from utils.telegram_router import dispatch_to_channel
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +178,7 @@ def run_signal_test(
     print()
 
     # Collect (open_time, alert_text) for all signals found.
-    all_found: list[tuple[int, str]] = []
+    all_found: list[tuple[int, str, SignalEvent, float, float, float]] = []
     found_combos = 0
 
     with duckdb.connect(str(db_path), read_only=True) as conn:
@@ -374,7 +378,9 @@ def run_signal_test(
 
                     print(f"\n{'─' * 60}")
                     print(alert_text)
-                    all_found.append((event.open_time, alert_text))
+                    all_found.append(
+                        (event.open_time, alert_text, event, sl_pct, tp_r, min_sl_pct)
+                    )
                     found_combos += 1
 
     print(f"\n{'─' * 60}")
@@ -385,6 +391,12 @@ def run_signal_test(
 
     if send_telegram:
         print(f"\nSending {len(all_found)} alert(s) to Telegram...")
-        for _, alert_text in sorted(all_found, key=lambda x: x[0]):
+        for _, alert_text, ev, _sl, _tp, _min_sl in sorted(
+            all_found, key=lambda x: x[0]
+        ):
             send_telegram_message(alert_text)
+            wife_msg = format_wife_confluence_alert(
+                [ev], sl_pct=_sl, tp_r=_tp, min_sl_pct=_min_sl
+            )
+            dispatch_to_channel(wife_msg, "wife")
         print("[Telegram] Done.")

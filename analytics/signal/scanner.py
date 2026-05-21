@@ -255,8 +255,12 @@ def run_scan_cycle(
     day_filter: "off" | "weekdays" | "tue_thu" — suppress signals by weekday.
     strategy_timeframes: optional per-strategy TF allow-list from [strategy_timeframes] TOML.
     """
-    from signals.alert_formatter import format_confluence_alert
+    from signals.alert_formatter import (
+        format_confluence_alert,
+        format_wife_confluence_alert,
+    )
     from utils.telegram import send_telegram_message
+    from utils.telegram_router import dispatch_to_channel
 
     now_ms = int(time.time() * 1000)
     if backtest_cfg and backtest_cfg.since:
@@ -1074,6 +1078,24 @@ def run_scan_cycle(
                     send_telegram_message(msg)
                 except Exception:
                     logger.exception("Telegram send failed for %s", symbol)
+
+                # Wife channel: minimal BUY/HOLD relabel. Failures isolated so a
+                # wife outage cannot block the primary trader-facing channel.
+                try:
+                    wife_msg = format_wife_confluence_alert(
+                        dir_events,
+                        sl_pct=sl_pct,
+                        tp_r=eff_alert_tp_r,
+                        min_sl_pct=min_sl_pct,
+                    )
+                    sent = dispatch_to_channel(wife_msg, "wife")
+                    if sent:
+                        for e in dir_events:
+                            store.mark_candle(
+                                symbol, tf, e.strategy, e.open_time, channel="wife"
+                            )
+                except Exception:
+                    logger.exception("Telegram wife send failed for %s", symbol)
     # Persist freshly computed backtest results to backtest_runs so win-rate data
     # accumulates passively. Cache hits (BacktestSnapshot) are excluded — only
     # full BacktestResult objects land here. Covers combos that fired this cycle.

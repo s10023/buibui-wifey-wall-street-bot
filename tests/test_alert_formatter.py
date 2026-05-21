@@ -8,6 +8,7 @@ from signals.alert_formatter import (
     _format_stats_line,
     _get_session_label,
     format_signal_alert,
+    format_wife_alert,
 )
 
 _UTC = UTC
@@ -326,3 +327,48 @@ class TestLowVolumeWarning:
     def test_low_volume_false_no_warning(self) -> None:
         msg = format_signal_alert(self._make_event(low_volume=False))
         assert "⚠️ Low volume — weaker conviction" not in msg
+
+
+class TestWifeAlert:
+    """Minimal BUY / HOLD wife-channel formatter."""
+
+    def _event(self, direction: str) -> SignalEvent:
+        # 2024-01-15 14:30 UTC = 09:30 ET = 22:30 MYT (no DST in MYT)
+        dt = datetime(2024, 1, 15, 14, 30, tzinfo=_UTC)
+        return SignalEvent(
+            symbol="AAPL",
+            timeframe="1d",
+            strategy="engulfing",
+            direction=direction,
+            reason="bullish_engulfing",
+            open_time=int(dt.timestamp() * 1000),
+            price=200.00,
+            sl_price=196.00 if direction == "long" else 204.00,
+            confidence=4,
+            tp_price=0.0,
+        )
+
+    def test_long_renders_buy_with_sl_tp(self) -> None:
+        msg = format_wife_alert(self._event("long"))
+        assert "BUY — $AAPL 1d" in msg
+        assert "SL:" in msg
+        assert "TP:" in msg
+        # No primary-channel content leaks through
+        for token in ("engulfing", "bullish_engulfing", "★", "SIGNAL", "LONG"):
+            assert token not in msg
+
+    def test_short_renders_hold_without_sl_tp(self) -> None:
+        msg = format_wife_alert(self._event("short"))
+        assert "HOLD — $AAPL 1d" in msg
+        assert "(regime caution — sit tight)" in msg
+        # HOLD is informational only — no actionable levels for the spouse
+        assert "SL:" not in msg
+        assert "TP:" not in msg
+        for token in ("engulfing", "SHORT", "★"):
+            assert token not in msg
+
+    def test_buy_uses_html_bold(self) -> None:
+        """Telegram parse_mode=HTML — header tag must survive."""
+        msg = format_wife_alert(self._event("long"))
+        assert msg.startswith("<b>BUY")
+        assert "</b>" in msg

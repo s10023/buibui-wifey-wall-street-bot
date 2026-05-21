@@ -72,12 +72,13 @@ Each Makefile `wifey-*` target wraps the equivalent CLI invocation.
   - `regime.py` — §6 regime classifier (`trend`/`range`/`high_vol`/`unknown`); pure function over OHLCV; wired as Phase 2 live gate (soft mode shipped 2026-05-10) per `docs/redesign/buibui-redesign.md`
 - `signals/` — signal detection daemon package (alerting + dedup only — detection lives in `analytics/`). See `.claude/context/signals.md` for full reference.
   - `registry.py` — `SignalPlugin` TypedDict + `SIGNAL_REGISTRY` (19 actionable strategies; `seasonality` / `fibonacci_retracement` excluded)
-  - `cooldown_store.py` — two-layer dedup: candle watermark + cooldown timer; JSON-persisted to `signal_state.json`
-  - `alert_formatter.py` — `SignalEvent`, `StatsContext`, `ConfluenceData`; 6-section alert layout; W1–W8 candle warnings
+  - `cooldown_store.py` — two-layer dedup: candle watermark + cooldown timer; JSON-persisted to `signal_state.json`. `is_new_candle` / `mark_candle` take a `channel: str = "primary"` kwarg (Task D, 2026-05-20); primary keeps legacy `{sym}:{tf}:{strategy}` key shape (state-file back-compat), wife uses a `:wife` suffix so its watermark moves independently
+  - `alert_formatter.py` — `SignalEvent`, `StatsContext`, `ConfluenceData`; 6-section alert layout; W1–W8 candle warnings. `format_wife_alert` / `format_wife_confluence_alert` (Task D, 2026-05-20) emit the minimal BUY/HOLD wife-channel variant — BUY = symbol+tf header + price+time + SL/TP; HOLD = symbol+tf header + price+time + "(regime caution — sit tight)" line, no SL/TP
   - `DEFAULT_DB_PATH` lives in `analytics/store/schema.py` (re-exported via `analytics.data_store`) — import from either, do not redefine in runners
 - `utils/` — shared utilities:
   - `config_validation.py` — config schema validation: `validate_coins_config` (legacy) + `validate_stocks_config` (Phase A equities, since T6) + `load_stocks_config(path=Path("config/stocks.json"))` (T5; loads + validates, replaces the deleted `load_coins_config` from `utils/binance_client`)
-  - `telegram.py` — Telegram message sending
+  - `telegram.py` — low-level Telegram message sending (single channel, with retry); takes explicit `bot_token` / `chat_id` or falls back to `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` env
+  - `telegram_router.py` — dual-channel dispatcher (Task D, 2026-05-20). `Channel = Literal["primary","wife"]`; `dispatch_to_channel(text, channel)` resolves env creds (`TELEGRAM_BOT_TOKEN_2` / `TELEGRAM_CHAT_ID_2` for wife), honours `TELEGRAM_WIFE_DRY_RUN=1` (log-instead-of-send rollout safety), and isolates send failures so a wife outage can't block primary
   - `live_store.py` — shared in-memory store for live WebSocket data
   - `live_loop.py` — shared Rich live display loop logic
   - `yfinance_client.py` — yfinance helper (`fetch_history`, `YF_INTERVALS`); no auth, no module-level side effects; normalises Yahoo's tz-aware America/New_York DataFrame to canonical lowercase OHLCV + UTC-naive DatetimeIndex (T2, since 2026-05-14). 4h is not native — callers resample 1h→4h (T4).
