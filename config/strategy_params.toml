@@ -74,7 +74,7 @@ htf_tf = "4h"                  # regime classified off 4h candles (§6)
 # Continuation types (`trend`, `fib`) only fire in `trend` regime.
 # Reversion types (`flow`, `structural`, `price_action`, `candlestick`) and
 # `session` are allowed everywhere; F8 then trims counter-trend in `trend`.
-# NOTE: `fib` is bound to BOS-anchored detectors (fib_golden_zone, ote_entry).
+# NOTE: `fib` is bound to BOS-anchored detectors (ote_entry).
 # If a pure-fib reversion strategy ships, override it via per_strategy below.
 [bias.regime.enabled_regimes]
 trend         = ["trend"]
@@ -89,15 +89,10 @@ session       = ["trend", "range", "high_vol"]
 # bos: the original "BOS = trend continuation" hypothesis was data-falsified by
 # the 2026-05-13 routing audit (`tools/bos_routing_audit.py`, n=72,643). Trend
 # regime is bos's WORST (avg_r=−0.163) while high_vol is best (avg_r=+0.020) and
-# range is middle (−0.048). Flipped to ["high_vol", "range"] mirroring
-# fib_golden_zone below. Replay-verify before any hard flip.
-# fib_golden_zone inverted off the default `fib`→`["trend"]` map: gate-replay
-# (PR #351) + threshold-sweep (PR #352) showed its trend cells avg_r=−0.11 while
-# range/high_vol cells avg_r=+0.02/+0.10 — the §6 default is inverted for this
-# strategy. Soft mode keeps the change observable before any hard flip.
+# range is middle (−0.048). Flipped to ["high_vol", "range"]. Replay-verify
+# before any hard flip.
 [bias.regime.per_strategy]
 bos = ["high_vol", "range"]
-fib_golden_zone = ["range", "high_vol"]
 
 # T2c per-strategy directional suppress (Step −0.5 of bias chain).
 # Drops signals matching `[strategy_params.<name>].suppress_long` /

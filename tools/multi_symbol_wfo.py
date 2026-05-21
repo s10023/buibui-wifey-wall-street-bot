@@ -88,7 +88,6 @@ CELLS_T_A: list[tuple[str, str, str, float, str]] = [
     ("pin_bar", "1d", "tue_thu", 4.0, "signal_watch.toml"),
     ("hammer_hanging_man", "1d", "tue_thu", 3.0, "signal_watch.toml"),
     ("inside_bar", "4h", "tue_thu", 3.5, "signal_watch.toml"),
-    ("fib_golden_zone", "4h", "tue_thu", 3.5, "signal_watch.toml"),
     ("bos", "4h", "tue_thu", 3.0, "signal_watch.toml"),
     ("bos", "1d", "tue_thu", 3.0, "signal_watch.toml"),
     ("trend_day", "4h", "tue_thu", 3.5, "signal_watch.toml"),
@@ -96,8 +95,6 @@ CELLS_T_A: list[tuple[str, str, str, float, str]] = [
     # signal_watch_weekdays.toml
     ("pin_bar", "4h", "weekdays", 3.5, "signal_watch_weekdays.toml"),
     ("hammer_hanging_man", "4h", "weekdays", 4.0, "signal_watch_weekdays.toml"),
-    ("fib_golden_zone", "4h", "weekdays", 3.5, "signal_watch_weekdays.toml"),
-    ("fib_golden_zone", "1d", "weekdays", 3.5, "signal_watch_weekdays.toml"),
     ("bos", "4h", "weekdays", 3.0, "signal_watch_weekdays.toml"),
     ("bos", "1d", "weekdays", 3.0, "signal_watch_weekdays.toml"),
     ("trend_day", "4h", "weekdays", 3.5, "signal_watch_weekdays.toml"),

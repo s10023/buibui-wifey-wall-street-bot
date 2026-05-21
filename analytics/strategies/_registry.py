@@ -18,7 +18,6 @@ from analytics.strategies.doji import detect_doji
 from analytics.strategies.ema import detect_ema
 from analytics.strategies.engulfing import detect_engulfing
 from analytics.strategies.eqh_eql import detect_eqh_eql
-from analytics.strategies.fib_golden_zone import detect_fib_golden_zone
 from analytics.strategies.fvg import detect_fvg
 from analytics.strategies.hammer_hanging_man import detect_hammer_hanging_man
 from analytics.strategies.inside_bar import detect_inside_bar
@@ -449,44 +448,11 @@ STRATEGY_REGISTRY: dict[str, StrategySpec] = {
         ],
         confidence={"15m": 2, "1d": 4, "1h": 2, "4h": 3},
     ),
-    # Legacy — superseded by fib_golden_zone (adds BOS confirmation, better SL/TP structure).
-    # Uncomment to re-enable for backtest comparison.
-    # "fibonacci_retracement": StrategySpec(
-    #     name="fibonacci_retracement",
-    #     description="Fibonacci golden zone (0.5–0.618) retracement entry after a swing high/low.",
-    #     params=[
-    #         ParamSpec("swing_lookback", "int", 20, 5, 100,
-    #                   "Number of bars to scan for the most recent swing high and swing low."),
-    #         ParamSpec("sl_pct", "float", 0.02, 0.001, 0.1,
-    #                   "Stop-loss distance as a fraction of entry price (fallback; actual SL is fib_0.786)."),
-    #         ParamSpec("tp_r", "float", 2.0, 0.5, 10.0, "Take-profit as a multiple of SL distance."),
-    #     ],
-    #     confidence=3,
-    # ),
-    "fib_golden_zone": StrategySpec(
-        name="fib_golden_zone",
-        description="Fibonacci golden zone (0.5–0.618) entry after a confirmed BOS; TP = 1.618 extension.",
-        strategy_type="fib",
-        params=[
-            ParamSpec(
-                "swing_lookback",
-                "int",
-                20,
-                5,
-                100,
-                "Number of bars to scan for the BOS swing high/low.",
-            ),
-            ParamSpec(
-                "bos_lookback",
-                "int",
-                5,
-                2,
-                30,
-                "Rolling window half-size for BOS swing detection.",
-            ),
-        ],
-        confidence={"15m": 1, "1h": 4, "4h": 4},
-    ),
+    # Legacy fib detectors removed:
+    # - fibonacci_retracement (superseded by fib_golden_zone, which was itself removed)
+    # - fib_golden_zone (PR removing fib_golden_zone — confirmed no_edge across
+    #   3 sweeps: T-A 4-sym, Task E 13-sym, Task C-followup ATR 13-sym 1wk all
+    #   net-neg). Detector + tests deleted; ote_entry is the surviving `fib` type.
     # ote_entry: registered for code completeness, NEVER enabled in any signal_watch config.
     # WFO audit (2026-05-11, since 2025-09-12, BTC/ETH/SOL × 15m/1h/4h/1d, day_filter ∈ {tue_thu, off}):
     # every cell with adequate OOS n is OOS-negative — BTC 15m -0.71R (n=53), ETH 15m -0.36R (n=47),
@@ -609,10 +575,9 @@ for _name, _spec in STRATEGY_REGISTRY.items():
 
 # Strategy pairs that must not be combined in co-firing backtests because one
 # embeds the other's detection logic — pairing them would double-count the same edge.
-# fib_golden_zone and ote_entry both call _find_bos_swing() internally.
+# ote_entry calls _find_bos_swing() internally.
 INCOMPATIBLE_PAIRS: frozenset[frozenset[str]] = frozenset(
     {
-        frozenset({"fib_golden_zone", "bos"}),
         frozenset({"ote_entry", "bos"}),
     }
 )
@@ -630,9 +595,9 @@ def patch_confidence_scores(updates: dict[str, dict[str, int] | int]) -> None:
 
 
 # DETECTOR_REGISTRY — single source of truth for simple (OHLCV-only) detectors.
-# seasonality is excluded (returns stats, not signals).  fibonacci_retracement
-# is legacy (see comment above the spec block) — its detector still ships in
-# `analytics/strategies/fibonacci_retracement.py` for tests and A/B comparison.
+# seasonality is excluded (returns stats, not signals). Legacy detectors that
+# were removed: fibonacci_retracement (commented out earlier), fib_golden_zone
+# (deleted with full registry + test prune).
 DETECTOR_REGISTRY: dict[str, Callable[[pd.DataFrame], pd.DataFrame]] = {
     "wick_fill": detect_wick_fills,
     "marubozu": detect_marubozu_retest,
@@ -649,7 +614,6 @@ DETECTOR_REGISTRY: dict[str, Callable[[pd.DataFrame], pd.DataFrame]] = {
     "hammer_hanging_man": detect_hammer_hanging_man,
     "doji": detect_doji,
     "morning_evening_star": detect_morning_evening_star,
-    "fib_golden_zone": detect_fib_golden_zone,
     "ote_entry": detect_ote_entry,
     "ema": detect_ema,
 }

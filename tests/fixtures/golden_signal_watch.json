@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-20",
+  "generated_at": "2026-05-21",
   "config": "config/signal_watch.toml",
   "strategies": {
     "wick_fill": {
@@ -670,24 +670,6 @@
         "short_win_rate": 0.5,
         "max_drawdown_r": 2.0,
         "recovery_factor": 1.5
-      }
-    },
-    "fib_golden_zone": {
-      "4h": {
-        "trade_count": 3,
-        "long_trade_count": 3,
-        "short_trade_count": 0,
-        "win_rate": 0.3333,
-        "avg_r": 0.0,
-        "total_r": 0.0,
-        "long_avg_r": 0.0,
-        "short_avg_r": 0.0,
-        "long_total_r": 0.0,
-        "short_total_r": 0,
-        "long_win_rate": 0.3333,
-        "short_win_rate": 0.0,
-        "max_drawdown_r": 2.0,
-        "recovery_factor": 0.0
       }
     },
     "ote_entry": {

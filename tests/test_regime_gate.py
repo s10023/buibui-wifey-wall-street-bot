@@ -71,7 +71,7 @@ class TestRegimeGate:
 
     def test_hard_mode_drops_continuation_in_high_vol(self) -> None:
         cache: dict[str, Regime] = {"BTCUSDT": "high_vol"}
-        events = [_evt("ema", "long"), _evt("fib_golden_zone", "short")]
+        events = [_evt("ema", "long"), _evt("ote_entry", "short")]
         out = _apply_regime_gate(events, _bias(mode="hard"), cache, "BTCUSDT", "1h")
         assert out == []
 
@@ -150,11 +150,10 @@ class TestRegimeGate:
         assert out == []
 
     def test_fib_group_dropped_in_range_and_high_vol(self) -> None:
-        # fib_golden_zone and ote_entry are BOS-anchored continuation today.
+        # ote_entry is BOS-anchored continuation (`fib` type).
         for regime in ("range", "high_vol"):
             cache: dict[str, Regime] = {"BTCUSDT": regime}
             events = [
-                _evt("fib_golden_zone", "long"),
                 _evt("ote_entry", "short"),
             ]
             out = _apply_regime_gate(events, _bias(mode="hard"), cache, "BTCUSDT", "1h")

@@ -2,7 +2,8 @@
 
 Maps strategy name to plugin metadata. Excluded strategies:
 - seasonality: produces stats, not actionable entry signals
-- fibonacci_retracement: legacy, superseded by fib_golden_zone.
+- fibonacci_retracement: legacy, removed alongside fib_golden_zone.
+- fib_golden_zone: removed (confirmed no_edge across 3 sweeps).
 
 `requires_funding` and `confidence` flags live on
 `analytics.strategies.STRATEGY_REGISTRY`; they are not duplicated here.
@@ -19,7 +20,6 @@ from analytics.strategies import (
     detect_ema,
     detect_engulfing,
     detect_eqh_eql,
-    detect_fib_golden_zone,
     detect_fvg,
     detect_hammer_hanging_man,
     detect_inside_bar,
@@ -58,7 +58,6 @@ _DETECTORS: dict[str, DetectorFn] = {
     "hammer_hanging_man": detect_hammer_hanging_man,
     "doji": detect_doji,
     "morning_evening_star": detect_morning_evening_star,
-    "fib_golden_zone": detect_fib_golden_zone,
     "ote_entry": detect_ote_entry,
     "ema": detect_ema,
 }

@@ -329,9 +329,6 @@ tp_r_4h = 2.5
         assert cfg.effective_tp_r("ema", "AAPL", "4h") == 2.5
         # hammer_hanging_man 4h combined 3.0 (Task E, was 4.0).
         assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "4h") == 3.0
-        # fib_golden_zone 4h tp_r_4h dropped (Task E no_edge); falls back to global.
-        assert cfg.effective_tp_r("fib_golden_zone", "AAPL", "4h") == cfg.tp_r
-        assert cfg.effective_tp_r("fib_golden_zone", "AAPL", "1d") == 2.0
         # bos 1d combined 2.5 (Task E, was relying on strategy-wide 3.0).
         assert cfg.effective_tp_r("bos", "AAPL", "1d") == 2.5
         # orb 4h combined 2.5 (Task E, was 3.5).
@@ -422,8 +419,6 @@ tp_r_4h = 2.5
         assert cfg.effective_tp_r("ema", "AAPL", "4h") == 2.5
         assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="long") == 5.0
         assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="short") == 4.0
-        # fib_golden_zone 4h tp_r_4h dropped (Task E no_edge); falls back to global.
-        assert cfg.effective_tp_r("fib_golden_zone", "AAPL", "4h") == cfg.tp_r
         # orb 4h kept at 3.5 (only weekdays moved to 2.5).
         assert cfg.effective_tp_r("orb", "AAPL", "4h") == 3.5
         # inside_bar audit 13-sym: 4h combined 3.0 (was 3.5; long no_edge, short=combined);
@@ -447,14 +442,13 @@ tp_r_4h = 2.5
         cfg = load_signal_config(cfg_path)
         # Top-level floor stays off (Task C precedent — no other strategy affected).
         assert cfg.atr_sl_floor is False
-        # All 14 active strategies carry per-strategy atr_sl_floor=true.
+        # All 13 active strategies carry per-strategy atr_sl_floor=true.
         active = [
             "bos",
             "doji",
             "ema",
             "engulfing",
             "eqh_eql",
-            "fib_golden_zone",
             "hammer_hanging_man",
             "inside_bar",
             "liquidity_sweep",
@@ -477,8 +471,6 @@ tp_r_4h = 2.5
         assert cfg.effective_atr_sl_multiplier("engulfing", "AAPL", "1d") == 1.0
         assert cfg.effective_atr_sl_multiplier("eqh_eql", "AAPL", "4h") == 2.5
         assert cfg.effective_atr_sl_multiplier("eqh_eql", "AAPL", "1d") == 2.5
-        assert cfg.effective_atr_sl_multiplier("fib_golden_zone", "AAPL", "4h") == 2.5
-        assert cfg.effective_atr_sl_multiplier("fib_golden_zone", "AAPL", "1d") == 2.0
         assert (
             cfg.effective_atr_sl_multiplier("hammer_hanging_man", "AAPL", "4h") == 1.5
         )
@@ -517,7 +509,6 @@ tp_r_4h = 2.5
             "ema",
             "engulfing",
             "eqh_eql",
-            "fib_golden_zone",
             "hammer_hanging_man",
             "inside_bar",
             "liquidity_sweep",
@@ -535,7 +526,6 @@ tp_r_4h = 2.5
         assert cfg.effective_atr_sl_multiplier("ema", "AAPL", "4h") == 2.5
         assert cfg.effective_atr_sl_multiplier("engulfing", "AAPL", "4h") == 0.5
         assert cfg.effective_atr_sl_multiplier("eqh_eql", "AAPL", "4h") == 1.5
-        assert cfg.effective_atr_sl_multiplier("fib_golden_zone", "AAPL", "4h") == 0.5
         assert (
             cfg.effective_atr_sl_multiplier("hammer_hanging_man", "AAPL", "4h") == 1.0
         )
@@ -554,7 +544,6 @@ tp_r_4h = 2.5
         assert cfg.effective_atr_sl_multiplier("ema", "AAPL", "1d") == 1.0
         assert cfg.effective_atr_sl_multiplier("engulfing", "AAPL", "1d") == 0.5
         assert cfg.effective_atr_sl_multiplier("eqh_eql", "AAPL", "1d") == 1.5
-        assert cfg.effective_atr_sl_multiplier("fib_golden_zone", "AAPL", "1d") == 1.0
         assert (
             cfg.effective_atr_sl_multiplier("hammer_hanging_man", "AAPL", "1d") == 1.0
         )
@@ -571,7 +560,6 @@ tp_r_4h = 2.5
         assert cfg.effective_atr_sl_multiplier("bos", "AAPL", "1wk") == 2.5
         assert cfg.effective_atr_sl_multiplier("ema", "AAPL", "1wk") == 2.0
         assert cfg.effective_atr_sl_multiplier("engulfing", "AAPL", "1wk") == 0.5
-        assert cfg.effective_atr_sl_multiplier("fib_golden_zone", "AAPL", "1wk") == 2.5
         assert (
             cfg.effective_atr_sl_multiplier("hammer_hanging_man", "AAPL", "1wk") == 1.0
         )
@@ -941,7 +929,6 @@ tp_r = 3.0
         assert cfg.effective_volume_suppress("orb") is True
         assert cfg.effective_volume_suppress("doji") is True
         assert cfg.effective_volume_suppress("liquidity_sweep") is True
-        assert cfg.effective_volume_suppress("fib_golden_zone") is True
         # suppress = false: strategies where low-vol signals have edge
         assert cfg.effective_volume_suppress("pin_bar") is False
         assert cfg.effective_volume_suppress("hammer_hanging_man") is False

@@ -264,7 +264,6 @@ poetry run python wifey.py backtest --symbols BTCUSDT ETHUSDT --timeframes 1h 4h
 | `hammer_hanging_man` | Hammer (bullish reversal) / Hanging Man (bearish): pin-bar shape with trend context | ★☆☆☆☆ |
 | `doji` | Doji (open ≈ close) followed by a strongly directional confirmation candle | ★★☆☆☆ |
 | `morning_evening_star` | Morning Star (3-candle bullish reversal) / Evening Star (3-candle bearish reversal) | ★★☆☆☆ |
-| `fib_golden_zone` | Fibonacci golden zone (0.5–0.618) entry after confirmed BOS; SL=swing low, TP=1.618 ext | ★☆☆☆☆ |
 | `ote_entry` | Optimal Trade Entry (0.618–0.786) after confirmed BOS — deeper, more selective retracement | ★☆☆☆☆ |
 | `seasonality` | Average return by day-of-week, hour, and week-of-month | ★★☆☆☆ |
 | `ema` | EMA pullback continuation (Variant A): trend (slow EMA + slope) + regime gate, pullback wick into fast EMA, body-fraction trigger | ★★★☆☆ |
@@ -527,7 +526,6 @@ session       = ["trend", "range", "high_vol"]
 
 [bias.regime.per_strategy]
 bos = ["high_vol", "range"]     # routing-audit-corrected (PR #366); trend regime was bos's worst
-fib_golden_zone = ["range", "high_vol"]   # inverted off §6 default (PR #354)
 
 # T2c per-strategy directional suppress — Step −0.5 of the bias chain.
 # Drops signals matching [strategy_params.<name>].suppress_long / .suppress_short.
