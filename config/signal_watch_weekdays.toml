@@ -140,12 +140,12 @@ atr_sl_multiplier_1wk = 1.0   # Task C-followup 13-sym: -0.17R least-bad, n=86
 [strategy_params.doji]
 tp_r = 3.0                    # fallback (4h no_edge under ATR floor: best -0.016R@3.0, n=122 — keep current)
 tp_r_1d = 5.0                 # Phase 2 resweep 13-sym (under ATR floor 2.5×): combined 5.0@+0.152R, n=99 (was fallback 3.0@+0.087R; long-driven edge dominates under ATR floor)
-tp_r_1wk = 4.0                # Phase 2 resweep 13-sym 1wk: combined 4.0@+0.053R, n=19 (NEW commit; was fallback 3.0@-0.158R). 1wk has no atr_sl_multiplier commit (Task C-followup skipped 1wk at n=5) so floor was effectively off — value carries until a future 1wk ATR sweep with n≥10
+tp_r_1wk = 4.0                # Phase 2 resweep 13-sym 1wk WFO-pooled count: combined 4.0@+0.053R, n=19 (was fallback 3.0@-0.158R). Direct ATR sweep (2026-05-22) finds only n=5 closed trades — Phase 2's n=19 is the inflated walk-forward fold count. Value carries; live sample still too thin for high-confidence calibration.
 volume_suppress = true        # A14b crypto finding; T14 AAPL volume split not re-tested
-atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
+atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on (1wk: floor effectively off — no atr_sl_multiplier_1wk commit; see line below)
 atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: +0.28R, n=75
 atr_sl_multiplier_1d = 2.5    # Task C-followup 13-sym: +0.13R, n=33
-# 1wk multiplier: no commit (Task C-followup skipped n=5; Phase 2 resweep on 1wk now has n=19 but no ATR multiplier sweep yet)
+# 1wk multiplier: 2026-05-22 targeted ATR sweep 13-sym × [0.5,1.0,1.5,2.0,2.5] × --atr-sl-floor on: n=5 (below n≥10 floor — same as Task C-followup), monotonic direction favours 2.0×/2.5× (+2.00R, wr 60%) but sample too thin to commit. No further 1wk ATR sweep until live signal volume grows.
 
 [strategy_params.inside_bar]
 tp_r = 3.0                    # fallback

@@ -156,11 +156,11 @@ atr_sl_multiplier_4h = 1.5    # Task C-followup 13-sym: -0.01R least-bad (tied 1
 atr_sl_multiplier_1d = 1.0    # Task C-followup 13-sym: -0.06R least-bad, n=336
 
 [strategy_params.doji]
-tp_r = 3.0                    # fallback
+tp_r = 3.0                    # fallback (also covers 1wk tue_thu — no_grid under Fri close × tue_thu suppression; 2026-05-22 doji-1wk ATR sweep confirmed n=0)
 tp_r_1d = 3.5                 # Phase 2 resweep 13-sym (under ATR floor 2.5×): combined 3.5@+0.276R, n=67 (was 2.5@+0.217R)
 tp_r_long_1d = 4.0            # Phase 2 resweep 13-sym directional: longs +1.143R, n=28 (NEW commit; thin sample but clear edge under ATR floor)
 volume_suppress = true        # A14b crypto finding; T14 AAPL volume split not re-tested
-atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
+atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on (1wk: no signals on tue_thu — Fri close × tue_thu suppression)
 atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: +0.20R, n=40
 atr_sl_multiplier_1d = 2.5    # Task C-followup 13-sym: +0.29R, n=20
 
