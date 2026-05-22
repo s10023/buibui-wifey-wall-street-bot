@@ -63,6 +63,16 @@
 # positive (too thin to keep a strategy alive). Same removal pattern as
 # fib_golden_zone (PR #35) — 0 combo usage in backtest_combos /
 # backtest_cross_tf_combos pre-check, no rescue from co-fire gates.
+#
+# Phase 2 candle-resweep (2026-05-22): closes the ATR loop the candle-resweep
+# Phase 1 (PR #39) opened. 9 remaining strategies with atr_sl_floor=true had
+# tp_r calibrated WITHOUT the floor — Phase 2 re-runs the 13-sym pooled WFO at
+# the committed atr_sl_multiplier_<tf> values (via tools/multi_symbol_wfo.py
+# --cells phase2-resweep --fixed-atr). Decision rules same as PR #39: skip
+# n<10; pick peak avg_r; keep current when uplift < 0.03R (sub-noise);
+# tie-break to higher tp_r; drop tp_r_long_<tf>/tp_r_short_<tf> when winner
+# equals combined. 1wk tue_thu cells all no_grid (Fri close × tue_thu
+# suppression — same dead-cell class as PR #39).
 
 extends = "strategy_params.toml"
 
@@ -137,14 +147,18 @@ atr_sl_multiplier_1d = 0.5    # Task C-followup 13-sym: +0.24R, n=586
 
 [strategy_params.hammer_hanging_man]
 tp_r = 4.0                    # fallback (crypto cross-symbol)
-tp_r_1d = 2.5                 # T-A 4-sym WFO OOS: +0.288R, n=33 (was 3.0)
+tp_r_4h = 3.5                 # Phase 2 resweep 13-sym (under ATR floor 1.5×): combined 3.5@+0.087R, n=126 (was fallback 4.0@+0.056R)
+tp_r_1d = 2.0                 # Phase 2 resweep 13-sym (under ATR floor 1.0×): combined 2.0@+0.211R, n=109 (was 2.5@+0.145R)
+tp_r_long_1d = 2.5            # Phase 2 resweep 13-sym directional: longs +0.197R, n=38 (NEW commit)
+tp_r_short_1d = 1.5           # Phase 2 resweep 13-sym directional: shorts +0.303R, n=71 (NEW commit)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 1.5    # Task C-followup 13-sym: -0.01R least-bad (tied 1.0/1.5), n=433
 atr_sl_multiplier_1d = 1.0    # Task C-followup 13-sym: -0.06R least-bad, n=336
 
 [strategy_params.doji]
 tp_r = 3.0                    # fallback
-tp_r_1d = 2.5                 # T14 AAPL WFO OOS: +0.313R, n=8 (2026-05-17)
+tp_r_1d = 3.5                 # Phase 2 resweep 13-sym (under ATR floor 2.5×): combined 3.5@+0.276R, n=67 (was 2.5@+0.217R)
+tp_r_long_1d = 4.0            # Phase 2 resweep 13-sym directional: longs +1.143R, n=28 (NEW commit; thin sample but clear edge under ATR floor)
 volume_suppress = true        # A14b crypto finding; T14 AAPL volume split not re-tested
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: +0.20R, n=40
@@ -159,60 +173,72 @@ atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: +0.19R, n=629
 atr_sl_multiplier_1d = 1.0    # Task C-followup 13-sym: +0.07R, n=497
 
 [strategy_params.morning_evening_star]
-tp_r = 3.0                    # fallback
-tp_r_4h = 2.5                 # Task E 13-sym: combined 2.5@+0.137R, n=252 (was 3.5)
-tp_r_long_4h = 5.0            # Task E 13-sym directional: longs +0.155R, n=116 at 5.0
-tp_r_short_4h = 3.5           # Task E 13-sym directional: shorts +0.162R, n=130 at 3.5
-tp_r_1d = 2.5                 # Task E 13-sym: combined 2.5@+0.091R, n=208
-tp_r_long_1d = 5.0            # Task E 13-sym directional: longs +0.361R, n=97 at 5.0 (kept from Task A)
-tp_r_short_1d = 2.0           # Task E 13-sym directional: shorts +0.081R, n=111 at 2.0
+tp_r = 3.0                    # fallback (also covers 1wk tue_thu — no_grid under Fri close × tue_thu suppression)
+tp_r_4h = 2.5                 # Phase 2 resweep 13-sym (under ATR floor 1.0×): combined 2.5@+0.153R, n=251 (confirms Task E)
+tp_r_long_4h = 4.5            # Phase 2 resweep 13-sym directional: longs +0.185R, n=116 at 4.5 (was 5.0; ATR floor pulled winner 0.5 step shorter)
+                              # tp_r_short_4h dropped — short winner (2.5) = combined → falls back to tp_r_4h
+tp_r_1d = 2.0                 # Phase 2 resweep 13-sym (under ATR floor 1.0×): combined 2.0@+0.093R, n=205 (was 2.5@+0.005R; ATR floor pulled SL wider → tighter tp_r wins)
+tp_r_long_1d = 5.0            # Phase 2 resweep 13-sym directional: longs +0.312R, n=93 at 5.0 (kept from Task E)
+tp_r_short_1d = 1.5           # Phase 2 resweep 13-sym directional: shorts +0.135R, n=111 at 1.5 (was 2.0; ATR floor pulled winner 0.5 step shorter)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 1.0    # Task C-followup 13-sym: +0.15R, n=815
 atr_sl_multiplier_1d = 1.0    # Task C-followup 13-sym: +0.10R, n=683
 
 [strategy_params.bos]
-tp_r = 3.0                    # T-A 4-sym: 4h no_edge confirmed (best -0.143R); 1d edge +0.481R at tp_r=3.0 (n=27) — combined value retained
+tp_r = 3.0                    # fallback (4h no_edge under ATR floor: best -0.269R@1.5, n=106 — keep current; also covers 1wk tue_thu — no_grid)
+tp_r_short_4h = 1.5           # Phase 2 resweep 13-sym directional: shorts +0.050R, n=50 (NEW commit; long no_edge so combined stays net-neg, short carries the only directional edge)
+tp_r_1d = 2.5                 # Phase 2 resweep 13-sym (under ATR floor 2.0×): combined 2.5@+0.136R, n=88 (was fallback 3.0@+0.071R)
+tp_r_long_1d = 4.0            # Phase 2 resweep 13-sym directional: longs +0.400R, n=50 (NEW commit; long edge dominates on 1d)
 adr_exempt = true             # breakout — fires in continuation direction; ADR gate degrades it
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 2.0    # Task C-followup 13-sym: -0.29R least-bad (tied 0.5/1.0/2.0), n=153
 atr_sl_multiplier_1d = 2.0    # Task C-followup 13-sym: +0.04R, n=85
 
 [strategy_params.trend_day]
-tp_r = 3.0                    # fallback
-tp_r_4h = 4.5                 # Task E 13-sym confirms: combined 4.5@+0.252R, n=451
-tp_r_long_4h = 5.0            # Task E 13-sym directional: longs +0.305R, n=187 at 5.0
-tp_r_short_4h = 2.0           # Task E 13-sym directional: shorts +0.307R, n=264 at 2.0
-tp_r_long_1d = 5.0            # Task E 13-sym directional: longs +0.571R, n=163 at 5.0 (kept from Task A; Δ=0.505R)
-tp_r_short_1d = 3.0           # Task E 13-sym directional: shorts +0.066R, n=212 at 3.0 (was 3.5)
+tp_r = 3.0                    # fallback (also covers 1wk tue_thu — no_grid under Fri close × tue_thu suppression)
+tp_r_4h = 4.5                 # Phase 2 resweep 13-sym (under ATR floor 0.5×): combined 4.5@+0.261R, n=450 (confirms Task E)
+tp_r_long_4h = 5.0            # Phase 2 resweep 13-sym directional: longs +0.312R, n=186 at 5.0 (confirms Task E)
+tp_r_short_4h = 3.0           # Phase 2 resweep 13-sym directional: shorts +0.303R, n=264 at 3.0 (was 2.0; ATR floor pulled winner 1.0 step wider)
+tp_r_1d = 5.0                 # Phase 2 resweep 13-sym (under ATR floor 1.0×): combined 5.0@+0.292R, n=370 (was fallback 3.0@+0.111R; long-driven edge dominates)
+                              # tp_r_long_1d dropped — long winner (5.0) = combined → falls back to tp_r_1d
+tp_r_short_1d = 1.0           # Phase 2 resweep 13-sym directional: shorts +0.047R, n=214 at 1.0 (was 3.0; ATR floor pulled winner 2.0 steps tighter)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: +0.16R, n=1508
 atr_sl_multiplier_1d = 1.0    # Task C-followup 13-sym: +0.16R, n=1380
 
 [strategy_params.orb]
 tp_r = 3.0                    # fallback
-tp_r_4h = 3.5                 # T-A 4-sym WFO OOS: +0.300R, n=100 (was 5.0)
+tp_r_4h = 3.5                 # Phase 2 resweep 13-sym (under ATR floor 1.5×): combined 3.5@+0.322R, n=304 (confirms T-A; 13-sym widens past T-A n=100 floor)
+tp_r_long_4h = 4.5            # Phase 2 resweep 13-sym directional: longs +0.262R, n=141 at 4.5 (NEW commit)
+tp_r_short_4h = 2.0           # Phase 2 resweep 13-sym directional: shorts +0.421R, n=159 at 2.0 (NEW commit; short edge dominates on 4h)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 1.5    # Task C-followup 13-sym: +0.17R (tied 0.5/1.0/1.5), n=77
 
 [strategy_params.eqh_eql]
+tp_r_4h = 4.0                 # Phase 2 resweep 13-sym (under ATR floor 2.5×): combined 4.0@+0.019R, n=54 (NEW commit; was global default 2.0@-0.056R — near-zero edge but uplift +0.075R)
+tp_r_1d = 3.0                 # Phase 2 resweep 13-sym (under ATR floor 2.5×): combined 3.0@+0.931R, n=29 (NEW commit; was global default 2.0@+0.655R)
+tp_r_long_1d = 5.0            # Phase 2 resweep 13-sym directional: longs +1.000R, n=15 at 5.0 (NEW commit; thin sample but strong edge)
 adr_exempt = true             # liquidity sweep — fires at structure extremes in continuation direction
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 2.5    # Task C-followup 13-sym: -0.12R least-bad (tied 0.5/1.0/1.5/2.5), n=99
 atr_sl_multiplier_1d = 2.5    # Task C-followup 13-sym: +0.29R, n=77
 
 [strategy_params.ema]
-tp_r = 3.0                    # spec §6 default
-tp_r_4h = 2.5                 # Task E 13-sym: combined 2.5@+0.424R, n=85 (was 4.0)
-tp_r_long_4h = 5.0            # Task E 13-sym directional: longs +0.517R, n=29 at 5.0
-tp_r_short_4h = 4.5           # Task E 13-sym directional: shorts +0.402R, n=51 at 4.5
-tp_r_long_1d = 5.0            # Task E 13-sym directional: longs +1.483R, n=29 at 5.0 (kept from Task A)
-tp_r_short_1d = 4.0           # Task E 13-sym directional: shorts +0.448R, n=29 at 4.0 (Δ=1.035R)
+tp_r = 3.0                    # spec §6 default (also covers 1wk tue_thu — no_grid under Fri close × tue_thu suppression)
+tp_r_4h = 3.5                 # Phase 2 resweep 13-sym (under ATR floor 2.5×): combined 3.5@+0.181R, n=80 (was 2.5@+0.139R; ATR floor pulled SL wider → wider tp_r wins)
+tp_r_long_4h = 1.5            # Phase 2 resweep 13-sym directional: longs +0.250R, n=34 at 1.5 (was 5.0; ATR floor inverts long edge — tightest tp_r wins)
+tp_r_short_4h = 4.5           # Phase 2 resweep 13-sym directional: shorts +0.402R, n=51 at 4.5 (confirms Task E)
+tp_r_1d = 4.5                 # Phase 2 resweep 13-sym (under ATR floor 0.5×): combined 4.5@+0.772R, n=57 (was fallback 3.0@+0.593R; long-driven edge dominates)
+tp_r_long_1d = 5.0            # Phase 2 resweep 13-sym directional: longs +1.483R, n=29 at 5.0 (kept from Task E)
+tp_r_short_1d = 4.0           # Phase 2 resweep 13-sym directional: shorts +0.448R, n=29 at 4.0 (kept from Task E)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 2.5    # Task C-followup 13-sym: +0.27R, n=266
 atr_sl_multiplier_1d = 0.5    # Task C-followup 13-sym: +0.39R, n=216
 
 [strategy_params.order_block]
-tp_r_1d = 5.0                 # T14 AAPL WFO OOS: +0.294R, n=17 (2026-05-17)
+tp_r_4h = 2.5                 # Phase 2 resweep 13-sym (under ATR floor 0.5×): combined 2.5@+0.101R, n=252 (NEW commit; was global default 2.0@+0.063R)
+tp_r_short_4h = 4.5           # Phase 2 resweep 13-sym directional: shorts +0.339R, n=124 at 4.5 (NEW commit; short edge dominates on 4h)
+tp_r_1d = 5.0                 # Phase 2 resweep 13-sym (under ATR floor 2.5×): combined 4.5@+0.088R only +0.026R uplift over current 5.0 → sub-noise, keep status quo (T14 AAPL +0.294R, n=17)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: -0.01R least-bad, n=803
 atr_sl_multiplier_1d = 2.5    # Task C-followup 13-sym: +0.16R, n=774

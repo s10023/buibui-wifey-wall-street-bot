@@ -32,6 +32,14 @@ Cell lists are hardcoded:
                      Pair with --fixed-atr to pin each cell's
                      atr_sl_multiplier_<tf> + atr_sl_floor from the
                      committed signal_watch TOML (closes the ATR loop).
+  --cells phase2-resweep
+                     tp_r re-sweep Phase 2 — the remaining 9 strategies with
+                     `atr_sl_floor = true` whose tp_r values were calibrated
+                     before PR #33: hammer_hanging_man, doji, morning_evening_star,
+                     bos, trend_day, orb (4h-only), eqh_eql, ema, order_block.
+                     8 strategies × 3 TFs × 2 day_filters + orb × 4h × 2
+                     day_filters = 50 cells. Closes the ATR loop completely.
+                     Pair with --fixed-atr.
 
 Flags:
   --fixed-atr        Load each cell's atr_sl_multiplier + atr_sl_floor from
@@ -44,7 +52,7 @@ Flags:
                      (none of which were ATR-aware at run time).
 
 Usage:
-    PYTHONPATH=. poetry run python tools/multi_symbol_wfo.py [--direction long|short|both] [--cells task-a|t-a|inside-bar|pin-bar|candle-resweep] [--fixed-atr] [--db PATH]
+    PYTHONPATH=. poetry run python tools/multi_symbol_wfo.py [--direction long|short|both] [--cells task-a|t-a|inside-bar|pin-bar|candle-resweep|phase2-resweep] [--fixed-atr] [--db PATH]
 """
 
 from __future__ import annotations
@@ -297,6 +305,75 @@ CELLS_CANDLE_RESWEEP: list[tuple[str, str, str, float, str]] = [
     ("engulfing", "4h", "weekdays", 3.5, "signal_watch_weekdays.toml"),
     ("engulfing", "1d", "weekdays", 3.5, "signal_watch_weekdays.toml"),
     ("engulfing", "1wk", "weekdays", 3.5, "signal_watch_weekdays.toml"),
+]
+
+# phase2-resweep — Phase 2 of the candle-resweep follow-up (PR #39 left the
+# remaining 9 atr_sl_floor=true strategies unswept). 8 strategies × 3 TFs ×
+# 2 day_filters + orb × 4h × 2 day_filters = 50 cells. Run with --fixed-atr.
+# current_tp_r reflects the *combined* per-TF effective value in each config
+# (per-TF commit where present; strategy-wide tp_r fallback; global 2.0 when
+# strategy has no tp_r line at all — eqh_eql / order_block 4h/1wk / trend_day
+# 1d/1wk / ema 1d/1wk fall into this last bucket).
+CELLS_PHASE2_RESWEEP: list[tuple[str, str, str, float, str]] = [
+    # hammer_hanging_man
+    ("hammer_hanging_man", "4h", "tue_thu", 4.0, "signal_watch.toml"),
+    ("hammer_hanging_man", "1d", "tue_thu", 2.5, "signal_watch.toml"),
+    ("hammer_hanging_man", "1wk", "tue_thu", 4.0, "signal_watch.toml"),
+    ("hammer_hanging_man", "4h", "weekdays", 3.0, "signal_watch_weekdays.toml"),
+    ("hammer_hanging_man", "1d", "weekdays", 4.0, "signal_watch_weekdays.toml"),
+    ("hammer_hanging_man", "1wk", "weekdays", 4.0, "signal_watch_weekdays.toml"),
+    # doji
+    ("doji", "4h", "tue_thu", 3.0, "signal_watch.toml"),
+    ("doji", "1d", "tue_thu", 2.5, "signal_watch.toml"),
+    ("doji", "1wk", "tue_thu", 3.0, "signal_watch.toml"),
+    ("doji", "4h", "weekdays", 3.0, "signal_watch_weekdays.toml"),
+    ("doji", "1d", "weekdays", 3.0, "signal_watch_weekdays.toml"),
+    ("doji", "1wk", "weekdays", 3.0, "signal_watch_weekdays.toml"),
+    # morning_evening_star
+    ("morning_evening_star", "4h", "tue_thu", 2.5, "signal_watch.toml"),
+    ("morning_evening_star", "1d", "tue_thu", 2.5, "signal_watch.toml"),
+    ("morning_evening_star", "1wk", "tue_thu", 3.0, "signal_watch.toml"),
+    ("morning_evening_star", "4h", "weekdays", 3.0, "signal_watch_weekdays.toml"),
+    ("morning_evening_star", "1d", "weekdays", 2.0, "signal_watch_weekdays.toml"),
+    ("morning_evening_star", "1wk", "weekdays", 2.0, "signal_watch_weekdays.toml"),
+    # bos
+    ("bos", "4h", "tue_thu", 3.0, "signal_watch.toml"),
+    ("bos", "1d", "tue_thu", 3.0, "signal_watch.toml"),
+    ("bos", "1wk", "tue_thu", 3.0, "signal_watch.toml"),
+    ("bos", "4h", "weekdays", 3.0, "signal_watch_weekdays.toml"),
+    ("bos", "1d", "weekdays", 2.5, "signal_watch_weekdays.toml"),
+    ("bos", "1wk", "weekdays", 3.0, "signal_watch_weekdays.toml"),
+    # trend_day
+    ("trend_day", "4h", "tue_thu", 4.5, "signal_watch.toml"),
+    ("trend_day", "1d", "tue_thu", 3.0, "signal_watch.toml"),
+    ("trend_day", "1wk", "tue_thu", 3.0, "signal_watch.toml"),
+    ("trend_day", "4h", "weekdays", 3.0, "signal_watch_weekdays.toml"),
+    ("trend_day", "1d", "weekdays", 5.0, "signal_watch_weekdays.toml"),
+    ("trend_day", "1wk", "weekdays", 2.0, "signal_watch_weekdays.toml"),
+    # orb (4h-only by mechanic)
+    ("orb", "4h", "tue_thu", 3.5, "signal_watch.toml"),
+    ("orb", "4h", "weekdays", 2.5, "signal_watch_weekdays.toml"),
+    # eqh_eql
+    ("eqh_eql", "4h", "tue_thu", 2.0, "signal_watch.toml"),
+    ("eqh_eql", "1d", "tue_thu", 2.0, "signal_watch.toml"),
+    ("eqh_eql", "1wk", "tue_thu", 2.0, "signal_watch.toml"),
+    ("eqh_eql", "4h", "weekdays", 2.0, "signal_watch_weekdays.toml"),
+    ("eqh_eql", "1d", "weekdays", 5.0, "signal_watch_weekdays.toml"),
+    ("eqh_eql", "1wk", "weekdays", 2.0, "signal_watch_weekdays.toml"),
+    # ema
+    ("ema", "4h", "tue_thu", 2.5, "signal_watch.toml"),
+    ("ema", "1d", "tue_thu", 3.0, "signal_watch.toml"),
+    ("ema", "1wk", "tue_thu", 3.0, "signal_watch.toml"),
+    ("ema", "4h", "weekdays", 2.5, "signal_watch_weekdays.toml"),
+    ("ema", "1d", "weekdays", 3.0, "signal_watch_weekdays.toml"),
+    ("ema", "1wk", "weekdays", 3.0, "signal_watch_weekdays.toml"),
+    # order_block
+    ("order_block", "4h", "tue_thu", 2.0, "signal_watch.toml"),
+    ("order_block", "1d", "tue_thu", 5.0, "signal_watch.toml"),
+    ("order_block", "1wk", "tue_thu", 2.0, "signal_watch.toml"),
+    ("order_block", "4h", "weekdays", 2.0, "signal_watch_weekdays.toml"),
+    ("order_block", "1d", "weekdays", 3.0, "signal_watch_weekdays.toml"),
+    ("order_block", "1wk", "weekdays", 2.0, "signal_watch_weekdays.toml"),
 ]
 
 
@@ -561,7 +638,14 @@ def main() -> None:
     )
     parser.add_argument(
         "--cells",
-        choices=("task-a", "t-a", "inside-bar", "pin-bar", "candle-resweep"),
+        choices=(
+            "task-a",
+            "t-a",
+            "inside-bar",
+            "pin-bar",
+            "candle-resweep",
+            "phase2-resweep",
+        ),
         default="task-a",
         help="Cell list to sweep. task-a (default) = 4 directional-gap cells "
         "× 3 TFs × 2 day_filters. t-a = original T-A combined-direction cells. "
@@ -570,7 +654,8 @@ def main() -> None:
         "same 6-cell shape, retiring the crypto tp_r_long=5.0/tp_r_short=3.0 "
         "override. candle-resweep = tp_r re-sweep at PR #33 ATR multipliers, "
         "Phase 1 (3 candle patterns × 3 TFs × 2 day_filters = 18 cells); pair "
-        "with --fixed-atr.",
+        "with --fixed-atr. phase2-resweep = Phase 2 (remaining 9 strategies "
+        "with atr_sl_floor=true = 50 cells); also pair with --fixed-atr.",
     )
     parser.add_argument(
         "--fixed-atr",
@@ -605,8 +690,10 @@ def main() -> None:
         all_cells = CELLS_INSIDE_BAR
     elif args.cells == "pin-bar":
         all_cells = CELLS_PIN_BAR
-    else:
+    elif args.cells == "candle-resweep":
         all_cells = CELLS_CANDLE_RESWEEP
+    else:
+        all_cells = CELLS_PHASE2_RESWEEP
 
     if args.cell:
         parts = args.cell.split("/")
