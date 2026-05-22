@@ -23,9 +23,28 @@ Cell lists are hardcoded:
   --cells pin-bar    pin_bar audit — full 6-cell directional sweep (3 TFs ×
                      2 day_filters) on the 13-sym cohort. Retires the crypto-era
                      tp_r_long=5.0 / tp_r_short=3.0 leak in strategy_params.toml.
+  --cells candle-resweep
+                     tp_r re-sweep at the new ATR multipliers committed in PR
+                     #33 (Task C-followup). Phase 1: 3 candle patterns
+                     (pin_bar, inside_bar, engulfing) × 3 TFs × 2 day_filters =
+                     18 cells. Most-likely-to-shift first — candle patterns
+                     are where ATR floor actually bites vs structural SL.
+                     Pair with --fixed-atr to pin each cell's
+                     atr_sl_multiplier_<tf> + atr_sl_floor from the
+                     committed signal_watch TOML (closes the ATR loop).
+
+Flags:
+  --fixed-atr        Load each cell's atr_sl_multiplier + atr_sl_floor from
+                     the cell's signal_watch TOML (config_label column) via
+                     `analytics.signal_config.load_signal_config`. Required
+                     for the `candle-resweep` cell list since the headline
+                     finding (tp_r winners under ATR floor) is meaningless
+                     without ATR floor pinned at sweep time. Off by default
+                     for back-compat with t-a / task-a / inside-bar / pin-bar
+                     (none of which were ATR-aware at run time).
 
 Usage:
-    PYTHONPATH=. poetry run python tools/multi_symbol_wfo.py [--direction long|short|both] [--cells task-a|t-a|inside-bar|pin-bar] [--db PATH]
+    PYTHONPATH=. poetry run python tools/multi_symbol_wfo.py [--direction long|short|both] [--cells task-a|t-a|inside-bar|pin-bar|candle-resweep] [--fixed-atr] [--db PATH]
 """
 
 from __future__ import annotations
@@ -41,6 +60,12 @@ import duckdb
 from analytics.backtest_lib import BacktestResult, Trade
 from analytics.data_store import DEFAULT_DB_PATH
 from analytics.param_sweep import ParamRange, _float_range, run_param_sweep
+from analytics.signal_config import SignalWatchConfig, load_signal_config
+
+CONFIG_PATHS: dict[str, Path] = {
+    "signal_watch.toml": Path("config/signal_watch.toml"),
+    "signal_watch_weekdays.toml": Path("config/signal_watch_weekdays.toml"),
+}
 
 SYMBOLS = (
     "AAPL",
@@ -241,6 +266,39 @@ CELLS_PIN_BAR: list[tuple[str, str, str, float, str]] = [
     ),  # tp_r=3.5 fallback
 ]
 
+# candle-resweep — tp_r re-sweep at the ATR multipliers committed in PR #33
+# (Task C-followup, 2026-05-20). Phase 1 scope = 3 candle patterns × 3 TFs ×
+# 2 day_filters = 18 cells. Run with --fixed-atr so each cell's
+# atr_sl_multiplier_<tf> + atr_sl_floor flow into `run_param_sweep` from the
+# canonical TOML (config_label column) — without that, the sweep would replay
+# the pre-PR-33 SL geometry and the resulting tp_r winners would be the same
+# stale numbers Task C-followup widened SLs to invalidate. current_tp_r
+# reflects the *combined* per-TF effective value in each config (per-TF
+# commit where present; fallback tp_r=3.0/3.5 otherwise).
+CELLS_CANDLE_RESWEEP: list[tuple[str, str, str, float, str]] = [
+    # pin_bar (PR #32 baseline — full directional commits already on both configs)
+    ("pin_bar", "4h", "tue_thu", 3.5, "signal_watch.toml"),
+    ("pin_bar", "1d", "tue_thu", 3.5, "signal_watch.toml"),
+    ("pin_bar", "1wk", "tue_thu", 3.0, "signal_watch.toml"),
+    ("pin_bar", "4h", "weekdays", 3.5, "signal_watch_weekdays.toml"),
+    ("pin_bar", "1d", "weekdays", 2.5, "signal_watch_weekdays.toml"),
+    ("pin_bar", "1wk", "weekdays", 4.5, "signal_watch_weekdays.toml"),
+    # inside_bar (PR #31 baseline — full directional commits already on both configs)
+    ("inside_bar", "4h", "tue_thu", 3.5, "signal_watch.toml"),
+    ("inside_bar", "1d", "tue_thu", 3.0, "signal_watch.toml"),
+    ("inside_bar", "1wk", "tue_thu", 3.0, "signal_watch.toml"),
+    ("inside_bar", "4h", "weekdays", 3.5, "signal_watch_weekdays.toml"),
+    ("inside_bar", "1d", "weekdays", 2.5, "signal_watch_weekdays.toml"),
+    ("inside_bar", "1wk", "weekdays", 3.0, "signal_watch_weekdays.toml"),
+    # engulfing (Task A baseline — per-TF combined commits already on both configs)
+    ("engulfing", "4h", "tue_thu", 3.0, "signal_watch.toml"),
+    ("engulfing", "1d", "tue_thu", 3.0, "signal_watch.toml"),
+    ("engulfing", "1wk", "tue_thu", 3.0, "signal_watch.toml"),
+    ("engulfing", "4h", "weekdays", 3.5, "signal_watch_weekdays.toml"),
+    ("engulfing", "1d", "weekdays", 3.5, "signal_watch_weekdays.toml"),
+    ("engulfing", "1wk", "weekdays", 3.5, "signal_watch_weekdays.toml"),
+]
+
 
 def _date_to_ms(d: str) -> int:
     dt = datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=UTC)
@@ -407,6 +465,29 @@ def _print_pooled_grid(
     )
 
 
+def _load_atr_lookup() -> dict[str, SignalWatchConfig]:
+    """Load both signal_watch TOMLs, keyed by config_label (filename)."""
+    return {label: load_signal_config(path) for label, path in CONFIG_PATHS.items()}
+
+
+def _resolve_atr(
+    cfg: SignalWatchConfig | None,
+    strategy: str,
+    tf: str,
+) -> tuple[float | None, bool]:
+    """Return (atr_sl_multiplier, atr_sl_floor) resolved from cfg, or (None, False)
+    when cfg is None (i.e., --fixed-atr was not requested).
+
+    Per-symbol overrides are absent for the candle-resweep targets — passing
+    SYMBOLS[0] is harmless and resolves to the TF-level commit.
+    """
+    if cfg is None:
+        return (None, False)
+    mult = cfg.effective_atr_sl_multiplier(strategy, SYMBOLS[0], tf)
+    floor = cfg.effective_atr_sl_floor(strategy, SYMBOLS[0], tf)
+    return (mult, floor)
+
+
 def _sweep_cell(
     conn: duckdb.DuckDBPyConnection,
     strategy: str,
@@ -415,14 +496,22 @@ def _sweep_cell(
     current_tp_r: float,
     config_label: str,
     directions: tuple[str, ...],
+    atr_cfg: SignalWatchConfig | None = None,
 ) -> None:
     since_ms = _since_for_tf(tf)
     min_trades = _min_trades_for_tf(tf)
+    atr_mult, atr_floor = _resolve_atr(atr_cfg, strategy, tf)
 
+    atr_label = (
+        f"  ATR floor: {atr_floor}, multiplier={atr_mult}"
+        if atr_cfg is not None
+        else ""
+    )
     header = (
         f"\n{'=' * 110}\n"
         f"  Cell: {strategy} / {tf} / day_filter={day_filter}  "
-        f"(currently tp_r={current_tp_r} in {config_label})\n"
+        f"(currently tp_r={current_tp_r} in {config_label})"
+        f"{atr_label}\n"
         f"{'=' * 110}"
     )
     print(header)
@@ -442,6 +531,8 @@ def _sweep_cell(
             top_n=99,
             since_ms=since_ms,
             day_filter=day_filter,
+            atr_sl_multiplier=atr_mult,
+            atr_sl_floor=atr_floor,
         )
         per_symbol_results[sym] = rows
 
@@ -470,14 +561,24 @@ def main() -> None:
     )
     parser.add_argument(
         "--cells",
-        choices=("task-a", "t-a", "inside-bar", "pin-bar"),
+        choices=("task-a", "t-a", "inside-bar", "pin-bar", "candle-resweep"),
         default="task-a",
         help="Cell list to sweep. task-a (default) = 4 directional-gap cells "
         "× 3 TFs × 2 day_filters. t-a = original T-A combined-direction cells. "
         "inside-bar = inside_bar audit, 6-cell directional sweep retiring the "
         "stale crypto tp_r_long/tp_r_short override. pin-bar = pin_bar audit, "
         "same 6-cell shape, retiring the crypto tp_r_long=5.0/tp_r_short=3.0 "
-        "override.",
+        "override. candle-resweep = tp_r re-sweep at PR #33 ATR multipliers, "
+        "Phase 1 (3 candle patterns × 3 TFs × 2 day_filters = 18 cells); pair "
+        "with --fixed-atr.",
+    )
+    parser.add_argument(
+        "--fixed-atr",
+        action="store_true",
+        help="Pin each cell's atr_sl_multiplier_<tf> + atr_sl_floor from its "
+        "signal_watch TOML (config_label column) at sweep time. Required for "
+        "--cells candle-resweep — without it, the sweep replays pre-PR-#33 "
+        "SL geometry and the tp_r winners are stale. Off by default.",
     )
     parser.add_argument(
         "--direction",
@@ -502,8 +603,10 @@ def main() -> None:
         all_cells = CELLS_T_A
     elif args.cells == "inside-bar":
         all_cells = CELLS_INSIDE_BAR
-    else:
+    elif args.cells == "pin-bar":
         all_cells = CELLS_PIN_BAR
+    else:
+        all_cells = CELLS_CANDLE_RESWEEP
 
     if args.cell:
         parts = args.cell.split("/")
@@ -523,12 +626,21 @@ def main() -> None:
     else:
         directions = (args.direction,)
 
+    atr_lookup: dict[str, SignalWatchConfig] | None = (
+        _load_atr_lookup() if args.fixed_atr else None
+    )
+
+    atr_status = (
+        "ATR floor: ON (pinned from TOML)"
+        if atr_lookup is not None
+        else "ATR floor: off"
+    )
     print(
         f"Multi-symbol pooled WFO sweep — cohort: {', '.join(SYMBOLS)}\n"
         f"  Cells: {len(cells)} ({args.cells})   "
         f"tp_r grid: {len(TP_R_RANGE.values)} values "
         f"({TP_R_RANGE.values[0]}..{TP_R_RANGE.values[-1]} step 0.5)\n"
-        f"  Directions: {', '.join(directions)}\n"
+        f"  Directions: {', '.join(directions)}   {atr_status}\n"
         f"  Anchors: 4h since {SINCE_4H}, 1d since {SINCE_1D}, "
         f"1wk since {SINCE_1WK}   fee_pct={FEE_PCT}   "
         f"wfo_split={WFO_SPLIT}   min_pooled_n={MIN_POOLED_N} (per direction)"
@@ -537,6 +649,7 @@ def main() -> None:
     conn = duckdb.connect(str(args.db), read_only=True)
     try:
         for strategy, tf, day_filter, current_tp_r, config_label in cells:
+            atr_cfg = atr_lookup.get(config_label) if atr_lookup else None
             _sweep_cell(
                 conn,
                 strategy,
@@ -545,6 +658,7 @@ def main() -> None:
                 current_tp_r,
                 config_label,
                 directions,
+                atr_cfg=atr_cfg,
             )
     finally:
         conn.close()

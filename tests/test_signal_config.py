@@ -279,17 +279,20 @@ tp_r_4h = 2.5
             Path(__file__).parent.parent / "config" / "signal_watch_weekdays.toml"
         )
         cfg = load_signal_config(cfg_path)
-        # engulfing: 4h combined 3.0 (Task E 13-sym confirms);
-        # 1wk short-only override 4.5; combined 1wk falls back to strategy-wide 3.5.
+        # engulfing: 4h combined 3.0 (candle-resweep keeps Task E — 4.0 winner thin
+        # +0.016R margin over current 3.0); 1wk combined NEW 4.0 (replaces fallback
+        # 3.5 which was -0.041R under ATR floor) + long 5.0 NEW + short 4.0 (was 4.5).
         assert cfg.effective_tp_r("engulfing", "AAPL", "4h") == 3.0
-        assert cfg.effective_tp_r("engulfing", "AAPL", "1wk") == 3.5
-        assert cfg.effective_tp_r("engulfing", "AAPL", "1wk", direction="short") == 4.5
-        # engulfing 4h directional: short override 2.5 (Task E new); long falls back to 3.0.
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1wk") == 4.0
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1wk", direction="long") == 5.0
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1wk", direction="short") == 4.0
+        # engulfing 4h directional: short override 2.5 (kept); long falls back to combined 3.0.
         assert cfg.effective_tp_r("engulfing", "AAPL", "4h", direction="short") == 2.5
         assert cfg.effective_tp_r("engulfing", "AAPL", "4h", direction="long") == 3.0
-        # engulfing 1d directional (Task E): long=3.0 (kept), short=1.5 (was 2.5).
+        # engulfing 1d directional: long=3.0 (kept); short tp_r_short_1d dropped (short
+        # winner=combined=2.5 → falls to combined; was 1.5 pre-resweep).
         assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="long") == 3.0
-        assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="short") == 1.5
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="short") == 2.5
         # trend_day 1wk directional (Task E, Δ=0.741R): long=4.0 (was 2.5), short=1.5.
         assert cfg.effective_tp_r("trend_day", "AAPL", "1wk", direction="long") == 4.0
         assert cfg.effective_tp_r("trend_day", "AAPL", "1wk", direction="short") == 1.5
@@ -333,30 +336,35 @@ tp_r_4h = 2.5
         assert cfg.effective_tp_r("bos", "AAPL", "1d") == 2.5
         # orb 4h combined 2.5 (Task E, was 3.5).
         assert cfg.effective_tp_r("orb", "AAPL", "4h") == 2.5
-        # inside_bar audit 13-sym: 4h combined 3.0 (was 3.5; long no_edge, short=combined);
-        # 1d combined 2.0 (was 2.5) + tp_r_long_1d=5.0 (short no_edge → falls to combined);
-        # 1wk combined 4.5 (new) + tp_r_long_1wk=5.0 (short no_edge → falls to combined).
+        # inside_bar candle-resweep 13-sym: 4h combined 3.0 (confirms inside_bar audit;
+        # long no_edge, short=combined); 1d combined 2.5 (was 2.0; long winner=combined
+        # → drop tp_r_long_1d, short no_edge → falls to combined); 1wk combined 1.5
+        # (was 4.5; ATR floor 2.5× pulled SL much wider → tighter tp_r wins; long
+        # winner=combined → drop tp_r_long_1wk, short no_edge).
         assert cfg.effective_tp_r("inside_bar", "AAPL", "4h") == 3.0
         assert cfg.effective_tp_r("inside_bar", "AAPL", "4h", direction="long") == 3.0
         assert cfg.effective_tp_r("inside_bar", "AAPL", "4h", direction="short") == 3.0
-        assert cfg.effective_tp_r("inside_bar", "AAPL", "1d") == 2.0
-        assert cfg.effective_tp_r("inside_bar", "AAPL", "1d", direction="long") == 5.0
-        assert cfg.effective_tp_r("inside_bar", "AAPL", "1d", direction="short") == 2.0
-        assert cfg.effective_tp_r("inside_bar", "AAPL", "1wk") == 4.5
-        assert cfg.effective_tp_r("inside_bar", "AAPL", "1wk", direction="long") == 5.0
-        assert cfg.effective_tp_r("inside_bar", "AAPL", "1wk", direction="short") == 4.5
-        # pin_bar audit 13-sym: 4h combined 3.5 (was 5.0; T-A thin margin diluted) + tp_r_long_4h=3.0;
-        # 1d combined 2.5 (was 4.0) + tp_r_long_1d=5.0 (short=combined → falls to 2.5);
-        # 1wk combined 4.5 (NEW) + tp_r_long_1wk=3.0 + tp_r_short_1wk=5.0 (both directions diverge).
-        assert cfg.effective_tp_r("pin_bar", "AAPL", "4h") == 3.5
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "1d") == 2.5
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "1d", direction="long") == 2.5
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "1d", direction="short") == 2.5
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "1wk") == 1.5
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "1wk", direction="long") == 1.5
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "1wk", direction="short") == 1.5
+        # pin_bar candle-resweep 13-sym: 4h combined 2.0 (was 3.5; ATR floor 1.5×
+        # pulled SL wider → tighter tp_r wins) + tp_r_long_4h=3.0 kept (differs from
+        # combined 2.0); 1d combined 2.5 (confirms; long winner=combined → drop
+        # tp_r_long_1d); 1wk combined 4.5 kept (combined no_edge) + tp_r_long_1wk=3.5
+        # (was 3.0; thin sample n=10 +0.800R under ATR floor); tp_r_short_1wk dropped
+        # (was 5.0; short no_edge under ATR floor).
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "4h") == 2.0
         assert cfg.effective_tp_r("pin_bar", "AAPL", "4h", direction="long") == 3.0
-        assert cfg.effective_tp_r("pin_bar", "AAPL", "4h", direction="short") == 3.5
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "4h", direction="short") == 2.0
         assert cfg.effective_tp_r("pin_bar", "AAPL", "1d") == 2.5
-        assert cfg.effective_tp_r("pin_bar", "AAPL", "1d", direction="long") == 5.0
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "1d", direction="long") == 2.5
         assert cfg.effective_tp_r("pin_bar", "AAPL", "1d", direction="short") == 2.5
         assert cfg.effective_tp_r("pin_bar", "AAPL", "1wk") == 4.5
-        assert cfg.effective_tp_r("pin_bar", "AAPL", "1wk", direction="long") == 3.0
-        assert cfg.effective_tp_r("pin_bar", "AAPL", "1wk", direction="short") == 5.0
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "1wk", direction="long") == 3.5
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "1wk", direction="short") == 4.5
         # strategy not in params falls back to global.
         assert cfg.effective_tp_r("seasonality", "AAPL", "1d") == cfg.tp_r
 
@@ -364,22 +372,25 @@ tp_r_4h = 2.5
         """signal_watch.toml (tue_thu) strategy_params must be applied (equity surface)."""
         cfg_path = Path(__file__).parent.parent / "config" / "signal_watch.toml"
         cfg = load_signal_config(cfg_path)
-        # engulfing 4h combined 2.5 (Task E, was 3.0); 1d combined 2.5 (Task E, was 3.0).
+        # engulfing 4h combined 2.5 (candle-resweep confirms Task E); 1d combined 2.5.
         assert cfg.effective_tp_r("engulfing", "AAPL", "4h") == 2.5
         assert cfg.effective_tp_r("engulfing", "AAPL", "1d") == 2.5
-        # engulfing 4h: tp_r_short_4h dropped (Task E) — both directions fall back to 2.5.
+        # engulfing 4h: tp_r_short_4h still dropped — both directions fall back to 2.5.
         assert cfg.effective_tp_r("engulfing", "AAPL", "4h", direction="short") == 2.5
         assert cfg.effective_tp_r("engulfing", "AAPL", "4h", direction="long") == 2.5
-        # engulfing 1d directional (Task E): long=4.0 (was 3.5), short=1.5 (was 2.5).
+        # engulfing 1d directional: long=4.0 (kept); short=1.0 (was 1.5; ATR floor
+        # pulled winner 0.5 step shorter, +0.065R at n=77).
         assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="long") == 4.0
-        assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="short") == 1.5
-        # pin_bar audit 13-sym: 4h combined 3.5 (Task E confirms; long=short=combined);
-        # 1d combined 3.5 (kept; long/short diverge) + tp_r_long_1d=5.0 + tp_r_short_1d=2.5;
-        # 1wk falls back to strategy-wide tp_r=3.0 (n=0 — Fri close × tue_thu suppression).
-        assert cfg.effective_tp_r("pin_bar", "AAPL", "4h") == 3.5
-        assert cfg.effective_tp_r("pin_bar", "AAPL", "4h", direction="long") == 3.5
-        assert cfg.effective_tp_r("pin_bar", "AAPL", "4h", direction="short") == 3.5
-        assert cfg.effective_tp_r("pin_bar", "AAPL", "1d") == 3.5
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="short") == 1.0
+        # pin_bar candle-resweep 13-sym: 4h combined 2.0 (was 3.5; ATR floor 1.5×
+        # pulled SL wider → tighter tp_r wins; long no_edge, short=combined → no
+        # directional override); 1d combined 2.5 (was 3.5) + tp_r_long_1d=5.0 kept
+        # (short winner=combined → drop tp_r_short_1d); 1wk falls back to
+        # strategy-wide tp_r=3.0 (n<10 — Fri close × tue_thu suppression).
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "4h") == 2.0
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "4h", direction="long") == 2.0
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "4h", direction="short") == 2.0
+        assert cfg.effective_tp_r("pin_bar", "AAPL", "1d") == 2.5
         assert cfg.effective_tp_r("pin_bar", "AAPL", "1d", direction="long") == 5.0
         assert cfg.effective_tp_r("pin_bar", "AAPL", "1d", direction="short") == 2.5
         assert cfg.effective_tp_r("pin_bar", "AAPL", "1wk") == 3.0
@@ -421,15 +432,17 @@ tp_r_4h = 2.5
         assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="short") == 4.0
         # orb 4h kept at 3.5 (only weekdays moved to 2.5).
         assert cfg.effective_tp_r("orb", "AAPL", "4h") == 3.5
-        # inside_bar audit 13-sym: 4h combined 3.0 (was 3.5; long no_edge, short=combined);
-        # 1d combined 2.0 (was leaking stale 4.0/2.0) + tp_r_long_1d=5.0;
-        # 1wk insufficient sample (n<10) — falls back to strategy-wide tp_r=3.0.
+        # inside_bar candle-resweep 13-sym: 4h combined 3.0 (confirms inside_bar audit;
+        # long no_edge, short=combined); 1d combined 5.0 (was 2.0; ATR floor inverts
+        # edge — long-driven now wins outright; long winner=combined → drop
+        # tp_r_long_1d; short no_edge → falls to combined); 1wk insufficient sample
+        # (n<10) — falls back to strategy-wide tp_r=3.0.
         assert cfg.effective_tp_r("inside_bar", "AAPL", "4h") == 3.0
         assert cfg.effective_tp_r("inside_bar", "AAPL", "4h", direction="long") == 3.0
         assert cfg.effective_tp_r("inside_bar", "AAPL", "4h", direction="short") == 3.0
-        assert cfg.effective_tp_r("inside_bar", "AAPL", "1d") == 2.0
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "1d") == 5.0
         assert cfg.effective_tp_r("inside_bar", "AAPL", "1d", direction="long") == 5.0
-        assert cfg.effective_tp_r("inside_bar", "AAPL", "1d", direction="short") == 2.0
+        assert cfg.effective_tp_r("inside_bar", "AAPL", "1d", direction="short") == 5.0
         assert cfg.effective_tp_r("inside_bar", "AAPL", "1wk") == 3.0
         assert cfg.effective_tp_r("inside_bar", "AAPL", "1wk", direction="long") == 3.0
         assert cfg.effective_tp_r("inside_bar", "AAPL", "1wk", direction="short") == 3.0
