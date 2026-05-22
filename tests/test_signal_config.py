@@ -293,49 +293,79 @@ tp_r_4h = 2.5
         # winner=combined=2.5 → falls to combined; was 1.5 pre-resweep).
         assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="long") == 3.0
         assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="short") == 2.5
-        # trend_day 1wk directional (Task E, Δ=0.741R): long=4.0 (was 2.5), short=1.5.
-        assert cfg.effective_tp_r("trend_day", "AAPL", "1wk", direction="long") == 4.0
+        # trend_day Phase 2 resweep (under ATR floor): 1wk combined 3.0 NEW (was fallback 2.0)
+        # + long 4.5 (was 4.0; ATR floor pulled winner 0.5 step wider) + short 1.5 (confirmed).
+        assert cfg.effective_tp_r("trend_day", "AAPL", "1wk") == 3.0
+        assert cfg.effective_tp_r("trend_day", "AAPL", "1wk", direction="long") == 4.5
         assert cfg.effective_tp_r("trend_day", "AAPL", "1wk", direction="short") == 1.5
-        # trend_day 4h combined 3.0 (Task E, was 4.0); short override 4.5.
+        # trend_day 4h combined 3.0 (confirms Task E); tp_r_short_4h dropped — short
+        # winner = combined → falls back to tp_r_4h.
         assert cfg.effective_tp_r("trend_day", "AAPL", "4h") == 3.0
-        assert cfg.effective_tp_r("trend_day", "AAPL", "4h", direction="short") == 4.5
-        # trend_day 1d combined 5.0 (Task E, was 3.0); short override 3.0.
-        assert cfg.effective_tp_r("trend_day", "AAPL", "1d") == 5.0
-        assert cfg.effective_tp_r("trend_day", "AAPL", "1d", direction="short") == 3.0
-        # morning_evening_star 1d: combined 2.0; long override 3.0; short override 1.5.
+        assert cfg.effective_tp_r("trend_day", "AAPL", "4h", direction="short") == 3.0
+        # trend_day 1d Phase 2 resweep: combined 3.5 (was 5.0; long-driven so combined
+        # tightens) + tp_r_long_1d=5.0 NEW; tp_r_short_1d dropped (short no_edge under floor).
+        assert cfg.effective_tp_r("trend_day", "AAPL", "1d") == 3.5
+        assert cfg.effective_tp_r("trend_day", "AAPL", "1d", direction="long") == 5.0
+        assert cfg.effective_tp_r("trend_day", "AAPL", "1d", direction="short") == 3.5
+        # morning_evening_star Phase 2 resweep: 1d combined 2.0 (confirmed); long 3.5
+        # (was 3.0; ATR floor pulled winner 0.5 step wider); short 1.5 (confirmed).
         assert cfg.effective_tp_r("morning_evening_star", "AAPL", "1d") == 2.0
         assert (
             cfg.effective_tp_r("morning_evening_star", "AAPL", "1d", direction="long")
-            == 3.0
+            == 3.5
         )
         assert (
             cfg.effective_tp_r("morning_evening_star", "AAPL", "1d", direction="short")
             == 1.5
         )
-        # morning_evening_star 1wk long-only override 3.5; tp_r_1wk dropped → combined
-        # falls back to strategy-wide 4h fallback? No — strategy has no `tp_r` key →
-        # falls back to global tp_r.
+        # morning_evening_star 1wk Phase 2 resweep: combined 1.0 NEW (was no commit);
+        # long-only 3.5 kept.
+        assert cfg.effective_tp_r("morning_evening_star", "AAPL", "1wk") == 1.0
         assert (
             cfg.effective_tp_r("morning_evening_star", "AAPL", "1wk", direction="long")
             == 3.5
         )
-        # morning_evening_star 4h: combined 3.0; short override 3.5.
-        assert cfg.effective_tp_r("morning_evening_star", "AAPL", "4h") == 3.0
+        # morning_evening_star 4h Phase 2 resweep: combined 1.5 (was 3.0; ATR floor
+        # inverts edge — tightest tp_r wins); short 1.0 (was 3.5; same direction).
+        assert cfg.effective_tp_r("morning_evening_star", "AAPL", "4h") == 1.5
         assert (
             cfg.effective_tp_r("morning_evening_star", "AAPL", "4h", direction="short")
-            == 3.5
+            == 1.0
         )
-        # ema 1d directional (Task E, Δ=0.683R): long=5.0 (kept), short=2.5 (new).
+        # ema Phase 2 resweep: 1d directional kept (long=5.0, short=2.5); combined 4.0
+        # NEW (was fallback 3.0).
+        assert cfg.effective_tp_r("ema", "AAPL", "1d") == 4.0
         assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="long") == 5.0
         assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="short") == 2.5
-        # ema 4h combined 2.5 (Task E, was 4.0).
-        assert cfg.effective_tp_r("ema", "AAPL", "4h") == 2.5
-        # hammer_hanging_man 4h combined 3.0 (Task E, was 4.0).
-        assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "4h") == 3.0
-        # bos 1d combined 2.5 (Task E, was relying on strategy-wide 3.0).
+        # ema 4h combined 1.5 (was 2.5; ATR floor pulled SL wider → tighter tp_r wins).
+        assert cfg.effective_tp_r("ema", "AAPL", "4h") == 1.5
+        # hammer_hanging_man Phase 2 resweep: 4h combined 3.5 (was 3.0); 1d combined 2.0
+        # NEW (was fallback 4.0) + tp_r_long_1d=2.5 NEW.
+        assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "4h") == 3.5
+        assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "1d") == 2.0
+        assert (
+            cfg.effective_tp_r("hammer_hanging_man", "AAPL", "1d", direction="long")
+            == 2.5
+        )
+        # bos Phase 2 resweep: 1d combined 2.5 kept (no_edge under floor) + tp_r_long_1d=4.0 NEW.
         assert cfg.effective_tp_r("bos", "AAPL", "1d") == 2.5
-        # orb 4h combined 2.5 (Task E, was 3.5).
+        assert cfg.effective_tp_r("bos", "AAPL", "1d", direction="long") == 4.0
+        # orb 4h Phase 2 resweep: combined 2.5 confirmed; tp_r_long_4h=3.5 NEW + tp_r_short_4h=1.5 NEW.
         assert cfg.effective_tp_r("orb", "AAPL", "4h") == 2.5
+        assert cfg.effective_tp_r("orb", "AAPL", "4h", direction="long") == 3.5
+        assert cfg.effective_tp_r("orb", "AAPL", "4h", direction="short") == 1.5
+        # doji Phase 2 resweep: 1d combined 5.0 NEW (was fallback 3.0); 1wk combined 4.0 NEW.
+        assert cfg.effective_tp_r("doji", "AAPL", "1d") == 5.0
+        assert cfg.effective_tp_r("doji", "AAPL", "1wk") == 4.0
+        # eqh_eql Phase 2 resweep: 4h tp_r_short_4h=5.0 NEW (combined no_edge stays at 2.0).
+        assert cfg.effective_tp_r("eqh_eql", "AAPL", "4h", direction="short") == 5.0
+        # order_block Phase 2 resweep: 1d combined 3.0 confirmed; tp_r_short_1d=2.5 NEW;
+        # tp_r_short_4h=1.5 NEW (combined no_edge stays at fallback 2.0).
+        assert cfg.effective_tp_r("order_block", "AAPL", "1d") == 3.0
+        assert cfg.effective_tp_r("order_block", "AAPL", "1d", direction="short") == 2.5
+        assert cfg.effective_tp_r("order_block", "AAPL", "4h", direction="short") == 1.5
+        # order_block 1wk: tp_r_long_1wk=2.5 NEW (combined no_edge under floor).
+        assert cfg.effective_tp_r("order_block", "AAPL", "1wk", direction="long") == 2.5
         # inside_bar candle-resweep 13-sym: 4h combined 3.0 (confirms inside_bar audit;
         # long no_edge, short=combined); 1d combined 2.5 (was 2.0; long winner=combined
         # → drop tp_r_long_1d, short no_edge → falls to combined); 1wk combined 1.5
@@ -396,42 +426,84 @@ tp_r_4h = 2.5
         assert cfg.effective_tp_r("pin_bar", "AAPL", "1wk") == 3.0
         assert cfg.effective_tp_r("pin_bar", "AAPL", "1wk", direction="long") == 3.0
         assert cfg.effective_tp_r("pin_bar", "AAPL", "1wk", direction="short") == 3.0
-        # hammer_hanging_man: strategy-wide 4.0; 1d override 2.5 (kept from T-A).
-        assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "4h") == 4.0
-        assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "1d") == 2.5
-        # trend_day 4h combined 4.5 (Task E confirms); directional split (Task E).
+        # hammer_hanging_man Phase 2 resweep: 4h combined 3.5 (was 4.0; ATR floor
+        # 1.5× pulled SL wider → tighter tp_r wins); 1d combined 2.0 (was 2.5);
+        # tp_r_long_1d=2.5 NEW + tp_r_short_1d=1.5 NEW (directional split).
+        assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "4h") == 3.5
+        assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "1d") == 2.0
+        assert (
+            cfg.effective_tp_r("hammer_hanging_man", "AAPL", "1d", direction="long")
+            == 2.5
+        )
+        assert (
+            cfg.effective_tp_r("hammer_hanging_man", "AAPL", "1d", direction="short")
+            == 1.5
+        )
+        # trend_day Phase 2 resweep: 4h combined 4.5 (confirms Task E); long=5.0;
+        # short=3.0 (was 2.0; ATR floor pulled winner 1.0 step wider). 1d combined
+        # 5.0 NEW (long-driven edge dominates); tp_r_long_1d dropped (=combined);
+        # tp_r_short_1d=1.0 (was 3.0; ATR floor pulled winner 2.0 steps tighter).
         assert cfg.effective_tp_r("trend_day", "AAPL", "4h") == 4.5
         assert cfg.effective_tp_r("trend_day", "AAPL", "4h", direction="long") == 5.0
-        assert cfg.effective_tp_r("trend_day", "AAPL", "4h", direction="short") == 2.0
-        # trend_day 1d directional (Task E Δ=0.505R): long=5.0 (kept), short=3.0 (was 3.5).
+        assert cfg.effective_tp_r("trend_day", "AAPL", "4h", direction="short") == 3.0
+        assert cfg.effective_tp_r("trend_day", "AAPL", "1d") == 5.0
         assert cfg.effective_tp_r("trend_day", "AAPL", "1d", direction="long") == 5.0
-        assert cfg.effective_tp_r("trend_day", "AAPL", "1d", direction="short") == 3.0
-        # morning_evening_star 4h: combined 2.5 (Task E, was 3.5); directional 5.0/3.5.
+        assert cfg.effective_tp_r("trend_day", "AAPL", "1d", direction="short") == 1.0
+        # morning_evening_star Phase 2 resweep: 4h combined 2.5 (confirms Task E);
+        # long=4.5 (was 5.0; ATR floor pulled winner 0.5 step shorter); short=
+        # combined (tp_r_short_4h dropped). 1d combined 2.0 (was 2.5); long=5.0
+        # (kept); short=1.5 (was 2.0; ATR floor pulled winner 0.5 step shorter).
         assert cfg.effective_tp_r("morning_evening_star", "AAPL", "4h") == 2.5
         assert (
             cfg.effective_tp_r("morning_evening_star", "AAPL", "4h", direction="long")
-            == 5.0
+            == 4.5
         )
         assert (
             cfg.effective_tp_r("morning_evening_star", "AAPL", "4h", direction="short")
-            == 3.5
+            == 2.5
         )
-        # morning_evening_star 1d: combined 2.5; long=5.0 (kept), short=2.0 (was fallback).
-        assert cfg.effective_tp_r("morning_evening_star", "AAPL", "1d") == 2.5
+        assert cfg.effective_tp_r("morning_evening_star", "AAPL", "1d") == 2.0
         assert (
             cfg.effective_tp_r("morning_evening_star", "AAPL", "1d", direction="long")
             == 5.0
         )
         assert (
             cfg.effective_tp_r("morning_evening_star", "AAPL", "1d", direction="short")
-            == 2.0
+            == 1.5
         )
-        # ema 4h combined 2.5 (Task E, was 4.0); 1d directional (Task E Δ=1.035R).
-        assert cfg.effective_tp_r("ema", "AAPL", "4h") == 2.5
+        # ema Phase 2 resweep: 4h combined 3.5 (was 2.5; ATR floor pulled SL wider);
+        # long=1.5 (was 5.0; ATR floor inverts long edge — tightest tp_r wins);
+        # short=4.5 (confirms Task E). 1d combined 4.5 NEW; long=5.0 (kept), short=4.0 (kept).
+        assert cfg.effective_tp_r("ema", "AAPL", "4h") == 3.5
+        assert cfg.effective_tp_r("ema", "AAPL", "4h", direction="long") == 1.5
+        assert cfg.effective_tp_r("ema", "AAPL", "4h", direction="short") == 4.5
+        assert cfg.effective_tp_r("ema", "AAPL", "1d") == 4.5
         assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="long") == 5.0
         assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="short") == 4.0
-        # orb 4h kept at 3.5 (only weekdays moved to 2.5).
+        # orb 4h Phase 2 resweep: combined 3.5 (confirms T-A); tp_r_long_4h=4.5 NEW;
+        # tp_r_short_4h=2.0 NEW (short edge dominates on 4h).
         assert cfg.effective_tp_r("orb", "AAPL", "4h") == 3.5
+        assert cfg.effective_tp_r("orb", "AAPL", "4h", direction="long") == 4.5
+        assert cfg.effective_tp_r("orb", "AAPL", "4h", direction="short") == 2.0
+        # bos Phase 2 resweep: 4h tp_r_short_4h=1.5 NEW (long no_edge, combined
+        # net-neg); 1d combined 2.5 NEW; tp_r_long_1d=4.0 NEW.
+        assert cfg.effective_tp_r("bos", "AAPL", "4h", direction="short") == 1.5
+        assert cfg.effective_tp_r("bos", "AAPL", "1d") == 2.5
+        assert cfg.effective_tp_r("bos", "AAPL", "1d", direction="long") == 4.0
+        # doji Phase 2 resweep: 1d combined 3.5 NEW; tp_r_long_1d=4.0 NEW (thin
+        # n=28 but clear edge under ATR floor 2.5×).
+        assert cfg.effective_tp_r("doji", "AAPL", "1d") == 3.5
+        assert cfg.effective_tp_r("doji", "AAPL", "1d", direction="long") == 4.0
+        # eqh_eql Phase 2 resweep: 4h combined 4.0 NEW (near-zero edge); 1d combined
+        # 3.0 NEW; tp_r_long_1d=5.0 NEW (thin n=15 but strong edge).
+        assert cfg.effective_tp_r("eqh_eql", "AAPL", "4h") == 4.0
+        assert cfg.effective_tp_r("eqh_eql", "AAPL", "1d") == 3.0
+        assert cfg.effective_tp_r("eqh_eql", "AAPL", "1d", direction="long") == 5.0
+        # order_block Phase 2 resweep: 4h combined 2.5 NEW; tp_r_short_4h=4.5 NEW;
+        # 1d combined 5.0 kept (sub-noise uplift over 4.5 winner).
+        assert cfg.effective_tp_r("order_block", "AAPL", "4h") == 2.5
+        assert cfg.effective_tp_r("order_block", "AAPL", "4h", direction="short") == 4.5
+        assert cfg.effective_tp_r("order_block", "AAPL", "1d") == 5.0
         # inside_bar candle-resweep 13-sym: 4h combined 3.0 (confirms inside_bar audit;
         # long no_edge, short=combined); 1d combined 5.0 (was 2.0; ATR floor inverts
         # edge — long-driven now wins outright; long winner=combined → drop
