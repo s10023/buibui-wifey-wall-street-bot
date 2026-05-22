@@ -118,20 +118,19 @@ orb = ["4h"]                                # T13: mechanical — 4h is the only
 # kept as a starting guess; T14 WFO overwrites with equity-derived numbers.
 [strategy_params.engulfing]
 tp_r = 3.0                    # fallback
-tp_r_4h = 2.5                 # Task E 13-sym: combined 2.5@+0.226R, n=190 (supersedes T-A 4-sym 3.0)
-tp_r_1d = 2.5                 # Task E 13-sym: combined 2.5@+0.234R, n=137
-tp_r_long_1d = 4.0            # Task E 13-sym directional: longs +0.533R, n=60 at 4.0 (was 3.5)
-tp_r_short_1d = 1.5           # Task E 13-sym directional: shorts +0.201R, n=77 at 1.5 (was 2.5)
+tp_r_4h = 2.5                 # candle-resweep 13-sym (under ATR floor 0.5×): combined 2.5@+0.226R, n=190 (confirms Task E; short=combined → no override)
+tp_r_1d = 2.5                 # candle-resweep 13-sym (under ATR floor 1.0×): combined 2.5@+0.147R, n=136 (confirms Task E)
+tp_r_long_1d = 4.0            # candle-resweep 13-sym directional: longs +0.610R, n=59 at 4.0 (confirms Task E)
+tp_r_short_1d = 1.0           # candle-resweep 13-sym directional: shorts +0.065R, n=77 at 1.0 (was 1.5; ATR floor pulled winner 0.5 step shorter)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on (structural SL widened to N × ATR14 when tighter)
 atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: +0.21R, n=370
 atr_sl_multiplier_1d = 1.0    # Task C-followup 13-sym: -0.12R least-bad, n=312
 
 [strategy_params.pin_bar]
-tp_r = 3.0                    # fallback (also covers 1wk: pin_bar audit 13-sym n=0 — Fri close × tue_thu suppression)
-tp_r_4h = 3.5                 # pin_bar audit 13-sym: combined 3.5@+0.256R, n=227 (confirmed; long=short=combined)
-tp_r_1d = 3.5                 # pin_bar audit 13-sym: combined 3.5@+0.184R, n=179 (confirmed; long/short diverge — directional overrides below)
-tp_r_long_1d = 5.0            # pin_bar audit 13-sym directional: longs +0.219R, n=105 at 5.0
-tp_r_short_1d = 2.5           # pin_bar audit 13-sym directional: shorts +0.218R, n=71 at 2.5
+tp_r = 3.0                    # fallback (also covers 1wk: candle-resweep 13-sym n<10 — Fri close × tue_thu suppression)
+tp_r_4h = 2.0                 # candle-resweep 13-sym (under ATR floor 1.5×): combined 2.0@+0.123R, n=227 (was 3.5; ATR floor pulled SL wider → tighter tp_r wins; short=combined → no override; long no_edge)
+tp_r_1d = 2.5                 # candle-resweep 13-sym (under ATR floor 0.5×): combined 2.5@+0.187R, n=179 (was 3.5; short=combined → no override)
+tp_r_long_1d = 5.0            # candle-resweep 13-sym directional: longs +0.143R, n=105 at 5.0 (long edge survives ATR floor)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 1.5    # Task C-followup 13-sym: +0.14R, n=761
 atr_sl_multiplier_1d = 0.5    # Task C-followup 13-sym: +0.24R, n=586
@@ -152,10 +151,9 @@ atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: +0.20R, n=40
 atr_sl_multiplier_1d = 2.5    # Task C-followup 13-sym: +0.29R, n=20
 
 [strategy_params.inside_bar]
-tp_r = 3.0                    # fallback (also covers 1wk: inside_bar audit 13-sym n<10 — insufficient sample)
-tp_r_4h = 3.0                 # inside_bar audit 13-sym: combined 3.0@+0.108R, n=195 (was 3.5; shorts drive — long no_edge)
-tp_r_1d = 2.0                 # inside_bar audit 13-sym: combined 2.0@+0.063R, n=142 (new; thin combined, long drives)
-tp_r_long_1d = 5.0            # inside_bar audit 13-sym directional: longs +0.354R, n=65 at 5.0 (short no_edge → falls to combined 2.0)
+tp_r = 3.0                    # fallback (also covers 1wk: candle-resweep 13-sym n<10 — insufficient sample)
+tp_r_4h = 3.0                 # candle-resweep 13-sym (under ATR floor 0.5×): combined 3.0@+0.067R, n=195 (confirms inside_bar audit; shorts drive @ +0.515R, long no_edge)
+tp_r_1d = 5.0                 # candle-resweep 13-sym (under ATR floor 1.0×): combined 5.0@+0.122R, n=139 (was 2.0; ATR floor inverts edge — long-driven now wins outright; long winner=combined → drop tp_r_long_1d; short no_edge → falls to combined)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: +0.19R, n=629
 atr_sl_multiplier_1d = 1.0    # Task C-followup 13-sym: +0.07R, n=497

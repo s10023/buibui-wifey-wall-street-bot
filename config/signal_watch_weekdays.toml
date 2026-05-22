@@ -95,12 +95,13 @@ orb = ["4h"]
 # Per-strategy overrides — T14 (2026-05-17) WFO on AAPL day_filter=weekdays.
 [strategy_params.engulfing]
 tp_r = 3.5                    # fallback
-tp_r_4h = 3.0                 # Task E 13-sym confirms: combined 3.0@+0.068R, n=307
-tp_r_short_4h = 2.5           # Task E 13-sym directional: shorts +0.356R, n=156 at 2.5
-tp_r_1d = 2.5                 # Task E 13-sym: combined 2.5@+0.216R, n=211 (was relying on fallback 3.5)
-tp_r_long_1d = 3.0            # Task E 13-sym directional: longs +0.389R, n=108 at 3.0 (kept from Task A)
-tp_r_short_1d = 1.5           # Task E 13-sym directional: shorts +0.194R, n=103 at 1.5 (was 2.5)
-tp_r_short_1wk = 4.5          # Task E 13-sym short-only: 4.5@+0.108R, n=37 (combined fails)
+tp_r_4h = 3.0                 # candle-resweep 13-sym (under ATR floor 0.5×): combined 4.0@+0.052R is thin uplift vs 3.0@+0.036R (+0.016R) — keep Task E commit (status quo for sub-noise margins)
+tp_r_short_4h = 2.5           # candle-resweep 13-sym: shorts +0.346R, n=156 at 2.5 (confirms Task E)
+tp_r_1d = 2.5                 # candle-resweep 13-sym (under ATR floor 0.5×): combined 2.5@+0.239R, n=211 (confirms Task E)
+tp_r_long_1d = 3.0            # candle-resweep 13-sym directional: longs +0.296R, n=108 at 3.0 (confirms Task E)
+tp_r_1wk = 4.0                # candle-resweep 13-sym (under ATR floor 0.5×): NEW commit — combined 4.0@+0.066R, n=61 (replaces fallback 3.5 which was -0.041R under ATR floor)
+tp_r_long_1wk = 5.0           # candle-resweep 13-sym directional: longs +0.250R, n=24 at 5.0 (NEW commit; thin sample but consistent positive across grid)
+tp_r_short_1wk = 4.0          # candle-resweep 13-sym short-only: 4.0@+0.081R, n=37 (was 4.5; ATR floor pulled winner 0.5 step shorter)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on (structural SL widened to N × ATR14 when tighter)
 atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: +0.06R, n=592
 atr_sl_multiplier_1d = 0.5    # Task C-followup 13-sym: -0.14R least-bad, n=449
@@ -108,13 +109,11 @@ atr_sl_multiplier_1wk = 0.5   # Task C-followup 13-sym: -0.01R least-bad, n=118
 
 [strategy_params.pin_bar]
 tp_r = 3.5                    # fallback
-tp_r_4h = 3.5                 # pin_bar audit 13-sym: combined 3.5@+0.155R, n=352 (was 5.0; T-A 4-sym thin margin diluted)
-tp_r_long_4h = 3.0            # pin_bar audit 13-sym directional: longs +0.109R, n=193 at 3.0 (short=combined → falls to 3.5)
-tp_r_1d = 2.5                 # pin_bar audit 13-sym: combined 2.5@+0.145R, n=262 (was 4.0; T14 AAPL n=29 diluted; short=combined)
-tp_r_long_1d = 5.0            # pin_bar audit 13-sym directional: longs +0.245R, n=151 at 5.0
-tp_r_1wk = 4.5                # pin_bar audit 13-sym: first 1wk pin_bar commit — combined 4.5@+0.119R, n=63
-tp_r_long_1wk = 3.0           # pin_bar audit 13-sym directional: longs +0.417R, n=24 at 3.0 (vs combined 4.5)
-tp_r_short_1wk = 5.0          # pin_bar audit 13-sym directional: shorts +0.128R, n=39 at 5.0 (vs combined 4.5)
+tp_r_4h = 2.0                 # candle-resweep 13-sym (under ATR floor 1.5×): combined 2.0@+0.142R, n=351 (was 3.5; ATR floor pulled SL wider → tighter tp_r wins; short=combined → no override)
+tp_r_long_4h = 3.0            # candle-resweep 13-sym directional: longs +0.053R, n=190 at 3.0 (confirms pin_bar audit; differs from combined 2.0)
+tp_r_1d = 2.5                 # candle-resweep 13-sym (under ATR floor 0.5×): combined 2.5@+0.185R, n=262 (confirms pin_bar audit; long winner=combined → drop tp_r_long_1d; short=combined)
+tp_r_1wk = 4.5                # candle-resweep 13-sym (under ATR floor 2.5×): combined no_edge — keep pin_bar audit commit (only long has thin positive edge)
+tp_r_long_1wk = 3.5           # candle-resweep 13-sym directional: longs +0.800R, n=10 at 3.5 (was 3.0; thin sample but positive under ATR floor); short dropped — candle-resweep short no_edge
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 1.5    # Task C-followup 13-sym: +0.17R, n=1183
 atr_sl_multiplier_1d = 0.5    # Task C-followup 13-sym: +0.22R, n=920
@@ -138,11 +137,9 @@ atr_sl_multiplier_1d = 2.5    # Task C-followup 13-sym: +0.13R, n=33
 
 [strategy_params.inside_bar]
 tp_r = 3.0                    # fallback
-tp_r_4h = 3.0                 # inside_bar audit 13-sym: combined 3.0@+0.076R, n=314 (was 3.5; shorts drive — long no_edge)
-tp_r_1d = 2.0                 # inside_bar audit 13-sym: combined 2.0@+0.009R, n=219 (was 2.5; T14 AAPL n=17 thin sample diluted)
-tp_r_long_1d = 5.0            # inside_bar audit 13-sym directional: longs +0.158R, n=114 at 5.0 (short no_edge → falls to combined 2.0)
-tp_r_1wk = 4.5                # inside_bar audit 13-sym: combined 4.5@+0.362R, n=58 (first 1wk commit; long-driven)
-tp_r_long_1wk = 5.0           # inside_bar audit 13-sym directional: longs +1.194R, n=31 at 5.0 (short no_edge → falls to combined 4.5)
+tp_r_4h = 3.0                 # candle-resweep 13-sym (under ATR floor 0.5×): combined 3.0@+0.038R, n=314 (confirms inside_bar audit; short=combined @+0.394R, long no_edge)
+tp_r_1d = 2.5                 # candle-resweep 13-sym (under ATR floor 1.0×): combined 2.5@+0.067R, n=215 (was 2.0; long winner=combined → drop tp_r_long_1d; short no_edge → falls to combined)
+tp_r_1wk = 1.5                # candle-resweep 13-sym (under ATR floor 2.5×): combined 1.5@+0.222R, n=45 (was 4.5; ATR floor pulled SL much wider → far tighter tp_r wins; long winner=combined → drop tp_r_long_1wk; short no_edge)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: +0.13R, n=1046
 atr_sl_multiplier_1d = 1.0    # Task C-followup 13-sym: +0.01R, n=786
