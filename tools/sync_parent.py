@@ -399,3 +399,35 @@ def detect_already_applied(
     if matched == len(symbols):
         return Confidence.HIGH
     return Confidence.MEDIUM
+
+
+# --------------------------------------------------------------------------- #
+# Parent MEMORY excerpt
+# --------------------------------------------------------------------------- #
+
+
+def extract_memory_entry(pr_number: int, memory_text: str) -> str | None:
+    """Return the bullet/paragraph in parent MEMORY.md that references ``#<pr_number>``.
+
+    A bullet runs from a line starting with ``- `` (or ``* ``) until the next bullet
+    or a blank line, so neighbouring entries don't bleed in.
+    """
+    needle = re.compile(rf"#\s*{pr_number}\b")
+    lines = memory_text.splitlines()
+    for i, line in enumerate(lines):
+        if not needle.search(line):
+            continue
+        # Walk back to the bullet start.
+        start = i
+        while start > 0 and not re.match(r"^\s*[-*]\s", lines[start]):
+            if lines[start].strip() == "":
+                start += 1
+                break
+            start -= 1
+        # Walk forward to the bullet end (next bullet or blank line).
+        end = i + 1
+        while end < len(lines) and lines[end].strip() != "" and not re.match(r"^\s*[-*]\s", lines[end]):
+            end += 1
+        block = "\n".join(lines[start:end]).strip()
+        return block or None
+    return None

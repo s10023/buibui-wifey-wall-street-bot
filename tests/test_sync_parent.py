@@ -272,3 +272,27 @@ class TestAlreadyApplied:
 
         c = sp.detect_already_applied(["foo"], grep=boom)
         assert c == sp.Confidence.LOW
+
+
+class TestMemoryExtract:
+    """extract_memory_entry finds the paragraph referencing a PR number."""
+
+    def _memory(self) -> str:
+        return (
+            Path(__file__).parent / "fixtures" / "sync_parent" / "sample_memory.md"
+        ).read_text()
+
+    def test_finds_referenced_pr(self) -> None:
+        excerpt = sp.extract_memory_entry(403, self._memory())
+        assert excerpt is not None
+        assert "Regime gate thresholds" in excerpt
+        assert "+0.12R uplift" in excerpt
+
+    def test_returns_none_when_absent(self) -> None:
+        assert sp.extract_memory_entry(999, self._memory()) is None
+
+    def test_does_not_bleed_into_neighbour(self) -> None:
+        excerpt = sp.extract_memory_entry(402, self._memory())
+        assert excerpt is not None
+        assert "Cooldown watermark" in excerpt
+        assert "Regime gate" not in excerpt
