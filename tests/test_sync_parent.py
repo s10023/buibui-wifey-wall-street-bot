@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 import tools.sync_parent as sp
 
 
@@ -37,3 +39,39 @@ class TestModuleContract:
 
     def test_sync_state_error_is_exception(self) -> None:
         assert issubclass(sp.SyncStateError, Exception)
+
+
+class TestStateFile:
+    """load_sync_state + write_sync_state."""
+
+    def test_bootstrap_when_missing(self, tmp_path: Path) -> None:
+        missing = tmp_path / "nope.md"
+        assert sp.load_sync_state(missing) == sp.FORK_COMMIT
+
+    def test_reads_frontmatter_hash(self, tmp_path: Path) -> None:
+        f = tmp_path / "state.md"
+        f.write_text("---\nlast_synced_hash: abc1234\nupdated: 2026-05-23\n---\nbody\n")
+        assert sp.load_sync_state(f) == "abc1234"
+
+    def test_malformed_frontmatter_raises(self, tmp_path: Path) -> None:
+        f = tmp_path / "state.md"
+        f.write_text("no frontmatter here\n")
+        with pytest.raises(sp.SyncStateError, match="malformed"):
+            sp.load_sync_state(f)
+
+    def test_missing_hash_key_raises(self, tmp_path: Path) -> None:
+        f = tmp_path / "state.md"
+        f.write_text("---\nupdated: 2026-05-23\n---\nbody\n")
+        with pytest.raises(sp.SyncStateError, match="last_synced_hash"):
+            sp.load_sync_state(f)
+
+    def test_write_then_read_roundtrip(self, tmp_path: Path) -> None:
+        f = tmp_path / "state.md"
+        sp.write_sync_state("deadbee", f, "smoke note")
+        assert sp.load_sync_state(f) == "deadbee"
+        assert "smoke note" in f.read_text()
+
+    def test_write_is_atomic_no_temp_left(self, tmp_path: Path) -> None:
+        f = tmp_path / "state.md"
+        sp.write_sync_state("deadbee", f, "note")
+        assert list(tmp_path.glob("*.tmp")) == []

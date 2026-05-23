@@ -138,3 +138,52 @@ class WifeyPath:
     parent_path: str
     wifey_path: str | None
     kind: PathKind
+
+
+# --------------------------------------------------------------------------- #
+# Sync-state file
+# --------------------------------------------------------------------------- #
+
+
+def _parse_frontmatter(text: str) -> dict[str, str]:
+    """Parse a minimal ``key: value`` frontmatter block between ``---`` fences."""
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        raise SyncStateError("state file is malformed: missing opening '---' fence")
+    fields: dict[str, str] = {}
+    for line in lines[1:]:
+        if line.strip() == "---":
+            return fields
+        if ":" in line:
+            key, _, value = line.partition(":")
+            fields[key.strip()] = value.strip()
+    raise SyncStateError("state file is malformed: missing closing '---' fence")
+
+
+def load_sync_state(state_path: Path = STATE_FILE_PATH) -> str:
+    """Return the last-synced parent hash, or ``FORK_COMMIT`` on bootstrap."""
+    if not state_path.exists():
+        return FORK_COMMIT
+    fields = _parse_frontmatter(state_path.read_text())
+    if "last_synced_hash" not in fields:
+        raise SyncStateError("state file is missing 'last_synced_hash' in frontmatter")
+    return fields["last_synced_hash"]
+
+
+def write_sync_state(new_hash: str, state_path: Path = STATE_FILE_PATH, note: str = "") -> None:
+    """Atomically rewrite the state file with the new pointer + a run-history line."""
+    today = date.today().isoformat()
+    history_line = f"- {today}: bumped to {new_hash}"
+    if note:
+        history_line += f" ({note})"
+    body = (
+        f"---\nlast_synced_hash: {new_hash}\nupdated: {today}\n---\n\n"
+        "# Parent sync state\n\n"
+        "Tracks the last parent commit reviewed by `tools/sync_parent.py`.\n\n"
+        "## Run history\n\n"
+        f"{history_line}\n"
+    )
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = state_path.with_suffix(state_path.suffix + ".tmp")
+    tmp.write_text(body)
+    os.replace(tmp, state_path)
