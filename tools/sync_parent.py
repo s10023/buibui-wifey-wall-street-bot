@@ -171,7 +171,9 @@ def load_sync_state(state_path: Path = STATE_FILE_PATH) -> str:
     return fields["last_synced_hash"]
 
 
-def write_sync_state(new_hash: str, state_path: Path = STATE_FILE_PATH, note: str = "") -> None:
+def write_sync_state(
+    new_hash: str, state_path: Path = STATE_FILE_PATH, note: str = ""
+) -> None:
     """Atomically rewrite the state file with the new pointer + a run-history line."""
     today = date.today().isoformat()
     history_line = f"- {today}: bumped to {new_hash}"
@@ -267,7 +269,12 @@ def group_into_prs(commits: list[Commit]) -> list[PR]:
         number = _pr_number(commit.subject)
         if number is None:
             ordered.append(
-                PR(number=None, title=commit.subject, commits=[commit], files=list(commit.files))
+                PR(
+                    number=None,
+                    title=commit.subject,
+                    commits=[commit],
+                    files=list(commit.files),
+                )
             )
             continue
         if number not in by_number:
@@ -323,7 +330,9 @@ def translate_paths(parent_files: list[str]) -> list[WifeyPath]:
 # Bucket classifier
 # --------------------------------------------------------------------------- #
 
-_EVALUATE_PATH_RE = re.compile(r"(^config/.*\.toml$|strategy_params|analytics/strategies/)")
+_EVALUATE_PATH_RE = re.compile(
+    r"(^config/.*\.toml$|strategy_params|analytics/strategies/)"
+)
 
 
 def _is_evaluate_path(wp: WifeyPath) -> bool:
@@ -427,7 +436,11 @@ def extract_memory_entry(pr_number: int, memory_text: str) -> str | None:
             start -= 1
         # Walk forward to the bullet end (next bullet or blank line).
         end = i + 1
-        while end < len(lines) and lines[end].strip() != "" and not re.match(r"^\s*[-*]\s", lines[end]):
+        while (
+            end < len(lines)
+            and lines[end].strip() != ""
+            and not re.match(r"^\s*[-*]\s", lines[end])
+        ):
             end += 1
         block = "\n".join(lines[start:end]).strip()
         return block or None
@@ -439,7 +452,9 @@ def extract_memory_entry(pr_number: int, memory_text: str) -> str | None:
 # --------------------------------------------------------------------------- #
 
 
-def suggest_approach(bucket: Bucket, confidence: Confidence, wifey_paths: list[WifeyPath]) -> str:
+def suggest_approach(
+    bucket: Bucket, confidence: Confidence, wifey_paths: list[WifeyPath]
+) -> str:
     """One of: verify-only / cherry-pick-with-edits / re-implement."""
     if confidence == Confidence.HIGH:
         return "verify-only"
@@ -493,13 +508,15 @@ def _path_line(wp: WifeyPath) -> str:
 
 def _detail_block(r: PRReport) -> str:
     lines = [
-        f"## PR {_pr_label(r.pr)} — \"{r.pr.title}\"",
+        f'## PR {_pr_label(r.pr)} — "{r.pr.title}"',
         "",
         f"- **Bucket**: {r.bucket.value}",
         f"- **Confidence already-applied**: {r.confidence.value}",
         "- **Files touched in parent**:",
     ]
-    lines.extend(_path_line(wp) for wp in r.wifey_paths) if r.wifey_paths else lines.append("  - (none)")
+    lines.extend(
+        _path_line(wp) for wp in r.wifey_paths
+    ) if r.wifey_paths else lines.append("  - (none)")
     lines.append(f"- **Suggested approach**: {r.approach}")
     if r.memory_excerpt:
         quoted = "\n".join(f"  > {ln}" for ln in r.memory_excerpt.splitlines())
@@ -514,7 +531,12 @@ def _detail_block(r: PRReport) -> str:
 
 
 def format_report(reports: list[PRReport], from_hash: str, to_hash: str) -> str:
-    sections: dict[str, list[PRReport]] = {"SKIP": [], "PORT": [], "EVALUATE": [], "ALREADY-APPLIED": []}
+    sections: dict[str, list[PRReport]] = {
+        "SKIP": [],
+        "PORT": [],
+        "EVALUATE": [],
+        "ALREADY-APPLIED": [],
+    }
     for r in reports:
         sections[_section_of(r)].append(r)
 
@@ -539,7 +561,9 @@ def format_report(reports: list[PRReport], from_hash: str, to_hash: str) -> str:
     # Compact tables for SKIP + ALREADY-APPLIED.
     out += ["## SKIP", "", "| PR | Title | Reason |", "|---|---|---|"]
     for r in sections["SKIP"]:
-        out.append(f"| {_pr_label(r.pr)} | {r.pr.title} | all touched paths removed in fork |")
+        out.append(
+            f"| {_pr_label(r.pr)} | {r.pr.title} | all touched paths removed in fork |"
+        )
     out.append("")
 
     out += ["## PORT", ""]
@@ -548,10 +572,161 @@ def format_report(reports: list[PRReport], from_hash: str, to_hash: str) -> str:
     out += ["## EVALUATE", ""]
     out += [_detail_block(r) for r in sections["EVALUATE"]] or ["(none)", ""]
 
-    out += ["## ALREADY-APPLIED", "", "| PR | Title | Confidence | Verify against |", "|---|---|---|---|"]
+    out += [
+        "## ALREADY-APPLIED",
+        "",
+        "| PR | Title | Confidence | Verify against |",
+        "|---|---|---|---|",
+    ]
     for r in sections["ALREADY-APPLIED"]:
-        targets = ", ".join(wp.wifey_path or "?" for wp in r.wifey_paths if wp.wifey_path)
-        out.append(f"| {_pr_label(r.pr)} | {r.pr.title} | {r.confidence.value} | {targets} |")
+        targets = ", ".join(
+            wp.wifey_path or "?" for wp in r.wifey_paths if wp.wifey_path
+        )
+        out.append(
+            f"| {_pr_label(r.pr)} | {r.pr.title} | {r.confidence.value} | {targets} |"
+        )
     out.append("")
 
     return "\n".join(out)
+
+
+# --------------------------------------------------------------------------- #
+# Orchestration + CLI
+# --------------------------------------------------------------------------- #
+
+
+def _parent_current_branch() -> str:
+    return _git(PARENT_REPO_PATH, "branch", "--show-current").strip()
+
+
+def _parent_head_hash() -> str:
+    return _git(PARENT_REPO_PATH, "rev-parse", "--short", "origin/main").strip()
+
+
+def _hash_exists_in_parent(commit_hash: str) -> bool:
+    try:
+        _git(PARENT_REPO_PATH, "cat-file", "-e", f"{commit_hash}^{{commit}}")
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
+def _read_parent_memory() -> str:
+    return PARENT_MEMORY_PATH.read_text() if PARENT_MEMORY_PATH.exists() else ""
+
+
+def _commit_diff(sha: str) -> str:
+    try:
+        return _git(PARENT_REPO_PATH, "show", "--format=", sha)
+    except subprocess.CalledProcessError:
+        return ""
+
+
+def _report_path() -> Path:
+    return REPORT_DIR / f"parent-sync-{date.today().isoformat()}.md"
+
+
+def run_pipeline(prs: list[PR], memory_text: str) -> list[PRReport]:
+    """Run the per-PR enrichment pipeline. Pure given mocked helpers."""
+    reports: list[PRReport] = []
+    for pr in prs:
+        wifey_paths = translate_paths(pr.files)
+        bucket = classify_pr(pr, wifey_paths)
+        excerpt = extract_memory_entry(pr.number, memory_text) if pr.number else None
+        symbols: list[str] = []
+        for commit in pr.commits:
+            symbols.extend(extract_added_symbols(_commit_diff(commit.sha)))
+        confidence = detect_already_applied(symbols) if symbols else Confidence.UNKNOWN
+        approach = suggest_approach(bucket, confidence, wifey_paths)
+        reports.append(PRReport(pr, bucket, confidence, wifey_paths, excerpt, approach))
+    return reports
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    p.add_argument("--from", dest="from_hash", default=None, help="override start hash")
+    p.add_argument("--full", action="store_true", help="scan fork commit -> HEAD")
+    p.add_argument(
+        "--bump-to",
+        dest="bump_to",
+        default=None,
+        help="update state pointer only, no scan",
+    )
+    p.add_argument(
+        "--no-fetch", dest="no_fetch", action="store_true", help="use local refs only"
+    )
+    return p
+
+
+def _fail(message: str) -> int:
+    print(f"ERROR: {message}")
+    return 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_arg_parser().parse_args(argv)
+
+    if not PARENT_REPO_PATH.exists():
+        return _fail(
+            f"Parent repo not found at {PARENT_REPO_PATH}. Clone it or update PARENT_REPO_PATH."
+        )
+    branch = _parent_current_branch()
+    if branch != "main":
+        return _fail(f"Parent must be on 'main'. Currently on '{branch}'.")
+
+    if args.bump_to:
+        if not _hash_exists_in_parent(args.bump_to):
+            return _fail("Pointer-bump target not in parent history; refusing to bump.")
+        write_sync_state(args.bump_to, note="manual bump")
+        print(f"Sync pointer bumped to {args.bump_to}.")
+        return 0
+
+    if args.full:
+        from_hash = FORK_COMMIT
+    elif args.from_hash:
+        from_hash = args.from_hash
+    else:
+        try:
+            from_hash = load_sync_state()
+        except SyncStateError as exc:
+            return _fail(
+                f"Sync state file malformed: {exc}. Inspect or delete to re-bootstrap."
+            )
+
+    if from_hash == FORK_COMMIT and not STATE_FILE_PATH.exists():
+        print("BOOTSTRAP: scanning full fork → HEAD")
+
+    try:
+        commits = fetch_parent_commits(from_hash, no_fetch=args.no_fetch)
+    except subprocess.CalledProcessError:
+        return _fail(
+            f"Could not read parent history from {from_hash}. "
+            "Pass --from <known-hash> or re-run with --no-fetch."
+        )
+
+    to_hash = _parent_head_hash()
+    if not commits:
+        print(f"No new parent commits since {from_hash}. Nothing to review.")
+        return 0
+
+    prs = group_into_prs(commits)
+    reports = run_pipeline(prs, _read_parent_memory())
+    report = format_report(reports, from_hash, to_hash)
+
+    try:
+        path = _report_path()
+        path.write_text(report)
+    except OSError:
+        return _fail("Cannot write report. Check /tmp permissions.")
+
+    print(f"Wrote {len(reports)} PR(s) to {path}")
+    print(
+        f"When done reviewing: poetry run python tools/sync_parent.py --bump-to {to_hash}"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

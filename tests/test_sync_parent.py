@@ -189,38 +189,72 @@ class TestBucketClassifier:
         return sp.WifeyPath(path, target, kind)  # type: ignore[arg-type]
 
     def test_all_removed_is_skip(self) -> None:
-        pr = sp.PR(number=1, title="fix: binance (#1)", commits=[], files=["utils/binance_client.py"])
+        pr = sp.PR(
+            number=1,
+            title="fix: binance (#1)",
+            commits=[],
+            files=["utils/binance_client.py"],
+        )
         wps = [self._wp("utils/binance_client.py", "removed", None)]
         assert sp.classify_pr(pr, wps) == sp.Bucket.SKIP
 
     def test_all_skip_glob_is_skip(self) -> None:
-        pr = sp.PR(number=2, title="fix: cvd (#2)", commits=[], files=["analytics/strategies/cvd_divergence.py"])
+        pr = sp.PR(
+            number=2,
+            title="fix: cvd (#2)",
+            commits=[],
+            files=["analytics/strategies/cvd_divergence.py"],
+        )
         wps = [self._wp("analytics/strategies/cvd_divergence.py", "skip", None)]
         assert sp.classify_pr(pr, wps) == sp.Bucket.SKIP
 
     def test_surviving_module_is_port(self) -> None:
-        pr = sp.PR(number=3, title="fix: regime (#3)", commits=[], files=["analytics/regime.py"])
+        pr = sp.PR(
+            number=3,
+            title="fix: regime (#3)",
+            commits=[],
+            files=["analytics/regime.py"],
+        )
         wps = [self._wp("analytics/regime.py", "direct", "analytics/regime.py")]
         assert sp.classify_pr(pr, wps) == sp.Bucket.PORT
 
     def test_unmapped_path_is_evaluate(self) -> None:
-        pr = sp.PR(number=4, title="feat: new (#4)", commits=[], files=["analytics/new_mod.py"])
+        pr = sp.PR(
+            number=4, title="feat: new (#4)", commits=[], files=["analytics/new_mod.py"]
+        )
         wps = [self._wp("analytics/new_mod.py", "unmapped", None)]
         assert sp.classify_pr(pr, wps) == sp.Bucket.EVALUATE
 
     def test_toml_config_is_evaluate(self) -> None:
-        pr = sp.PR(number=5, title="feat: tp_r (#5)", commits=[], files=["config/signal_watch.toml"])
-        wps = [self._wp("config/signal_watch.toml", "direct", "config/signal_watch.toml")]
+        pr = sp.PR(
+            number=5,
+            title="feat: tp_r (#5)",
+            commits=[],
+            files=["config/signal_watch.toml"],
+        )
+        wps = [
+            self._wp("config/signal_watch.toml", "direct", "config/signal_watch.toml")
+        ]
         assert sp.classify_pr(pr, wps) == sp.Bucket.EVALUATE
 
     def test_new_strategy_file_is_evaluate(self) -> None:
-        pr = sp.PR(number=6, title="feat: strat (#6)", commits=[], files=["analytics/strategies/new_thing.py"])
+        pr = sp.PR(
+            number=6,
+            title="feat: strat (#6)",
+            commits=[],
+            files=["analytics/strategies/new_thing.py"],
+        )
         wps = [self._wp("analytics/strategies/new_thing.py", "unmapped", None)]
         assert sp.classify_pr(pr, wps) == sp.Bucket.EVALUATE
 
     def test_mixed_survivors_and_skip_is_port(self) -> None:
         """A bugfix touching a survivor + an incidental removed test stays PORT."""
-        pr = sp.PR(number=7, title="fix (#7)", commits=[], files=["analytics/regime.py", "utils/binance_client.py"])
+        pr = sp.PR(
+            number=7,
+            title="fix (#7)",
+            commits=[],
+            files=["analytics/regime.py", "utils/binance_client.py"],
+        )
         wps = [
             self._wp("analytics/regime.py", "direct", "analytics/regime.py"),
             self._wp("utils/binance_client.py", "removed", None),
@@ -248,7 +282,7 @@ class TestAlreadyApplied:
     def test_extract_ignores_removed_and_context(self) -> None:
         syms = sp.extract_added_symbols(self._diff())
         assert "old_line_removed" not in syms  # removed line, not added
-        assert "pd" not in syms                 # context import, not added def/const
+        assert "pd" not in syms  # context import, not added def/const
 
     def test_confidence_high_all_match(self) -> None:
         c = sp.detect_already_applied(["foo", "bar"], grep=lambda s: True)
@@ -305,7 +339,9 @@ class TestSuggestApproach:
         return sp.WifeyPath("p", "p", kind)  # type: ignore[arg-type]
 
     def test_high_confidence_is_verify_only(self) -> None:
-        out = sp.suggest_approach(sp.Bucket.PORT, sp.Confidence.HIGH, [self._wp("direct")])
+        out = sp.suggest_approach(
+            sp.Bucket.PORT, sp.Confidence.HIGH, [self._wp("direct")]
+        )
         assert out == "verify-only"
 
     def test_all_surviving_paths_is_cherry_pick(self) -> None:
@@ -316,12 +352,16 @@ class TestSuggestApproach:
 
     def test_unmapped_path_is_reimplement(self) -> None:
         out = sp.suggest_approach(
-            sp.Bucket.EVALUATE, sp.Confidence.LOW, [self._wp("direct"), self._wp("unmapped")]
+            sp.Bucket.EVALUATE,
+            sp.Confidence.LOW,
+            [self._wp("direct"), self._wp("unmapped")],
         )
         assert out == "re-implement"
 
     def test_evaluate_bucket_is_reimplement_even_if_paths_direct(self) -> None:
-        out = sp.suggest_approach(sp.Bucket.EVALUATE, sp.Confidence.LOW, [self._wp("direct")])
+        out = sp.suggest_approach(
+            sp.Bucket.EVALUATE, sp.Confidence.LOW, [self._wp("direct")]
+        )
         assert out == "re-implement"
 
     def test_no_paths_is_reimplement(self) -> None:
@@ -333,18 +373,27 @@ class TestReportFormat:
     """format_report emits the header, summary table, and four sections."""
 
     def _report(self, bucket: Any, confidence: Any, number: int) -> Any:
-        pr = sp.PR(number=number, title=f"feat: thing (#{number})", commits=[], files=["analytics/regime.py"])
+        pr = sp.PR(
+            number=number,
+            title=f"feat: thing (#{number})",
+            commits=[],
+            files=["analytics/regime.py"],
+        )
         return sp.PRReport(
             pr=pr,
             bucket=bucket,
             confidence=confidence,
-            wifey_paths=[sp.WifeyPath("analytics/regime.py", "analytics/regime.py", "direct")],  # type: ignore[arg-type]
+            wifey_paths=[
+                sp.WifeyPath("analytics/regime.py", "analytics/regime.py", "direct")
+            ],  # type: ignore[arg-type]
             memory_excerpt="Some why.",
             approach="cherry-pick-with-edits",
         )
 
     def test_header_and_range(self) -> None:
-        out = sp.format_report([self._report(sp.Bucket.PORT, sp.Confidence.LOW, 1)], "635ed5a", "abcdef0")
+        out = sp.format_report(
+            [self._report(sp.Bucket.PORT, sp.Confidence.LOW, 1)], "635ed5a", "abcdef0"
+        )
         assert "# Parent sync report" in out
         assert "635ed5a..abcdef0" in out
         assert "--bump-to abcdef0" in out
@@ -354,20 +403,103 @@ class TestReportFormat:
             self._report(sp.Bucket.SKIP, sp.Confidence.LOW, 1),
             self._report(sp.Bucket.PORT, sp.Confidence.LOW, 2),
             self._report(sp.Bucket.EVALUATE, sp.Confidence.LOW, 3),
-            self._report(sp.Bucket.PORT, sp.Confidence.HIGH, 4),  # routed to ALREADY-APPLIED
+            self._report(
+                sp.Bucket.PORT, sp.Confidence.HIGH, 4
+            ),  # routed to ALREADY-APPLIED
         ]
         out = sp.format_report(reports, "a", "b")
         assert "| SKIP" in out and "| 1 |" in out
         assert "## ALREADY-APPLIED" in out
 
     def test_high_confidence_port_routes_to_already_applied(self) -> None:
-        out = sp.format_report([self._report(sp.Bucket.PORT, sp.Confidence.HIGH, 7)], "a", "b")
+        out = sp.format_report(
+            [self._report(sp.Bucket.PORT, sp.Confidence.HIGH, 7)], "a", "b"
+        )
         already = out.split("## ALREADY-APPLIED", 1)[1]
         assert "#7" in already
 
     def test_port_detail_block_has_memory_and_approach(self) -> None:
-        out = sp.format_report([self._report(sp.Bucket.PORT, sp.Confidence.LOW, 9)], "a", "b")
+        out = sp.format_report(
+            [self._report(sp.Bucket.PORT, sp.Confidence.LOW, 9)], "a", "b"
+        )
         assert "Suggested approach" in out
         assert "cherry-pick-with-edits" in out
         assert "Some why." in out
         assert "https://github.com/s10023/buibui-moon-trader-bot/pull/9" in out
+
+
+class TestCLI:
+    """Argparse surface + bump-to guard."""
+
+    def test_parses_all_flags(self) -> None:
+        ns = sp.build_arg_parser().parse_args(["--from", "abc", "--no-fetch"])
+        assert ns.from_hash == "abc"
+        assert ns.no_fetch is True
+
+    def test_full_and_bump_flags(self) -> None:
+        ns = sp.build_arg_parser().parse_args(["--full"])
+        assert ns.full is True
+        ns2 = sp.build_arg_parser().parse_args(["--bump-to", "deadbee"])
+        assert ns2.bump_to == "deadbee"
+
+
+class TestSmokeRun:
+    """run_pipeline produces a well-formed report from fixture PRs."""
+
+    def test_pipeline_buckets_and_sections(self, mocker: Any) -> None:
+        # Two PRs: one survivor bugfix (PORT), one binance fix (SKIP).
+        prs = [
+            sp.PR(
+                number=403,
+                title="fix: regime (#403)",
+                commits=[],
+                files=["analytics/regime.py"],
+            ),
+            sp.PR(
+                number=402,
+                title="fix: binance (#402)",
+                commits=[],
+                files=["utils/binance_client.py"],
+            ),
+        ]
+        memory_text = (
+            Path(__file__).parent / "fixtures" / "sync_parent" / "sample_memory.md"
+        ).read_text()
+        mocker.patch("tools.sync_parent._wifey_path_exists", return_value=True)
+        mocker.patch(
+            "tools.sync_parent.extract_added_symbols", return_value=[]
+        )  # -> UNKNOWN
+        reports = sp.run_pipeline(prs, memory_text)
+        out = sp.format_report(reports, "635ed5a", "abcdef0")
+        assert "# Parent sync report" in out
+        assert "## SKIP" in out and "## PORT" in out
+        assert "#403" in out and "#402" in out
+
+    def test_main_writes_report_file(self, mocker: Any, tmp_path: Path) -> None:
+        mocker.patch("tools.sync_parent.PARENT_REPO_PATH", tmp_path)  # exists
+        mocker.patch("tools.sync_parent._parent_current_branch", return_value="main")
+        mocker.patch(
+            "tools.sync_parent.fetch_parent_commits",
+            return_value=[
+                sp.Commit("abc", "fix: regime (#403)", "", ["analytics/regime.py"])
+            ],
+        )
+        mocker.patch("tools.sync_parent._parent_head_hash", return_value="abcdef0")
+        mocker.patch("tools.sync_parent._read_parent_memory", return_value="(empty)")
+        mocker.patch("tools.sync_parent._wifey_path_exists", return_value=True)
+        mocker.patch("tools.sync_parent.extract_added_symbols", return_value=[])
+        report_path = tmp_path / "out.md"
+        mocker.patch("tools.sync_parent._report_path", return_value=report_path)
+        code = sp.main(["--from", "635ed5a", "--no-fetch"])
+        assert code == 0
+        assert report_path.exists()
+        assert "Parent sync report" in report_path.read_text()
+
+    def test_main_bump_to_unknown_hash_exits_1(
+        self, mocker: Any, tmp_path: Path
+    ) -> None:
+        mocker.patch("tools.sync_parent.PARENT_REPO_PATH", tmp_path)
+        mocker.patch("tools.sync_parent._parent_current_branch", return_value="main")
+        mocker.patch("tools.sync_parent._hash_exists_in_parent", return_value=False)
+        code = sp.main(["--bump-to", "nope123"])
+        assert code == 1
