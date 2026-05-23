@@ -1,0 +1,3 @@
+abc1234|feat(backtest): tighten regime gate thresholds (#403)|Validated on 4-symbol cohort, +0.12R uplift.
+def5678|fix(signals): correct cooldown watermark off-by-one (#402)|
+0011223|chore: bump ruff to 0.6.0|direct-to-main maintenance, no PR

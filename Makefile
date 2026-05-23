@@ -11,7 +11,7 @@ DEV_PORT ?= 5173
 PYTHON_FILES = $(shell find . -name "*.py" -not -path "./venv/*" -not -path "./.venv/*")
 DOCKER_IMAGE = wifey-bot
 
-.PHONY: lint lint-md lint-md-fix lint-py-check lint-py typecheck test test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
+.PHONY: lint lint-md lint-md-fix lint-py-check lint-py typecheck test test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
 
 lint: lint-md lint-py
 
@@ -199,6 +199,14 @@ wifey-recalibrate:
 		$(if $(CONFIG),--config $(CONFIG),) \
 		$(if $(DAY_FILTER),--day-filter $(DAY_FILTER),) \
 		$(if $(APPLY),--apply,)
+
+wifey-sync-parent:
+	@echo "🔀 Scanning parent repo for portable changes..."
+	@PYTHONPATH=. poetry run python tools/sync_parent.py \
+		$(if $(FROM),--from $(FROM),) \
+		$(if $(FULL),--full,) \
+		$(if $(BUMP_TO),--bump-to $(BUMP_TO),) \
+		$(if $(NO_FETCH),--no-fetch,)
 
 ## Routine DB update: run both signal_watch backtests + recalibrate + regression update
 db-update-backtest:
