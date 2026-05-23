@@ -88,6 +88,7 @@ PathKind = Literal["direct", "renamed", "removed", "skip", "unmapped"]
 ## Task 1: Module scaffolding — constants, data model, custom exception
 
 **Files:**
+
 - Create: `tools/sync_parent.py`
 - Test: `tests/test_sync_parent.py`
 
@@ -317,6 +318,7 @@ git commit -m "feat(tools): sync_parent scaffolding — constants, data model, e
 ## Task 2: Sync-state file — load + atomic write
 
 **Files:**
+
 - Modify: `tools/sync_parent.py`
 - Test: `tests/test_sync_parent.py`
 
@@ -458,6 +460,7 @@ git commit -m "feat(tools): sync_parent state file load + atomic write"
 ## Task 3: Git helpers, commit fetch, and PR grouping
 
 **Files:**
+
 - Modify: `tools/sync_parent.py`
 - Test: `tests/test_sync_parent.py`
 - Create: `tests/fixtures/sync_parent/sample_git_log.txt`
@@ -670,6 +673,7 @@ git commit -m "feat(tools): sync_parent commit fetch + squash-aware PR grouping"
 ## Task 4: Path translation
 
 **Files:**
+
 - Modify: `tools/sync_parent.py`
 - Test: `tests/test_sync_parent.py`
 
@@ -778,6 +782,7 @@ git commit -m "feat(tools): sync_parent path translation with wifey-tree existen
 ## Task 5: Bucket classifier
 
 **Files:**
+
 - Modify: `tools/sync_parent.py`
 - Test: `tests/test_sync_parent.py`
 
@@ -894,6 +899,7 @@ git commit -m "feat(tools): sync_parent bucket classifier (SKIP/PORT/EVALUATE)"
 ## Task 6: Already-applied detection — symbol extraction + grep confidence
 
 **Files:**
+
 - Modify: `tools/sync_parent.py`
 - Test: `tests/test_sync_parent.py`
 - Create: `tests/fixtures/sync_parent/sample_diff.txt`
@@ -1050,6 +1056,7 @@ git commit -m "feat(tools): sync_parent already-applied symbol extraction + grep
 ## Task 7: Parent MEMORY.md excerpt extraction
 
 **Files:**
+
 - Modify: `tools/sync_parent.py`
 - Test: `tests/test_sync_parent.py`
 - Create: `tests/fixtures/sync_parent/sample_memory.md`
@@ -1163,6 +1170,7 @@ git commit -m "feat(tools): sync_parent parent MEMORY excerpt extraction"
 ## Task 8: Suggested-approach heuristic
 
 **Files:**
+
 - Modify: `tools/sync_parent.py`
 - Test: `tests/test_sync_parent.py`
 
@@ -1248,6 +1256,7 @@ git commit -m "feat(tools): sync_parent suggested-approach heuristic"
 ## Task 9: Report formatter
 
 **Files:**
+
 - Modify: `tools/sync_parent.py`
 - Test: `tests/test_sync_parent.py`
 
@@ -1438,6 +1447,7 @@ git commit -m "feat(tools): sync_parent markdown report formatter"
 ## Task 10: CLI orchestrator + integration smoke test
 
 **Files:**
+
 - Modify: `tools/sync_parent.py`
 - Test: `tests/test_sync_parent.py`
 
@@ -1680,6 +1690,7 @@ git commit -m "feat(tools): sync_parent CLI orchestrator + integration smoke tes
 ## Task 11: Makefile target
 
 **Files:**
+
 - Modify: `Makefile`
 
 - [ ] **Step 1: Add the target**
@@ -1688,12 +1699,12 @@ Add to the `.PHONY` line (Makefile line 14), appending `wifey-sync-parent` to th
 
 ```makefile
 wifey-sync-parent:
-	@echo "🔀 Scanning parent repo for portable changes..."
-	@PYTHONPATH=. poetry run python tools/sync_parent.py \
-		$(if $(FROM),--from $(FROM),) \
-		$(if $(FULL),--full,) \
-		$(if $(BUMP_TO),--bump-to $(BUMP_TO),) \
-		$(if $(NO_FETCH),--no-fetch,)
+ @echo "🔀 Scanning parent repo for portable changes..."
+ @PYTHONPATH=. poetry run python tools/sync_parent.py \
+  $(if $(FROM),--from $(FROM),) \
+  $(if $(FULL),--full,) \
+  $(if $(BUMP_TO),--bump-to $(BUMP_TO),) \
+  $(if $(NO_FETCH),--no-fetch,)
 ```
 
 - [ ] **Step 2: Verify the target parses**
@@ -1713,6 +1724,7 @@ git commit -m "build(make): add wifey-sync-parent target"
 ## Task 12: SKILL.md + CLAUDE.md skills-table entry
 
 **Files:**
+
 - Create: `.claude/skills/sync-parent/SKILL.md`
 - Modify: `CLAUDE.md`
 
@@ -1720,7 +1732,7 @@ git commit -m "build(make): add wifey-sync-parent target"
 
 Create `.claude/skills/sync-parent/SKILL.md`:
 
-```markdown
+````markdown
 ---
 name: sync-parent
 description: >
@@ -1792,7 +1804,8 @@ Direct: `PYTHONPATH=. poetry run python tools/sync_parent.py [flags]`.
 - ALREADY-APPLIED is a confidence flag, never an auto-removal. Always verify.
 - Sweep findings (`tp_r`, ATR multipliers) land in EVALUATE: methodology may
   transfer, values won't (equity cohort ≠ crypto cohort).
-```
+
+````
 
 - [ ] **Step 2: Add the CLAUDE.md skills-table row**
 
