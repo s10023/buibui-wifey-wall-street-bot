@@ -33,7 +33,7 @@ This spec defines a skill that **detects and recommends** parent changes for por
 These decisions were made during the brainstorming session (2026-05-23). Each binds a design dimension to a specific choice with rationale.
 
 | Decision | Choice | Rationale |
-|---|---|---|
+| --- | --- | --- |
 | Automation level | Detect + recommend only | Read-only is low-risk; humans port. Avoids automated miswiring given path divergence. |
 | Scan range per run | Incremental (last-sync → parent HEAD) | Smaller, focused reports. Bootstrap covered by skipping the state file on first run. |
 | State location | Wifey memory topic file | Consistent with the project's memory-driven workflow. Not in version control. |
@@ -75,7 +75,7 @@ Five sections matching the project's existing skill convention:
 Single-file Python (pure stdlib + `subprocess`). Functional decomposition:
 
 | Function | Purpose |
-|---|---|
+| --- | --- |
 | `load_sync_state() -> str` | Read state file; fall back to `FORK_COMMIT` on bootstrap |
 | `fetch_parent_commits(from_hash) -> list[Commit]` | `git -C <parent> log --merges <hash>..origin/main` |
 | `group_into_prs(commits) -> list[PR]` | Parse `Merge pull request #N` titles + squash PRs identified by `(#N)` in subject |
@@ -89,7 +89,7 @@ Single-file Python (pure stdlib + `subprocess`). Functional decomposition:
 
 ### CLI surface
 
-```
+```bash
 poetry run python tools/sync_parent.py                  # incremental from state file
 poetry run python tools/sync_parent.py --from <hash>    # override start point
 poetry run python tools/sync_parent.py --full           # fork → HEAD (audit)
@@ -127,18 +127,21 @@ The `suggest_approach` heuristic returns one of three labels per PORT/EVALUATE c
 ### Bucket classification rules
 
 **SKIP** (auto, no human review):
+
 - Touches files removed in fork: `binance_client.py`, `live_price/`, `live_position/`, `cme_gap_lib`, `trade/open_trades.py`
 - Touches removed data fields: `funding_rates`, `open_interest`, `taker_buy_volume`
 - Touches removed strategies: `cvd_divergence`, `smt_divergence`, `smt_pairs`, `funding_extreme`
 - Crypto-only test fixtures (BTCUSDT/ETHUSDT/SOLUSDT-only)
 
 **PORT** (high confidence portable):
+
 - Bug fixes in surviving modules (`analytics/`, `signals/`, `web/`, `utils/`, `cli/`)
 - Detector logic refinements on surviving strategies
 - Test improvements on surviving tests
 - Infra changes (CLI, DB schema, web UI, Makefile)
 
 **EVALUATE** (judgment call):
+
 - Sweep findings (`tp_r`, ATR multipliers) — methodology may transfer; values won't
 - New strategies introduced in parent
 - Bias / regime / gate behavior changes — likely portable but cohort-sensitive
@@ -146,6 +149,7 @@ The `suggest_approach` heuristic returns one of three labels per PORT/EVALUATE c
 - Files not in `PARENT_TO_WIFEY_PATHS` (unmapped fallback)
 
 **ALREADY-APPLIED** (content-based check):
+
 - For each parent change, skill extracts representative added symbols/strings (new function names, new constants, new strategy ids) and `git grep`s wifey for them.
 - If most match, flag with confidence (LOW/MEDIUM/HIGH). Never auto-removed from the report; human verifies.
 
@@ -170,7 +174,7 @@ The `suggest_approach` heuristic returns one of three labels per PORT/EVALUATE c
 
 ### Per-PR pipeline
 
-```
+```text
 classify_pr(pr) → bucket
   ↓
 extract_memory_entry(pr.number) → str | None
@@ -205,6 +209,7 @@ emit detail block
 ```
 
 **Four sections in order**:
+
 - `## SKIP` — compact table: `PR# | Title | Reason`
 - `## PORT` — detail blocks (one per PR)
 - `## EVALUATE` — detail blocks (one per PR)
@@ -234,7 +239,7 @@ emit detail block
 ### Fail-fast errors (exit 1, actionable message)
 
 | Condition | Detection | Message |
-|---|---|---|
+| --- | --- | --- |
 | Parent repo path missing | `not PARENT_REPO_PATH.exists()` | "Parent repo not found at `<path>`. Clone it first or update `PARENT_REPO_PATH`." |
 | Parent not on `main` | `git branch --show-current` ≠ `main` | "Parent must be on `main`. Currently on `<branch>`." |
 | Parent fetch fails | non-zero exit from `git fetch` | "Could not fetch parent. Re-run with `--no-fetch` to use local refs." |
@@ -246,7 +251,7 @@ emit detail block
 ### Graceful degradation (continue, mark in report)
 
 | Condition | Behavior |
-|---|---|
+| --- | --- |
 | Memory state file missing | Bootstrap mode: use `FORK_COMMIT` as `from`. Print `"BOOTSTRAP: scanning full fork → HEAD"`. |
 | Commit not in a PR (direct-to-main) | Synthetic "PR" entry with `#none` and "direct commit" label. |
 | MEMORY.md entry not found for PR | Detail block shows `**Parent MEMORY excerpt**: (none found)`. |
@@ -271,7 +276,7 @@ Fail-fast errors → surface message to user, do NOT auto-attempt fixes (no auto
 Pure-stdlib + `pytest` + `pytest-mock`. All subprocess calls mocked — no real git, no network, no real parent repo.
 
 | Test class | Coverage |
-|---|---|
+| --- | --- |
 | `TestBucketClassifier` | `classify_pr` returns correct bucket for crypto-only (SKIP), surviving paths (PORT), sweep findings (EVALUATE), unmapped paths (EVALUATE fallback) |
 | `TestPRGrouping` | `group_into_prs` parses merge-commit format, squash format, direct-to-main commits (synthetic `#none`) |
 | `TestPathTranslation` | `translate_paths`: mapped → wifey path, `None` → SKIP, missing key → `(unmapped)` |
