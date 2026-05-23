@@ -431,3 +431,22 @@ def extract_memory_entry(pr_number: int, memory_text: str) -> str | None:
         block = "\n".join(lines[start:end]).strip()
         return block or None
     return None
+
+
+# --------------------------------------------------------------------------- #
+# Suggested approach
+# --------------------------------------------------------------------------- #
+
+
+def suggest_approach(bucket: Bucket, confidence: Confidence, wifey_paths: list[WifeyPath]) -> str:
+    """One of: verify-only / cherry-pick-with-edits / re-implement."""
+    if confidence == Confidence.HIGH:
+        return "verify-only"
+    relevant = [wp for wp in wifey_paths if wp.kind not in ("removed", "skip")]
+    if (
+        bucket == Bucket.PORT
+        and relevant
+        and all(wp.kind in ("direct", "renamed") for wp in relevant)
+    ):
+        return "cherry-pick-with-edits"
+    return "re-implement"

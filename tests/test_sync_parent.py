@@ -296,3 +296,34 @@ class TestMemoryExtract:
         assert excerpt is not None
         assert "Cooldown watermark" in excerpt
         assert "Regime gate" not in excerpt
+
+
+class TestSuggestApproach:
+    """suggest_approach returns one of the three labels."""
+
+    def _wp(self, kind: str) -> Any:
+        return sp.WifeyPath("p", "p", kind)  # type: ignore[arg-type]
+
+    def test_high_confidence_is_verify_only(self) -> None:
+        out = sp.suggest_approach(sp.Bucket.PORT, sp.Confidence.HIGH, [self._wp("direct")])
+        assert out == "verify-only"
+
+    def test_all_surviving_paths_is_cherry_pick(self) -> None:
+        out = sp.suggest_approach(
+            sp.Bucket.PORT, sp.Confidence.LOW, [self._wp("direct"), self._wp("renamed")]
+        )
+        assert out == "cherry-pick-with-edits"
+
+    def test_unmapped_path_is_reimplement(self) -> None:
+        out = sp.suggest_approach(
+            sp.Bucket.EVALUATE, sp.Confidence.LOW, [self._wp("direct"), self._wp("unmapped")]
+        )
+        assert out == "re-implement"
+
+    def test_evaluate_bucket_is_reimplement_even_if_paths_direct(self) -> None:
+        out = sp.suggest_approach(sp.Bucket.EVALUATE, sp.Confidence.LOW, [self._wp("direct")])
+        assert out == "re-implement"
+
+    def test_no_paths_is_reimplement(self) -> None:
+        out = sp.suggest_approach(sp.Bucket.EVALUATE, sp.Confidence.LOW, [])
+        assert out == "re-implement"
