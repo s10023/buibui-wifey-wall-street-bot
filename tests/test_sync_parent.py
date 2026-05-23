@@ -180,3 +180,53 @@ class TestPathTranslation:
         out = sp.translate_paths(["analytics/some_new_parent_module.py"])
         assert out[0].kind == "unmapped"
         assert out[0].wifey_path is None
+
+
+class TestBucketClassifier:
+    """classify_pr returns SKIP / PORT / EVALUATE per the rules."""
+
+    def _wp(self, path: str, kind: str, target: str | None) -> Any:
+        return sp.WifeyPath(path, target, kind)  # type: ignore[arg-type]
+
+    def test_all_removed_is_skip(self) -> None:
+        pr = sp.PR(number=1, title="fix: binance (#1)", commits=[], files=["utils/binance_client.py"])
+        wps = [self._wp("utils/binance_client.py", "removed", None)]
+        assert sp.classify_pr(pr, wps) == sp.Bucket.SKIP
+
+    def test_all_skip_glob_is_skip(self) -> None:
+        pr = sp.PR(number=2, title="fix: cvd (#2)", commits=[], files=["analytics/strategies/cvd_divergence.py"])
+        wps = [self._wp("analytics/strategies/cvd_divergence.py", "skip", None)]
+        assert sp.classify_pr(pr, wps) == sp.Bucket.SKIP
+
+    def test_surviving_module_is_port(self) -> None:
+        pr = sp.PR(number=3, title="fix: regime (#3)", commits=[], files=["analytics/regime.py"])
+        wps = [self._wp("analytics/regime.py", "direct", "analytics/regime.py")]
+        assert sp.classify_pr(pr, wps) == sp.Bucket.PORT
+
+    def test_unmapped_path_is_evaluate(self) -> None:
+        pr = sp.PR(number=4, title="feat: new (#4)", commits=[], files=["analytics/new_mod.py"])
+        wps = [self._wp("analytics/new_mod.py", "unmapped", None)]
+        assert sp.classify_pr(pr, wps) == sp.Bucket.EVALUATE
+
+    def test_toml_config_is_evaluate(self) -> None:
+        pr = sp.PR(number=5, title="feat: tp_r (#5)", commits=[], files=["config/signal_watch.toml"])
+        wps = [self._wp("config/signal_watch.toml", "direct", "config/signal_watch.toml")]
+        assert sp.classify_pr(pr, wps) == sp.Bucket.EVALUATE
+
+    def test_new_strategy_file_is_evaluate(self) -> None:
+        pr = sp.PR(number=6, title="feat: strat (#6)", commits=[], files=["analytics/strategies/new_thing.py"])
+        wps = [self._wp("analytics/strategies/new_thing.py", "unmapped", None)]
+        assert sp.classify_pr(pr, wps) == sp.Bucket.EVALUATE
+
+    def test_mixed_survivors_and_skip_is_port(self) -> None:
+        """A bugfix touching a survivor + an incidental removed test stays PORT."""
+        pr = sp.PR(number=7, title="fix (#7)", commits=[], files=["analytics/regime.py", "utils/binance_client.py"])
+        wps = [
+            self._wp("analytics/regime.py", "direct", "analytics/regime.py"),
+            self._wp("utils/binance_client.py", "removed", None),
+        ]
+        assert sp.classify_pr(pr, wps) == sp.Bucket.PORT
+
+    def test_no_files_is_evaluate(self) -> None:
+        pr = sp.PR(number=8, title="empty (#8)", commits=[], files=[])
+        assert sp.classify_pr(pr, []) == sp.Bucket.EVALUATE

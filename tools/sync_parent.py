@@ -316,3 +316,30 @@ def translate_paths(parent_files: list[str]) -> list[WifeyPath]:
         else:
             out.append(WifeyPath(f, None, "unmapped"))
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Bucket classifier
+# --------------------------------------------------------------------------- #
+
+_EVALUATE_PATH_RE = re.compile(r"(^config/.*\.toml$|strategy_params|analytics/strategies/)")
+
+
+def _is_evaluate_path(wp: WifeyPath) -> bool:
+    """Cohort-sensitive (config / sweep / new-strategy) or unmapped -> needs judgment."""
+    if wp.kind == "unmapped":
+        return True
+    return bool(_EVALUATE_PATH_RE.search(wp.parent_path))
+
+
+def classify_pr(pr: PR, wifey_paths: list[WifeyPath]) -> Bucket:
+    """Return SKIP / PORT / EVALUATE. ALREADY-APPLIED is a separate routing overlay."""
+    if not wifey_paths:
+        return Bucket.EVALUATE
+    if all(wp.kind in ("removed", "skip") for wp in wifey_paths):
+        return Bucket.SKIP
+    # Consider only the non-skipped paths for the PORT/EVALUATE decision.
+    relevant = [wp for wp in wifey_paths if wp.kind not in ("removed", "skip")]
+    if any(_is_evaluate_path(wp) for wp in relevant):
+        return Bucket.EVALUATE
+    return Bucket.PORT
