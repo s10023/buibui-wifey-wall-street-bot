@@ -279,3 +279,40 @@ def group_into_prs(commits: list[Commit]) -> list[PR]:
             if f not in pr.files:
                 pr.files.append(f)
     return ordered
+
+
+# --------------------------------------------------------------------------- #
+# Path translation
+# --------------------------------------------------------------------------- #
+
+
+def _wifey_path_exists(rel_path: str) -> bool:
+    """True when ``rel_path`` exists in the wifey working tree (patched in tests)."""
+    return (WIFEY_REPO_PATH / rel_path).exists()
+
+
+def _matches_skip_glob(path: str) -> bool:
+    if any(fnmatch.fnmatch(path, pat) for pat in SKIP_GLOBS):
+        return True
+    return any(token in path for token in SKIP_SUBSTRINGS)
+
+
+def translate_paths(parent_files: list[str]) -> list[WifeyPath]:
+    """Map each parent path to a wifey target (or mark removed / skip / unmapped)."""
+    out: list[WifeyPath] = []
+    for f in parent_files:
+        if f in PARENT_TO_WIFEY_PATHS:
+            target = PARENT_TO_WIFEY_PATHS[f]
+            if target is None:
+                out.append(WifeyPath(f, None, "removed"))
+            elif target == f:
+                out.append(WifeyPath(f, target, "direct"))
+            else:
+                out.append(WifeyPath(f, target, "renamed"))
+        elif _matches_skip_glob(f):
+            out.append(WifeyPath(f, None, "skip"))
+        elif _wifey_path_exists(f):
+            out.append(WifeyPath(f, f, "direct"))
+        else:
+            out.append(WifeyPath(f, None, "unmapped"))
+    return out

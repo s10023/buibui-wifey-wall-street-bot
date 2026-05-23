@@ -146,3 +146,37 @@ class TestPRGrouping:
         sp.fetch_parent_commits("635ed5a", no_fetch=True)
         # 3 calls, none of them a fetch
         assert all("fetch" not in call.args for call in run.call_args_list)
+
+
+class TestPathTranslation:
+    """translate_paths maps removed / renamed / direct / unmapped correctly."""
+
+    def test_removed_module_maps_to_none_skip(self, mocker: Any) -> None:
+        mocker.patch("tools.sync_parent._wifey_path_exists", return_value=False)
+        out = sp.translate_paths(["utils/binance_client.py"])
+        assert out[0].wifey_path is None
+        assert out[0].kind == "removed"
+
+    def test_renamed_module(self, mocker: Any) -> None:
+        mocker.patch("tools.sync_parent._wifey_path_exists", return_value=False)
+        out = sp.translate_paths(["analytics/indicators_lib.py"])
+        assert out[0].wifey_path == "analytics/strategies/_registry.py"
+        assert out[0].kind == "renamed"
+
+    def test_skip_glob_match(self, mocker: Any) -> None:
+        mocker.patch("tools.sync_parent._wifey_path_exists", return_value=False)
+        out = sp.translate_paths(["analytics/strategies/cvd_divergence.py"])
+        assert out[0].kind == "skip"
+        assert out[0].wifey_path is None
+
+    def test_surviving_same_name_is_direct(self, mocker: Any) -> None:
+        mocker.patch("tools.sync_parent._wifey_path_exists", return_value=True)
+        out = sp.translate_paths(["analytics/regime.py"])
+        assert out[0].wifey_path == "analytics/regime.py"
+        assert out[0].kind == "direct"
+
+    def test_absent_everywhere_is_unmapped(self, mocker: Any) -> None:
+        mocker.patch("tools.sync_parent._wifey_path_exists", return_value=False)
+        out = sp.translate_paths(["analytics/some_new_parent_module.py"])
+        assert out[0].kind == "unmapped"
+        assert out[0].wifey_path is None
