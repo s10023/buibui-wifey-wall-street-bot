@@ -230,3 +230,45 @@ class TestBucketClassifier:
     def test_no_files_is_evaluate(self) -> None:
         pr = sp.PR(number=8, title="empty (#8)", commits=[], files=[])
         assert sp.classify_pr(pr, []) == sp.Bucket.EVALUATE
+
+
+class TestAlreadyApplied:
+    """extract_added_symbols + detect_already_applied."""
+
+    def _diff(self) -> str:
+        return (
+            Path(__file__).parent / "fixtures" / "sync_parent" / "sample_diff.txt"
+        ).read_text()
+
+    def test_extract_function_and_constant(self) -> None:
+        syms = sp.extract_added_symbols(self._diff())
+        assert "classify_regime_v2" in syms
+        assert "ADX_TREND_THRESHOLD" in syms
+
+    def test_extract_ignores_removed_and_context(self) -> None:
+        syms = sp.extract_added_symbols(self._diff())
+        assert "old_line_removed" not in syms  # removed line, not added
+        assert "pd" not in syms                 # context import, not added def/const
+
+    def test_confidence_high_all_match(self) -> None:
+        c = sp.detect_already_applied(["foo", "bar"], grep=lambda s: True)
+        assert c == sp.Confidence.HIGH
+
+    def test_confidence_low_none_match(self) -> None:
+        c = sp.detect_already_applied(["foo", "bar"], grep=lambda s: False)
+        assert c == sp.Confidence.LOW
+
+    def test_confidence_medium_partial(self) -> None:
+        c = sp.detect_already_applied(["foo", "bar"], grep=lambda s: s == "foo")
+        assert c == sp.Confidence.MEDIUM
+
+    def test_confidence_unknown_no_symbols(self) -> None:
+        c = sp.detect_already_applied([], grep=lambda s: True)
+        assert c == sp.Confidence.UNKNOWN
+
+    def test_grep_exception_treated_as_no_match(self) -> None:
+        def boom(_s: str) -> bool:
+            raise RuntimeError("git grep blew up")
+
+        c = sp.detect_already_applied(["foo"], grep=boom)
+        assert c == sp.Confidence.LOW

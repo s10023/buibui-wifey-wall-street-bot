@@ -1,0 +1,11 @@
+diff --git a/analytics/regime.py b/analytics/regime.py
+index 1111111..2222222 100644
+--- a/analytics/regime.py
++++ b/analytics/regime.py
+@@ -10,6 +10,11 @@ import pandas as pd
++ADX_TREND_THRESHOLD = 22
++
++def classify_regime_v2(df: pd.DataFrame) -> str:
++    """New regime classifier."""
++    return "trend"
+-old_line_removed = True

@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from datetime import date
 from enum import Enum
 from pathlib import Path
-from typing import Literal
+from typing import Callable, Literal
 
 # --------------------------------------------------------------------------- #
 # Constants
@@ -343,3 +343,59 @@ def classify_pr(pr: PR, wifey_paths: list[WifeyPath]) -> Bucket:
     if any(_is_evaluate_path(wp) for wp in relevant):
         return Bucket.EVALUATE
     return Bucket.PORT
+
+
+# --------------------------------------------------------------------------- #
+# Already-applied detection
+# --------------------------------------------------------------------------- #
+
+_ADDED_DEF_RE = re.compile(r"^\+\s*(?:async\s+)?def\s+([A-Za-z_]\w+)")
+_ADDED_CLASS_RE = re.compile(r"^\+\s*class\s+([A-Za-z_]\w+)")
+_ADDED_CONST_RE = re.compile(r"^\+([A-Z_][A-Z0-9_]{3,})\s*[:=]")
+
+
+def extract_added_symbols(diff_text: str) -> list[str]:
+    """Pull added function / class / module-constant names from a unified diff."""
+    symbols: list[str] = []
+    for line in diff_text.splitlines():
+        if line.startswith("+++") or not line.startswith("+"):
+            continue
+        for pattern in (_ADDED_DEF_RE, _ADDED_CLASS_RE, _ADDED_CONST_RE):
+            m = pattern.match(line)
+            if m and m.group(1) not in symbols:
+                symbols.append(m.group(1))
+    return symbols
+
+
+def _wifey_grep(symbol: str) -> bool:
+    """True if ``symbol`` appears anywhere in the wifey working tree (via git grep)."""
+    try:
+        subprocess.run(
+            ["git", "-C", str(WIFEY_REPO_PATH), "grep", "-q", "-w", symbol],
+            check=True,
+            capture_output=True,
+        )
+        return True
+    except subprocess.CalledProcessError:
+        return False  # exit 1 == no match; any other failure also treated as no match
+
+
+def detect_already_applied(
+    symbols: list[str],
+    grep: Callable[[str], bool] = _wifey_grep,
+) -> Confidence:
+    """HIGH if all symbols found, LOW if none, MEDIUM if partial, UNKNOWN if no symbols."""
+    if not symbols:
+        return Confidence.UNKNOWN
+    matched = 0
+    for sym in symbols:
+        try:
+            if grep(sym):
+                matched += 1
+        except Exception:  # noqa: BLE001 — never let a grep failure crash the run
+            continue
+    if matched == 0:
+        return Confidence.LOW
+    if matched == len(symbols):
+        return Confidence.HIGH
+    return Confidence.MEDIUM
