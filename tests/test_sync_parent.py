@@ -385,7 +385,7 @@ class TestReportFormat:
             confidence=confidence,
             wifey_paths=[
                 sp.WifeyPath("analytics/regime.py", "analytics/regime.py", "direct")
-            ],  # type: ignore[arg-type]
+            ],
             memory_excerpt="Some why.",
             approach="cherry-pick-with-edits",
         )
