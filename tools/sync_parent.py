@@ -25,11 +25,12 @@ import fnmatch
 import os
 import re
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
-from typing import Callable, Literal
+from typing import Literal
 
 # --------------------------------------------------------------------------- #
 # Constants
@@ -104,13 +105,13 @@ class SyncStateError(Exception):
 # --------------------------------------------------------------------------- #
 
 
-class Bucket(str, Enum):
+class Bucket(StrEnum):
     SKIP = "SKIP"
     PORT = "PORT"
     EVALUATE = "EVALUATE"
 
 
-class Confidence(str, Enum):
+class Confidence(StrEnum):
     HIGH = "HIGH"
     MEDIUM = "MEDIUM"
     LOW = "LOW"
