@@ -450,3 +450,107 @@ def suggest_approach(bucket: Bucket, confidence: Confidence, wifey_paths: list[W
     ):
         return "cherry-pick-with-edits"
     return "re-implement"
+
+
+# --------------------------------------------------------------------------- #
+# Report formatter
+# --------------------------------------------------------------------------- #
+
+PARENT_PR_URL = "https://github.com/s10023/buibui-moon-trader-bot/pull/{n}"
+
+
+@dataclass
+class PRReport:
+    pr: PR
+    bucket: Bucket
+    confidence: Confidence
+    wifey_paths: list[WifeyPath]
+    memory_excerpt: str | None
+    approach: str
+
+
+def _section_of(r: PRReport) -> str:
+    """Final report section: SKIP stays SKIP; HIGH-confidence non-skip -> ALREADY-APPLIED."""
+    if r.bucket == Bucket.SKIP:
+        return "SKIP"
+    if r.confidence == Confidence.HIGH:
+        return "ALREADY-APPLIED"
+    return r.bucket.value
+
+
+def _pr_label(pr: PR) -> str:
+    return f"#{pr.number}" if pr.number is not None else "#none"
+
+
+def _path_line(wp: WifeyPath) -> str:
+    if wp.kind == "removed" or wp.kind == "skip":
+        return f"  - `{wp.parent_path}` → (removed in fork — SKIP)"
+    if wp.kind == "unmapped":
+        return f"  - `{wp.parent_path}` → (unmapped — investigate)"
+    return f"  - `{wp.parent_path}` → wifey: `{wp.wifey_path}` ({wp.kind})"
+
+
+def _detail_block(r: PRReport) -> str:
+    lines = [
+        f"## PR {_pr_label(r.pr)} — \"{r.pr.title}\"",
+        "",
+        f"- **Bucket**: {r.bucket.value}",
+        f"- **Confidence already-applied**: {r.confidence.value}",
+        "- **Files touched in parent**:",
+    ]
+    lines.extend(_path_line(wp) for wp in r.wifey_paths) if r.wifey_paths else lines.append("  - (none)")
+    lines.append(f"- **Suggested approach**: {r.approach}")
+    if r.memory_excerpt:
+        quoted = "\n".join(f"  > {ln}" for ln in r.memory_excerpt.splitlines())
+        lines.append("- **Parent MEMORY excerpt**:")
+        lines.append(quoted)
+    else:
+        lines.append("- **Parent MEMORY excerpt**: (none found)")
+    if r.pr.number is not None:
+        lines.append(f"- **Link**: {PARENT_PR_URL.format(n=r.pr.number)}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def format_report(reports: list[PRReport], from_hash: str, to_hash: str) -> str:
+    sections: dict[str, list[PRReport]] = {"SKIP": [], "PORT": [], "EVALUATE": [], "ALREADY-APPLIED": []}
+    for r in reports:
+        sections[_section_of(r)].append(r)
+
+    out: list[str] = [
+        f"# Parent sync report — {date.today().isoformat()}",
+        "",
+        f"**Range**: {from_hash}..{to_hash}",
+        f"**PRs found**: {len(reports)}",
+        f"**Pointer-bump command**: `poetry run python tools/sync_parent.py --bump-to {to_hash}`",
+        "",
+        "## Summary",
+        "",
+        "| Bucket | Count |",
+        "|---|---|",
+        f"| SKIP            | {len(sections['SKIP'])} |",
+        f"| PORT            | {len(sections['PORT'])} |",
+        f"| EVALUATE        | {len(sections['EVALUATE'])} |",
+        f"| ALREADY-APPLIED | {len(sections['ALREADY-APPLIED'])} |",
+        "",
+    ]
+
+    # Compact tables for SKIP + ALREADY-APPLIED.
+    out += ["## SKIP", "", "| PR | Title | Reason |", "|---|---|---|"]
+    for r in sections["SKIP"]:
+        out.append(f"| {_pr_label(r.pr)} | {r.pr.title} | all touched paths removed in fork |")
+    out.append("")
+
+    out += ["## PORT", ""]
+    out += [_detail_block(r) for r in sections["PORT"]] or ["(none)", ""]
+
+    out += ["## EVALUATE", ""]
+    out += [_detail_block(r) for r in sections["EVALUATE"]] or ["(none)", ""]
+
+    out += ["## ALREADY-APPLIED", "", "| PR | Title | Confidence | Verify against |", "|---|---|---|---|"]
+    for r in sections["ALREADY-APPLIED"]:
+        targets = ", ".join(wp.wifey_path or "?" for wp in r.wifey_paths if wp.wifey_path)
+        out.append(f"| {_pr_label(r.pr)} | {r.pr.title} | {r.confidence.value} | {targets} |")
+    out.append("")
+
+    return "\n".join(out)

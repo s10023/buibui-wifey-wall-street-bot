@@ -327,3 +327,47 @@ class TestSuggestApproach:
     def test_no_paths_is_reimplement(self) -> None:
         out = sp.suggest_approach(sp.Bucket.EVALUATE, sp.Confidence.LOW, [])
         assert out == "re-implement"
+
+
+class TestReportFormat:
+    """format_report emits the header, summary table, and four sections."""
+
+    def _report(self, bucket: Any, confidence: Any, number: int) -> Any:
+        pr = sp.PR(number=number, title=f"feat: thing (#{number})", commits=[], files=["analytics/regime.py"])
+        return sp.PRReport(
+            pr=pr,
+            bucket=bucket,
+            confidence=confidence,
+            wifey_paths=[sp.WifeyPath("analytics/regime.py", "analytics/regime.py", "direct")],  # type: ignore[arg-type]
+            memory_excerpt="Some why.",
+            approach="cherry-pick-with-edits",
+        )
+
+    def test_header_and_range(self) -> None:
+        out = sp.format_report([self._report(sp.Bucket.PORT, sp.Confidence.LOW, 1)], "635ed5a", "abcdef0")
+        assert "# Parent sync report" in out
+        assert "635ed5a..abcdef0" in out
+        assert "--bump-to abcdef0" in out
+
+    def test_summary_counts(self) -> None:
+        reports = [
+            self._report(sp.Bucket.SKIP, sp.Confidence.LOW, 1),
+            self._report(sp.Bucket.PORT, sp.Confidence.LOW, 2),
+            self._report(sp.Bucket.EVALUATE, sp.Confidence.LOW, 3),
+            self._report(sp.Bucket.PORT, sp.Confidence.HIGH, 4),  # routed to ALREADY-APPLIED
+        ]
+        out = sp.format_report(reports, "a", "b")
+        assert "| SKIP" in out and "| 1 |" in out
+        assert "## ALREADY-APPLIED" in out
+
+    def test_high_confidence_port_routes_to_already_applied(self) -> None:
+        out = sp.format_report([self._report(sp.Bucket.PORT, sp.Confidence.HIGH, 7)], "a", "b")
+        already = out.split("## ALREADY-APPLIED", 1)[1]
+        assert "#7" in already
+
+    def test_port_detail_block_has_memory_and_approach(self) -> None:
+        out = sp.format_report([self._report(sp.Bucket.PORT, sp.Confidence.LOW, 9)], "a", "b")
+        assert "Suggested approach" in out
+        assert "cherry-pick-with-edits" in out
+        assert "Some why." in out
+        assert "https://github.com/s10023/buibui-moon-trader-bot/pull/9" in out
