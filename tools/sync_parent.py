@@ -187,3 +187,95 @@ def write_sync_state(new_hash: str, state_path: Path = STATE_FILE_PATH, note: st
     tmp = state_path.with_suffix(state_path.suffix + ".tmp")
     tmp.write_text(body)
     os.replace(tmp, state_path)
+
+
+# --------------------------------------------------------------------------- #
+# Git helpers + commit fetch
+# --------------------------------------------------------------------------- #
+
+_LOG_FORMAT = "%H\x1f%s\x1f%b"
+_RECORD_SEP = "\x1e"
+_FIELD_SEP = "\x1f"
+_PR_SQUASH_RE = re.compile(r"\(#(\d+)\)\s*$")
+_PR_MERGE_RE = re.compile(r"^Merge pull request #(\d+)\b")
+
+
+def _git(repo: Path, *args: str) -> str:
+    """Run a git command in ``repo`` and return stripped stdout. Raises on failure."""
+    result = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout
+
+
+def fetch_parent_commits(from_hash: str, no_fetch: bool = False) -> list[Commit]:
+    """Return commits in ``from_hash..origin/main`` (oldest first), each with files.
+
+    The parent squash-merges every PR, so this does NOT use ``--merges`` — it walks
+    every commit and lets :func:`group_into_prs` key off the ``(#N)`` subject suffix.
+    """
+    # Validate the start hash is reachable (fail-fast handled by caller catching CalledProcessError).
+    _git(PARENT_REPO_PATH, "cat-file", "-e", f"{from_hash}^{{commit}}")
+    if not no_fetch:
+        _git(PARENT_REPO_PATH, "fetch", "origin", "main")
+
+    raw = _git(
+        PARENT_REPO_PATH,
+        "log",
+        "--reverse",
+        f"--format={_LOG_FORMAT}{_RECORD_SEP}",
+        f"{from_hash}..origin/main",
+    )
+    commits: list[Commit] = []
+    for record in raw.split(_RECORD_SEP):
+        record = record.strip("\n")
+        if not record:
+            continue
+        sha, subject, body = (record.split(_FIELD_SEP) + ["", ""])[:3]
+        files = _git(PARENT_REPO_PATH, "show", "--name-only", "--format=", sha)
+        commits.append(
+            Commit(
+                sha=sha,
+                subject=subject,
+                body=body,
+                files=[f for f in files.splitlines() if f.strip()],
+            )
+        )
+    return commits
+
+
+def _pr_number(subject: str) -> int | None:
+    """Extract a PR number from a squash ``(#N)`` suffix or legacy merge subject."""
+    merge = _PR_MERGE_RE.match(subject)
+    if merge:
+        return int(merge.group(1))
+    squash = _PR_SQUASH_RE.search(subject)
+    if squash:
+        return int(squash.group(1))
+    return None
+
+
+def group_into_prs(commits: list[Commit]) -> list[PR]:
+    """Group commits into PRs by ``(#N)``; commits with no PR number become ``#none``."""
+    by_number: dict[int, PR] = {}
+    ordered: list[PR] = []
+    for commit in commits:
+        number = _pr_number(commit.subject)
+        if number is None:
+            ordered.append(
+                PR(number=None, title=commit.subject, commits=[commit], files=list(commit.files))
+            )
+            continue
+        if number not in by_number:
+            pr = PR(number=number, title=commit.subject, commits=[], files=[])
+            by_number[number] = pr
+            ordered.append(pr)
+        pr = by_number[number]
+        pr.commits.append(commit)
+        for f in commit.files:
+            if f not in pr.files:
+                pr.files.append(f)
+    return ordered

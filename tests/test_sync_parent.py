@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -75,3 +76,73 @@ class TestStateFile:
         f = tmp_path / "state.md"
         sp.write_sync_state("deadbee", f, "note")
         assert list(tmp_path.glob("*.tmp")) == []
+
+
+def _load_commits_from_fixture() -> list[sp.Commit]:
+    """Reconstruct Commit objects from the pipe-delimited fixture."""
+    text = (
+        Path(__file__).parent / "fixtures" / "sync_parent" / "sample_git_log.txt"
+    ).read_text()
+    commits: list[sp.Commit] = []
+    for line in text.strip().splitlines():
+        sha, subject, body = line.split("|", 2)
+        commits.append(sp.Commit(sha=sha, subject=subject, body=body, files=[]))
+    return commits
+
+
+class TestPRGrouping:
+    """group_into_prs handles squash, legacy merge, and direct-to-main shapes."""
+
+    def test_squash_suffix_extracts_pr_number(self) -> None:
+        commits = _load_commits_from_fixture()
+        prs = sp.group_into_prs(commits)
+        numbers = {pr.number for pr in prs}
+        assert 403 in numbers
+        assert 402 in numbers
+
+    def test_direct_to_main_becomes_none(self) -> None:
+        commits = _load_commits_from_fixture()
+        prs = sp.group_into_prs(commits)
+        direct = [pr for pr in prs if pr.number is None]
+        assert len(direct) == 1
+        assert "ruff" in direct[0].title
+
+    def test_legacy_merge_format_parsed(self) -> None:
+        commits = [
+            sp.Commit("aaa", "Merge pull request #99 from foo/bar", "body", []),
+        ]
+        prs = sp.group_into_prs(commits)
+        assert prs[0].number == 99
+
+    def test_files_union_deduplicated(self) -> None:
+        commits = [
+            sp.Commit("a", "feat: x (#5)", "", ["a.py", "b.py"]),
+            sp.Commit("b", "feat: y (#5)", "", ["b.py", "c.py"]),
+        ]
+        prs = sp.group_into_prs(commits)
+        pr5 = next(pr for pr in prs if pr.number == 5)
+        assert sorted(pr5.files) == ["a.py", "b.py", "c.py"]
+
+    def test_fetch_validates_hash_then_logs(self, mocker: Any) -> None:
+        run = mocker.patch("tools.sync_parent._git")
+        # cat-file -e (validation) -> ""; fetch -> ""; log -> one record; show -> file
+        run.side_effect = [
+            "",  # cat-file -e <from>
+            "",  # fetch
+            "abc1234\x1ffeat: x (#5)\x1fbody\x1e",  # log
+            "analytics/regime.py\n",  # show --name-only
+        ]
+        commits = sp.fetch_parent_commits("635ed5a", no_fetch=False)
+        assert commits[0].sha == "abc1234"
+        assert commits[0].files == ["analytics/regime.py"]
+
+    def test_fetch_skips_fetch_when_no_fetch(self, mocker: Any) -> None:
+        run = mocker.patch("tools.sync_parent._git")
+        run.side_effect = [
+            "",  # cat-file -e
+            "abc1234\x1ffeat: x (#5)\x1fbody\x1e",  # log (no fetch call)
+            "analytics/regime.py\n",  # show
+        ]
+        sp.fetch_parent_commits("635ed5a", no_fetch=True)
+        # 3 calls, none of them a fetch
+        assert all("fetch" not in call.args for call in run.call_args_list)
