@@ -43,10 +43,17 @@ Direct: `PYTHONPATH=. poetry run python tools/sync_parent.py [flags]`.
 
 ## Output
 
-- `/tmp/parent-sync-<date>.md` — summary table + four sections (SKIP / PORT /
-  EVALUATE / ALREADY-APPLIED). PORT and EVALUATE entries are full detail blocks
-  with parent paths → wifey targets, the parent MEMORY excerpt, and a suggested
-  approach (`verify-only` / `cherry-pick-with-edits` / `re-implement`).
+- `/tmp/parent-sync-<date>.md` — bucket summary table, a **Workstreams** table,
+  then four sections (SKIP / PORT / EVALUATE / ALREADY-APPLIED). PORT and EVALUATE
+  entries are full detail blocks with parent paths → wifey targets, the parent
+  MEMORY excerpt, and a suggested approach (`verify-only` /
+  `cherry-pick-with-edits` / `re-implement`).
+- The **Workstreams** table clusters the range's PRs into multi-PR campaigns
+  (e.g. a `live-parity (backtest engine port)` row spanning 6 PRs) so a large
+  range reads as a handful of themes rather than a flat PR list. Clustering is
+  driven by `WORKSTREAM_RULES` in `tools/sync_parent.py` — ordered (regex, label)
+  rules with a conventional-commit `type(scope)` fallback. Add a rule when the
+  parent starts a new multi-PR campaign whose subjects don't already cluster.
 - A pointer-bump hint on stdout.
 
 ## Workflow
@@ -54,7 +61,8 @@ Direct: `PYTHONPATH=. poetry run python tools/sync_parent.py [flags]`.
 1. Run `make wifey-sync-parent`. If it reports a fail-fast error (parent missing,
    not on `main`, malformed state), **surface it to the user and stop** — do not
    auto-clone, auto-checkout, or auto-bump.
-2. Read `/tmp/parent-sync-<date>.md`. Summarise the bucket counts for the user.
+2. Read `/tmp/parent-sync-<date>.md`. Summarise the **Workstreams** table (the
+   major multi-PR campaigns) and the bucket counts for the user.
 3. For each **PORT** / **EVALUATE** candidate the user wants: open a fresh Claude
    session, paste the PR number + the parent MEMORY excerpt from the report, and
    do the actual port work there (this skill does not edit code).

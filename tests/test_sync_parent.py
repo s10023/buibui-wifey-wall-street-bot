@@ -503,3 +503,148 @@ class TestSmokeRun:
         mocker.patch("tools.sync_parent._hash_exists_in_parent", return_value=False)
         code = sp.main(["--bump-to", "nope123"])
         assert code == 1
+
+
+def _ws_report(title: str, number: int | None) -> Any:
+    """Minimal PRReport for workstream-grouping tests (bucket/paths irrelevant)."""
+    pr = sp.PR(number=number, title=title, commits=[], files=[])
+    return sp.PRReport(
+        pr=pr,
+        bucket=sp.Bucket.EVALUATE,
+        confidence=sp.Confidence.LOW,
+        wifey_paths=[],
+        memory_excerpt=None,
+        approach="re-implement",
+    )
+
+
+class TestWorkstreamSummary:
+    """derive_workstream clusters subjects; format_workstream_summary tabulates."""
+
+    def test_campaign_tag_live_parity(self) -> None:
+        assert (
+            sp.derive_workstream(
+                "feat(backtest): T6 live-parity foundation — LiveParityConfig (#387)"
+            )
+            == "live-parity (backtest engine port)"
+        )
+        # The "T6 PR-N" siblings tag inconsistently but share "into run_backtest".
+        assert (
+            sp.derive_workstream(
+                "feat(backtest): T6 PR-2 — port live regime gate into run_backtest (#388)"
+            )
+            == "live-parity (backtest engine port)"
+        )
+        # #394 / #395 lack "run_backtest" but match conflict-resolver / cooldown.
+        assert (
+            sp.derive_workstream(
+                "feat(backtest): T6 PR-4b — port conflict resolver via runner pooling (#394)"
+            )
+            == "live-parity (backtest engine port)"
+        )
+
+    def test_campaign_tag_bucket_c(self) -> None:
+        assert (
+            sp.derive_workstream(
+                "feat(config): Bucket C TOML — encode 7 strategies (#385)"
+            )
+            == "Bucket C (schema + config)"
+        )
+        # Bucket C spans feat(backtest) too — tag wins over scope.
+        assert (
+            sp.derive_workstream(
+                "feat(backtest): Bucket C — per-direction adr_exempt on backtest_config (#400)"
+            )
+            == "Bucket C (schema + config)"
+        )
+
+    def test_campaign_tag_gate_audit(self) -> None:
+        assert (
+            sp.derive_workstream("fix(tools): gate_audit prod-data bugs (#374)")
+            == "gate_audit (tooling)"
+        )
+
+    def test_campaign_tag_phase_a(self) -> None:
+        assert (
+            sp.derive_workstream(
+                "feat(config): T6 Phase A day-filter audit decisions (#377)"
+            )
+            == "Phase A (config decisions)"
+        )
+
+    def test_gate_audit_wins_over_phase_a_when_both_present(self) -> None:
+        # #373 mentions both gate_audit.py and "T6 Phase A plan docs"; tool routes to gate_audit.
+        assert (
+            sp.derive_workstream(
+                "feat(tools): add gate_audit.py + T6 Phase A plan docs (#373)"
+            )
+            == "gate_audit (tooling)"
+        )
+
+    def test_dependency_bumps_merge_deps_and_deps_dev(self) -> None:
+        assert (
+            sp.derive_workstream("build(deps): bump devalue (#369)")
+            == "dependency bumps"
+        )
+        assert (
+            sp.derive_workstream("build(deps-dev): bump svelte (#370)")
+            == "dependency bumps"
+        )
+
+    def test_fallback_to_conventional_type_scope(self) -> None:
+        assert (
+            sp.derive_workstream("feat(store): persist volume flags (#371)")
+            == "feat(store)"
+        )
+        assert sp.derive_workstream("chore: refresh regression goldens") == "chore"
+
+    def test_fallback_other_when_no_prefix(self) -> None:
+        assert sp.derive_workstream("random subject with no prefix") == "other"
+
+    def test_format_groups_and_counts_in_first_appearance_order(self) -> None:
+        reports = [
+            _ws_report("feat(backtest): T6 live-parity foundation (#387)", 387),
+            _ws_report("build(deps): bump x (#369)", 369),
+            _ws_report(
+                "feat(backtest): T6 PR-2 — port regime into run_backtest (#388)", 388
+            ),
+        ]
+        text = "\n".join(sp.format_workstream_summary(reports))
+        assert "## Workstreams" in text
+        assert "| Workstream | PRs | Count |" in text
+        assert "live-parity (backtest engine port) | #387 #388 | 2" in text
+        assert "dependency bumps | #369 | 1" in text
+        assert text.index("live-parity") < text.index("dependency bumps")
+
+    def test_none_pr_renders_as_hash_none(self) -> None:
+        text = "\n".join(
+            sp.format_workstream_summary([_ws_report("chore: goldens", None)])
+        )
+        assert "#none | 1" in text
+
+    def test_report_includes_workstreams_between_summary_and_skip(self) -> None:
+        pr = sp.PR(
+            number=387,
+            title="feat(backtest): T6 live-parity foundation (#387)",
+            commits=[],
+            files=["analytics/backtest/engine.py"],
+        )
+        report = sp.PRReport(
+            pr=pr,
+            bucket=sp.Bucket.EVALUATE,
+            confidence=sp.Confidence.LOW,
+            wifey_paths=[
+                sp.WifeyPath(
+                    "analytics/backtest/engine.py",
+                    "analytics/backtest/engine.py",
+                    "direct",
+                )
+            ],
+            memory_excerpt=None,
+            approach="re-implement",
+        )
+        out = sp.format_report([report], "a", "b")
+        assert "## Workstreams" in out
+        assert (
+            out.index("## Summary") < out.index("## Workstreams") < out.index("## SKIP")
+        )
