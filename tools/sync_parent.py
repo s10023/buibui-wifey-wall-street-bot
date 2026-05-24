@@ -86,6 +86,23 @@ SKIP_GLOBS = [
 # Substrings that, if present in a touched path, mark removed crypto surface.
 SKIP_SUBSTRINGS = ["taker_buy_volume", "binance", "live_price", "live_position"]
 
+# Ordered (regex, label) rules that cluster PRs into multi-PR "workstreams" for
+# the report's Workstreams summary. Checked in order, first match wins (so put
+# the more specific campaign before the broader one — e.g. gate_audit before
+# Phase A, since #373 mentions both). Anything unmatched falls back to the
+# conventional-commit type(scope). Hand-tuned like SKIP_GLOBS: when the parent
+# kicks off a new multi-PR campaign, add a rule so its PRs cluster in the report.
+WORKSTREAM_RULES: list[tuple[str, str]] = [
+    (
+        r"live[ -]?parity|into run_backtest|conflict resolver|live cooldown|_CooldownState",
+        "live-parity (backtest engine port)",
+    ),
+    (r"\bBucket C\b", "Bucket C (schema + config)"),
+    (r"\bgate_audit\b", "gate_audit (tooling)"),
+    (r"Phase A", "Phase A (config decisions)"),
+    (r"^build\(deps", "dependency bumps"),
+]
+
 REPORT_DIR = Path("/tmp")
 
 PathKind = Literal["direct", "renamed", "removed", "skip", "unmapped"]
@@ -498,6 +515,43 @@ def _pr_label(pr: PR) -> str:
     return f"#{pr.number}" if pr.number is not None else "#none"
 
 
+_CONVENTIONAL_RE = re.compile(r"^(\w+)(?:\(([^)]+)\))?:")
+
+
+def derive_workstream(subject: str) -> str:
+    """Cluster a PR subject into a workstream theme.
+
+    Checks :data:`WORKSTREAM_RULES` in order (first match wins, case-insensitive);
+    otherwise falls back to the conventional-commit ``type(scope)`` prefix, or
+    ``"other"`` when the subject has no recognisable prefix.
+    """
+    for pattern, label in WORKSTREAM_RULES:
+        if re.search(pattern, subject, re.IGNORECASE):
+            return label
+    m = _CONVENTIONAL_RE.match(subject)
+    if m:
+        ctype, scope = m.group(1), m.group(2)
+        return f"{ctype}({scope})" if scope else ctype
+    return "other"
+
+
+def format_workstream_summary(reports: list[PRReport]) -> list[str]:
+    """Markdown lines for the Workstreams table: theme → PRs → count.
+
+    Groups by :func:`derive_workstream` of each PR title, preserving the order in
+    which each theme first appears (dict insertion order).
+    """
+    groups: dict[str, list[PR]] = {}
+    for r in reports:
+        groups.setdefault(derive_workstream(r.pr.title), []).append(r.pr)
+    lines = ["## Workstreams", "", "| Workstream | PRs | Count |", "|---|---|---|"]
+    for theme, prs in groups.items():
+        pr_list = " ".join(_pr_label(p) for p in prs)
+        lines.append(f"| {theme} | {pr_list} | {len(prs)} |")
+    lines.append("")
+    return lines
+
+
 def _path_line(wp: WifeyPath) -> str:
     if wp.kind == "removed" or wp.kind == "skip":
         return f"  - `{wp.parent_path}` → (removed in fork — SKIP)"
@@ -557,6 +611,9 @@ def format_report(reports: list[PRReport], from_hash: str, to_hash: str) -> str:
         f"| ALREADY-APPLIED | {len(sections['ALREADY-APPLIED'])} |",
         "",
     ]
+
+    # Workstream clustering (multi-PR campaigns) above the four buckets.
+    out += format_workstream_summary(reports)
 
     # Compact tables for SKIP + ALREADY-APPLIED.
     out += ["## SKIP", "", "| PR | Title | Reason |", "|---|---|---|"]
