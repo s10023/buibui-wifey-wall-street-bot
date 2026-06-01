@@ -18,7 +18,7 @@ def _apply_conflict_resolver(
     symbol: str,
     tf: str,
     *,
-    confidence_resolver: Callable[[SignalEvent], int] | None = None,
+    confidence_resolver: Callable[[SignalEvent], float] | None = None,
 ) -> list[SignalEvent]:
     """Resolve opposing long-vs-short events on the same (symbol, tf) cycle.
 
@@ -33,9 +33,11 @@ def _apply_conflict_resolver(
       - Single direction → returned unchanged.
 
     ``confidence_resolver`` lets callers swap in an alternative score reader
-    (e.g. the backtest path injects a confidence_ratings-derived rating since
+    (e.g. the backtest path injects a confidence_ratings-derived avg_r since
     live editorial confidence is not set during replay). Defaults to the
-    event's own ``confidence`` field.
+    event's own ``confidence`` field (int). Return type widened to float so
+    backtest-replay can use the continuous avg_r from the confidence_ratings
+    table; int callers (the live path) remain compatible.
     """
     if not events:
         return events
@@ -44,17 +46,17 @@ def _apply_conflict_resolver(
     if not (long_events and short_events):
         return long_events or short_events
 
-    resolver = (
+    resolver: Callable[[SignalEvent], float] = (
         confidence_resolver
         if confidence_resolver is not None
-        else (lambda e: e.confidence)
+        else (lambda e: float(e.confidence))
     )
     long_conf = max(resolver(e) for e in long_events)
     short_conf = max(resolver(e) for e in short_events)
     if long_conf > short_conf:
         winners = long_events
         logger.info(
-            "Conflict: %s %s — LONG wins (conf %d > %d), SHORT dropped (%s)",
+            "Conflict: %s %s — LONG wins (conf %g > %g), SHORT dropped (%s)",
             symbol,
             tf,
             long_conf,
@@ -64,7 +66,7 @@ def _apply_conflict_resolver(
     elif short_conf > long_conf:
         winners = short_events
         logger.info(
-            "Conflict: %s %s — SHORT wins (conf %d > %d), LONG dropped (%s)",
+            "Conflict: %s %s — SHORT wins (conf %g > %g), LONG dropped (%s)",
             symbol,
             tf,
             short_conf,
@@ -74,7 +76,7 @@ def _apply_conflict_resolver(
     else:
         winners = long_events + short_events
         logger.info(
-            "Conflict tie: %s %s conf %d — sending both LONG (%s) and SHORT (%s)",
+            "Conflict tie: %s %s conf %g — sending both LONG (%s) and SHORT (%s)",
             symbol,
             tf,
             long_conf,

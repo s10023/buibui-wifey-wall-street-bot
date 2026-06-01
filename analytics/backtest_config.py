@@ -197,6 +197,11 @@ class BacktestSweepConfig:
     # dataclasses have different fields by design — the backtest one carries
     # SL/TP overrides used by the engine; this one carries the live gate flags.
     live_strategy_params: "dict[str, LiveStrategyOverride] | None" = None
+    # TOML stem the config was loaded from (e.g. 'signal_watch' for
+    # `signal_watch.toml`). Used by the T6 PR-4b conflict_resolver gate to key
+    # into the `confidence_ratings` table for the per-config avg_r tiebreaker.
+    # None when the config is built programmatically without a TOML.
+    config_name: str | None = None
 
     def effective_min_trades(self, tf: str) -> int:
         return self.min_trades_per_tf.get(tf, self.min_trades)
@@ -537,5 +542,6 @@ def load_backtest_config(path: str | Path) -> BacktestSweepConfig:
         ),
         live_parity=live_parity_cfg,
         bias=bias_cfg,
+        config_name=Path(path).stem,
         live_strategy_params=live_strategy_params,
     )
