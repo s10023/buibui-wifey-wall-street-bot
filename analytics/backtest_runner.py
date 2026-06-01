@@ -1,5 +1,7 @@
 """Backtest runner — thin wrapper: opens DB, loads data, calls strategy + backtest libs."""
 
+from __future__ import annotations
+
 import datetime
 import itertools
 import logging
@@ -8,11 +10,15 @@ import sys
 import uuid
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import duckdb
 import pandas as pd
 
 from analytics.backtest_config import BacktestSweepConfig
+
+if TYPE_CHECKING:
+    from analytics.backtest.live_parity_config import LiveParityConfig
 from analytics.backtest_lib import (
     BacktestResult,
     ComboBacktestResult,
@@ -208,6 +214,7 @@ def _collect_sweep_results(
             volume_suppress_short=cfg.effective_volume_suppress_short(strategy),
             volume_spike_boost_long=cfg.effective_volume_spike_boost_long(strategy),
             volume_spike_boost_short=cfg.effective_volume_spike_boost_short(strategy),
+            live_parity=cfg.live_parity,
         )
         results.append(bt)
 
@@ -326,6 +333,7 @@ def run_backtest_sweep(
                         volume_spike_boost_short=cfg.effective_volume_spike_boost_short(
                             strat
                         ),
+                        live_parity=cfg.live_parity,
                     )
                     tp_results.append(bt)
                 results_by_tp[tp_r] = tp_results
@@ -369,6 +377,7 @@ def run_backtest_sweep(
                         volume_spike_boost_short=cfg.effective_volume_spike_boost_short(
                             strat
                         ),
+                        live_parity=cfg.live_parity,
                     )
                     atr_results.append(bt)
                 results_by_atr[atr_mult] = atr_results
@@ -417,6 +426,7 @@ def run_backtest_cmd(
     db_path: Path = DEFAULT_DB_PATH,
     save_results: bool = False,
     since_ms: int | None = None,
+    live_parity: LiveParityConfig | None = None,
 ) -> None:
     """Open DB, load OHLCV, detect signals, run backtest, print results."""
     if strategy not in KNOWN_STRATEGIES:
@@ -466,6 +476,7 @@ def run_backtest_cmd(
             min_sl_pct=min_sl_pct,
             atr_sl_multiplier=atr_sl_multiplier,
             atr_sl_floor=atr_sl_floor,
+            live_parity=live_parity,
         )
         print(format_result(bt_result))
 

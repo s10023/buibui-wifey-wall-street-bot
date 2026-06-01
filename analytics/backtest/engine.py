@@ -6,20 +6,38 @@ a BacktestResult with statistics.
 No database access, no network calls. No module-level side effects.
 """
 
+from __future__ import annotations
+
 import functools
+import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 
 from analytics.backtest.gates import _is_low_volume, _is_volume_spike
+from analytics.backtest.live_parity_config import LiveParityConfig
+
+if TYPE_CHECKING:
+    from analytics.signal.types import SignalEvent
+
+logger = logging.getLogger(__name__)
+
+_LIVE_PARITY_GATE_ORDER = (
+    "regime",
+    "direction_filter",
+    "f8_htf_ema",
+    "adr_bias",
+    "conflict_resolver",
+    "cooldown",
+)
 
 
 def _compute_atr14(
-    highs: "np.ndarray[Any, np.dtype[np.float64]]",
-    lows: "np.ndarray[Any, np.dtype[np.float64]]",
-    closes: "np.ndarray[Any, np.dtype[np.float64]]",
+    highs: np.ndarray[Any, np.dtype[np.float64]],
+    lows: np.ndarray[Any, np.dtype[np.float64]],
+    closes: np.ndarray[Any, np.dtype[np.float64]],
     idx: int,
 ) -> float | None:
     """Return ATR14 at candle idx (mean true range over up to 14 candles ending at idx).
@@ -345,6 +363,63 @@ class BacktestResult:
         return self.total_r / dd if dd > 0 else 0.0
 
 
+def _df_to_events(
+    signals: pd.DataFrame,
+    symbol: str,
+    timeframe: str,
+    strategy: str,
+) -> list[SignalEvent]:
+    """Adapt a backtest signals frame into the live `SignalEvent` shape.
+
+    Lets PR-2+ feed backtest signals straight through `analytics/signal/gates.py`
+    (which operates on `list[SignalEvent]`). Columns absent in the backtest
+    frame fall back to SignalEvent defaults.
+    """
+    if signals.empty:
+        return []
+
+    from analytics.signal.types import SignalEvent
+
+    events: list[SignalEvent] = []
+    for record in signals.to_dict("records"):
+        events.append(
+            SignalEvent(
+                symbol=symbol,
+                timeframe=timeframe,
+                strategy=strategy,
+                direction=str(record["direction"]),
+                reason=str(record.get("reason", "")),
+                open_time=int(record["open_time"]),
+                price=float(record.get("price", 0.0)),
+                sl_price=float(record.get("sl_price", 0.0) or 0.0),
+                context=str(record.get("context", "") or ""),
+                low_volume=bool(record.get("low_volume", False)),
+                volume_spike=bool(record.get("volume_spike", False)),
+                tp_price=float(record.get("tp_price", 0.0) or 0.0),
+            )
+        )
+    return events
+
+
+def _events_to_df(
+    events: list[SignalEvent],
+    original_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Project a (possibly filtered) event list back onto `original_df`.
+
+    Preserves the original frame's columns + dtypes — gates only ever *drop*
+    events, so we filter `original_df` to the surviving `open_time` set and
+    keep insertion order. Empty events => empty frame with the same columns.
+    """
+    if not events:
+        return original_df.iloc[0:0].copy()
+
+    kept = [int(ev.open_time) for ev in events]
+    kept_set = set(kept)
+    mask = original_df["open_time"].astype("int64").isin(kept_set)
+    return original_df.loc[mask].reset_index(drop=True)
+
+
 def run_backtest(
     ohlcv: pd.DataFrame,
     signals: pd.DataFrame,
@@ -365,6 +440,8 @@ def run_backtest(
     volume_spike_boost_short: bool | None = None,
     tp_r_long: float | None = None,
     tp_r_short: float | None = None,
+    *,
+    live_parity: LiveParityConfig | None = None,
 ) -> BacktestResult:
     """Simulate trades from signals on historical OHLCV.
 
@@ -385,7 +462,22 @@ def run_backtest(
 
     A trade closes when a candle's high or low touches the SL or TP level.
     Trades still open at end of data are marked as outcome="open".
+
+    live_parity (T6 PR-1 plumbing) toggles parity-with-live gates. PR-1 logs
+    the resolved mask but does not yet port any gate; defaults preserve
+    current behaviour.
     """
+    if live_parity is not None and any(
+        live_parity.is_on(gate) for gate in _LIVE_PARITY_GATE_ORDER
+    ):
+        logger.info(
+            "live_parity: %s",
+            " ".join(
+                f"{gate}={'on' if live_parity.is_on(gate) else 'off'}"
+                for gate in _LIVE_PARITY_GATE_ORDER
+            ),
+        )
+
     result = BacktestResult(
         symbol=symbol, timeframe=timeframe, strategy=strategy, fee_pct=fee_pct
     )

@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from analytics.backtest.live_parity_config import LiveParityConfig
+
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """Recursively merge override into base.
@@ -175,6 +177,9 @@ class BacktestSweepConfig:
     # Exempt spike candles (volume > 3× rolling mean) from volume_suppress.
     # Default off — enable per-strategy after confirming spike edge via volume split table.
     volume_spike_boost: bool = False
+    # T6 backtest-live parity toggles. Defaults to a no-op config so existing
+    # callers see no behavioural change. Loaded from `[backtest.live_parity]`.
+    live_parity: LiveParityConfig = field(default_factory=LiveParityConfig)
 
     def effective_min_trades(self, tf: str) -> int:
         return self.min_trades_per_tf.get(tf, self.min_trades)
@@ -441,6 +446,32 @@ def load_backtest_config(path: str | Path) -> BacktestSweepConfig:
     # volume_suppress: [backtest] sub-table takes precedence over top-level
     _raw_vs = _bt_section.get("volume_suppress", data.get("volume_suppress", False))
 
+    _lp_raw = _bt_section.get("live_parity", {})
+    if not isinstance(_lp_raw, dict):
+        raise ValueError(
+            "backtest.live_parity must be a TOML table (e.g. [backtest.live_parity])"
+        )
+    _lp_cooldown_raw = _lp_raw.get("cooldown_bars", None)
+    _lp_cooldown: dict[str, int] | None
+    if _lp_cooldown_raw is None:
+        _lp_cooldown = None
+    elif isinstance(_lp_cooldown_raw, dict):
+        _lp_cooldown = {str(k): int(v) for k, v in _lp_cooldown_raw.items()}
+    else:
+        raise ValueError(
+            "backtest.live_parity.cooldown_bars must be a TOML table of TF=int entries"
+        )
+    live_parity_cfg = LiveParityConfig(
+        enabled=bool(_lp_raw.get("enabled", False)),
+        regime=bool(_lp_raw.get("regime", False)),
+        direction_filter=bool(_lp_raw.get("direction_filter", False)),
+        f8_htf_ema=bool(_lp_raw.get("f8_htf_ema", False)),
+        adr_bias=bool(_lp_raw.get("adr_bias", False)),
+        conflict_resolver=bool(_lp_raw.get("conflict_resolver", False)),
+        cooldown=bool(_lp_raw.get("cooldown", False)),
+        cooldown_bars_per_tf=_lp_cooldown,
+    )
+
     return BacktestSweepConfig(
         symbols=data.get("symbols"),
         timeframes=data.get("timeframes", ["4h"]),
@@ -478,4 +509,5 @@ def load_backtest_config(path: str | Path) -> BacktestSweepConfig:
         volume_spike_boost=bool(
             _bt_section.get("volume_spike_boost", data.get("volume_spike_boost", False))
         ),
+        live_parity=live_parity_cfg,
     )
