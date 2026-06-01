@@ -3,11 +3,53 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
+from typing import Any
 
 from analytics import backtest_runner
+from analytics.backtest.live_parity_config import LiveParityConfig
 from analytics.backtest_config import BacktestSweepConfig, load_backtest_config
 from analytics.strategies import KNOWN_STRATEGIES
 from cli._common import parse_since_to_ms
+
+_LIVE_PARITY_GATES: tuple[str, ...] = (
+    "regime",
+    "direction_filter",
+    "f8_htf_ema",
+    "adr_bias",
+    "conflict_resolver",
+    "cooldown",
+)
+
+
+def _resolve_live_parity(
+    args: argparse.Namespace, base: LiveParityConfig
+) -> LiveParityConfig:
+    """Layer CLI overrides on top of a TOML-loaded `LiveParityConfig`.
+
+    `--live-parity` expands at resolve time into per-gate True values so an
+    explicit `--without-<gate>` can disable a single gate while the master
+    switch stays on. Per-gate `--with-<gate>` forces True; `--without-<gate>`
+    forces False. Unspecified CLI flags inherit the base value.
+    """
+    master = bool(getattr(args, "live_parity_enabled", False))
+    has_gate_override = any(
+        getattr(args, f"live_parity_{gate}", None) is not None
+        for gate in _LIVE_PARITY_GATES
+    )
+    if not master and not has_gate_override:
+        return base
+
+    overrides: dict[str, Any] = {}
+    if master:
+        overrides["enabled"] = True
+        for gate in _LIVE_PARITY_GATES:
+            overrides[gate] = True
+    for gate in _LIVE_PARITY_GATES:
+        val = getattr(args, f"live_parity_{gate}", None)
+        if val is not None:
+            overrides[gate] = bool(val)
+    return replace(base, **overrides)
 
 
 def run_backtest(args: argparse.Namespace) -> None:
@@ -92,6 +134,7 @@ def run_backtest(args: argparse.Namespace) -> None:
             cfg.atr_sl_multiplier_values = args.atr_sl_multiplier_values
         if getattr(args, "atr_sl_floor", False):
             cfg.atr_sl_floor = True
+        cfg.live_parity = _resolve_live_parity(args, cfg.live_parity)
         backtest_runner.run_backtest_sweep(cfg)
         return
 
@@ -115,6 +158,7 @@ def run_backtest(args: argparse.Namespace) -> None:
         atr_sl_floor=getattr(args, "atr_sl_floor", False),
         save_results=args.save,
         since_ms=parse_since_to_ms(args.since) if args.since else None,
+        live_parity=_resolve_live_parity(args, LiveParityConfig()),
     )
 
 
@@ -297,4 +341,30 @@ def add_backtest_subparser(
             "(default: 4.0). Run the sweep across multiple values to find the optimum."
         ),
     )
+    # T6 live-parity toggles (PR-1 plumbing; gate logic ships in PRs 2-5).
+    backtest_parser.add_argument(
+        "--live-parity",
+        action="store_true",
+        default=False,
+        dest="live_parity_enabled",
+        help="Master switch: enable every live-only gate (cancel individual ones with --without-<gate>)",
+    )
+    for _gate in _LIVE_PARITY_GATES:
+        _dest = f"live_parity_{_gate}"
+        _flag = _gate.replace("_", "-")
+        backtest_parser.add_argument(
+            f"--with-{_flag}",
+            action="store_true",
+            default=None,
+            dest=_dest,
+            help=f"Enable live-parity {_gate} gate (additive on top of --live-parity)",
+        )
+        backtest_parser.add_argument(
+            f"--without-{_flag}",
+            action="store_false",
+            default=None,
+            dest=_dest,
+            help=f"Disable live-parity {_gate} gate (overrides --live-parity for this gate)",
+        )
+
     backtest_parser.set_defaults(func=run_backtest)
