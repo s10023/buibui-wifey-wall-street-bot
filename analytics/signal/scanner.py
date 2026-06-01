@@ -47,6 +47,7 @@ from analytics.signal.cofire import (
     _find_live_cofire,
 )
 from analytics.signal.gates import (
+    _apply_conflict_resolver,
     _apply_direction_filter_gate,
     _apply_htf_ema_gate,
     _apply_regime_gate,
@@ -435,45 +436,7 @@ def run_scan_cycle(
         # Conflict resolution: opposite directions on same symbol/tf
         # Pick the side with higher max confidence; on a tie, send both sides
         # (each signal's reason will have "⚠️ conflict" appended).
-        long_events = [e for e in events if e.direction == "long"]
-        short_events = [e for e in events if e.direction == "short"]
-        if long_events and short_events:
-            long_conf = max(e.confidence for e in long_events)
-            short_conf = max(e.confidence for e in short_events)
-            if long_conf > short_conf:
-                direction_events = long_events
-                logger.info(
-                    "Conflict: %s %s — LONG wins (conf %d > %d), SHORT dropped (%s)",
-                    symbol,
-                    tf,
-                    long_conf,
-                    short_conf,
-                    [e.strategy for e in short_events],
-                )
-            elif short_conf > long_conf:
-                direction_events = short_events
-                logger.info(
-                    "Conflict: %s %s — SHORT wins (conf %d > %d), LONG dropped (%s)",
-                    symbol,
-                    tf,
-                    short_conf,
-                    long_conf,
-                    [e.strategy for e in long_events],
-                )
-            else:
-                direction_events = long_events + short_events
-                logger.info(
-                    "Conflict tie: %s %s conf %d — sending both LONG (%s) and SHORT (%s)",
-                    symbol,
-                    tf,
-                    long_conf,
-                    [e.strategy for e in long_events],
-                    [e.strategy for e in short_events],
-                )
-            for e in direction_events:
-                e.conflict = True
-        else:
-            direction_events = long_events or short_events
+        direction_events = _apply_conflict_resolver(events, symbol, tf)
         if not direction_events:
             continue
 
