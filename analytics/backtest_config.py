@@ -9,9 +9,12 @@ No module-level side effects.
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from analytics.backtest.live_parity_config import LiveParityConfig
+
+if TYPE_CHECKING:
+    from analytics.signal_config import BiasConfig
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -180,6 +183,12 @@ class BacktestSweepConfig:
     # T6 backtest-live parity toggles. Defaults to a no-op config so existing
     # callers see no behavioural change. Loaded from `[backtest.live_parity]`.
     live_parity: LiveParityConfig = field(default_factory=LiveParityConfig)
+    # Live `[bias]` block (regime gate, F8 HTF EMA, direction filter, ADR
+    # threshold). Populated by `load_backtest_config()` from the same TOML the
+    # signal daemon reads, via `load_signal_config(path).bias`. None when the
+    # config is built programmatically without a TOML. Consumed by the T6
+    # live-parity gates; default-built sweeps ignore it.
+    bias: "BiasConfig | None" = None
 
     def effective_min_trades(self, tf: str) -> int:
         return self.min_trades_per_tf.get(tf, self.min_trades)
@@ -472,6 +481,13 @@ def load_backtest_config(path: str | Path) -> BacktestSweepConfig:
         cooldown_bars_per_tf=_lp_cooldown,
     )
 
+    # Reuse the live-config parser for `[bias]` (single source of truth).
+    # Lazy import to keep backtest_config free of analytics.signal_config at
+    # module load time.
+    from analytics.signal_config import load_signal_config
+
+    bias_cfg = load_signal_config(path).bias
+
     return BacktestSweepConfig(
         symbols=data.get("symbols"),
         timeframes=data.get("timeframes", ["4h"]),
@@ -510,4 +526,5 @@ def load_backtest_config(path: str | Path) -> BacktestSweepConfig:
             _bt_section.get("volume_spike_boost", data.get("volume_spike_boost", False))
         ),
         live_parity=live_parity_cfg,
+        bias=bias_cfg,
     )
