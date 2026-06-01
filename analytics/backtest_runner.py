@@ -319,10 +319,14 @@ def _collect_sweep_results(
         if allowed_days is not None:
             signals = filter_signals_by_day(signals, allowed_days)
 
+        # When live_parity.adr_bias is on, the engine applies ADR with
+        # per-direction exemption from cfg.live_strategy_params — skip the
+        # legacy strategy-wide pre-filter here to avoid double-filtering.
         if (
             cfg.adr_suppress_threshold is not None
             and not cfg.is_adr_exempt(strategy)
             and not signals.empty
+            and not cfg.live_parity.is_on("adr_bias")
         ):
             signals = _filter_signals_by_adr(ohlcv, signals, cfg.adr_suppress_threshold)
 

@@ -1,7 +1,7 @@
 """Signal gates: ADR consumption filter and per-strategy ADR exemption."""
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 import pandas as pd
 
@@ -11,6 +11,79 @@ from analytics.signal_config import BiasConfig, StrategyOverride
 from analytics.strategies import STRATEGY_REGISTRY
 
 logger = logging.getLogger(__name__)
+
+
+def _apply_conflict_resolver(
+    events: list[SignalEvent],
+    symbol: str,
+    tf: str,
+    *,
+    confidence_resolver: Callable[[SignalEvent], int] | None = None,
+) -> list[SignalEvent]:
+    """Resolve opposing long-vs-short events on the same (symbol, tf) cycle.
+
+    Operates on a flat list of SignalEvents assumed to belong to one "moment"
+    — a live scan cycle in scanner.run_scan_cycle, or one candle's worth of
+    events when callers group by `open_time` for backtest replay.
+
+    Resolution:
+      - Both directions present → higher max-confidence side wins; loser
+        dropped; winner gets ``conflict=True``.
+      - Tie → both sides kept; all events marked ``conflict=True``.
+      - Single direction → returned unchanged.
+
+    ``confidence_resolver`` lets callers swap in an alternative score reader
+    (e.g. the backtest path injects a confidence_ratings-derived rating since
+    live editorial confidence is not set during replay). Defaults to the
+    event's own ``confidence`` field.
+    """
+    if not events:
+        return events
+    long_events = [e for e in events if e.direction == "long"]
+    short_events = [e for e in events if e.direction == "short"]
+    if not (long_events and short_events):
+        return long_events or short_events
+
+    resolver = (
+        confidence_resolver
+        if confidence_resolver is not None
+        else (lambda e: e.confidence)
+    )
+    long_conf = max(resolver(e) for e in long_events)
+    short_conf = max(resolver(e) for e in short_events)
+    if long_conf > short_conf:
+        winners = long_events
+        logger.info(
+            "Conflict: %s %s — LONG wins (conf %d > %d), SHORT dropped (%s)",
+            symbol,
+            tf,
+            long_conf,
+            short_conf,
+            [e.strategy for e in short_events],
+        )
+    elif short_conf > long_conf:
+        winners = short_events
+        logger.info(
+            "Conflict: %s %s — SHORT wins (conf %d > %d), LONG dropped (%s)",
+            symbol,
+            tf,
+            short_conf,
+            long_conf,
+            [e.strategy for e in long_events],
+        )
+    else:
+        winners = long_events + short_events
+        logger.info(
+            "Conflict tie: %s %s conf %d — sending both LONG (%s) and SHORT (%s)",
+            symbol,
+            tf,
+            long_conf,
+            [e.strategy for e in long_events],
+            [e.strategy for e in short_events],
+        )
+    for e in winners:
+        e.conflict = True
+    return winners
 
 
 def _filter_signals_by_adr(
@@ -87,7 +160,16 @@ def _filter_signals_by_adr(
 def _is_adr_exempt(
     strategy_params: dict[str, StrategyOverride] | None,
     strategy: str,
+    direction: str | None = None,
 ) -> bool:
+    """Resolve adr_exempt for ``(strategy, direction)``.
+
+    Wifey has only a strategy-wide ``adr_exempt`` flag — per-direction
+    overrides (parent's ``adr_exempt_long`` / ``adr_exempt_short``) were not
+    ported. ``direction`` is accepted for parity with the parent-side caller
+    pattern; both directions resolve to the strategy-wide value.
+    """
+    del direction  # both directions inherit the strategy-wide flag
     if not strategy_params:
         return False
     override = strategy_params.get(strategy)
