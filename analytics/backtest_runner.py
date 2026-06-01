@@ -189,6 +189,124 @@ def _build_htf_slope_series_by_symbol(
     return out
 
 
+def _build_confidence_ratings_map(
+    conn: duckdb.DuckDBPyConnection,
+    cfg: BacktestSweepConfig,
+) -> dict[tuple[str, str, str], float] | None:
+    """Pre-load `confidence_ratings.avg_r` for the conflict resolver tiebreaker.
+
+    Returns None when the live-parity conflict_resolver gate is off (caller
+    passes None to skip pooling, which is a no-op). Otherwise returns
+    `{(strategy, tf, direction): avg_r}` keyed by directional and 'combined'
+    rows for `cfg.config_name`. Missing keys default to 0.0 at the call site,
+    so unrated strategies effectively rank below any rated competitor.
+
+    The map is keyed on the **live** notion of direction ("long" / "short")
+    so the resolver can look up `(event.strategy, event.timeframe, event.direction)`
+    directly. The legacy 'combined' rows fall in as a fallback under direction
+    'combined' — the resolver-lambda prefers directional, then combined, then 0.0.
+    """
+    if not cfg.live_parity.is_on("conflict_resolver"):
+        return None
+
+    config_name = cfg.config_name or ""
+    rows = conn.execute(
+        "SELECT strategy, tf, direction, avg_r FROM confidence_ratings "
+        "WHERE config_name = ?",
+        [config_name],
+    ).fetchall()
+    out: dict[tuple[str, str, str], float] = {}
+    for strat, tf, direction, avg_r in rows:
+        if avg_r is None:
+            continue
+        out[(str(strat), str(tf), str(direction))] = float(avg_r)
+    logger.info(
+        "live_parity conflict_resolver: loaded %d rating(s) for config %r",
+        len(out),
+        config_name,
+    )
+    return out
+
+
+def _resolve_conflicts_for_signals_map(
+    signals_map: dict[
+        tuple[str, str, str], tuple[pd.DataFrame, pd.DataFrame, str | None]
+    ],
+    ratings_map: dict[tuple[str, str, str], float] | None,
+) -> None:
+    """Apply the cross-strategy conflict resolver per (symbol, tf) cell.
+
+    Mutates ``signals_map`` in place — each value's signals DataFrame is
+    replaced with the post-resolution subset (drops events the resolver
+    dropped). When ``ratings_map`` is None the gate is off and this is a
+    no-op (preserves byte-identical default-off behaviour).
+
+    Pooling pattern (mirrors live ``run_scan_cycle``):
+      1. Group cells by (symbol, tf) — only multi-strategy cells can host
+         cross-strategy conflicts.
+      2. Within a cell, convert each strategy's signals DataFrame to
+         `list[SignalEvent]` (via the engine's `_df_to_events` adapter) and
+         pool by `open_time` — events sharing one candle define one "moment"
+         the resolver acts on.
+      3. Call `_apply_conflict_resolver(events, symbol, tf,
+         confidence_resolver=…)` per moment, with the resolver lambda reading
+         from ``ratings_map`` (directional → combined → 0.0 fallback).
+      4. Redistribute survivors back to each strategy's DataFrame via the
+         engine's `_events_to_df` adapter.
+
+    Single-strategy cells skip pooling entirely (no cross-strategy conflict
+    is possible). Multi-strategy cells where only one strategy fires on a
+    given candle also skip resolution for that candle (per-moment short-circuit
+    inside `_apply_conflict_resolver`).
+    """
+    if ratings_map is None:
+        return
+
+    from analytics.backtest.engine import _df_to_events, _events_to_df
+    from analytics.signal.gates import _apply_conflict_resolver
+    from analytics.signal.types import SignalEvent
+
+    cells: dict[tuple[str, str], list[str]] = {}
+    for sym, tf, strat in signals_map:
+        cells.setdefault((sym, tf), []).append(strat)
+
+    def _resolve(event: SignalEvent) -> float:
+        key = (event.strategy, event.timeframe, event.direction)
+        if key in ratings_map:
+            return ratings_map[key]
+        combined_key = (event.strategy, event.timeframe, "combined")
+        return ratings_map.get(combined_key, 0.0)
+
+    for (symbol, tf), strats in cells.items():
+        if len(strats) < 2:
+            continue
+
+        per_strat_events: dict[str, list[SignalEvent]] = {}
+        events_by_open_time: dict[int, list[SignalEvent]] = {}
+        for strat in strats:
+            _ohlcv, sigs, _sec = signals_map[(symbol, tf, strat)]
+            events = _df_to_events(sigs, symbol, tf, strat)
+            per_strat_events[strat] = events
+            for event in events:
+                events_by_open_time.setdefault(event.open_time, []).append(event)
+
+        kept_by_strat: dict[str, list[SignalEvent]] = {s: [] for s in strats}
+        for moment_events in events_by_open_time.values():
+            if len(moment_events) < 2:
+                kept_by_strat[moment_events[0].strategy].append(moment_events[0])
+                continue
+            kept = _apply_conflict_resolver(
+                moment_events, symbol, tf, confidence_resolver=_resolve
+            )
+            for event in kept:
+                kept_by_strat[event.strategy].append(event)
+
+        for strat in strats:
+            ohlcv, original_sigs, sec = signals_map[(symbol, tf, strat)]
+            filtered = _events_to_df(kept_by_strat[strat], original_sigs)
+            signals_map[(symbol, tf, strat)] = (ohlcv, filtered, sec)
+
+
 def detect_signals_for_strategy(
     conn: duckdb.DuckDBPyConnection,
     ohlcv: pd.DataFrame,
@@ -212,17 +330,28 @@ def _collect_signals_map(
     strategies: list[str],
     start_ms: int,
     end_ms: int,
-) -> tuple[dict[tuple[str, str, str], tuple[pd.DataFrame, pd.DataFrame]], list[str]]:
+) -> tuple[
+    dict[tuple[str, str, str], tuple[pd.DataFrame, pd.DataFrame, str | None]],
+    list[str],
+]:
     """Detect signals once for all symbol × TF × strategy combos.
 
     Returns a map keyed by (symbol, timeframe, strategy) →
-    (ohlcv, filtered_signals) plus a skipped list.
+    (ohlcv, filtered_signals, secondary_symbol) plus a skipped list.
     Used by tp_r sweep mode to avoid re-running detection for each tp_r value.
+
+    The `secondary` slot is always ``None`` in wifey (the parent's
+    `smt_divergence` strategy required a BTC/ETH pair and was stripped at
+    fork — see CLAUDE.md). It is carried verbatim from parent so the
+    runner-level conflict-resolver pooling helper (PR-4b) shares the same
+    map shape as the live cross-strategy event pool.
     """
     from analytics.signal_config import _day_filter_to_weekdays
 
     allowed_days = _day_filter_to_weekdays(cfg.day_filter)
-    signals_map: dict[tuple[str, str, str], tuple[pd.DataFrame, pd.DataFrame]] = {}
+    signals_map: dict[
+        tuple[str, str, str], tuple[pd.DataFrame, pd.DataFrame, str | None]
+    ] = {}
     skipped: list[str] = []
     ohlcv_cache: dict[tuple[str, str], pd.DataFrame] = {}
 
@@ -258,7 +387,7 @@ def _collect_signals_map(
         if allowed_days is not None:
             signals = filter_signals_by_day(signals, allowed_days)
 
-        signals_map[(symbol, timeframe, strategy)] = (ohlcv, signals)
+        signals_map[(symbol, timeframe, strategy)] = (ohlcv, signals, None)
 
     return signals_map, skipped
 
@@ -272,21 +401,64 @@ def _collect_sweep_results(
     start_ms: int,
     end_ms: int,
     sweep_id: str | None = None,
+    *,
+    ratings_map: dict[tuple[str, str, str], float] | None = None,
+    regime_series_by_symbol: dict[str, pd.Series] | None = None,
+    htf_slope_by_symbol: (
+        dict[str, dict[tuple[str, int, int], pd.Series]] | None
+    ) = None,
 ) -> tuple[list[BacktestResult], list[str]]:
-    """Run one full symbol × TF × strategy grid for a given tp_r value."""
+    """Run one full symbol × TF × strategy grid for a given tp_r value.
+
+    PR-4b restructures this into three phases so the live-parity conflict
+    resolver can pool signals across strategies per (symbol, tf):
+
+      1. Phase 1 — detect: walk (symbol, tf, strategy) once, populate
+         ``signals_map`` with detected + day-filtered + ADR-prefilter signals.
+         When the ``adr_bias`` engine gate is on, the legacy ADR pre-filter
+         is skipped (the engine applies it inside ``run_backtest`` with
+         per-direction exemption from ``cfg.live_strategy_params``).
+      2. Phase 2 — resolve conflicts: pool signals by (symbol, tf) and apply
+         ``_apply_conflict_resolver`` per candle group. No-op when the
+         ``conflict_resolver`` gate is off, so default-off behaviour stays
+         byte-identical (the dict's insertion order matches
+         ``itertools.product``, preserving the legacy iteration order in
+         phase 3).
+      3. Phase 3 — backtest + save: walk ``signals_map`` and call
+         ``run_backtest`` per cell. Persistence is unchanged.
+
+    The split happens regardless of gate state — the only branch is whether
+    phase 2 mutates the map. This keeps the code path uniform and lets the
+    conflict resolver act on the same DataFrame the engine consumes (no
+    re-derivation).
+
+    The live-parity pre-compute helpers (regime / HTF slope / ratings) can be
+    passed in as kw-only args by callers that already built them (avoids
+    duplicate DB queries when ``run_backtest_sweep`` orchestrates multiple
+    sweep modes). When omitted, they are computed in-line.
+    """
     from analytics.signal_config import _day_filter_to_weekdays
 
     allowed_days = _day_filter_to_weekdays(cfg.day_filter)
     results: list[BacktestResult] = []
     skipped: list[str] = []
     ohlcv_cache: dict[tuple[str, str], pd.DataFrame] = {}
-    regime_series_by_symbol = _build_regime_series_by_symbol(
-        conn, cfg, symbols, start_ms, end_ms
-    )
-    htf_slope_by_symbol = _build_htf_slope_series_by_symbol(
-        conn, cfg, symbols, start_ms, end_ms
-    )
+    signals_map: dict[
+        tuple[str, str, str], tuple[pd.DataFrame, pd.DataFrame, str | None]
+    ] = {}
 
+    if regime_series_by_symbol is None:
+        regime_series_by_symbol = _build_regime_series_by_symbol(
+            conn, cfg, symbols, start_ms, end_ms
+        )
+    if htf_slope_by_symbol is None:
+        htf_slope_by_symbol = _build_htf_slope_series_by_symbol(
+            conn, cfg, symbols, start_ms, end_ms
+        )
+    if ratings_map is None and cfg.live_parity.is_on("conflict_resolver"):
+        ratings_map = _build_confidence_ratings_map(conn, cfg)
+
+    # Phase 1: detect signals + apply day filter + legacy ADR pre-filter.
     for symbol, timeframe, strategy in itertools.product(
         symbols, cfg.timeframes, strategies
     ):
@@ -330,6 +502,19 @@ def _collect_sweep_results(
         ):
             signals = _filter_signals_by_adr(ohlcv, signals, cfg.adr_suppress_threshold)
 
+        signals_map[(symbol, timeframe, strategy)] = (ohlcv, signals, None)
+
+    # Phase 2: cross-strategy conflict resolution (no-op when gate is off).
+    _resolve_conflicts_for_signals_map(signals_map, ratings_map)
+
+    # Phase 3: backtest each cell. Insertion order of signals_map equals
+    # itertools.product(symbols, cfg.timeframes, strategies), so the result
+    # ordering and DB write ordering match the legacy single-loop path.
+    for (symbol, timeframe, strategy), (
+        ohlcv,
+        signals,
+        _secondary,
+    ) in signals_map.items():
         eff_tp_r = cfg.effective_tp_r(strategy, symbol, timeframe)
         eff_sl_pct = cfg.effective_sl_pct(strategy, symbol, timeframe)
         eff_atr_sl = cfg.effective_atr_sl_multiplier(strategy, symbol, timeframe)
@@ -452,15 +637,17 @@ def run_backtest_sweep(
         htf_slope_by_symbol = _build_htf_slope_series_by_symbol(
             conn, cfg, symbols, start_ms, end_ms
         )
+        ratings_map = _build_confidence_ratings_map(conn, cfg)
         if tp_sweep_mode:
             # Detect signals once — tp_r does not affect signal detection
             signals_map, skipped = _collect_signals_map(
                 conn, cfg, symbols, strategies, start_ms, end_ms
             )
+            _resolve_conflicts_for_signals_map(signals_map, ratings_map)
             results_by_tp: dict[float, list[BacktestResult]] = {}
             for tp_r in cfg.tp_r_values:
                 tp_results: list[BacktestResult] = []
-                for (sym, tf, strat), (ohlcv, sigs) in signals_map.items():
+                for (sym, tf, strat), (ohlcv, sigs, _sec) in signals_map.items():
                     # tp_r is swept globally; per-strategy sl_pct/atr_sl overrides still apply.
                     bt = run_backtest(
                         ohlcv,
@@ -515,10 +702,11 @@ def run_backtest_sweep(
             signals_map, skipped = _collect_signals_map(
                 conn, cfg, symbols, strategies, start_ms, end_ms
             )
+            _resolve_conflicts_for_signals_map(signals_map, ratings_map)
             results_by_atr: dict[float, list[BacktestResult]] = {}
             for atr_mult in cfg.atr_sl_multiplier_values:
                 atr_results: list[BacktestResult] = []
-                for (sym, tf, strat), (ohlcv, sigs) in signals_map.items():
+                for (sym, tf, strat), (ohlcv, sigs, _sec) in signals_map.items():
                     # atr_sl_multiplier is swept globally; per-strategy tp_r overrides apply.
                     bt = run_backtest(
                         ohlcv,
@@ -569,7 +757,17 @@ def run_backtest_sweep(
         else:
             with timed("backtest sweep"):
                 results, skipped = _collect_sweep_results(
-                    conn, cfg, cfg.tp_r, symbols, strategies, start_ms, end_ms, sweep_id
+                    conn,
+                    cfg,
+                    cfg.tp_r,
+                    symbols,
+                    strategies,
+                    start_ms,
+                    end_ms,
+                    sweep_id,
+                    ratings_map=ratings_map,
+                    regime_series_by_symbol=regime_series_by_symbol,
+                    htf_slope_by_symbol=htf_slope_by_symbol,
                 )
             print(
                 format_sweep_table(
