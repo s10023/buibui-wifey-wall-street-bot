@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import functools
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -21,7 +22,7 @@ from analytics.backtest.live_parity_config import LiveParityConfig
 
 if TYPE_CHECKING:
     from analytics.signal.types import SignalEvent
-    from analytics.signal_config import BiasConfig
+    from analytics.signal_config import BiasConfig, StrategyOverride
 
 logger = logging.getLogger(__name__)
 
@@ -497,6 +498,117 @@ def _apply_regime_gate_to_signals(
     return _events_to_df(kept, signals)
 
 
+def _resolve_series_at(
+    signal_time_ms: int,
+    series: pd.Series,
+) -> float | None:
+    """Numeric variant of `_resolve_regime_at` for HTF slope (and similar) lookups.
+
+    Same `iloc[-2]` semantics: find the largest HTF open_time <= signal_time_ms
+    (the "current" candle, possibly still in-progress at that moment), then
+    return the value at the row BEFORE it (the last fully-closed HTF candle).
+    NaN values are normalised to None so the caller treats warmup and missing
+    data identically — matching live's `compute_htf_ema_slope` returning None.
+    """
+    if series.empty:
+        return None
+    idx = series.index.to_numpy()
+    pos = int(np.searchsorted(idx, signal_time_ms, side="right")) - 1
+    target = pos - 1
+    if target < 0:
+        return None
+    val = series.iloc[target]
+    return None if pd.isna(val) else float(val)
+
+
+def _apply_direction_filter_gate_to_signals(
+    signals: pd.DataFrame,
+    symbol: str,
+    timeframe: str,
+    strategy: str,
+    bias_cfg: BiasConfig,
+    strategy_params: dict[str, StrategyOverride] | None,
+) -> pd.DataFrame:
+    """Run live's `_apply_direction_filter_gate` against a backtest signals frame.
+
+    Cheapest gate in the chain — pure per-event flag check on
+    `StrategyOverride.suppress_long` / `.suppress_short`. No HTF data, no cache
+    lookups, no time-series resolution. Adapter wraps `_df_to_events` →
+    `_apply_direction_filter_gate` (verbatim from `analytics/signal/gates.py`)
+    → `_events_to_df`.
+    """
+    if signals.empty or not bias_cfg.direction_filter_enabled:
+        return signals
+    if not strategy_params:
+        return signals
+
+    from analytics.signal.gates import _apply_direction_filter_gate
+
+    events = _df_to_events(signals, symbol, timeframe, strategy)
+    if not events:
+        return signals
+    kept = _apply_direction_filter_gate(
+        events, bias_cfg, strategy_params, symbol, timeframe
+    )
+    return _events_to_df(kept, signals)
+
+
+def _apply_htf_ema_gate_to_signals(
+    signals: pd.DataFrame,
+    symbol: str,
+    timeframe: str,
+    strategy: str,
+    bias_cfg: BiasConfig,
+    htf_slope_series_by_anchor: Mapping[tuple[str, int, int], pd.Series] | None,
+) -> pd.DataFrame:
+    """Run live's `_apply_htf_ema_gate` against a backtest signals frame.
+
+    Per-signal HTF slope resolution: each event's slope is looked up at its
+    own `open_time` (via `_resolve_series_at`) using the pre-computed slope
+    series for that strategy's anchor — so historical signals are evaluated
+    against the slope that was observable at that moment, not today. Events
+    are grouped by (anchor, resolved slope) and the live gate is invoked once
+    per group with a synthetic single-entry cache, reusing live verbatim.
+    """
+    if signals.empty or not bias_cfg.htf_ema_enabled:
+        return signals
+    if not htf_slope_series_by_anchor:
+        return signals  # No HTF data → fall open (matches live cache-miss).
+
+    from analytics.signal.gates import _apply_htf_ema_gate
+
+    events = _df_to_events(signals, symbol, timeframe, strategy)
+    if not events:
+        return signals
+
+    # Group events by (anchor key, resolved slope value) so the live gate is
+    # called once per distinct value. Each group sees a synthetic cache with
+    # the one anchor key it asks about — keeping the cache lookup verbatim.
+    by_key: dict[tuple[tuple[str, int, int], float | None], list[SignalEvent]] = {}
+    for ev in events:
+        anchor = bias_cfg.htf_ema_anchor(ev.strategy)
+        anchor_key = (anchor.tf, anchor.period, anchor.slope_lookback)
+        series = htf_slope_series_by_anchor.get(anchor_key)
+        slope = (
+            _resolve_series_at(int(ev.open_time), series)
+            if series is not None
+            else None
+        )
+        by_key.setdefault((anchor_key, slope), []).append(ev)
+
+    kept: list[SignalEvent] = []
+    for (anchor_key, slope), group in by_key.items():
+        cache_key = (symbol, *anchor_key)
+        synthetic_cache: dict[tuple[str, str, int, int], float | None] = {
+            cache_key: slope
+        }
+        kept.extend(
+            _apply_htf_ema_gate(group, bias_cfg, synthetic_cache, symbol, timeframe)
+        )
+
+    return _events_to_df(kept, signals)
+
+
 def run_backtest(
     ohlcv: pd.DataFrame,
     signals: pd.DataFrame,
@@ -521,6 +633,8 @@ def run_backtest(
     live_parity: LiveParityConfig | None = None,
     bias_cfg: BiasConfig | None = None,
     regime_series: pd.Series | None = None,
+    strategy_params: dict[str, StrategyOverride] | None = None,
+    htf_slope_series_by_anchor: Mapping[tuple[str, int, int], pd.Series] | None = None,
 ) -> BacktestResult:
     """Simulate trades from signals on historical OHLCV.
 
@@ -542,12 +656,19 @@ def run_backtest(
     A trade closes when a candle's high or low touches the SL or TP level.
     Trades still open at end of data are marked as outcome="open".
 
-    live_parity toggles parity-with-live gates. PR-2 ports the regime gate
-    (live `_apply_regime_gate`): when `live_parity.regime` is on,
-    `bias_cfg.regime_enabled` is True, and a `regime_series` is supplied,
-    signals at historical times are filtered against the regime active at
-    each signal's `open_time`. PR-1 plumbing (log line) is preserved.
-    Defaults remain a no-op so existing callers see no behavioural change.
+    live_parity toggles parity-with-live gates. The gates apply (in the same
+    order as live `run_scan_cycle`):
+      1. regime (PR-2) — drops signals not enabled in the HTF regime at signal
+         time. Needs `bias_cfg.regime_enabled` and a `regime_series`.
+      2. direction_filter (PR-3) — drops signals whose direction is suppressed
+         per StrategyOverride.suppress_long / .suppress_short. Needs
+         `bias_cfg.direction_filter_enabled` and `strategy_params`. No
+         time-series state required.
+      3. f8_htf_ema (PR-3) — drops signals opposing the HTF EMA slope active
+         at signal time. Needs `bias_cfg.htf_ema_enabled` and
+         `htf_slope_series_by_anchor` keyed by (anchor_tf, period, slope_lookback).
+    All gates default off and no-op when their inputs are absent — existing
+    callers see no behavioural change.
     """
     if live_parity is not None and any(
         live_parity.is_on(gate) for gate in _LIVE_PARITY_GATE_ORDER
@@ -568,6 +689,31 @@ def run_backtest(
     ):
         signals = _apply_regime_gate_to_signals(
             signals, symbol, timeframe, strategy, bias_cfg, regime_series
+        )
+
+    if (
+        live_parity is not None
+        and live_parity.is_on("direction_filter")
+        and bias_cfg is not None
+        and bias_cfg.direction_filter_enabled
+    ):
+        signals = _apply_direction_filter_gate_to_signals(
+            signals, symbol, timeframe, strategy, bias_cfg, strategy_params
+        )
+
+    if (
+        live_parity is not None
+        and live_parity.is_on("f8_htf_ema")
+        and bias_cfg is not None
+        and bias_cfg.htf_ema_enabled
+    ):
+        signals = _apply_htf_ema_gate_to_signals(
+            signals,
+            symbol,
+            timeframe,
+            strategy,
+            bias_cfg,
+            htf_slope_series_by_anchor,
         )
 
     result = BacktestResult(
