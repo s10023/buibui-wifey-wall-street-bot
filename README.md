@@ -298,12 +298,12 @@ poetry run python wifey.py backtest --symbols BTCUSDT ETHUSDT --timeframes 1h 4h
 - `--window-hours N` — cross-TF lookback in hours: HTF signal must have fired within N hours of the LTF signal (default: `4.0`)
 - `--workers N` — parallel workers for combo backtest, one per symbol×TF chunk (default: `min(4, cpu_count-1)`); pass `1` for serial mode
 
-**Live-parity options (T6, PR-1 plumbing + PR-2 regime port):**
+**Live-parity options (T6, PR-1 plumbing + PR-2 regime + PR-3 direction_filter + F8 HTF-EMA ports):**
 
 - `--live-parity` — master switch; expands to enabling every per-gate flag below
 - `--with-regime` / `--without-regime` — **wired (PR-2)**. Runs live's `_apply_regime_gate` against backtest signals via per-signal HTF regime lookup: each historical signal is evaluated against the regime active at its own `open_time` (mirrors live's `iloc[-2]` semantics — the last fully-closed HTF candle before the signal). Reads `[bias.regime]` from the same TOML the live daemon consumes (`enabled` / `mode=soft|hard` / `htf_tf` / `enabled_regimes` / `per_strategy`). Gate is a no-op unless **all of** `--with-regime`, `bias.regime_enabled=true`, and an HTF series is loadable for the symbol — otherwise falls open (matches live cache-miss).
-- `--with-direction-filter` / `--without-direction-filter` — port the live `_apply_direction_filter_gate` (PR-3 pending)
-- `--with-f8-htf-ema` / `--without-f8-htf-ema` — port the live `_apply_htf_ema_gate` (PR-3 pending)
+- `--with-direction-filter` / `--without-direction-filter` — **wired (PR-3)**. Pure per-event flag check — reads `[strategy_params.<name>].suppress_long` / `.suppress_short` and drops events whose direction is suppressed when `[bias.direction_filter].mode = "hard"` (soft mode logs only). No HTF state, no time-series — cheapest gate in the chain. Gate is a no-op unless `--with-direction-filter`, `bias.direction_filter_enabled=true`, and `strategy_params` are all supplied.
+- `--with-f8-htf-ema` / `--without-f8-htf-ema` — **wired (PR-3)**. Per-signal HTF EMA-slope lookup: pre-computes `(ema - ema.shift(slb)) / ema.shift(slb)` per `(symbol × anchor)` once per sweep, then resolves each signal's slope at its own `open_time` (same `iloc[-2]` semantics as regime). Drops longs opposing a negative slope / shorts opposing a positive slope when `[bias.htf_ema].mode = "hard"` (soft mode logs only); `|slope| < deadband_pct` lets both directions through. Reads `[bias.htf_ema]` and `[bias.htf_ema.per_strategy]` from the same TOML the live daemon consumes. Gate is a no-op unless `--with-f8-htf-ema`, `bias.htf_ema_enabled=true`, and the slope series is supplied for the symbol (otherwise falls open — matches live cache-miss).
 - `--with-adr-bias` / `--without-adr-bias` — port the live `_filter_signals_by_adr` (adr_suppress_threshold + adr_exempt) (PR-4 pending)
 - `--with-conflict-resolver` / `--without-conflict-resolver` — port the live conflict resolver (PR-4 pending)
 - `--with-cooldown` / `--without-cooldown` — port the live per-(symbol, tf) candle cooldown (PR-5 pending)

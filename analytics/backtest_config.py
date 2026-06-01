@@ -15,6 +15,7 @@ from analytics.backtest.live_parity_config import LiveParityConfig
 
 if TYPE_CHECKING:
     from analytics.signal_config import BiasConfig
+    from analytics.signal_config import StrategyOverride as LiveStrategyOverride
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -189,6 +190,13 @@ class BacktestSweepConfig:
     # config is built programmatically without a TOML. Consumed by the T6
     # live-parity gates; default-built sweeps ignore it.
     bias: "BiasConfig | None" = None
+    # Live `[strategy_params.*]` block as parsed by signal_config (has
+    # suppress_long / suppress_short for the T6 direction_filter gate, plus
+    # the live-side adr_exempt_long / adr_exempt_short for later PRs). Kept
+    # alongside the backtest-config StrategyOverride above because the two
+    # dataclasses have different fields by design — the backtest one carries
+    # SL/TP overrides used by the engine; this one carries the live gate flags.
+    live_strategy_params: "dict[str, LiveStrategyOverride] | None" = None
 
     def effective_min_trades(self, tf: str) -> int:
         return self.min_trades_per_tf.get(tf, self.min_trades)
@@ -481,12 +489,14 @@ def load_backtest_config(path: str | Path) -> BacktestSweepConfig:
         cooldown_bars_per_tf=_lp_cooldown,
     )
 
-    # Reuse the live-config parser for `[bias]` (single source of truth).
-    # Lazy import to keep backtest_config free of analytics.signal_config at
-    # module load time.
+    # Reuse the live-config parser for `[bias]` and `[strategy_params]`
+    # (single source of truth for the live gate inputs). Lazy import to keep
+    # backtest_config free of analytics.signal_config at module load time.
     from analytics.signal_config import load_signal_config
 
-    bias_cfg = load_signal_config(path).bias
+    _live_cfg = load_signal_config(path)
+    bias_cfg = _live_cfg.bias
+    live_strategy_params = _live_cfg.strategy_params or None
 
     return BacktestSweepConfig(
         symbols=data.get("symbols"),
@@ -527,4 +537,5 @@ def load_backtest_config(path: str | Path) -> BacktestSweepConfig:
         ),
         live_parity=live_parity_cfg,
         bias=bias_cfg,
+        live_strategy_params=live_strategy_params,
     )

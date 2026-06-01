@@ -20,6 +20,7 @@ from analytics.backtest_config import BacktestSweepConfig
 if TYPE_CHECKING:
     from analytics.backtest.live_parity_config import LiveParityConfig
     from analytics.signal_config import BiasConfig
+    from analytics.signal_config import StrategyOverride as LiveStrategyOverride
 from analytics.backtest_lib import (
     BacktestResult,
     ComboBacktestResult,
@@ -110,6 +111,79 @@ def _build_regime_series_by_symbol(
         logger.info(
             "live_parity regime: pre-classified %s for %d symbol(s)",
             htf_tf,
+            len(out),
+        )
+    return out
+
+
+def _build_htf_slope_series_by_symbol(
+    conn: duckdb.DuckDBPyConnection,
+    cfg: BacktestSweepConfig,
+    symbols: list[str],
+    start_ms: int,
+    end_ms: int,
+) -> dict[str, dict[tuple[str, int, int], pd.Series]] | None:
+    """Pre-compute the F8 HTF EMA slope series per (symbol × anchor) once per sweep.
+
+    Returns None when the live-parity F8 gate is off (caller passes
+    `htf_slope_series_by_anchor=None`, engine no-ops). Otherwise returns a
+    nested map:
+      { symbol: { (anchor_tf, period, slope_lookback): pd.Series } }
+    Each Series is indexed by HTF open_time (ms); engine's `_resolve_series_at`
+    binary-searches it for the slope active at each signal's open_time.
+
+    Slope is the standard `(ema - ema.shift(slb)) / ema.shift(slb)`. The first
+    `period + slope_lookback` rows are masked NaN to match live's
+    `compute_htf_ema_slope` warmup guard (which returns None when the closed
+    series has fewer than `period + slb + 1` candles). Anchors with no data
+    or insufficient history are omitted — engine then falls open, matching
+    live cache-miss behaviour.
+    """
+    if (
+        cfg.bias is None
+        or not cfg.live_parity.is_on("f8_htf_ema")
+        or not cfg.bias.htf_ema_enabled
+    ):
+        return None
+
+    from analytics.strategies import compute_ema
+
+    needed: set[tuple[str, int, int]] = {
+        (
+            cfg.bias.htf_ema_default_tf,
+            cfg.bias.htf_ema_default_period,
+            cfg.bias.htf_ema_default_slope_lookback,
+        )
+    }
+    for ov in cfg.bias.htf_ema_per_strategy.values():
+        needed.add((ov.tf, ov.period, ov.slope_lookback))
+
+    out: dict[str, dict[tuple[str, int, int], pd.Series]] = {}
+    htf_cache: dict[tuple[str, str], pd.DataFrame] = {}
+    for sym in symbols:
+        per_anchor: dict[tuple[str, int, int], pd.Series] = {}
+        for tf, period, slb in needed:
+            key = (sym, tf)
+            df = htf_cache.get(key)
+            if df is None:
+                df = get_ohlcv(conn, sym, tf, start_ms, end_ms)
+                htf_cache[key] = df
+            if df.empty or len(df) < period + slb + 1:
+                continue
+            ema = compute_ema(df["close"], period)
+            slope = (ema - ema.shift(slb)) / ema.shift(slb)
+            # Warmup mask: live treats fewer than `period + slb + 1` closed
+            # candles as warmup (returns None). The shift alone only masks
+            # the first `slb` rows; widen to `period + slb` to mirror live.
+            slope.iloc[: period + slb] = float("nan")
+            slope.index = df["open_time"].astype("int64")
+            per_anchor[(tf, period, slb)] = slope
+        if per_anchor:
+            out[sym] = per_anchor
+    if out:
+        logger.info(
+            "live_parity f8_htf_ema: pre-computed %d anchor(s) for %d symbol(s)",
+            len(needed),
             len(out),
         )
     return out
@@ -209,6 +283,9 @@ def _collect_sweep_results(
     regime_series_by_symbol = _build_regime_series_by_symbol(
         conn, cfg, symbols, start_ms, end_ms
     )
+    htf_slope_by_symbol = _build_htf_slope_series_by_symbol(
+        conn, cfg, symbols, start_ms, end_ms
+    )
 
     for symbol, timeframe, strategy in itertools.product(
         symbols, cfg.timeframes, strategies
@@ -275,6 +352,12 @@ def _collect_sweep_results(
             regime_series=(
                 regime_series_by_symbol.get(symbol)
                 if regime_series_by_symbol is not None
+                else None
+            ),
+            strategy_params=cfg.live_strategy_params,
+            htf_slope_series_by_anchor=(
+                htf_slope_by_symbol.get(symbol)
+                if htf_slope_by_symbol is not None
                 else None
             ),
         )
@@ -362,6 +445,9 @@ def run_backtest_sweep(
         regime_series_by_symbol = _build_regime_series_by_symbol(
             conn, cfg, symbols, start_ms, end_ms
         )
+        htf_slope_by_symbol = _build_htf_slope_series_by_symbol(
+            conn, cfg, symbols, start_ms, end_ms
+        )
         if tp_sweep_mode:
             # Detect signals once — tp_r does not affect signal detection
             signals_map, skipped = _collect_signals_map(
@@ -403,6 +489,12 @@ def run_backtest_sweep(
                         regime_series=(
                             regime_series_by_symbol.get(sym)
                             if regime_series_by_symbol is not None
+                            else None
+                        ),
+                        strategy_params=cfg.live_strategy_params,
+                        htf_slope_series_by_anchor=(
+                            htf_slope_by_symbol.get(sym)
+                            if htf_slope_by_symbol is not None
                             else None
                         ),
                     )
@@ -455,6 +547,12 @@ def run_backtest_sweep(
                             if regime_series_by_symbol is not None
                             else None
                         ),
+                        strategy_params=cfg.live_strategy_params,
+                        htf_slope_series_by_anchor=(
+                            htf_slope_by_symbol.get(sym)
+                            if htf_slope_by_symbol is not None
+                            else None
+                        ),
                     )
                     atr_results.append(bt)
                 results_by_atr[atr_mult] = atr_results
@@ -505,6 +603,7 @@ def run_backtest_cmd(
     since_ms: int | None = None,
     live_parity: LiveParityConfig | None = None,
     bias_cfg: BiasConfig | None = None,
+    live_strategy_params: dict[str, LiveStrategyOverride] | None = None,
 ) -> None:
     """Open DB, load OHLCV, detect signals, run backtest, print results."""
     if strategy not in KNOWN_STRATEGIES:
@@ -560,6 +659,41 @@ def run_backtest_cmd(
                 except ValueError:
                     regime_series = None
 
+        htf_slope_by_anchor: dict[tuple[str, int, int], pd.Series] | None = None
+        if (
+            bias_cfg is not None
+            and live_parity is not None
+            and live_parity.is_on("f8_htf_ema")
+            and bias_cfg.htf_ema_enabled
+        ):
+            from analytics.strategies import compute_ema
+
+            needed: set[tuple[str, int, int]] = {
+                (
+                    bias_cfg.htf_ema_default_tf,
+                    bias_cfg.htf_ema_default_period,
+                    bias_cfg.htf_ema_default_slope_lookback,
+                )
+            }
+            for ov in bias_cfg.htf_ema_per_strategy.values():
+                needed.add((ov.tf, ov.period, ov.slope_lookback))
+            htf_slope_by_anchor = {}
+            htf_df_cache: dict[str, pd.DataFrame] = {}
+            for atf, period, slb in needed:
+                df = htf_df_cache.get(atf)
+                if df is None:
+                    df = get_ohlcv(conn, symbol, atf, start_ms, end_ms)
+                    htf_df_cache[atf] = df
+                if df.empty or len(df) < period + slb + 1:
+                    continue
+                ema = compute_ema(df["close"], period)
+                slope = (ema - ema.shift(slb)) / ema.shift(slb)
+                slope.iloc[: period + slb] = float("nan")
+                slope.index = df["open_time"].astype("int64")
+                htf_slope_by_anchor[(atf, period, slb)] = slope
+            if not htf_slope_by_anchor:
+                htf_slope_by_anchor = None
+
         bt_result = run_backtest(
             ohlcv,
             signals,
@@ -575,6 +709,8 @@ def run_backtest_cmd(
             live_parity=live_parity,
             bias_cfg=bias_cfg,
             regime_series=regime_series,
+            strategy_params=live_strategy_params,
+            htf_slope_series_by_anchor=htf_slope_by_anchor,
         )
         print(format_result(bt_result))
 
