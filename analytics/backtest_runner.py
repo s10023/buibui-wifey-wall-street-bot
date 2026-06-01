@@ -19,6 +19,7 @@ from analytics.backtest_config import BacktestSweepConfig
 
 if TYPE_CHECKING:
     from analytics.backtest.live_parity_config import LiveParityConfig
+    from analytics.signal_config import BiasConfig
 from analytics.backtest_lib import (
     BacktestResult,
     ComboBacktestResult,
@@ -60,6 +61,58 @@ from utils.config_validation import load_stocks_config
 _SIMPLE_DETECTORS = DETECTOR_REGISTRY
 
 _SWEEP_STRATEGIES: list[str] = [s for s in KNOWN_STRATEGIES if s != "seasonality"]
+
+logger = logging.getLogger(__name__)
+
+
+def _build_regime_series_by_symbol(
+    conn: duckdb.DuckDBPyConnection,
+    cfg: BacktestSweepConfig,
+    symbols: list[str],
+    start_ms: int,
+    end_ms: int,
+) -> dict[str, pd.Series] | None:
+    """Pre-classify the regime HTF series for each symbol once per sweep.
+
+    Returns None when the live-parity regime gate is off (caller should pass
+    `regime_series=None` to `run_backtest`, which is a no-op). Otherwise
+    returns `{symbol: regime_series}` where each Series is indexed by HTF
+    open_time (ms) so the engine's `_resolve_regime_at` can binary-search it.
+
+    Loads the configured `bias.regime_htf_tf` (default 4h) candles, then runs
+    `classify_series`. Symbols with no HTF data or insufficient history (<2
+    rows) are omitted — engine then falls open on those (matches live cache
+    miss).
+    """
+    if (
+        cfg.bias is None
+        or not cfg.live_parity.is_on("regime")
+        or not cfg.bias.regime_enabled
+    ):
+        return None
+
+    from analytics.regime import classify_series
+
+    htf_tf = cfg.bias.regime_htf_tf
+    out: dict[str, pd.Series] = {}
+    for sym in symbols:
+        df = get_ohlcv(conn, sym, htf_tf, start_ms, end_ms)
+        if df.empty or len(df) < 2:
+            continue
+        try:
+            series = classify_series(df, htf_tf)
+        except ValueError:
+            # Unsupported timeframe → fall open.
+            continue
+        series.index = df["open_time"].astype("int64")
+        out[sym] = series
+    if out:
+        logger.info(
+            "live_parity regime: pre-classified %s for %d symbol(s)",
+            htf_tf,
+            len(out),
+        )
+    return out
 
 
 def detect_signals_for_strategy(
@@ -153,6 +206,9 @@ def _collect_sweep_results(
     results: list[BacktestResult] = []
     skipped: list[str] = []
     ohlcv_cache: dict[tuple[str, str], pd.DataFrame] = {}
+    regime_series_by_symbol = _build_regime_series_by_symbol(
+        conn, cfg, symbols, start_ms, end_ms
+    )
 
     for symbol, timeframe, strategy in itertools.product(
         symbols, cfg.timeframes, strategies
@@ -215,6 +271,12 @@ def _collect_sweep_results(
             volume_spike_boost_long=cfg.effective_volume_spike_boost_long(strategy),
             volume_spike_boost_short=cfg.effective_volume_spike_boost_short(strategy),
             live_parity=cfg.live_parity,
+            bias_cfg=cfg.bias,
+            regime_series=(
+                regime_series_by_symbol.get(symbol)
+                if regime_series_by_symbol is not None
+                else None
+            ),
         )
         results.append(bt)
 
@@ -297,6 +359,9 @@ def run_backtest_sweep(
     )
 
     try:
+        regime_series_by_symbol = _build_regime_series_by_symbol(
+            conn, cfg, symbols, start_ms, end_ms
+        )
         if tp_sweep_mode:
             # Detect signals once — tp_r does not affect signal detection
             signals_map, skipped = _collect_signals_map(
@@ -334,6 +399,12 @@ def run_backtest_sweep(
                             strat
                         ),
                         live_parity=cfg.live_parity,
+                        bias_cfg=cfg.bias,
+                        regime_series=(
+                            regime_series_by_symbol.get(sym)
+                            if regime_series_by_symbol is not None
+                            else None
+                        ),
                     )
                     tp_results.append(bt)
                 results_by_tp[tp_r] = tp_results
@@ -378,6 +449,12 @@ def run_backtest_sweep(
                             strat
                         ),
                         live_parity=cfg.live_parity,
+                        bias_cfg=cfg.bias,
+                        regime_series=(
+                            regime_series_by_symbol.get(sym)
+                            if regime_series_by_symbol is not None
+                            else None
+                        ),
                     )
                     atr_results.append(bt)
                 results_by_atr[atr_mult] = atr_results
@@ -427,6 +504,7 @@ def run_backtest_cmd(
     save_results: bool = False,
     since_ms: int | None = None,
     live_parity: LiveParityConfig | None = None,
+    bias_cfg: BiasConfig | None = None,
 ) -> None:
     """Open DB, load OHLCV, detect signals, run backtest, print results."""
     if strategy not in KNOWN_STRATEGIES:
@@ -464,6 +542,24 @@ def run_backtest_cmd(
         if signals is None:
             sys.exit(1)
 
+        regime_series: pd.Series | None = None
+        if (
+            bias_cfg is not None
+            and live_parity is not None
+            and live_parity.is_on("regime")
+            and bias_cfg.regime_enabled
+        ):
+            from analytics.regime import classify_series
+
+            htf_tf = bias_cfg.regime_htf_tf
+            htf_df = get_ohlcv(conn, symbol, htf_tf, start_ms, end_ms)
+            if not htf_df.empty and len(htf_df) >= 2:
+                try:
+                    regime_series = classify_series(htf_df, htf_tf)
+                    regime_series.index = htf_df["open_time"].astype("int64")
+                except ValueError:
+                    regime_series = None
+
         bt_result = run_backtest(
             ohlcv,
             signals,
@@ -477,6 +573,8 @@ def run_backtest_cmd(
             atr_sl_multiplier=atr_sl_multiplier,
             atr_sl_floor=atr_sl_floor,
             live_parity=live_parity,
+            bias_cfg=bias_cfg,
+            regime_series=regime_series,
         )
         print(format_result(bt_result))
 

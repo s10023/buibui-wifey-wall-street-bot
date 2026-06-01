@@ -21,6 +21,7 @@ from analytics.backtest.live_parity_config import LiveParityConfig
 
 if TYPE_CHECKING:
     from analytics.signal.types import SignalEvent
+    from analytics.signal_config import BiasConfig
 
 logger = logging.getLogger(__name__)
 
@@ -420,6 +421,82 @@ def _events_to_df(
     return original_df.loc[mask].reset_index(drop=True)
 
 
+def _resolve_regime_at(
+    signal_time_ms: int,
+    regime_series: pd.Series,
+) -> str | None:
+    """Return the regime of the HTF candle BEFORE the in-progress one at `signal_time_ms`.
+
+    Mirrors live's `_series.iloc[-2]` semantics (scanner.py): at scan time, the
+    last row of the HTF series is the still-open candle, and the live gate uses
+    the row before it (the last fully-closed candle). For backtest replay at
+    historical `signal_time_ms`, the equivalent is:
+
+      1. Find the largest HTF open_time <= signal_time_ms  ("current" candle,
+         which may itself still be in-progress at that moment).
+      2. Return the regime of the row immediately before it.
+
+    Returns None when there is no prior closed HTF candle (warmup window) — the
+    caller falls open, matching live's cache-miss behaviour.
+    """
+    if regime_series.empty:
+        return None
+    idx = regime_series.index.to_numpy()
+    pos = int(np.searchsorted(idx, signal_time_ms, side="right")) - 1
+    target = pos - 1
+    if target < 0:
+        return None
+    val = regime_series.iloc[target]
+    return None if pd.isna(val) else str(val)
+
+
+def _apply_regime_gate_to_signals(
+    signals: pd.DataFrame,
+    symbol: str,
+    timeframe: str,
+    strategy: str,
+    bias_cfg: BiasConfig,
+    regime_series: pd.Series | None,
+) -> pd.DataFrame:
+    """Run live's `_apply_regime_gate` against a backtest signals frame.
+
+    Per-signal regime resolution: each event's regime is looked up at its own
+    `open_time` (via `_resolve_regime_at`) so historical signals are evaluated
+    against the regime that was active at that moment — not today. Events are
+    then grouped by resolved regime and the live gate is invoked once per group
+    with a synthetic `regime_cache={symbol: regime}`. Reuses live verbatim —
+    no re-implementation, zero drift risk.
+    """
+    if signals.empty or not bias_cfg.regime_enabled:
+        return signals
+    if regime_series is None or regime_series.empty:
+        return signals  # No HTF series → fall open (matches live cache-miss).
+
+    from analytics.regime import Regime
+    from analytics.signal.gates import _apply_regime_gate
+
+    events = _df_to_events(signals, symbol, timeframe, strategy)
+    if not events:
+        return signals
+
+    by_regime: dict[str | None, list[SignalEvent]] = {}
+    for ev in events:
+        regime = _resolve_regime_at(int(ev.open_time), regime_series)
+        by_regime.setdefault(regime, []).append(ev)
+
+    kept: list[SignalEvent] = []
+    for regime, group in by_regime.items():
+        if regime is None:
+            kept.extend(group)
+            continue
+        regime_cache: dict[str, Regime] = {symbol: regime}  # type: ignore[dict-item]
+        kept.extend(
+            _apply_regime_gate(group, bias_cfg, regime_cache, symbol, timeframe)
+        )
+
+    return _events_to_df(kept, signals)
+
+
 def run_backtest(
     ohlcv: pd.DataFrame,
     signals: pd.DataFrame,
@@ -442,6 +519,8 @@ def run_backtest(
     tp_r_short: float | None = None,
     *,
     live_parity: LiveParityConfig | None = None,
+    bias_cfg: BiasConfig | None = None,
+    regime_series: pd.Series | None = None,
 ) -> BacktestResult:
     """Simulate trades from signals on historical OHLCV.
 
@@ -463,9 +542,12 @@ def run_backtest(
     A trade closes when a candle's high or low touches the SL or TP level.
     Trades still open at end of data are marked as outcome="open".
 
-    live_parity (T6 PR-1 plumbing) toggles parity-with-live gates. PR-1 logs
-    the resolved mask but does not yet port any gate; defaults preserve
-    current behaviour.
+    live_parity toggles parity-with-live gates. PR-2 ports the regime gate
+    (live `_apply_regime_gate`): when `live_parity.regime` is on,
+    `bias_cfg.regime_enabled` is True, and a `regime_series` is supplied,
+    signals at historical times are filtered against the regime active at
+    each signal's `open_time`. PR-1 plumbing (log line) is preserved.
+    Defaults remain a no-op so existing callers see no behavioural change.
     """
     if live_parity is not None and any(
         live_parity.is_on(gate) for gate in _LIVE_PARITY_GATE_ORDER
@@ -476,6 +558,16 @@ def run_backtest(
                 f"{gate}={'on' if live_parity.is_on(gate) else 'off'}"
                 for gate in _LIVE_PARITY_GATE_ORDER
             ),
+        )
+
+    if (
+        live_parity is not None
+        and live_parity.is_on("regime")
+        and bias_cfg is not None
+        and bias_cfg.regime_enabled
+    ):
+        signals = _apply_regime_gate_to_signals(
+            signals, symbol, timeframe, strategy, bias_cfg, regime_series
         )
 
     result = BacktestResult(
