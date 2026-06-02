@@ -26,7 +26,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from math import sqrt
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import duckdb
 import pandas as pd
@@ -36,6 +36,12 @@ from analytics.backtest_runner import detect_signals_for_strategy
 from analytics.data_store import DEFAULT_DB_PATH, get_ohlcv
 from analytics.perf_timer import timed
 from analytics.strategies import KNOWN_STRATEGIES, STRATEGY_REGISTRY
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from analytics.backtest.live_parity_config import LiveParityConfig
+    from analytics.signal_config import BiasConfig, StrategyOverride
 
 # ---------------------------------------------------------------------------
 # Scoring
@@ -229,8 +235,25 @@ def _sweep_grid_worker(
     is_min: int,
     atr_sl_multiplier: float | None = None,
     atr_sl_floor: bool = False,
+    *,
+    live_parity: LiveParityConfig | None = None,
+    bias_cfg: BiasConfig | None = None,
+    regime_series: pd.Series | None = None,
+    strategy_params: dict[str, StrategyOverride] | None = None,
+    htf_slope_series_by_anchor: Mapping[tuple[str, int, int], pd.Series] | None = None,
 ) -> SweepRow:
-    """Single grid-combo backtest worker — module-level so ProcessPoolExecutor can pickle it."""
+    """Single grid-combo backtest worker — module-level so ProcessPoolExecutor can pickle it.
+
+    The live-parity inputs (``live_parity`` + ``bias_cfg`` + the pre-computed
+    ``regime_series`` / ``htf_slope_series_by_anchor`` / ``strategy_params``) are
+    forwarded verbatim to both the IS and OOS ``run_backtest`` calls so a WFO
+    cell replays the live gate stack. They default to ``None`` (no-op), keeping
+    legacy sweep behaviour byte-identical. The IS and OOS windows each apply the
+    gates over their own OHLCV slice — regime / direction_filter / HTF-EMA
+    resolve per-signal so they are unaffected by the split, while ADR (rolling
+    14-day) and cooldown (per-call state) reset at the boundary, which is the
+    intended WFO semantics (IS and OOS are independent samples).
+    """
     tp_r = float(params.get("tp_r", 2.0))
     sl_pct = float(params.get("sl_pct", 0.02))
     bt_is = run_backtest(
@@ -244,6 +267,11 @@ def _sweep_grid_worker(
         fee_pct=fee_pct,
         atr_sl_multiplier=atr_sl_multiplier,
         atr_sl_floor=atr_sl_floor,
+        live_parity=live_parity,
+        bias_cfg=bias_cfg,
+        regime_series=regime_series,
+        strategy_params=strategy_params,
+        htf_slope_series_by_anchor=htf_slope_series_by_anchor,
     )
     bt_oos = run_backtest(
         ohlcv_oos,
@@ -256,6 +284,11 @@ def _sweep_grid_worker(
         fee_pct=fee_pct,
         atr_sl_multiplier=atr_sl_multiplier,
         atr_sl_floor=atr_sl_floor,
+        live_parity=live_parity,
+        bias_cfg=bias_cfg,
+        regime_series=regime_series,
+        strategy_params=strategy_params,
+        htf_slope_series_by_anchor=htf_slope_series_by_anchor,
     )
     is_s = _score(bt_is, is_min)
     oos_s = _score(bt_oos, 1)
@@ -291,8 +324,27 @@ def run_param_sweep(
     day_filter: str = "off",
     atr_sl_multiplier: float | None = None,
     atr_sl_floor: bool = False,
+    *,
+    live_parity: LiveParityConfig | None = None,
+    bias_cfg: BiasConfig | None = None,
+    regime_series: pd.Series | None = None,
+    strategy_params: dict[str, StrategyOverride] | None = None,
+    htf_slope_series_by_anchor: Mapping[tuple[str, int, int], pd.Series] | None = None,
 ) -> list[SweepRow]:
-    """Run WFO grid sweep. Returns rows sorted by IS score (descending)."""
+    """Run WFO grid sweep. Returns rows sorted by IS score (descending).
+
+    The live-parity inputs are threaded into every grid ``run_backtest`` call so
+    each cell's trade counts reflect the live-filtered population (regime,
+    direction_filter, F8 HTF-EMA, ADR bias, cooldown) instead of raw detector
+    signals. They default to ``None`` — when omitted the sweep is byte-identical
+    to the legacy raw-signal path. The cross-strategy ``conflict_resolver`` gate
+    is *not* replayed here: this sweep is single-strategy, so there is no
+    cross-strategy event pool for it to act on.
+
+    ``regime_series`` / ``htf_slope_series_by_anchor`` are the pre-computed HTF
+    series for ``symbol`` indexed by HTF ``open_time`` (built once by the caller
+    via the backtest_runner helpers); the engine binary-searches them per signal.
+    """
     end_ms = int(time.time() * 1000)
     start_ms = since_ms if since_ms is not None else end_ms - days * 24 * 3_600 * 1_000
 
@@ -392,6 +444,11 @@ def run_param_sweep(
                     is_min,
                     atr_sl_multiplier,
                     atr_sl_floor,
+                    live_parity=live_parity,
+                    bias_cfg=bias_cfg,
+                    regime_series=regime_series,
+                    strategy_params=strategy_params,
+                    htf_slope_series_by_anchor=htf_slope_series_by_anchor,
                 ): p
                 for p in grid
             }
