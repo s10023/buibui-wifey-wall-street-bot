@@ -35,6 +35,18 @@ _LIVE_PARITY_GATE_ORDER = (
     "cooldown",
 )
 
+# Default cooldown bars per timeframe — reconciled to wifey's equity TFs.
+# Wifey trades only 4h / 1d / 1wk (no intraday), so parent's intraday map
+# ({"15m": 4, "1h": 3, ...}) does not apply. Mirrors live cooldown_store's
+# candle-watermark cadence scaled by TF, with the higher TFs collapsing to a
+# single bar of suppression. Unknown TFs fall through to 1 so an unexpected
+# timeframe still has a sensible cooldown floor.
+_DEFAULT_COOLDOWN_BARS_PER_TF: Mapping[str, int] = {
+    "4h": 2,
+    "1d": 1,
+    "1wk": 1,
+}
+
 
 def _compute_atr14(
     highs: np.ndarray[Any, np.dtype[np.float64]],
@@ -662,6 +674,95 @@ def _apply_adr_bias_gate_to_signals(
     return out.sort_values("open_time").reset_index(drop=True)
 
 
+@dataclass
+class _CooldownState:
+    """In-memory cooldown ledger scoped to a single ``run_backtest`` call.
+
+    Keyed by (symbol, timeframe, strategy, direction) so per-direction signals
+    don't suppress each other and the same state object could in principle be
+    threaded across multiple strategies if a future caller wanted cross-strategy
+    cooldown (PR-5 only scopes within one call, per T6 plan Q1).
+    """
+
+    last_fire_by_key: dict[tuple[str, str, str, str], int] = field(default_factory=dict)
+
+
+def _resolve_cooldown_bars(timeframe: str, live_parity: LiveParityConfig) -> int:
+    """Resolve cooldown bars for ``timeframe`` honouring TOML overrides.
+
+    Order: TOML/CLI override → baked-in default → fallback of 1 bar.
+    """
+    if (
+        live_parity.cooldown_bars_per_tf is not None
+        and timeframe in live_parity.cooldown_bars_per_tf
+    ):
+        return int(live_parity.cooldown_bars_per_tf[timeframe])
+    return int(_DEFAULT_COOLDOWN_BARS_PER_TF.get(timeframe, 1))
+
+
+def _apply_cooldown_gate_to_signals(
+    signals: pd.DataFrame,
+    symbol: str,
+    timeframe: str,
+    strategy: str,
+    live_parity: LiveParityConfig,
+    state: _CooldownState,
+) -> pd.DataFrame:
+    """Drop signals that fall inside the post-fire cooldown window.
+
+    Walks rows in ``open_time`` order. For each candidate, looks up the last
+    fired open_time for ``(symbol, timeframe, strategy, direction)`` and drops
+    the row when ``open_time < last_fire + cooldown_bars * tf_ms``; otherwise
+    keeps the row and stamps state with the new fire. Two ties at the same
+    open_time → only the first row in iteration order fires (deterministic on
+    pre-sorted input).
+
+    Backtest is a single pass over history, so this state machine replaces
+    live's candle-watermark dedup with an explicit N-bar cooldown timer per
+    the T6 plan. State is mutated in place — callers own scoping.
+    """
+    if signals.empty:
+        return signals
+
+    from analytics.signal._common import parse_timeframe_secs
+
+    cooldown_bars = _resolve_cooldown_bars(timeframe, live_parity)
+    if cooldown_bars <= 0:
+        return signals
+    tf_ms = parse_timeframe_secs(timeframe) * 1000
+    cooldown_window_ms = cooldown_bars * tf_ms
+
+    ordered = signals.sort_values("open_time").reset_index(drop=True)
+    open_times = ordered["open_time"].to_numpy(dtype=np.int64)
+    directions = ordered["direction"].to_numpy(dtype=object)
+
+    keep_mask = np.zeros(len(ordered), dtype=bool)
+    dropped = 0
+    for i in range(len(ordered)):
+        open_time = int(open_times[i])
+        direction = str(directions[i])
+        key = (symbol, timeframe, strategy, direction)
+        last_fire = state.last_fire_by_key.get(key)
+        if last_fire is not None and open_time < last_fire + cooldown_window_ms:
+            dropped += 1
+            continue
+        keep_mask[i] = True
+        state.last_fire_by_key[key] = open_time
+
+    if dropped:
+        logger.debug(
+            "live_parity cooldown: %s %s %s dropped %d/%d signals (cooldown=%d bars)",
+            symbol,
+            timeframe,
+            strategy,
+            dropped,
+            len(ordered),
+            cooldown_bars,
+        )
+
+    return ordered[keep_mask].reset_index(drop=True)
+
+
 def run_backtest(
     ohlcv: pd.DataFrame,
     signals: pd.DataFrame,
@@ -724,6 +825,11 @@ def run_backtest(
          has consumed >= `bias_cfg.adr_suppress_threshold` of the 14-day ADR.
          Honours strategy-wide exemption via `strategy_params[strat].adr_exempt`.
          Needs `bias_cfg` with the threshold set; falls open otherwise.
+      5. cooldown (PR-5) — N-bar suppression after a fire on the same
+         (symbol, timeframe, strategy, direction) key. State is instantiated
+         per call so each backtest gets a fresh ledger; equity defaults are
+         4h=2, 1d=1, 1wk=1 bars. Overrides come from
+         `live_parity.cooldown_bars_per_tf`.
     All gates default off and no-op when their inputs are absent — existing
     callers see no behavioural change.
     """
@@ -781,6 +887,12 @@ def run_backtest(
     ):
         signals = _apply_adr_bias_gate_to_signals(
             signals, ohlcv, symbol, timeframe, strategy, bias_cfg, strategy_params
+        )
+
+    if live_parity is not None and live_parity.is_on("cooldown"):
+        cooldown_state = _CooldownState()
+        signals = _apply_cooldown_gate_to_signals(
+            signals, symbol, timeframe, strategy, live_parity, cooldown_state
         )
 
     result = BacktestResult(
