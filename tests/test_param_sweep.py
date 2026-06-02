@@ -391,3 +391,92 @@ class TestAtrFloorForwarding:
         for kwargs in captured:
             assert kwargs["atr_sl_multiplier"] == 2.0
             assert kwargs["atr_sl_floor"] is True
+
+
+class TestLiveParityForwarding:
+    """Task 1: _sweep_grid_worker must thread the live-parity inputs through to
+    both IS + OOS run_backtest calls so WFO cells can replay the live gate stack.
+    """
+
+    @staticmethod
+    def _empty_df() -> pd.DataFrame:
+        return pd.DataFrame(
+            columns=["open_time", "open", "high", "low", "close", "volume"]
+        )
+
+    @staticmethod
+    def _empty_result() -> BacktestResult:
+        return BacktestResult(symbol="BTCUSDT", timeframe="1d", strategy="eqh_eql")
+
+    def test_sweep_grid_worker_forwards_live_parity_inputs(self) -> None:
+        from analytics.backtest.live_parity_config import LiveParityConfig
+
+        lp = LiveParityConfig(
+            enabled=True,
+            regime=True,
+            direction_filter=True,
+            f8_htf_ema=True,
+            adr_bias=True,
+            cooldown=True,
+        )
+        regime = pd.Series(["trend"], index=[_BASE_TIME])
+        slope = {("4h", 50, 3): pd.Series([0.01], index=[_BASE_TIME])}
+        captured: list[dict[str, Any]] = []
+
+        def fake_run_backtest(*args: Any, **kwargs: Any) -> BacktestResult:
+            captured.append(kwargs)
+            return self._empty_result()
+
+        with patch("analytics.param_sweep.run_backtest", side_effect=fake_run_backtest):
+            _sweep_grid_worker(
+                params={"tp_r": 2.0},
+                ohlcv_is=self._empty_df(),
+                signals_is=self._empty_df(),
+                ohlcv_oos=self._empty_df(),
+                signals_oos=self._empty_df(),
+                symbol="AAPL",
+                timeframe="1d",
+                strategy="eqh_eql",
+                fee_pct=0.0,
+                is_min=1,
+                live_parity=lp,
+                bias_cfg=None,
+                regime_series=regime,
+                strategy_params=None,
+                htf_slope_series_by_anchor=slope,
+            )
+
+        assert len(captured) == 2  # IS + OOS
+        for kwargs in captured:
+            assert kwargs["live_parity"] is lp
+            assert kwargs["regime_series"] is regime
+            assert kwargs["htf_slope_series_by_anchor"] is slope
+
+    def test_sweep_grid_worker_defaults_live_parity_off(self) -> None:
+        captured: list[dict[str, Any]] = []
+
+        def fake_run_backtest(*args: Any, **kwargs: Any) -> BacktestResult:
+            captured.append(kwargs)
+            return self._empty_result()
+
+        with patch("analytics.param_sweep.run_backtest", side_effect=fake_run_backtest):
+            _sweep_grid_worker(
+                params={"tp_r": 2.0},
+                ohlcv_is=self._empty_df(),
+                signals_is=self._empty_df(),
+                ohlcv_oos=self._empty_df(),
+                signals_oos=self._empty_df(),
+                symbol="AAPL",
+                timeframe="1d",
+                strategy="eqh_eql",
+                fee_pct=0.0,
+                is_min=1,
+            )
+
+        assert len(captured) == 2
+        for kwargs in captured:
+            assert kwargs["live_parity"] is None
+            assert kwargs["bias_cfg"] is None
+            assert kwargs["regime_series"] is None
+            assert kwargs["strategy_params"] is None
+            assert kwargs["htf_slope_series_by_anchor"] is None

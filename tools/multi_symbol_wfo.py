@@ -59,16 +59,28 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import duckdb
 
 from analytics.backtest_lib import BacktestResult, Trade
+from analytics.backtest_runner import (
+    _build_htf_slope_series_by_symbol,
+    _build_regime_series_by_symbol,
+)
 from analytics.data_store import DEFAULT_DB_PATH
 from analytics.param_sweep import ParamRange, _float_range, run_param_sweep
 from analytics.signal_config import SignalWatchConfig, load_signal_config
+
+if TYPE_CHECKING:
+    import pandas as pd
+
+    from analytics.backtest.live_parity_config import LiveParityConfig
+    from analytics.signal_config import BiasConfig
+    from analytics.signal_config import StrategyOverride as LiveStrategyOverride
 
 CONFIG_PATHS: dict[str, Path] = {
     "signal_watch.toml": Path("config/signal_watch.toml"),
@@ -565,6 +577,72 @@ def _resolve_atr(
     return (mult, floor)
 
 
+@dataclass
+class _LiveParityCtx:
+    """Pre-built live-parity inputs for one config (signal_watch TOML).
+
+    `--live-parity` replays the live gate stack inside each cell's
+    `run_param_sweep` so the reported `n` reflects the live-filtered population
+    rather than raw detector signals. The five per-strategy gates apply
+    (regime / direction_filter / F8 HTF-EMA / ADR bias / cooldown); the
+    cross-strategy `conflict_resolver` is *not* part of this — the WFO tool
+    sweeps one strategy at a time, so there is no cross-strategy event pool.
+    The regime / HTF-slope series are pre-computed once per config over the
+    full cohort window and indexed by HTF open_time so every cell reuses them.
+    """
+
+    live_parity: LiveParityConfig
+    bias_cfg: BiasConfig | None
+    strategy_params: dict[str, LiveStrategyOverride] | None
+    regime_by_sym: dict[str, pd.Series] | None
+    htf_by_sym: dict[str, dict[tuple[str, int, int], pd.Series]] | None
+
+
+def _build_live_parity_ctx(
+    conn: duckdb.DuckDBPyConnection,
+    config_label: str,
+    start_ms: int,
+    end_ms: int,
+) -> _LiveParityCtx:
+    """Load a config and force-enable the live-parity gates for WFO replay.
+
+    Reuses `load_backtest_config` (the canonical loader that wires `[bias]`,
+    `[strategy_params]`, and `[backtest.live_parity]`) then overrides the
+    `LiveParityConfig` to turn on every per-strategy gate regardless of what the
+    TOML toggled — the point of `--live-parity` is to replay the live stack.
+    `conflict_resolver` stays off (cross-strategy, not applicable here). The
+    regime / HTF-slope pre-compute reuses the backtest_runner builders so the
+    series are byte-for-byte what the production sweep would feed the engine.
+    """
+    from analytics.backtest_config import load_backtest_config
+
+    cfg = load_backtest_config(CONFIG_PATHS[config_label])
+    forced = replace(
+        cfg.live_parity,
+        enabled=True,
+        regime=True,
+        direction_filter=True,
+        f8_htf_ema=True,
+        adr_bias=True,
+        conflict_resolver=False,
+        cooldown=True,
+    )
+    cfg.live_parity = forced
+    regime_by_sym = _build_regime_series_by_symbol(
+        conn, cfg, list(SYMBOLS), start_ms, end_ms
+    )
+    htf_by_sym = _build_htf_slope_series_by_symbol(
+        conn, cfg, list(SYMBOLS), start_ms, end_ms
+    )
+    return _LiveParityCtx(
+        live_parity=forced,
+        bias_cfg=cfg.bias,
+        strategy_params=cfg.live_strategy_params,
+        regime_by_sym=regime_by_sym,
+        htf_by_sym=htf_by_sym,
+    )
+
+
 def _sweep_cell(
     conn: duckdb.DuckDBPyConnection,
     strategy: str,
@@ -574,6 +652,7 @@ def _sweep_cell(
     config_label: str,
     directions: tuple[str, ...],
     atr_cfg: SignalWatchConfig | None = None,
+    lp_ctx: _LiveParityCtx | None = None,
 ) -> None:
     since_ms = _since_for_tf(tf)
     min_trades = _min_trades_for_tf(tf)
@@ -584,11 +663,12 @@ def _sweep_cell(
         if atr_cfg is not None
         else ""
     )
+    lp_label = "  live-parity: ON" if lp_ctx is not None else ""
     header = (
         f"\n{'=' * 110}\n"
         f"  Cell: {strategy} / {tf} / day_filter={day_filter}  "
         f"(currently tp_r={current_tp_r} in {config_label})"
-        f"{atr_label}\n"
+        f"{atr_label}{lp_label}\n"
         f"{'=' * 110}"
     )
     print(header)
@@ -610,6 +690,19 @@ def _sweep_cell(
             day_filter=day_filter,
             atr_sl_multiplier=atr_mult,
             atr_sl_floor=atr_floor,
+            live_parity=lp_ctx.live_parity if lp_ctx is not None else None,
+            bias_cfg=lp_ctx.bias_cfg if lp_ctx is not None else None,
+            regime_series=(
+                lp_ctx.regime_by_sym.get(sym)
+                if lp_ctx is not None and lp_ctx.regime_by_sym is not None
+                else None
+            ),
+            strategy_params=lp_ctx.strategy_params if lp_ctx is not None else None,
+            htf_slope_series_by_anchor=(
+                lp_ctx.htf_by_sym.get(sym)
+                if lp_ctx is not None and lp_ctx.htf_by_sym is not None
+                else None
+            ),
         )
         per_symbol_results[sym] = rows
 
@@ -680,6 +773,17 @@ def main() -> None:
         help='Filter to a single cell, format "strategy/tf/day_filter". '
         'Example: "ema/4h/tue_thu". Omit to run all cells in the chosen list.',
     )
+    parser.add_argument(
+        "--live-parity",
+        action="store_true",
+        dest="live_parity",
+        help="Replay the live gate stack inside each cell's sweep so the "
+        "reported n/avg_r reflect the live-filtered population (regime, "
+        "direction_filter, F8 HTF-EMA, ADR bias, cooldown) instead of raw "
+        "detector signals. The cross-strategy conflict_resolver is not applied "
+        "(this tool sweeps one strategy at a time). Off by default — without it "
+        "the sweep replays raw signals (the historical filter-divergence path).",
+    )
     args = parser.parse_args()
 
     if args.cells == "task-a":
@@ -722,12 +826,17 @@ def main() -> None:
         if atr_lookup is not None
         else "ATR floor: off"
     )
+    lp_status = (
+        "live-parity: ON (regime+direction_filter+F8+ADR+cooldown)"
+        if args.live_parity
+        else "live-parity: off (raw signals)"
+    )
     print(
         f"Multi-symbol pooled WFO sweep — cohort: {', '.join(SYMBOLS)}\n"
         f"  Cells: {len(cells)} ({args.cells})   "
         f"tp_r grid: {len(TP_R_RANGE.values)} values "
         f"({TP_R_RANGE.values[0]}..{TP_R_RANGE.values[-1]} step 0.5)\n"
-        f"  Directions: {', '.join(directions)}   {atr_status}\n"
+        f"  Directions: {', '.join(directions)}   {atr_status}   {lp_status}\n"
         f"  Anchors: 4h since {SINCE_4H}, 1d since {SINCE_1D}, "
         f"1wk since {SINCE_1WK}   fee_pct={FEE_PCT}   "
         f"wfo_split={WFO_SPLIT}   min_pooled_n={MIN_POOLED_N} (per direction)"
@@ -735,6 +844,19 @@ def main() -> None:
 
     conn = duckdb.connect(str(args.db), read_only=True)
     try:
+        lp_ctx_by_label: dict[str, _LiveParityCtx] = {}
+        if args.live_parity:
+            # Build regime / HTF-slope series once per config over the widest
+            # cohort window (earliest 1d/1wk anchor); cells reusing the same
+            # config share the pre-computed series. 4h-only cells simply index
+            # into a series that starts later — binary search handles it.
+            lp_start_ms = _date_to_ms(SINCE_1D)
+            lp_end_ms = int(datetime.now(UTC).timestamp() * 1000)
+            for _label in {c[4] for c in cells}:
+                lp_ctx_by_label[_label] = _build_live_parity_ctx(
+                    conn, _label, lp_start_ms, lp_end_ms
+                )
+
         for strategy, tf, day_filter, current_tp_r, config_label in cells:
             atr_cfg = atr_lookup.get(config_label) if atr_lookup else None
             _sweep_cell(
@@ -746,6 +868,7 @@ def main() -> None:
                 config_label,
                 directions,
                 atr_cfg=atr_cfg,
+                lp_ctx=lp_ctx_by_label.get(config_label),
             )
     finally:
         conn.close()
