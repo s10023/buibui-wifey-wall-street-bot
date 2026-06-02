@@ -80,7 +80,7 @@ Detailed API reference for `analytics/`. Load this when working on any analytics
 
 ## param_sweep.py — WFO sweep lib
 
-- `run_param_sweep(conn, strategy, symbol, tf, days, param_ranges, wfo_split, min_trades, fee_pct, top_n, adr_suppress_threshold=None, day_filter="off", atr_sl_multiplier=None, atr_sl_floor=False)` → `list[SweepRow]` — `atr_sl_multiplier`/`atr_sl_floor` forwarded to every grid `run_backtest()` call (F9 joint sweeps)
+- `run_param_sweep(conn, strategy, symbol, tf, days, param_ranges, wfo_split, min_trades, fee_pct, top_n, adr_suppress_threshold=None, day_filter="off", atr_sl_multiplier=None, atr_sl_floor=False, *, live_parity=None, bias_cfg=None, regime_series=None, strategy_params=None, htf_slope_series_by_anchor=None)` → `list[SweepRow]` — `atr_sl_multiplier`/`atr_sl_floor` forwarded to every grid `run_backtest()` call (F9 joint sweeps); the kw-only live-parity inputs (`live_parity` + `bias_cfg` + pre-computed `regime_series`/`strategy_params`/`htf_slope_series_by_anchor`) are forwarded to both the IS+OOS `run_backtest()` calls so a WFO cell replays the live gate stack (regime/direction_filter/F8 HTF-EMA/ADR/cooldown). All default `None` → byte-identical raw-signal path. `tools/multi_symbol_wfo.py --live-parity` builds these inputs per config and threads them through (the filter-accurate fix for `wfo-filter-divergence`)
 - `run_strategy_audit(...)` → `list[AuditRow]` — same `atr_sl_multiplier`/`atr_sl_floor` kwargs as `run_param_sweep`; forwarded to each worker's `run_backtest()`
 - Applies `day_filter` before IS/OOS split — grades same population the live daemon sees
 - `SweepRow` / `AuditRow` expose `long/short_oos_avg_r`, `long/short_oos_n` (Gate 3)
