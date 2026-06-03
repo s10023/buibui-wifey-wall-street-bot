@@ -279,20 +279,20 @@ tp_r_4h = 2.5
             Path(__file__).parent.parent / "config" / "signal_watch_weekdays.toml"
         )
         cfg = load_signal_config(cfg_path)
-        # engulfing: 4h combined 3.0 (candle-resweep keeps Task E — 4.0 winner thin
-        # +0.016R margin over current 3.0); 1wk combined NEW 4.0 (replaces fallback
-        # 3.5 which was -0.041R under ATR floor) + long 5.0 NEW + short 4.0 (was 4.5).
-        assert cfg.effective_tp_r("engulfing", "AAPL", "4h") == 3.0
+        # engulfing live-parity re-derive (2026-06-03): 4h combined 4.0 (was 3.0; n=75);
+        # 1d combined 5.0 (was 2.5; n=24, long_1d dropped n=18<20); 1wk combined 4.0 kept
+        # (n<10) with long_1wk/short_1wk dropped (raw n=24/37 inflated).
+        assert cfg.effective_tp_r("engulfing", "AAPL", "4h") == 4.0
         assert cfg.effective_tp_r("engulfing", "AAPL", "1wk") == 4.0
-        assert cfg.effective_tp_r("engulfing", "AAPL", "1wk", direction="long") == 5.0
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1wk", direction="long") == 4.0
         assert cfg.effective_tp_r("engulfing", "AAPL", "1wk", direction="short") == 4.0
-        # engulfing 4h directional: short override 2.5 (kept); long falls back to combined 3.0.
-        assert cfg.effective_tp_r("engulfing", "AAPL", "4h", direction="short") == 2.5
-        assert cfg.effective_tp_r("engulfing", "AAPL", "4h", direction="long") == 3.0
-        # engulfing 1d directional: long=3.0 (kept); short tp_r_short_1d dropped (short
-        # winner=combined=2.5 → falls to combined; was 1.5 pre-resweep).
-        assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="long") == 3.0
-        assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="short") == 2.5
+        # engulfing 4h directional: short_4h dropped (live short n=42→4.0 = combined);
+        # both directions fall back to combined 4.0.
+        assert cfg.effective_tp_r("engulfing", "AAPL", "4h", direction="short") == 4.0
+        assert cfg.effective_tp_r("engulfing", "AAPL", "4h", direction="long") == 4.0
+        # engulfing 1d directional: long_1d dropped (live long n=18<20); both fall to combined 5.0.
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="long") == 5.0
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="short") == 5.0
         # trend_day Phase 2 resweep (under ATR floor): 1wk combined 3.0 NEW (was fallback 2.0)
         # + long 4.5 (was 4.0; ATR floor pulled winner 0.5 step wider) + short 1.5 (confirmed).
         assert cfg.effective_tp_r("trend_day", "AAPL", "1wk") == 3.0
@@ -332,13 +332,15 @@ tp_r_4h = 2.5
             cfg.effective_tp_r("morning_evening_star", "AAPL", "4h", direction="short")
             == 1.0
         )
-        # ema Phase 2 resweep: 1d directional kept (long=5.0, short=2.5); combined 4.0
-        # NEW (was fallback 3.0).
-        assert cfg.effective_tp_r("ema", "AAPL", "1d") == 4.0
-        assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="long") == 5.0
-        assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="short") == 2.5
-        # ema 4h combined 1.5 (was 2.5; ATR floor pulled SL wider → tighter tp_r wins).
-        assert cfg.effective_tp_r("ema", "AAPL", "4h") == 1.5
+        # ema live-parity re-derive (2026-06-03): 1d combined 4.5 (was 4.0; n=20),
+        # long_1d/short_1d dropped (live long n=15<20, short n<10) → fall to 4.5.
+        assert cfg.effective_tp_r("ema", "AAPL", "1d") == 4.5
+        assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="long") == 4.5
+        assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="short") == 4.5
+        # ema 4h combined 3.0 (was 1.5; n=45) + tp_r_long_4h=3.5 (n=20) + tp_r_short_4h=1.0 (n=25).
+        assert cfg.effective_tp_r("ema", "AAPL", "4h") == 3.0
+        assert cfg.effective_tp_r("ema", "AAPL", "4h", direction="long") == 3.5
+        assert cfg.effective_tp_r("ema", "AAPL", "4h", direction="short") == 1.0
         # hammer_hanging_man Phase 2 resweep: 4h combined 3.5 (was 3.0); 1d combined 2.0
         # NEW (was fallback 4.0) + tp_r_long_1d=2.5 NEW.
         assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "4h") == 3.5
@@ -350,11 +352,14 @@ tp_r_4h = 2.5
         # bos Phase 2 resweep: 1d combined 2.5 kept (no_edge under floor) + tp_r_long_1d=4.0 NEW.
         assert cfg.effective_tp_r("bos", "AAPL", "1d") == 2.5
         assert cfg.effective_tp_r("bos", "AAPL", "1d", direction="long") == 4.0
-        # orb 4h Phase 2 resweep: combined 2.5 confirmed; tp_r_long_4h=3.5 NEW + tp_r_short_4h=1.5 NEW.
-        assert cfg.effective_tp_r("orb", "AAPL", "4h") == 2.5
-        assert cfg.effective_tp_r("orb", "AAPL", "4h", direction="long") == 3.5
-        assert cfg.effective_tp_r("orb", "AAPL", "4h", direction="short") == 1.5
-        # doji Phase 2 resweep: 1d combined 5.0 NEW (was fallback 3.0); 1wk combined 4.0 NEW.
+        # orb 4h live-parity re-derive (2026-06-03): combined 3.0 (was 2.5; n=54),
+        # long_4h dropped (live long n=29→3.0 = combined), short_4h 2.0 (was 1.5; n=25).
+        assert cfg.effective_tp_r("orb", "AAPL", "4h") == 3.0
+        assert cfg.effective_tp_r("orb", "AAPL", "4h", direction="long") == 3.0
+        assert cfg.effective_tp_r("orb", "AAPL", "4h", direction="short") == 2.0
+        # doji live-parity re-derive (2026-06-03): 4h combined 4.5 NEW (raw was no_edge,
+        # live n=30); 1d 5.0 kept (live n=13<20, flagged); 1wk 4.0 kept (live n<10).
+        assert cfg.effective_tp_r("doji", "AAPL", "4h") == 4.5
         assert cfg.effective_tp_r("doji", "AAPL", "1d") == 5.0
         assert cfg.effective_tp_r("doji", "AAPL", "1wk") == 4.0
         # eqh_eql Phase 2 resweep: 4h tp_r_short_4h=5.0 NEW (combined no_edge stays at 2.0).
@@ -402,16 +407,16 @@ tp_r_4h = 2.5
         """signal_watch.toml (tue_thu) strategy_params must be applied (equity surface)."""
         cfg_path = Path(__file__).parent.parent / "config" / "signal_watch.toml"
         cfg = load_signal_config(cfg_path)
-        # engulfing 4h combined 2.5 (candle-resweep confirms Task E); 1d combined 2.5.
-        assert cfg.effective_tp_r("engulfing", "AAPL", "4h") == 2.5
+        # engulfing live-parity re-derive (2026-06-03): 4h combined 4.0 (was 2.5; n=44)
+        # + tp_r_short_4h=3.0 (n=26, differs); 1d combined 2.5 kept (live n=16<20),
+        # long_1d/short_1d dropped (raw n=59/77 inflated).
+        assert cfg.effective_tp_r("engulfing", "AAPL", "4h") == 4.0
         assert cfg.effective_tp_r("engulfing", "AAPL", "1d") == 2.5
-        # engulfing 4h: tp_r_short_4h still dropped — both directions fall back to 2.5.
-        assert cfg.effective_tp_r("engulfing", "AAPL", "4h", direction="short") == 2.5
-        assert cfg.effective_tp_r("engulfing", "AAPL", "4h", direction="long") == 2.5
-        # engulfing 1d directional: long=4.0 (kept); short=1.0 (was 1.5; ATR floor
-        # pulled winner 0.5 step shorter, +0.065R at n=77).
-        assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="long") == 4.0
-        assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="short") == 1.0
+        assert cfg.effective_tp_r("engulfing", "AAPL", "4h", direction="short") == 3.0
+        assert cfg.effective_tp_r("engulfing", "AAPL", "4h", direction="long") == 4.0
+        # engulfing 1d directionals dropped → both fall to combined 2.5.
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="long") == 2.5
+        assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="short") == 2.5
         # pin_bar candle-resweep 13-sym: 4h combined 2.0 (was 3.5; ATR floor 1.5×
         # pulled SL wider → tighter tp_r wins; long no_edge, short=combined → no
         # directional override); 1d combined 2.5 (was 3.5) + tp_r_long_1d=5.0 kept
@@ -471,29 +476,29 @@ tp_r_4h = 2.5
             cfg.effective_tp_r("morning_evening_star", "AAPL", "1d", direction="short")
             == 1.5
         )
-        # ema Phase 2 resweep: 4h combined 3.5 (was 2.5; ATR floor pulled SL wider);
-        # long=1.5 (was 5.0; ATR floor inverts long edge — tightest tp_r wins);
-        # short=4.5 (confirms Task E). 1d combined 4.5 NEW; long=5.0 (kept), short=4.0 (kept).
-        assert cfg.effective_tp_r("ema", "AAPL", "4h") == 3.5
+        # ema live-parity re-derive (2026-06-03): 4h combined 1.5 (was 3.5; n=30),
+        # long_4h/short_4h dropped (live n=13/17<20) → fall to 1.5; 1d combined 4.5 kept
+        # (live n=13<20), long_1d/short_1d dropped → fall to 4.5.
+        assert cfg.effective_tp_r("ema", "AAPL", "4h") == 1.5
         assert cfg.effective_tp_r("ema", "AAPL", "4h", direction="long") == 1.5
-        assert cfg.effective_tp_r("ema", "AAPL", "4h", direction="short") == 4.5
+        assert cfg.effective_tp_r("ema", "AAPL", "4h", direction="short") == 1.5
         assert cfg.effective_tp_r("ema", "AAPL", "1d") == 4.5
-        assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="long") == 5.0
-        assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="short") == 4.0
-        # orb 4h Phase 2 resweep: combined 3.5 (confirms T-A); tp_r_long_4h=4.5 NEW;
-        # tp_r_short_4h=2.0 NEW (short edge dominates on 4h).
-        assert cfg.effective_tp_r("orb", "AAPL", "4h") == 3.5
-        assert cfg.effective_tp_r("orb", "AAPL", "4h", direction="long") == 4.5
-        assert cfg.effective_tp_r("orb", "AAPL", "4h", direction="short") == 2.0
+        assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="long") == 4.5
+        assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="short") == 4.5
+        # orb 4h live-parity re-derive (2026-06-03): combined 5.0 (was 3.5; n=37),
+        # long_4h/short_4h dropped (live long=5.0=combined, short n=17<20) → fall to 5.0.
+        assert cfg.effective_tp_r("orb", "AAPL", "4h") == 5.0
+        assert cfg.effective_tp_r("orb", "AAPL", "4h", direction="long") == 5.0
+        assert cfg.effective_tp_r("orb", "AAPL", "4h", direction="short") == 5.0
         # bos Phase 2 resweep: 4h tp_r_short_4h=1.5 NEW (long no_edge, combined
         # net-neg); 1d combined 2.5 NEW; tp_r_long_1d=4.0 NEW.
         assert cfg.effective_tp_r("bos", "AAPL", "4h", direction="short") == 1.5
         assert cfg.effective_tp_r("bos", "AAPL", "1d") == 2.5
         assert cfg.effective_tp_r("bos", "AAPL", "1d", direction="long") == 4.0
-        # doji Phase 2 resweep: 1d combined 3.5 NEW; tp_r_long_1d=4.0 NEW (thin
-        # n=28 but clear edge under ATR floor 2.5×).
+        # doji live-parity re-derive (2026-06-03): 1d combined 3.5 kept (live n=11<20),
+        # long_1d dropped (live long n<10) → falls to 3.5.
         assert cfg.effective_tp_r("doji", "AAPL", "1d") == 3.5
-        assert cfg.effective_tp_r("doji", "AAPL", "1d", direction="long") == 4.0
+        assert cfg.effective_tp_r("doji", "AAPL", "1d", direction="long") == 3.5
         # eqh_eql Phase 2 resweep: 4h combined 4.0 NEW (near-zero edge); 1d combined
         # 3.0 NEW; tp_r_long_1d=5.0 NEW (thin n=15 but strong edge).
         assert cfg.effective_tp_r("eqh_eql", "AAPL", "4h") == 4.0
