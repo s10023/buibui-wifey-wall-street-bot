@@ -128,10 +128,10 @@ orb = ["4h"]                                # T13: mechanical — 4h is the only
 # kept as a starting guess; T14 WFO overwrites with equity-derived numbers.
 [strategy_params.engulfing]
 tp_r = 3.0                    # fallback
-tp_r_4h = 2.5                 # candle-resweep 13-sym (under ATR floor 0.5×): combined 2.5@+0.226R, n=190 (confirms Task E; short=combined → no override)
-tp_r_1d = 2.5                 # candle-resweep 13-sym (under ATR floor 1.0×): combined 2.5@+0.147R, n=136 (confirms Task E)
-tp_r_long_1d = 4.0            # candle-resweep 13-sym directional: longs +0.610R, n=59 at 4.0 (confirms Task E)
-tp_r_short_1d = 1.0           # candle-resweep 13-sym directional: shorts +0.065R, n=77 at 1.0 (was 1.5; ATR floor pulled winner 0.5 step shorter)
+tp_r_4h = 4.0                 # live-parity re-derive (2026-06-03): combined 4.0@+0.250R, n=44 (was 2.5; raw n=190 inflated 4.3×)
+tp_r_short_4h = 3.0           # live-parity re-derive (2026-06-03): shorts 3.0@+0.385R, n=26 (differs from combined 4.0)
+tp_r_1d = 2.5                 # live-parity re-derive (2026-06-03): combined n=16 <20 too thin → keep candle-resweep value
+                              # tp_r_long_1d / tp_r_short_1d dropped — live-parity long n=11, short n<10 (raw n=59/77 inflated)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on (structural SL widened to N × ATR14 when tighter)
 atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: +0.21R, n=370
 atr_sl_multiplier_1d = 1.0    # Task C-followup 13-sym: -0.12R least-bad, n=312
@@ -157,8 +157,8 @@ atr_sl_multiplier_1d = 1.0    # Task C-followup 13-sym: -0.06R least-bad, n=336
 
 [strategy_params.doji]
 tp_r = 3.0                    # fallback (also covers 1wk tue_thu — no_grid under Fri close × tue_thu suppression; 2026-05-22 doji-1wk ATR sweep confirmed n=0)
-tp_r_1d = 3.5                 # Phase 2 resweep 13-sym (under ATR floor 2.5×): combined 3.5@+0.276R, n=67 (was 2.5@+0.217R)
-tp_r_long_1d = 4.0            # Phase 2 resweep 13-sym directional: longs +1.143R, n=28 (NEW commit; thin sample but clear edge under ATR floor)
+tp_r_1d = 3.5                 # live-parity re-derive (2026-06-03): combined n=11 <20 too thin → keep Phase 2 value (raw n=67 inflated)
+                              # tp_r_long_1d dropped — live-parity long n<10 (raw n=28 was already thin; inflated by ADR/cooldown)
 volume_suppress = true        # A14b crypto finding; T14 AAPL volume split not re-tested
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on (1wk: no signals on tue_thu — Fri close × tue_thu suppression)
 atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: +0.20R, n=40
@@ -208,9 +208,8 @@ atr_sl_multiplier_1d = 1.0    # Task C-followup 13-sym: +0.16R, n=1380
 
 [strategy_params.orb]
 tp_r = 3.0                    # fallback
-tp_r_4h = 3.5                 # Phase 2 resweep 13-sym (under ATR floor 1.5×): combined 3.5@+0.322R, n=304 (confirms T-A; 13-sym widens past T-A n=100 floor)
-tp_r_long_4h = 4.5            # Phase 2 resweep 13-sym directional: longs +0.262R, n=141 at 4.5 (NEW commit)
-tp_r_short_4h = 2.0           # Phase 2 resweep 13-sym directional: shorts +0.421R, n=159 at 2.0 (NEW commit; short edge dominates on 4h)
+tp_r_4h = 5.0                 # live-parity re-derive (2026-06-03): combined 5.0@+0.676R, n=37 (was 3.5; raw n=304 inflated 8.2×)
+                              # tp_r_long_4h dropped — live-parity long winner 5.0 = combined (raw n=141); tp_r_short_4h dropped — short n=17 <20 (raw n=159)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 1.5    # Task C-followup 13-sym: +0.17R (tied 0.5/1.0/1.5), n=77
 
@@ -225,12 +224,10 @@ atr_sl_multiplier_1d = 2.5    # Task C-followup 13-sym: +0.29R, n=77
 
 [strategy_params.ema]
 tp_r = 3.0                    # spec §6 default (also covers 1wk tue_thu — no_grid under Fri close × tue_thu suppression)
-tp_r_4h = 3.5                 # Phase 2 resweep 13-sym (under ATR floor 2.5×): combined 3.5@+0.181R, n=80 (was 2.5@+0.139R; ATR floor pulled SL wider → wider tp_r wins)
-tp_r_long_4h = 1.5            # Phase 2 resweep 13-sym directional: longs +0.250R, n=34 at 1.5 (was 5.0; ATR floor inverts long edge — tightest tp_r wins)
-tp_r_short_4h = 4.5           # Phase 2 resweep 13-sym directional: shorts +0.402R, n=51 at 4.5 (confirms Task E)
-tp_r_1d = 4.5                 # Phase 2 resweep 13-sym (under ATR floor 0.5×): combined 4.5@+0.772R, n=57 (was fallback 3.0@+0.593R; long-driven edge dominates)
-tp_r_long_1d = 5.0            # Phase 2 resweep 13-sym directional: longs +1.483R, n=29 at 5.0 (kept from Task E)
-tp_r_short_1d = 4.0           # Phase 2 resweep 13-sym directional: shorts +0.448R, n=29 at 4.0 (kept from Task E)
+tp_r_4h = 1.5                 # live-parity re-derive (2026-06-03): combined 1.5@+0.250R, n=30 (was 3.5; raw n=80 inflated 2.7×)
+                              # tp_r_long_4h dropped — live-parity long n=13 <20; tp_r_short_4h dropped — short n=17 <20 (raw n=34/51)
+tp_r_1d = 4.5                 # live-parity re-derive (2026-06-03): combined n=13 <20 too thin → keep Phase 2 value (raw n=57 inflated)
+                              # tp_r_long_1d / tp_r_short_1d dropped — live-parity long/short n<10 (raw n=29/29)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 2.5    # Task C-followup 13-sym: +0.27R, n=266
 atr_sl_multiplier_1d = 0.5    # Task C-followup 13-sym: +0.39R, n=216
