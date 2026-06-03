@@ -1707,8 +1707,12 @@ class TestSignalOutcomePersistence:
         assert row[0] == pytest.approx(120.5)  # structural TP wins
         assert row[1] == pytest.approx(2.0)  # rr_ratio = eff_alert_tp_r
 
-    def test_outcome_row_skips_tp_when_no_structural_sl(self, tmp_path: Any) -> None:
-        """When sl_price=0 (no structural SL), sl_price and tp_price persist NULL."""
+    def test_outcome_row_uses_pct_fallback_when_no_structural_sl(
+        self, tmp_path: Any
+    ) -> None:
+        """When sl_price=0 (no structural SL), the writer falls back to the same
+        pct-based SL/TP the alert formatter renders, so the row is still scoreable
+        (closes the outcome-ledger NULL hole)."""
         conn = duckdb.connect(":memory:")
         init_schema(conn)
         store = CooldownStore(str(tmp_path / "state.json"))
@@ -1758,9 +1762,11 @@ class TestSignalOutcomePersistence:
             "SELECT sl_price, tp_price, rr_ratio FROM signal_alert_outcomes"
         ).fetchone()
         assert row is not None
-        assert row[0] is None  # no structural SL persisted
-        assert row[1] is None
-        assert row[2] is None
+        # entry = 104.0 (signal candle close); default sl_pct=0.02, tp_r=2.0
+        # → sl_dist = 104*0.02 = 2.08, sl = 101.92, tp = 104 + 2.08*2 = 108.16
+        assert row[0] == pytest.approx(101.92)
+        assert row[1] == pytest.approx(108.16)
+        assert row[2] == pytest.approx(2.0)
 
 
 class TestBacktestRunPersistence:

@@ -80,6 +80,38 @@ from signals.registry import SIGNAL_REGISTRY
 logger = logging.getLogger(__name__)
 
 
+def _resolve_outcome_sl_tp(
+    *,
+    direction: str,
+    entry: float,
+    struct_sl: float,
+    struct_tp: float,
+    eff_sl_pct: float,
+    min_sl_pct: float,
+    tp_r: float,
+) -> tuple[float, float]:
+    """Return (sl_price, tp_price) for an outcome-ledger row.
+
+    Mirrors the alert formatter's fallback (``signals/alert_formatter.py``):
+    use the event's structural SL when it sits on the correct side of ``entry``,
+    otherwise fall back to ``entry*(1∓eff_sl_pct)``. The SL distance is floored
+    by ``entry*min_sl_pct``; the structural TP is preferred over
+    ``entry ± sl_dist*tp_r`` when valid. Always returns concrete floats so every
+    fired event is scoreable.
+    """
+    if direction == "long":
+        structural = struct_sl if 0 < struct_sl < entry else entry * (1 - eff_sl_pct)
+        sl_dist = max(entry - structural, entry * min_sl_pct)
+        sl_price = entry - sl_dist
+        tp_price = struct_tp if struct_tp > entry else entry + sl_dist * tp_r
+    else:  # short
+        structural = struct_sl if struct_sl > entry else entry * (1 + eff_sl_pct)
+        sl_dist = max(structural - entry, entry * min_sl_pct)
+        sl_price = entry + sl_dist
+        tp_price = struct_tp if 0 < struct_tp < entry else entry - sl_dist * tp_r
+    return sl_price, tp_price
+
+
 def scan_symbol(
     ohlcv_df: pd.DataFrame,
     symbol: str,
@@ -875,32 +907,28 @@ def run_scan_cycle(
             # Persist per-event outcome rows so win/loss can be backfilled later.
             # tp_price/rr_ratio are filled here (after eff_alert_tp_r is known) so
             # the backfill worker can resolve win/loss against the same target the
-            # alert showed. Per-event SL distance mirrors the formatter math
-            # (structural SL with min_sl_pct floor); rows without a structural SL
-            # persist NULL on sl_price+tp_price and stay unbackfilled by design.
+            # alert showed. Per-event SL/TP mirrors the formatter math: structural
+            # SL when valid, else the same entry*(1±eff_sl_pct) pct fallback the
+            # alert renders, floored by min_sl_pct. Every row is therefore
+            # scoreable — no NULL sl_price/tp_price (closes the outcome-ledger
+            # hole; see specs/2026-06-01-outcome-ledger-sl-tp-fallback-design.md).
             for e in dir_events:
                 signal_id = (
                     f"{e.symbol}-{e.timeframe}-{e.strategy}-{e.open_time}-{e.direction}"
                 )
                 entry = e.price
-                ev_sl: float | None = None
-                ev_tp: float | None = None
-                if direction == "long" and 0 < e.sl_price < entry:
-                    sl_dist = max(entry - e.sl_price, entry * min_sl_pct)
-                    ev_sl = entry - sl_dist
-                    ev_tp = (
-                        e.tp_price
-                        if e.tp_price > entry
-                        else entry + sl_dist * eff_alert_tp_r
-                    )
-                elif direction == "short" and e.sl_price > entry:
-                    sl_dist = max(e.sl_price - entry, entry * min_sl_pct)
-                    ev_sl = entry + sl_dist
-                    ev_tp = (
-                        e.tp_price
-                        if 0 < e.tp_price < entry
-                        else entry - sl_dist * eff_alert_tp_r
-                    )
+                eff_sl_pct = _resolve_sl_pct(
+                    strategy_params, e.strategy, symbol, tf, sl_pct
+                )
+                ev_sl, ev_tp = _resolve_outcome_sl_tp(
+                    direction=direction,
+                    entry=entry,
+                    struct_sl=e.sl_price,
+                    struct_tp=e.tp_price,
+                    eff_sl_pct=eff_sl_pct,
+                    min_sl_pct=min_sl_pct,
+                    tp_r=eff_alert_tp_r,
+                )
                 try:
                     upsert_signal_outcome(
                         conn,
@@ -915,7 +943,7 @@ def run_scan_cycle(
                             "entry_price": entry,
                             "sl_price": ev_sl,
                             "tp_price": ev_tp,
-                            "rr_ratio": eff_alert_tp_r if ev_tp is not None else None,
+                            "rr_ratio": eff_alert_tp_r,
                             "confidence_at_fire": e.confidence,
                             "tags": e.reason,
                         },
