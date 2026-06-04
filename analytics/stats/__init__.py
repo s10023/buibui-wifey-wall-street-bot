@@ -9,6 +9,13 @@ from analytics.stats.hourly import (
     HourlyResult,
     compute_hourly_extremes,
 )
+from analytics.stats.live_outcomes import (
+    LiveOutcomeCell,
+    LiveOutcomesResult,
+    LiveOutcomesRollup,
+    LiveOutcomeStrategyRow,
+    compute_live_outcomes,
+)
 from analytics.stats.p1p2 import P1P2Result, compute_p1p2_daily
 from analytics.stats.session import (
     SessionResult,
@@ -38,6 +45,10 @@ __all__ = [
     "DailyDistanceResult",
     "HourlyExtremeRow",
     "HourlyResult",
+    "LiveOutcomeCell",
+    "LiveOutcomeStrategyRow",
+    "LiveOutcomesResult",
+    "LiveOutcomesRollup",
     "P1P2Result",
     "SessionResult",
     "SessionRow",
@@ -53,6 +64,7 @@ __all__ = [
     "compute_daily_distance",
     "compute_dow_patterns",
     "compute_hourly_extremes",
+    "compute_live_outcomes",
     "compute_p1p2_daily",
     "compute_session_breakdown",
     "compute_weekly_current_state",

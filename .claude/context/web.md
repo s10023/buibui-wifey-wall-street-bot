@@ -16,6 +16,7 @@ Detailed reference for `web/`. Load this when working on the FastAPI backend or 
 - `GET /api/strategies?config=<name>` — confidence values with per-config DB ratings override
 - `GET /api/active-config` — `config_name`, `symbols`, `timeframes`, `strategies`, `day_filter`, `tp_r`, `sl_pct`, `fee_pct`, `adr_suppress_threshold`, `strategy_params`, `min_trades`, `min_trades_per_tf`; empty defaults when no `--config`
 - `GET /api/stats/{symbol}?days=180` — cached daily in `stats_cache` table; `weekly_current_state`, `daily_distance`, `weekly_wick_percentile` always live (never cached), injected via `_inject_live_fields()`
+- `GET /api/live-outcomes?days&min_n` — cross-symbol roll-up of the live `signal_alert_outcomes` ledger (all-time integrity roll-up + per-(strategy, tf, direction) + per-strategy win-rate/avg-R); never cached, own router (not the per-symbol StatsBundle)
 - `GET /api/backtest/analysis?use_config=true` — 12 digest query cards; `use_config=true` scopes via `DigestScope`
 
 ## Frontend — `web/ui/` (Svelte 5 + Vite)
@@ -55,8 +56,9 @@ Build: `make web-build` → `web/ui/dist/` served by FastAPI StaticFiles.
 ### Stats page
 
 - 10-card grid: P1/P2 (incl. P1 strong%), ADR, hourly distribution, DOW patterns (incl. Str H/Str L), session breakdown, weekly P1/P2, avg return by day, weekly P2 timing with flip risk, Daily Distance, P1 Wick Rank
+- **Live Alert Outcomes** card (full-width, below the grid) — cross-symbol, fetched independently of the symbol picker via `getLiveOutcomes(days, minN)`; all-time roll-up chips (incl. a no-TP integrity badge) + period/min-n pill toggles + by-strategy and by-cell tables with diverging avg-R bars
 - Default lookback: 365d
-- "Daily Distance" + "P1 Wick Rank" — live, never cached
+- "Daily Distance" + "P1 Wick Rank" — live, never cached; "Live Alert Outcomes" — cross-symbol, never cached
 - Weekly P2 Timing: All/Bullish P1/Bearish P1 toggle; live "This week" banner with DOW, move%, distance bucket, conditioned probabilities
 
 ### Nav
