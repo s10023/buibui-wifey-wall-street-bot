@@ -472,3 +472,45 @@ export interface StatsResponse {
 
 export const getStats = (symbol: string, days: number = 180) =>
   apiFetch<StatsResponse>(`/api/stats/${symbol}?days=${days}`);
+
+// ── Live outcomes (cross-symbol signal_alert_outcomes ledger) ────────────────
+
+export interface LiveOutcomesRollup {
+  total_rows: number;
+  resolved: number;
+  open: number;
+  open_no_tp: number;
+  wins: number;
+  losses: number;
+  expired: number;
+}
+
+export interface LiveOutcomeCell {
+  strategy: string;
+  tf: string;
+  direction: string;
+  n: number;
+  wins: number;
+  losses: number;
+  expired: number;
+  win_rate: number | null;
+  avg_r: number | null;
+}
+
+export interface LiveOutcomeStrategyRow {
+  strategy: string;
+  n: number;
+  win_rate: number | null;
+  avg_r: number | null;
+}
+
+export interface LiveOutcomesResponse {
+  days: number;
+  min_n: number;
+  rollup: LiveOutcomesRollup;
+  cells: LiveOutcomeCell[];
+  by_strategy: LiveOutcomeStrategyRow[];
+}
+
+export const getLiveOutcomes = (days: number = 30, minN: number = 1) =>
+  apiFetch<LiveOutcomesResponse>(`/api/live-outcomes?days=${days}&min_n=${minN}`);
