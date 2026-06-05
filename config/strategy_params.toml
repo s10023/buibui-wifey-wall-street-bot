@@ -9,7 +9,10 @@
 # Keys in the extending config override the base (scalars/arrays replaced, dicts merged).
 # The 'extends' key is consumed by the loader — it is not a real TOML field.
 
-telegram = true
+# Telegram dispatch is OFF by default so the --telegram CLI flag (TELEGRAM=1 on
+# the Makefile, set by `make go-live`) is the single master switch. A base value
+# of `true` here silently forced sends on every run, ignoring TELEGRAM= entirely.
+telegram = false
 min_sl_pct = 0.005
 
 # Backtest sweep runner (make buibui-backtest) reads these top-level keys:

@@ -63,7 +63,13 @@ def fetch_bars(
 
     start_dt = datetime.fromtimestamp(start_ms / 1000, tz=UTC).replace(tzinfo=None)
     raw = raw.loc[raw.index >= start_dt]
+    # yfinance intermittently returns the current forming bar (or stale rows)
+    # with NaN OHLCV. The ohlcv table is NOT NULL on every column, so drop any
+    # such row before upsert — otherwise one bad row crashes the whole cycle.
+    raw = raw.dropna(subset=["open", "high", "low", "close", "volume"])
     raw = raw.head(limit)
+    if raw.empty:
+        return pd.DataFrame(columns=OHLCV_COLUMNS)
 
     return pd.DataFrame(
         {
