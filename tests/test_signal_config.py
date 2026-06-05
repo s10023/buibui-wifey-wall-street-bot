@@ -113,7 +113,9 @@ state_file = "my_state.json"
         cfg_path = Path(__file__).parent.parent / "config" / "signal_watch.toml"
         cfg = load_signal_config(cfg_path)
         assert cfg.timeframes == ["4h", "1d", "1wk"]
-        assert cfg.telegram is True
+        # Telegram is off by default in the committed config; the --telegram CLI
+        # flag (TELEGRAM=1 / `make go-live`) is the single master switch.
+        assert cfg.telegram is False
         assert cfg.min_sl_pct == 0.005
 
     def test_strategy_timeframes_parsed(self, tmp_path: Path) -> None:
