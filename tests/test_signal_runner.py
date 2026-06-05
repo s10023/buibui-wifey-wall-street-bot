@@ -1,8 +1,15 @@
-"""Tests for signal_runner._update_ohlcv_cache."""
+"""Tests for signal_runner._update_ohlcv_cache and the daemon loop (--once flag)."""
+
+import time
+from contextlib import ExitStack
+from typing import Any
+from unittest.mock import patch
 
 import duckdb
 import pandas as pd
+import pytest
 
+from analytics import signal_runner
 from analytics.data_store import init_schema, upsert_ohlcv
 from analytics.signal_runner import _update_ohlcv_cache
 
@@ -90,3 +97,62 @@ def test_warm_cache_invalidates_on_gap() -> None:
 
     _update_ohlcv_cache(conn, cache, "BTCUSDT", "15m", _T0, _T0 + 6 * _MS)
     assert len(cache[("BTCUSDT", "15m")]) == 6  # full rebuild
+
+
+@pytest.fixture
+def daemon_mocks() -> Any:
+    """Patch every heavy dependency of run_signal_watch so the loop runs in-memory.
+
+    All names below are module-level imports on ``analytics.signal_runner``, so
+    patching them there exercises the loop without touching DuckDB or yfinance.
+    """
+    with ExitStack() as stack:
+        mocks = {
+            name: stack.enter_context(patch.object(signal_runner, name))
+            for name in (
+                "duckdb",
+                "init_schema",
+                "prune_backtest_cache",
+                "get_combo_lookup",
+                "get_cross_tf_combo_lookup",
+                "get_confidence_ratings",
+                "get_directional_confidence_ratings",
+                "CooldownStore",
+                "sync",
+                "backfill",
+                "_update_ohlcv_cache",
+                "run_scan_cycle",
+                "backfill_outcomes",
+                "secs_until_next_boundary",
+                "load_stocks_config",
+            )
+        }
+        mocks["load_stocks_config"].return_value = {"AAPL": {}}
+        mocks["get_combo_lookup"].return_value = {}
+        mocks["get_cross_tf_combo_lookup"].return_value = {}
+        mocks["get_confidence_ratings"].return_value = {}
+        mocks["get_directional_confidence_ratings"].return_value = {}
+        mocks["run_scan_cycle"].return_value = []
+        mocks["secs_until_next_boundary"].return_value = (0.0, time.time() + 1)
+        yield mocks
+
+
+def test_once_runs_single_cycle_then_exits(daemon_mocks: Any) -> None:
+    signal_runner.run_signal_watch(
+        symbols=["AAPL"], timeframes=["4h"], strategies=["bos"], once=True
+    )
+    assert daemon_mocks["run_scan_cycle"].call_count == 1
+    # --once breaks before scheduling the next-candle sleep.
+    daemon_mocks["secs_until_next_boundary"].assert_not_called()
+
+
+def test_default_loops_and_sleeps_between_cycles(daemon_mocks: Any) -> None:
+    # Break the otherwise-infinite loop by raising on the 2nd scan cycle.
+    daemon_mocks["run_scan_cycle"].side_effect = [[], KeyboardInterrupt]
+    with patch.object(signal_runner.time, "sleep"), pytest.raises(KeyboardInterrupt):
+        signal_runner.run_signal_watch(
+            symbols=["AAPL"], timeframes=["4h"], strategies=["bos"], once=False
+        )
+    assert daemon_mocks["run_scan_cycle"].call_count == 2
+    # Default (daemon) path reaches the boundary-sleep scheduler after cycle 1.
+    assert daemon_mocks["secs_until_next_boundary"].call_count == 1

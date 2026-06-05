@@ -11,7 +11,7 @@ DEV_PORT ?= 5173
 PYTHON_FILES = $(shell find . -name "*.py" -not -path "./venv/*" -not -path "./.venv/*")
 DOCKER_IMAGE = wifey-bot
 
-.PHONY: lint lint-md lint-md-fix lint-py-check lint-py typecheck test test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
+.PHONY: lint lint-md lint-md-fix lint-py-check lint-py typecheck test test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
 
 lint: lint-md lint-py
 
@@ -238,7 +238,27 @@ wifey-signal-watch:
 		$(if $(STRATEGIES),--strategies $(STRATEGIES),) \
 		$(if $(TELEGRAM),--telegram,) \
 		$(if $(SECONDARY),--secondary-symbol $(SECONDARY),) \
-		$(if $(MIN_SL_PCT),--min-sl-pct $(MIN_SL_PCT),)
+		$(if $(MIN_SL_PCT),--min-sl-pct $(MIN_SL_PCT),) \
+		$(if $(ONCE),--once,)
+
+## --- Go-live (Phase A signal-alert bot) — see README "Go Live (Phase A)" ---
+GO_LIVE_CONFIG ?= config/signal_watch.toml
+
+# One-time prep: backfill the full watchlist OHLCV. Run once on a fresh box, or
+# after a wiped DB / data gap. Override the start date with SINCE=YYYY-MM-DD.
+go-live-prep:
+	@echo "📥 Go-live prep: backfilling watchlist OHLCV (one-time)..."
+	$(MAKE) wifey-analytics-backfill SINCE=$(or $(SINCE),2023-01-01)
+
+# Run ONE signal-alert scan cycle (sync → scan → alert → outcome backfill), then exit.
+# Telegram ON. Built for once-a-day manual / cron use — no long-running daemon.
+# Run it after the US market close on trading days. Override config:
+#   make go-live GO_LIVE_CONFIG=config/signal_watch_weekdays.toml
+# To run as a continuous daemon instead (self-syncs + sleeps to candle boundaries),
+# drop the once flag: make wifey-signal-watch CONFIG=... TELEGRAM=1
+go-live:
+	@echo "🚀 Go-live (single cycle): $(GO_LIVE_CONFIG) — Telegram ON"
+	$(MAKE) wifey-signal-watch CONFIG=$(GO_LIVE_CONFIG) TELEGRAM=1 ONCE=1
 
 docker-signal-watch:
 	@echo "🔍 Running signal detection daemon in Docker..."
