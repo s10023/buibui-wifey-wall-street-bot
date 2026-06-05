@@ -239,7 +239,8 @@ wifey-signal-watch:
 		$(if $(TELEGRAM),--telegram,) \
 		$(if $(SECONDARY),--secondary-symbol $(SECONDARY),) \
 		$(if $(MIN_SL_PCT),--min-sl-pct $(MIN_SL_PCT),) \
-		$(if $(ONCE),--once,)
+		$(if $(ONCE),--once,) \
+		$(if $(CATCH_UP),--catch-up,)
 
 ## --- Go-live (Phase A signal-alert bot) — see README "Go Live (Phase A)" ---
 GO_LIVE_CONFIG ?= config/signal_watch.toml
@@ -256,9 +257,10 @@ go-live-prep:
 #   make go-live GO_LIVE_CONFIG=config/signal_watch_weekdays.toml
 # To run as a continuous daemon instead (self-syncs + sleeps to candle boundaries),
 # drop the once flag: make wifey-signal-watch CONFIG=... TELEGRAM=1
+# Pass CATCH_UP=1 to replay candles missed since the last run (skipped run-day recovery).
 go-live:
 	@echo "🚀 Go-live (single cycle): $(GO_LIVE_CONFIG) — Telegram ON"
-	$(MAKE) wifey-signal-watch CONFIG=$(GO_LIVE_CONFIG) TELEGRAM=1 ONCE=1
+	$(MAKE) wifey-signal-watch CONFIG=$(GO_LIVE_CONFIG) TELEGRAM=1 ONCE=1 $(if $(CATCH_UP),CATCH_UP=1,)
 
 docker-signal-watch:
 	@echo "🔍 Running signal detection daemon in Docker..."

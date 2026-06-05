@@ -15,6 +15,15 @@ Detailed reference for `signals/`. Load this when working on alert formatting, c
   2. Cooldown timer per `(symbol, strategy, direction)` — time-based suppression
 - JSON-persisted to `signal_state.json`
 - `is_new_candle` / `mark_candle` take `channel: str = "primary"` (Task D, 2026-05-20). Primary preserves the legacy `{sym}:{tf}:{strategy}` key shape so existing state files load without migration; wife uses `{sym}:{tf}:{strategy}:wife`. Scanner marks **each** channel's watermark only on a successful live `dispatch_to_channel` — primary on a successful primary send, wife on a successful wife send — so a non-sending / dry run never "consumes" a candle (which would dedup the real alert away) and the two watermarks move independently (fix `fix/watermark-on-send`, 2026-06-06; primary previously marked unconditionally).
+- `last_marked(symbol, tf, strategy, channel="primary") -> int | None` (catch-up, 2026-06-06) — returns the stored watermark or `None` when never marked. Distinct from `is_new_candle`'s `-1` sentinel: the `--catch-up` cold-start guard needs to tell "no prior watermark" (→ seed latest candle only, no burst) apart from "marked at candle 0".
+
+## Missed-day catch-up (`--catch-up`)
+
+- The scanner normally fires only on the single latest **closed** candle, so a skipped run-day permanently loses that day's signals (no backlog replay). `wifey signal watch --catch-up` (off by default) replays every un-alerted closed candle since the last run:
+  - `scan_symbol(..., catch_up=True)` emits an event for **every** closed candle in the scan window (each carrying its own candle close as the entry price), not just the latest; the forming bar is still excluded (`open_time <= latest_open_time`).
+  - `run_scan_cycle(..., catch_up=True)` splits each `(symbol, tf)` scan result into one pseudo-result **per candle `open_time`** so conflict resolution + confluence stacking stay per-candle correct. The existing candle watermark then drops the candles already alerted on a prior run. Default (`catch_up=False`) → single latest candle → one group → byte-identical to the pre-catch-up flow.
+  - **Cold-start guard**: a key with no prior watermark would treat every window candle as "new" and burst the whole history on first contact. The guard restricts the first run to the latest candle only (`last_marked(...) is None and open_time != latest`); later runs then catch up genuinely-missed candles. Natural depth bound = the 100-candle `_SCAN_WINDOW`.
+  - **Fidelity caveat**: regime / HTF-EMA / ADR / DOW bias context is computed as-of-now and applied to historical candles too — a deliberate best-effort approximation for a few missed days, not a full as-of-candle replay (the backtest live-parity path does that).
 
 ## alert_formatter.py
 

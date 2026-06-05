@@ -399,6 +399,7 @@ poetry run python wifey.py signal watch
 - `--tp-r 2.0` — R multiplier for TP level in alert messages (default: `2.0`)
 - `--telegram` — send alerts via Telegram
 - `--once` — run a single scan cycle and exit (for cron / once-a-day use) instead of looping as a daemon
+- `--catch-up` — replay every un-alerted closed candle since the last run, not just the latest, so signals from skipped run-days are recovered instead of lost (off by default to avoid an alert burst after an outage). The first run for a fresh `signal_state.json` only seeds the latest candle. Pairs naturally with `--once` for a once-a-day cron.
 - `--state-file signal_state.json` — path to cooldown/watermark state file
 - `--min-sl-pct 0.003` — minimum SL distance as a fraction of price (e.g. `0.003` = 0.3%); overrides structural SL if too tight (default: disabled)
 - `--smt-pairs BTCUSDT:ETHUSDT,ETHUSDT:BTCUSDT` — per-symbol SMT secondary mappings (overrides `smt_secondary` in `coins.json`)
@@ -606,6 +607,12 @@ re-alerting candles already seen. Example cron (weekdays, 12:00 UTC ≈ pre-mark
 ```cron
 0 12 * * 1-5   cd /path/to/repo && make go-live >> go-live.log 2>&1
 ```
+
+A single-cycle run fires on only the latest closed candle, so a **skipped run-day** (missed cron,
+host down) permanently loses that day's signals. Add `--catch-up` to replay every un-alerted
+candle since the last run instead — e.g. `make wifey-signal-watch ONCE=1 TELEGRAM=1 CATCH_UP=1`
+(or `wifey signal watch --once --catch-up --telegram`). The first run for a fresh state file only
+seeds the latest candle, so enabling it on an established deployment is safe (no burst).
 
 To run as a **continuous daemon** instead (self-syncs every cycle and sleeps to the next
 candle boundary — keep it alive with tmux / systemd), drop the once flag:

@@ -127,6 +127,7 @@ def run_signal_watch(args: argparse.Namespace) -> None:
         bias_cfg=cfg.bias,
         combo_cfg=cfg.combo,
         once=args.once,
+        catch_up=args.catch_up,
     )
 
 
@@ -195,6 +196,16 @@ def add_signal_subparser(
         "--once",
         action="store_true",
         help="Run a single scan cycle and exit (for cron / once-a-day use) instead of looping as a daemon",
+    )
+    watch_parser.add_argument(
+        "--catch-up",
+        action="store_true",
+        dest="catch_up",
+        help=(
+            "Replay every un-alerted closed candle since the last run, not just the "
+            "latest — recovers signals from skipped run-days. First run for a fresh "
+            "state file only seeds the latest candle (no burst). Off by default."
+        ),
     )
     watch_parser.set_defaults(func=run_signal_watch)
 

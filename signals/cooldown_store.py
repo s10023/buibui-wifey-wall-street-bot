@@ -50,6 +50,21 @@ class CooldownStore:
             < open_time
         )
 
+    def last_marked(
+        self,
+        symbol: str,
+        timeframe: str,
+        strategy: str,
+        channel: str = "primary",
+    ) -> int | None:
+        """Return the last alerted candle open_time, or None if never marked.
+
+        Distinct from ``is_new_candle``'s ``-1`` sentinel: catch-up needs to tell
+        "no prior watermark" (cold start → fire only the latest candle, never the
+        whole window) apart from "marked at candle 0".
+        """
+        return self._watermarks.get(_key(symbol, timeframe, strategy, channel))
+
     def mark_candle(
         self,
         symbol: str,

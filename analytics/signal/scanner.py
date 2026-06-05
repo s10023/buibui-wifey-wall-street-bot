@@ -123,12 +123,19 @@ def scan_symbol(
     strategy_timeframes: dict[str, list[str]] | None = None,
     confidence_override: dict[str, dict[str, int]] | None = None,
     directional_confidence_override: dict[str, dict[str, dict[str, int]]] | None = None,
+    catch_up: bool = False,
 ) -> list[SignalEvent]:
     """Run requested strategies against a pre-fetched OHLCV DataFrame.
 
     Returns SignalEvents whose open_time matches the latest candle in the data.
     Only the latest candle is checked — signals on older candles are ignored
     to prevent re-alerting on historical data after a restart.
+
+    When catch_up is True, emits an event for *every* closed candle in the
+    window (each carrying its own candle close as the entry price), not just the
+    latest. The live candle watermark in run_scan_cycle then drops the candles
+    already alerted on a prior run, so a skipped run-day's signals are replayed
+    instead of permanently lost. Still excludes the forming final bar.
 
     When day_filter is "tue_thu", signals whose open_time falls on Monday (weekday 0)
     or Friday (weekday 4) in UTC are suppressed (ICT weekly cycle — lower-quality
@@ -160,6 +167,15 @@ def scan_symbol(
     closed_df = ohlcv_df.iloc[:-1] if is_forming else ohlcv_df
     latest_open_time = int(closed_df["open_time"].iloc[-1])
     latest_close = float(closed_df["close"].iloc[-1])
+
+    # Catch-up: map each closed candle's open_time → its own close so a
+    # back-filled event carries that candle's entry price (not the latest).
+    close_by_ot: dict[int, float] = {}
+    if catch_up:
+        close_by_ot = {
+            int(t): float(c)
+            for t, c in zip(closed_df["open_time"], closed_df["close"], strict=False)
+        }
 
     events: list[SignalEvent] = []
 
@@ -208,8 +224,17 @@ def scan_symbol(
         if signals_df.empty:
             continue
 
-        latest_signals = signals_df[signals_df["open_time"] == latest_open_time]
-        for _, row in latest_signals.iterrows():
+        # Catch-up emits every closed candle (≤ latest_open_time excludes any
+        # forming bar); the default path emits only the latest closed candle.
+        if catch_up:
+            emit_signals = signals_df[signals_df["open_time"] <= latest_open_time]
+        else:
+            emit_signals = signals_df[signals_df["open_time"] == latest_open_time]
+        for _, row in emit_signals.iterrows():
+            row_ot = int(row["open_time"])
+            row_price = (
+                latest_close if row_ot == latest_open_time else close_by_ot[row_ot]
+            )
             events.append(
                 SignalEvent(
                     symbol=symbol,
@@ -217,8 +242,8 @@ def scan_symbol(
                     strategy=strategy_name,
                     direction=str(row["direction"]),
                     reason=str(row["reason"]),
-                    open_time=latest_open_time,
-                    price=latest_close,
+                    open_time=row_ot,
+                    price=row_price,
                     sl_price=float(row["sl_price"]),
                     tp_price=float(row["tp_price"]) if row.get("tp_price") else 0.0,
                     context=str(row["context"]),
@@ -286,6 +311,7 @@ def run_scan_cycle(
     cross_tf_window_hours: float = 4.0,
     cross_tf_min_avg_r: float = 1.0,
     ohlcv_cache: "dict[tuple[str, str], pd.DataFrame] | None" = None,
+    catch_up: bool = False,
 ) -> list[str]:
     """Scan all symbol+timeframe combinations and return formatted alert strings.
 
@@ -297,6 +323,15 @@ def run_scan_cycle(
 
     day_filter: "off" | "weekdays" | "tue_thu" — suppress signals by weekday.
     strategy_timeframes: optional per-strategy TF allow-list from [strategy_timeframes] TOML.
+    catch_up: when True, replay every un-alerted closed candle since the last run
+    (not just the latest). scan_symbol emits multi-candle signals and each candle
+    is processed as its own group so conflict resolution / confluence stacking stay
+    per-candle correct. A cold-start guard (no prior watermark for a key) restricts
+    the first run to the latest candle so the window is not replayed as a burst.
+    Note: regime / HTF-EMA / ADR / DOW bias context is computed as-of-now and
+    applied to historical candles too — a deliberate best-effort approximation for
+    a few missed days, not a full as-of-candle replay (see the backtest live-parity
+    path for that).
     """
     from signals.alert_formatter import (
         format_confluence_alert,
@@ -425,6 +460,7 @@ def run_scan_cycle(
             strategy_timeframes=strategy_timeframes,
             confidence_override=confidence_override,
             directional_confidence_override=directional_confidence_override,
+            catch_up=catch_up,
         )
         return _sym, _tf, _events, _gap
 
@@ -451,6 +487,26 @@ def run_scan_cycle(
         )
         for sym, tf in _pairs_htf_first:
             scan_results.append(_scan_task(sym, tf))
+
+    # Catch-up: split each (symbol, tf) result into one pseudo-result per candle
+    # open_time so Phase 3 processes every missed candle independently (conflict
+    # resolution + confluence stacking stay per-candle correct). Default path =
+    # single latest candle = one group = byte-identical to the pre-catch-up flow.
+    # latest_ot_by_pair feeds the cold-start guard in the watermark filter below.
+    latest_ot_by_pair: dict[tuple[str, str], int] = {}
+    if catch_up:
+        latest_ot_by_pair = {
+            (_s, _t): max((e.open_time for e in _evs), default=-1)
+            for _s, _t, _evs, _g in scan_results
+        }
+        exploded: list[Any] = []
+        for _s, _t, _evs, _g in scan_results:
+            if not _evs:
+                exploded.append((_s, _t, _evs, _g))
+                continue
+            for _ot in sorted({e.open_time for e in _evs}):
+                exploded.append((_s, _t, [e for e in _evs if e.open_time == _ot], _g))
+        scan_results = exploded
 
     # --- Phase 3: Fan-in — sequential processing of scan results ---
     # All shared-state operations happen here: CooldownStore reads/writes,
@@ -482,11 +538,22 @@ def run_scan_cycle(
             continue
 
         # Filter each strategy independently by candle watermark
-        passing_events = [
-            e
-            for e in direction_events
-            if store.is_new_candle(symbol, tf, e.strategy, e.open_time)
-        ]
+        passing_events = []
+        for e in direction_events:
+            if not store.is_new_candle(symbol, tf, e.strategy, e.open_time):
+                continue
+            # Catch-up cold-start guard: with no prior watermark every candle in
+            # the window looks "new", which would replay the whole history as a
+            # burst on first contact. Seed on the latest candle only; later runs
+            # then catch up the genuinely-missed candles. No-op in the default
+            # path (catch_up=False).
+            if (
+                catch_up
+                and store.last_marked(symbol, tf, e.strategy) is None
+                and e.open_time != latest_ot_by_pair.get((symbol, tf))
+            ):
+                continue
+            passing_events.append(e)
         if not passing_events:
             continue
 
