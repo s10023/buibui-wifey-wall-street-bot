@@ -591,17 +591,20 @@ make go-live-prep                       # SINCE=2023-01-01 by default; override 
 #      TELEGRAM_BOT_TOKEN_2 / TELEGRAM_CHAT_ID_2        (wife BUY/HOLD channel)
 #      TELEGRAM_WIFE_DRY_RUN=0                          (flip from 1 to actually send to wife)
 
-# 2. Run ONE scan cycle and exit (Telegram ON). Run it daily after the US market close.
+# 2. Run ONE scan cycle and exit (Telegram ON). Run it once a day, pre-market
+#    (before the US open). A daily/weekly bar is treated as closed only once its
+#    full period has elapsed, so a same-evening-after-close run would still see
+#    the *prior* day's bar — run the next morning to alert on the latest close.
 make go-live                            # uses config/signal_watch.toml
 make go-live GO_LIVE_CONFIG=config/signal_watch_weekdays.toml   # weekday day-filter variant
 ```
 
 `make go-live` runs a **single cycle** (`signal watch --once`) and exits — ideal for a manual
 once-a-day run or a cron entry; the candle-watermark dedup in `signal_state.json` prevents
-re-alerting candles already seen. Example cron (weekdays, 21:30 UTC ≈ shortly after US close):
+re-alerting candles already seen. Example cron (weekdays, 12:00 UTC ≈ pre-market, ~1.5h before the US open):
 
 ```cron
-30 21 * * 1-5  cd /path/to/repo && make go-live >> go-live.log 2>&1
+0 12 * * 1-5   cd /path/to/repo && make go-live >> go-live.log 2>&1
 ```
 
 To run as a **continuous daemon** instead (self-syncs every cycle and sleeps to the next
