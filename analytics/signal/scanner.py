@@ -302,7 +302,6 @@ def run_scan_cycle(
         format_confluence_alert,
         format_wife_confluence_alert,
     )
-    from utils.telegram import send_telegram_message
     from utils.telegram_router import dispatch_to_channel
 
     now_ms = int(time.time() * 1000)
@@ -861,8 +860,11 @@ def run_scan_cycle(
                                     avg_ret,
                                 )
 
-        for event in passing_events:
-            store.mark_candle(symbol, tf, event.strategy, event.open_time)
+        # Note: the primary candle watermark is NOT stamped here. It is marked
+        # only after a successful live primary dispatch (see the send block
+        # below), so a non-sending / dry run never "consumes" a candle and
+        # dedups the real alert away. DB + outcome persistence stay
+        # unconditional — they are idempotent upserts and re-run harmlessly.
 
         # Persist passing signals to DB so the Signal Feed can read from DB
         # instead of re-scanning on every page load.
@@ -1075,8 +1077,15 @@ def run_scan_cycle(
             )
 
             if send_telegram:
+                # Primary channel: mark the candle watermark only after a
+                # successful live dispatch (creds present, send attempted), so a
+                # non-sending / dry run never consumes the candle. Mirrors the
+                # wife channel below.
                 try:
-                    send_telegram_message(msg)
+                    primary_sent = dispatch_to_channel(msg, "primary")
+                    if primary_sent:
+                        for e in dir_events:
+                            store.mark_candle(symbol, tf, e.strategy, e.open_time)
                 except Exception:
                     logger.exception("Telegram send failed for %s", symbol)
 
