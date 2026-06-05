@@ -22,7 +22,7 @@ construction, execution. Phase 0 changes *measurement*, not *strategy*.
 ## 2. Grounding — what the codebase does today (verified 2026-06-05)
 
 | Concern | Current reality | Implication |
-|---|---|---|
+| --- | --- | --- |
 | Fills | `analytics/backtest/engine.py`: `entry_idx = sig_idx + 1; entry_price = opens_np[entry_idx]` | **Next-bar-open already correct** — *not* Phase-0 work. Removes that item from the parent doc's 0.4. |
 | Costs | `Trade.r_multiple`: `fee_drag_r = 2.0 * fee_pct * entry_price / risk` — flat fee, both legs | No spread, no market impact, no short borrow. Crypto-style. **0.4 target.** |
 | WFO scoring | `param_sweep._score = avg_r × win_rate × √closed`; `decay = oos/is`; `overfit = decay<0.4 or oos avg_r<0` | Crude. **No Sharpe anywhere.** No trial-count haircut. **0.3 target.** |
@@ -56,6 +56,7 @@ universe the *delisting* bias is small (mega-caps rarely delist mid-sample), but
 **unstated and unbounded**, and any future universe expansion would silently inflate results.
 
 **Design:**
+
 - Add an explicit `universe` concept with metadata: `as_of` date semantics + a documented bias
   classification per symbol set. Minimum viable form: extend `stocks.json` (or a sibling
   `config/universe.json`) with a `universe_policy` block — `{ "scope": "liquid_large_cap",
@@ -81,6 +82,7 @@ behaviour).
 actions into past prices).
 
 **Design:**
+
 - Produce a written audit (`docs/redesign/phase0-lookahead-audit.md`) enumerating every place
   historical data is read, classifying each as causal / leaking / justified.
 - Add a **lookahead test harness**: a property-style test that feeds a detector/backtest a series
@@ -101,6 +103,7 @@ tried, scored on a metric (`avg_r × win_rate × √n`) that is not a Sharpe and
 distribution. The single contiguous IS/OOS split leaks across its boundary.
 
 **Design (three ordered sub-deliverables):**
+
 - **0.3a — Sharpe + Deflated Sharpe Ratio.** Compute the strategy Sharpe on the per-trade R-multiple
   series (the engine's natural unit: `SR = mean(r)/std(r)`, annualized by trade frequency). Add
   **Deflated Sharpe** (Bailey & López de Prado 2014) using the trial count `N` (= grid size from
@@ -125,6 +128,7 @@ skills reference the new haircut. Default flags reproduce current goldens.
 over the holding period.
 
 **Design:**
+
 - New `analytics/backtest/cost_model.py`: a frozen `CostModel` dataclass + `cost_r(trade, ctx)`
   returning per-trade cost in R, decomposed as `spread_r + impact_r + borrow_r + commission_r`.
   - *Spread:* half-spread per liquidity bucket (bucket by ADV/price; free proxy from OHLCV).
@@ -147,6 +151,7 @@ a silent drift). Default-off path keeps goldens byte-identical.
 unhandled splits) silently corrupt backtests and live signals.
 
 **Design:**
+
 - New `analytics/data_quality.py`: pure functions over an OHLCV DataFrame returning a typed
   `DataQualityReport` (gaps vs expected bar cadence, NaN/zero-volume rows, |return| outliers beyond
   a σ threshold, and a **split-sanity check** — an unflagged ~2×/3× overnight jump is a likely

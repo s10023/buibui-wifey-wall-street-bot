@@ -35,6 +35,7 @@ git checkout main && git pull && git checkout -b feat/phase0-data-quality
 ### Task 1: `DataQualityReport` + core quarantine detection (NaN / non-positive price / bad geometry)
 
 **Files:**
+
 - Create: `analytics/data_quality.py`
 - Test: `tests/test_data_quality.py`
 
@@ -249,6 +250,7 @@ git commit -m "feat(data-quality): DataQualityReport + core quarantine detection
 ### Task 2: Duplicate-timestamp + non-monotonic detection
 
 **Files:**
+
 - Modify: `analytics/data_quality.py` (inside `check_ohlcv`)
 - Test: `tests/test_data_quality.py`
 
@@ -310,6 +312,7 @@ git commit -m "feat(data-quality): duplicate + non-monotonic timestamp detection
 ### Task 3: Warn-only anomaly flags (zero volume / return outlier / suspected split)
 
 **Files:**
+
 - Modify: `analytics/data_quality.py`
 - Test: `tests/test_data_quality.py`
 
@@ -403,6 +406,7 @@ git commit -m "feat(data-quality): zero-volume, return-outlier, suspected-split 
 ### Task 4: `quarantine()` splitter
 
 **Files:**
+
 - Modify: `analytics/data_quality.py`
 - Test: `tests/test_data_quality.py`
 
@@ -477,6 +481,7 @@ git commit -m "feat(data-quality): quarantine() clean/dropped splitter"
 ### Task 5: Wire the gate into `data_sync.backfill`
 
 **Files:**
+
 - Modify: `analytics/data_sync.py:19-35`
 - Test: `tests/test_data_sync.py`
 
@@ -566,6 +571,7 @@ git commit -m "feat(data-quality): gate ingest backfill on the data-quality moni
 ### Task 6: Docs sync + regression-golden verification + final gate
 
 **Files:**
+
 - Modify: `CLAUDE.md` (analytics module bullet list)
 - Modify: `.claude/context/analytics.md`
 
@@ -612,6 +618,7 @@ gh pr create --repo s10023/buibui-wifey-wall-street-bot --base main \
 ## Self-Review
 
 **Spec coverage (§4.5):**
+
 - "typed DataQualityReport" → Task 1 (frozen dataclass). ✓
 - "bar-cadence gaps" → consciously narrowed to duplicate + non-monotonic timestamp checks (Task 2); calendar gaps documented as out-of-scope. ✓ (deviation recorded in Scope notes)
 - "NaN/zero-volume rows" → NaN quarantined (Task 1), zero-volume warned (Task 3). ✓

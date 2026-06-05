@@ -53,6 +53,7 @@ than silently backtesting today's winners and calling it edge.
 What a top-tier US-equities systematic trading system needs, by pillar. Each is graded in §3.
 
 ### 2.1 Data & universe layer
+
 - **Price data:** survivorship-free, point-in-time, split/dividend-adjusted *and* unadjusted
   (as-of adjustment — fully-adjusted series are themselves forward-looking).
 - **Point-in-time universe / index membership:** which tickers were tradeable *on each date*.
@@ -67,11 +68,13 @@ What a top-tier US-equities systematic trading system needs, by pillar. Each is 
   auctions, VWAP, **T+1 settlement**.
 
 ### 2.2 Universe & instrument modeling
+
 - Tradeable-universe definition with liquidity filters (ADV, price floor, market-cap floor).
 - Borrow availability + hard-to-borrow cost for the short book.
 - Sector/industry/factor classification for neutralization and attribution.
 
 ### 2.3 Alpha / signal research
+
 - **Cross-sectional factor alphas:** value, momentum (12-1), quality, low-vol, size, short-term
   reversal.
 - **Event-driven:** post-earnings-announcement drift (PEAD), gap fades, index-add/drop.
@@ -82,6 +85,7 @@ What a top-tier US-equities systematic trading system needs, by pillar. Each is 
 - Feature store, **alpha-decay monitoring**, orthogonalization against known factors.
 
 ### 2.4 Risk model (the largest structural hole)
+
 - **Factor risk model:** Barra-style or **statistical PCA** decomposition into factor exposures +
   specific risk.
 - **Covariance estimation:** shrinkage (Ledoit-Wolf) on the universe return matrix.
@@ -89,12 +93,14 @@ What a top-tier US-equities systematic trading system needs, by pillar. Each is 
   concentration limits, correlation-aware sizing.
 
 ### 2.5 Portfolio construction (the "alert bot → system" leap)
+
 - Translate the alpha forecast into holdings: mean-variance (Markowitz), risk-parity, or
   rank-and-weight long/short.
 - **Constraints:** gross/net exposure, sector/beta neutrality, position caps, turnover penalty,
   **transaction-cost-aware** objective.
 
 ### 2.6 Transaction-cost model & execution
+
 - **Cost model:** commission, half-spread by liquidity bucket, **square-root market impact**, short
   **borrow cost**, slippage. (Crypto fee assumptions ≠ equities.)
 - **Execution:** order types (limit, MOC/LOC for the close auction, VWAP/TWAP), smart routing,
@@ -103,6 +109,7 @@ What a top-tier US-equities systematic trading system needs, by pillar. Each is 
   liquidity caps.
 
 ### 2.7 Backtesting & simulation rigor
+
 - **Portfolio-level, point-in-time, cross-sectional** simulator (vs. today's single-instrument
   event replay).
 - **Overfitting controls:** deflated Sharpe ratio, Probability of Backtest Overfitting (PBO),
@@ -110,23 +117,28 @@ What a top-tier US-equities systematic trading system needs, by pillar. Each is 
 - Survivorship-free universe, correct corporate-action handling, T+1 settlement, realistic costs.
 
 ### 2.8 Performance & risk analytics
+
 - **Factor-attributed performance:** how much return is just beta/momentum exposure vs. true alpha.
 - Sharpe/Sortino/Calmar with confidence intervals, max-DD distribution, turnover, capacity, tail
   risk, hit-rate vs. payoff.
 
 ### 2.9 Live trading — OMS / EMS (Phase B)
+
 - Order management, position reconciliation, fills, real-time P&L, state recovery, idempotency,
   kill-switches, pre-trade risk checks.
 
 ### 2.10 Capital & money management
+
 - Position sizing: fractional Kelly, **vol-targeting** to a portfolio vol budget, drawdown control.
   (Currently fixed `sl_pct` per symbol — no portfolio vol budget.)
 
 ### 2.11 Regulatory / market-structure realities
+
 - PDT rule (<$25k), Reg-T margin, short-sale uptick / SSR, locate requirements, wash-sale &
   tax-lot accounting, T+1 settlement.
 
 ### 2.12 Governance & ops
+
 - Trial registry, walk-forward deployment log, alpha-decay alerts, data-quality monitors, model
   governance, audit trail. (Existing signal daemon + Telegram + Stats UI are good *alerting* bones,
   not trading governance.)
@@ -139,7 +151,7 @@ Severity: **S0** = blocks trustworthy results · **S1** = major edge/realism gap
 "system" status · **S3** = Phase-B / nice-to-have.
 
 | # | Component | What exists today | Severity | Free-fixable? |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | 1 | Survivorship-free PIT universe | yfinance = current listings only; 13 current mega-caps | **S0** | Partially — constrain universe + free PIT constituents; delisted prices not free |
 | 2 | Lookahead/leakage hygiene | Live-parity gate replay exists; no formal audit; split-adjustment lookahead unexamined | **S0** | Yes (methodology) |
 | 3 | Overfitting controls | WFO (`param_sweep`) exists; **no** deflated Sharpe / PBO / purged CV; tp_r sweeps untracked | **S0** | Yes (methodology) |
@@ -158,6 +170,7 @@ Severity: **S0** = blocks trustworthy results · **S1** = major edge/realism gap
 | 16 | Governance (trial registry, decay) | Outcome ledger + Stats UI (alerting) | **S2** | Yes |
 
 ### 3.1 What is genuinely strong — keep and lean on
+
 - DuckDB analytics store (`analytics/store/`), backtest harness (`analytics/backtest/`).
 - WFO infrastructure (`analytics/param_sweep.py`, `tools/multi_symbol_wfo.py`) — reuse for §0.3.
 - **Regime classifier** (`analytics/regime.py`) — fold into a risk-on/off overlay.
@@ -175,6 +188,7 @@ Each phase is sequenced so that completing it makes the next phase's numbers tru
 is achievable on free data. Each phase will get its own spec + plan when started.
 
 ### Phase 0 — "Stop fooling myself" (correctness foundation)
+
 *Until this is done, no backtest number is believable.*
 
 - **0.1 Universe-as-of-date policy.** Introduce a tradeable-universe concept keyed by date. Default:
@@ -199,6 +213,7 @@ is achievable on free data. Each phase will get its own spec + plan when started
   quarantined.
 
 ### Phase 1 — Honest measurement & attribution
+
 *Is there real edge beyond exposure?*
 
 - **1.1 Factor attribution.** Regress strategy/portfolio returns on the **Ken French Data Library**
@@ -209,6 +224,7 @@ is achievable on free data. Each phase will get its own spec + plan when started
   exposure. *DoD:* the Stats UI answers "is there alpha after stripping beta/momentum?"
 
 ### Phase 2 — Cross-sectional alpha layer (the methodology upgrade)
+
 - **2.1 Daily cross-section.** Build a per-date cross-section of the universe; z-score / winsorize
   signal strengths into ranks.
 - **2.2 Free factor + event alphas.** 12-1 momentum, short-term reversal, low-vol; **PEAD** via free
@@ -218,26 +234,30 @@ is achievable on free data. Each phase will get its own spec + plan when started
   scalar expected-return forecast per name.
 
 ### Phase 3 — Risk model & portfolio construction
+
 - **3.1 Covariance.** Ledoit-Wolf shrinkage (`sklearn.covariance.LedoitWolf`) on universe returns.
 - **3.2 Statistical risk model.** PCA factor decomposition (Barra is paid) → factor exposures +
   specific risk.
 - **3.3 Portfolio construction.** Start simple: dollar-neutral L/S, equal- or vol-weighted, sector
-  caps. Then optional **cvxpy** mean-variance optimizer with gross/net/turnover/position constraints
-  + transaction-cost term.
+  caps. Then an optional **cvxpy** mean-variance optimizer with gross/net/turnover/position
+  constraints plus a transaction-cost term.
 - **3.4 Sizing.** Vol-targeting to a portfolio vol budget; fractional-Kelly overlay; drawdown
   control. *DoD:* signals → a sized, risk-controlled book.
 
 ### Phase 4 — Portfolio-level backtester
+
 - **4.1 Cross-sectional PIT simulator.** Daily-rebalance over the universe using the Phase-0 cost
   model + T+1 settlement; replaces single-name event replay for *portfolio* claims. *DoD:*
   end-to-end backtest of the constructed book with attribution + overfitting controls applied.
 
 ### Phase 5 — Live execution / OMS (Phase B, deferred)
+
 - Alpaca/IBKR paper → live; MOC/LOC auction orders; OMS + reconciliation + kill-switch + pre-trade
   risk checks; PDT / Reg-T / SSR / T+1 handling. *In scope as a roadmap item; not started until
   Phases 0–4 give a book worth executing.*
 
 ### Cross-cutting (runs alongside all phases)
+
 - **Regime overlay:** fold `analytics/regime.py` into a risk-on/off exposure scaler.
 - **Governance:** trial registry feeding the §0.3 haircut; walk-forward deployment log; alpha-decay
   alerts on top of the existing outcome ledger.
@@ -247,7 +267,7 @@ is achievable on free data. Each phase will get its own spec + plan when started
 ## 5. Free-data sourcing appendix
 
 | Need | Free source | Notes |
-|---|---|---|
+| --- | --- | --- |
 | Adjusted + unadjusted prices | yfinance (primary), **Stooq** / **Alpaca IEX free** (backup/cross-check) | Cross-check guards against silent yfinance adjustment errors |
 | **PIT fundamentals** | **SEC EDGAR** (filing date = true point-in-time) | The free PIT win; lag to filing date |
 | **Canonical factors** | **Ken French Data Library** | Gold standard for §1.1 attribution; free |
@@ -261,6 +281,7 @@ is achievable on free data. Each phase will get its own spec + plan when started
 ---
 
 ## 6. Decisions deferred (revisit before cutting Phase specs)
+
 - **End-state ambition** (full cross-sectional L/S vs. upgraded discretionary assistant vs. hybrid
   ranked watchlist) — intentionally deferred; this roadmap is direction-agnostic through Phase 2 and
   only forks at Phase 3 (how aggressive the portfolio engine is).
@@ -272,5 +293,6 @@ is achievable on free data. Each phase will get its own spec + plan when started
 ---
 
 ## 7. What stays untouched
+
 DuckDB store, WFO infra, signal daemon + alerting, `signal_alert_outcomes` ledger, Stats UI,
 live-parity gate replay, regime classifier. These are reused, not rebuilt.
