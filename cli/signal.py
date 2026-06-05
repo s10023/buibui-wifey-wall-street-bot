@@ -126,6 +126,7 @@ def run_signal_watch(args: argparse.Namespace) -> None:
         config_name=config_name,
         bias_cfg=cfg.bias,
         combo_cfg=cfg.combo,
+        once=args.once,
     )
 
 
@@ -189,6 +190,11 @@ def add_signal_subparser(
         default=None,
         dest="min_sl_pct",
         help="Minimum SL distance as a fraction of price (e.g. 0.005 = 0.5%%; default: 0 = disabled, or from --config)",
+    )
+    watch_parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Run a single scan cycle and exit (for cron / once-a-day use) instead of looping as a daemon",
     )
     watch_parser.set_defaults(func=run_signal_watch)
 

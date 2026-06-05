@@ -116,12 +116,16 @@ def run_signal_watch(
     config_name: str | None = None,
     bias_cfg: BiasConfig | None = None,
     combo_cfg: ComboConfig | None = None,
+    once: bool = False,
 ) -> None:
     """Run the signal detection daemon loop.
 
     On each cycle: syncs new candles via yfinance, scans for signals,
     sends Telegram alerts if enabled, then sleeps until the next candle
     boundary across all watched timeframes.
+
+    When ``once`` is True, runs exactly one scan cycle (sync → scan → alert →
+    outcome backfill) and exits without sleeping — for cron / once-a-day use.
     """
     from analytics.strategies import KNOWN_STRATEGIES
 
@@ -333,6 +337,10 @@ def run_signal_watch(
                 logger.info("%d alert(s) sent this cycle", len(alerts))
             else:
                 logger.info("No new signals this cycle")
+
+            if once:
+                logger.info("--- single-cycle (--once) complete; exiting ---")
+                break
 
             sleep_secs, wake_ts = secs_until_next_boundary(resolved_timeframes)
             next_dt = datetime.fromtimestamp(wake_ts, tz=_MYT).strftime("%H:%M:%S MYT")

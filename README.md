@@ -398,6 +398,7 @@ poetry run python wifey.py signal watch
 - `--strategies fvg bos` — strategies to run (default: all 20 actionable from `SIGNAL_REGISTRY`)
 - `--tp-r 2.0` — R multiplier for TP level in alert messages (default: `2.0`)
 - `--telegram` — send alerts via Telegram
+- `--once` — run a single scan cycle and exit (for cron / once-a-day use) instead of looping as a daemon
 - `--state-file signal_state.json` — path to cooldown/watermark state file
 - `--min-sl-pct 0.003` — minimum SL distance as a fraction of price (e.g. `0.003` = 0.3%); overrides structural SL if too tight (default: disabled)
 - `--smt-pairs BTCUSDT:ETHUSDT,ETHUSDT:BTCUSDT` — per-symbol SMT secondary mappings (overrides `smt_secondary` in `coins.json`)
@@ -573,6 +574,42 @@ State is persisted to `signal_state.json` so dedup survives container restarts.
 
 > **Note:** Run `analytics backfill` + `analytics sync` first. The daemon auto-backfills
 > symbols with no data on first boot, but pre-loading data is faster.
+
+### Go Live (Phase A) — Daily Runbook
+
+The Phase-A signal-alert bot is feature-complete; "live" = it runs against the equity
+watchlist and fires Telegram alerts. Each scan cycle **self-syncs OHLCV via yfinance** before
+detecting, so a single run is always current — no separate sync step. Two Makefile targets
+wrap the routine:
+
+```bash
+# 0. One-time (fresh box / wiped DB / data gap): backfill the watchlist OHLCV.
+make go-live-prep                       # SINCE=2023-01-01 by default; override with SINCE=...
+
+# 1. Confirm Telegram creds in .env:
+#      TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID            (primary long+short channel)
+#      TELEGRAM_BOT_TOKEN_2 / TELEGRAM_CHAT_ID_2        (wife BUY/HOLD channel)
+#      TELEGRAM_WIFE_DRY_RUN=0                          (flip from 1 to actually send to wife)
+
+# 2. Run ONE scan cycle and exit (Telegram ON). Run it daily after the US market close.
+make go-live                            # uses config/signal_watch.toml
+make go-live GO_LIVE_CONFIG=config/signal_watch_weekdays.toml   # weekday day-filter variant
+```
+
+`make go-live` runs a **single cycle** (`signal watch --once`) and exits — ideal for a manual
+once-a-day run or a cron entry; the candle-watermark dedup in `signal_state.json` prevents
+re-alerting candles already seen. Example cron (weekdays, 21:30 UTC ≈ shortly after US close):
+
+```cron
+30 21 * * 1-5  cd /path/to/repo && make go-live >> go-live.log 2>&1
+```
+
+To run as a **continuous daemon** instead (self-syncs every cycle and sleeps to the next
+candle boundary — keep it alive with tmux / systemd), drop the once flag:
+
+```bash
+make wifey-signal-watch CONFIG=config/signal_watch.toml TELEGRAM=1
+```
 
 ### Signal Test — Fire a Test Alert From Historical Data
 
