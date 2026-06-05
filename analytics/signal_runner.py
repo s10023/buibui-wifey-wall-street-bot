@@ -117,6 +117,7 @@ def run_signal_watch(
     bias_cfg: BiasConfig | None = None,
     combo_cfg: ComboConfig | None = None,
     once: bool = False,
+    catch_up: bool = False,
 ) -> None:
     """Run the signal detection daemon loop.
 
@@ -126,6 +127,11 @@ def run_signal_watch(
 
     When ``once`` is True, runs exactly one scan cycle (sync → scan → alert →
     outcome backfill) and exits without sleeping — for cron / once-a-day use.
+
+    When ``catch_up`` is True, each cycle replays every un-alerted closed candle
+    since the last run (not just the latest), so a skipped run-day's signals are
+    recovered instead of lost. Off by default to avoid an alert burst after an
+    outage. Pairs naturally with ``once`` for a once-a-day cron.
     """
     from analytics.strategies import KNOWN_STRATEGIES
 
@@ -322,6 +328,7 @@ def run_signal_watch(
                     if combo_cfg
                     else 1.0,
                     ohlcv_cache=ohlcv_cache,
+                    catch_up=catch_up,
                 )
 
                 # T2 P2: walk OHLCV forward to resolve outstanding outcome rows.

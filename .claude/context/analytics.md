@@ -116,8 +116,8 @@ Detailed API reference for `analytics/`. Load this when working on any analytics
 
 ## signal_lib.py — pure scan lib
 
-- `scan_symbol()` — runs strategies on one symbol/tf
-- `run_scan_cycle()` — 3-phase: Phase 1 pre-fetches all DB data sequentially (`funding_map`/`ohlcv_map`), Phase 2 fans out via `ThreadPoolExecutor` (pure pandas, GIL released; workers = `min(cpu_count-1, n_pairs)`), Phase 3 fan-in: cooldown/backtest/upsert sequentially
+- `scan_symbol(..., catch_up=False)` — runs strategies on one symbol/tf; emits events for the latest closed candle only (default) or for every closed candle in the window when `catch_up=True` (each with its own candle close as entry price)
+- `run_scan_cycle(..., catch_up=False)` — 3-phase: Phase 1 pre-fetches all DB data sequentially (`funding_map`/`ohlcv_map`), Phase 2 fans out via `ThreadPoolExecutor` (pure pandas, GIL released; workers = `min(cpu_count-1, n_pairs)`), Phase 3 fan-in: cooldown/backtest/upsert sequentially. With `catch_up=True`, each `(symbol, tf)` scan result is exploded into one per-candle group between Phase 2 and Phase 3 so conflict resolution + confluence stay per-candle correct; a cold-start guard (`CooldownStore.last_marked`) seeds only the latest candle for a fresh-watermark key. Default-off path byte-identical
 - `ohlcv_cache: dict[(symbol, tf), DataFrame] | None` — daemon hot path skips DB reads in Phase 1
 - `confidence_override` (combined) + `directional_confidence_override` ({strategy: {tf: {direction: stars}}}) — directional takes precedence
 - `_compute_backtest()` respects `fee_pct`, `day_filter`, `min_sl_pct`, `atr_sl_multiplier`, `atr_sl_floor`, `since`; label shows `since YYYY-MM-DD` when set. `atr_sl_floor` flows through to `run_backtest()` so the alert's backtest gate evaluates trades with the same widened SLs the live path would apply
