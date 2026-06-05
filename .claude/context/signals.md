@@ -14,7 +14,7 @@ Detailed reference for `signals/`. Load this when working on alert formatting, c
   1. Candle watermark per `(symbol, tf, strategy)` — prevents re-firing same candle
   2. Cooldown timer per `(symbol, strategy, direction)` — time-based suppression
 - JSON-persisted to `signal_state.json`
-- `is_new_candle` / `mark_candle` take `channel: str = "primary"` (Task D, 2026-05-20). Primary preserves the legacy `{sym}:{tf}:{strategy}` key shape so existing state files load without migration; wife uses `{sym}:{tf}:{strategy}:wife`. Scanner marks `channel="wife"` only on successful wife dispatch so the wife watermark moves independently of the primary watermark.
+- `is_new_candle` / `mark_candle` take `channel: str = "primary"` (Task D, 2026-05-20). Primary preserves the legacy `{sym}:{tf}:{strategy}` key shape so existing state files load without migration; wife uses `{sym}:{tf}:{strategy}:wife`. Scanner marks **each** channel's watermark only on a successful live `dispatch_to_channel` — primary on a successful primary send, wife on a successful wife send — so a non-sending / dry run never "consumes" a candle (which would dedup the real alert away) and the two watermarks move independently (fix `fix/watermark-on-send`, 2026-06-06; primary previously marked unconditionally).
 
 ## alert_formatter.py
 
