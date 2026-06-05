@@ -39,6 +39,7 @@ from analytics.regime import Regime, classify_series
 from analytics.signal._common import (
     _SCAN_WINDOW,
     _bt_mem_cache,
+    parse_timeframe_secs,
 )
 from analytics.signal.atr_floor import _apply_atr_floor
 from analytics.signal.bt_cache import _backtest_summary, _compute_backtest
@@ -141,13 +142,22 @@ def scan_symbol(
     if ohlcv_df.empty or len(ohlcv_df) < 3:
         return []
 
-    # Exclude the currently-forming (not yet closed) candle so detectors only
-    # see completed candles.  The signal runner wakes up at candle-close
-    # boundaries, but Binance/the sync layer often includes the new open candle
-    # in the response.  Passing it to pattern detectors (trend_day, marubozu,
-    # engulfing, …) would fire on a candle with as little as a few seconds of
-    # data, producing spurious 100%-body readings.
-    closed_df = ohlcv_df.iloc[:-1]
+    # Exclude the final bar ONLY when it is still forming, so detectors fire on
+    # the latest *closed* candle. A forming bar has as little as a few seconds
+    # of data and would produce spurious 100%-body readings (trend_day,
+    # marubozu, engulfing, …). A bar is still forming until its period has fully
+    # elapsed: now < open_time + timeframe.
+    #
+    # Binance streams a forming candle 24/7, so the old code dropped the last
+    # row unconditionally. yfinance equities are different: scanned pre-market /
+    # after-close (or after a NaN forming bar is dropped), the last row is
+    # already a closed bar — dropping it unconditionally fires one candle stale.
+    tf_ms = parse_timeframe_secs(timeframe) * 1000
+    now_ms = int(time.time() * 1000)
+    last_open_time = int(ohlcv_df["open_time"].iloc[-1])
+    # Forming → drop the final bar; closed → keep it.
+    is_forming = now_ms < last_open_time + tf_ms
+    closed_df = ohlcv_df.iloc[:-1] if is_forming else ohlcv_df
     latest_open_time = int(closed_df["open_time"].iloc[-1])
     latest_close = float(closed_df["close"].iloc[-1])
 

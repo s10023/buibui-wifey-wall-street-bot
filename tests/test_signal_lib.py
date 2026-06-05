@@ -31,6 +31,13 @@ def reset_bt_cache() -> None:
     _reset_bt_cache()
 
 
+# Far-future open_time used for synthetic "currently forming" bars in scanner
+# tests. scan_symbol now drops the final bar only when its period has not yet
+# elapsed (now < open_time + tf), so a forming bar must sit in the future to be
+# excluded; a past timestamp would (correctly) be treated as a closed candle.
+_FUTURE_FORMING_MS = 7258118400000  # ~year 2200
+
+
 class TestParseTimeframeSecs:
     def test_minutes(self) -> None:
         assert parse_timeframe_secs("15m") == 900
@@ -449,7 +456,7 @@ class TestDayFilter:
                 "volume": 1.0,
             },
             {
-                "open_time": open_time_ms + 1000,
+                "open_time": _FUTURE_FORMING_MS,
                 "open": 104.0,
                 "high": 104.5,
                 "low": 103.5,
@@ -802,6 +809,86 @@ class TestDayFilter:
         assert len(alerts) == 1, "Monday signals should pass when day_filter=off"
 
 
+class TestFormingBarExclusion:
+    """scan_symbol must fire on the latest *closed* candle.
+
+    The final row is dropped only when it is still forming (its period has not
+    yet fully elapsed). For yfinance equities scanned pre-market / after-close,
+    the last row is already a closed bar and must NOT be skipped — otherwise the
+    alert fires one candle stale (the bug behind the stale 03-Jun META alert).
+    """
+
+    _DAY_MS = 86_400_000
+    _CLOSED_MS = 1704067200000  # 2024-01-01 UTC — long past, so always closed
+    _FORMING_MS = 7258118400000  # ~year 2200 — far future, so always still forming
+
+    def _ohlcv(self, open_times: list[int]) -> pd.DataFrame:
+        return pd.DataFrame(
+            [
+                {
+                    "open_time": ot,
+                    "open": 100.0,
+                    "high": 105.0,
+                    "low": 98.0,
+                    "close": 102.0,
+                    "volume": 1.0,
+                }
+                for ot in open_times
+            ]
+        )
+
+    def _scan(self, ohlcv: pd.DataFrame, signal_open_time: int) -> list[SignalEvent]:
+        signals_df = pd.DataFrame(
+            [
+                {
+                    "open_time": signal_open_time,
+                    "direction": "long",
+                    "reason": "fvg_long@100.00-102.00",
+                    "sl_price": 98.0,
+                    "context": "",
+                }
+            ]
+        )
+        with (
+            patch(
+                "analytics.signal.scanner.SIGNAL_REGISTRY",
+                {"fvg": {"detector": lambda df: signals_df, "confidence": 4}},
+            ),
+            patch(
+                "analytics.signal.scanner.STRATEGY_REGISTRY",
+                {
+                    "fvg": type(
+                        "S",
+                        (),
+                        {
+                            "requires_funding": False,
+                            "get_confidence": lambda self, tf: 3,
+                        },
+                    )(),
+                },
+            ),
+        ):
+            return scan_symbol(
+                ohlcv_df=ohlcv, symbol="AAPL", timeframe="1d", strategies=["fvg"]
+            )
+
+    def test_fires_on_last_bar_when_closed(self) -> None:
+        """No forming bar present (pre-market): the last row is the latest closed."""
+        c = self._CLOSED_MS
+        ohlcv = self._ohlcv([c - 2 * self._DAY_MS, c - self._DAY_MS, c])
+        events = self._scan(ohlcv, signal_open_time=c)
+        assert len(events) == 1
+        assert events[0].open_time == c
+
+    def test_drops_last_bar_when_still_forming(self) -> None:
+        """A genuinely-forming (future) final bar is dropped; fire on prior closed."""
+        c = self._CLOSED_MS
+        ohlcv = self._ohlcv([c - self._DAY_MS, c, self._FORMING_MS])
+        events = self._scan(ohlcv, signal_open_time=c)
+        assert len(events) == 1
+        assert events[0].open_time == c
+
+
 class TestStrategyParamsAlertTpR:
     """Per-strategy tp_r must reach the Telegram alert TP price, not just the backtest filter."""
 
@@ -827,7 +914,7 @@ class TestStrategyParamsAlertTpR:
                 "volume": 1.0,
             },
             {
-                "open_time": self._OPEN_TIME_MS + 1000,
+                "open_time": _FUTURE_FORMING_MS,
                 "open": 100.0,
                 "high": 101.0,
                 "low": 99.0,
@@ -940,7 +1027,7 @@ class TestStrategyTimeframes:
                 "volume": 1.0,
             },
             {
-                "open_time": self._OPEN_TIME_MS + 1000,
+                "open_time": _FUTURE_FORMING_MS,
                 "open": 104.0,
                 "high": 104.5,
                 "low": 103.5,
@@ -1156,7 +1243,7 @@ class TestConflictResolution:
                 "volume": 1.0,
             },
             {
-                "open_time": self._OPEN_TIME_MS + 1000,
+                "open_time": _FUTURE_FORMING_MS,
                 "open": 104.0,
                 "high": 104.5,
                 "low": 103.5,
@@ -1475,7 +1562,7 @@ class TestSignalOutcomePersistence:
                     "volume": 1.0,
                 },
                 {
-                    "open_time": t + 1000,
+                    "open_time": _FUTURE_FORMING_MS,
                     "open": 104.0,
                     "high": 104.5,
                     "low": 103.5,
@@ -1804,7 +1891,7 @@ class TestBacktestRunPersistence:
                     "volume": 1.0,
                 },
                 {
-                    "open_time": t + 1000,
+                    "open_time": _FUTURE_FORMING_MS,
                     "open": 104.0,
                     "high": 104.5,
                     "low": 103.5,
@@ -2247,7 +2334,7 @@ def _make_ohlcv_4rows(open_time_ms: int) -> pd.DataFrame:
             "volume": 1.0,
         },
         {
-            "open_time": open_time_ms + 1000,
+            "open_time": _FUTURE_FORMING_MS,
             "open": 104.0,
             "high": 104.5,
             "low": 103.5,
@@ -2422,7 +2509,7 @@ class TestBiasLayer:
                 "volume": 1.0,
             },
             {
-                "open_time": self._OPEN_TIME_MS + 1000,
+                "open_time": _FUTURE_FORMING_MS,
                 "open": 104.0,
                 "high": 104.5,
                 "low": 103.5,
