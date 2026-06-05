@@ -83,6 +83,40 @@ def test_fetch_bars_respects_limit() -> None:
     assert len(result) == 3
 
 
+def test_fetch_bars_drops_rows_with_nan_ohlcv() -> None:
+    """yfinance intermittently returns the current forming bar with NaN OHLCV.
+
+    Those rows must be dropped — otherwise a NULL reaches the NOT NULL ohlcv
+    columns and the whole scan cycle crashes (observed live on META 1d).
+    """
+    good = _row(ts="2024-01-15T14:30:00", price=186.0)
+    bad = _row(ts="2024-01-16T14:30:00")
+    bad["close"] = float("nan")
+    start_ms = int(datetime(2024, 1, 15, tzinfo=UTC).timestamp() * 1000)
+    with patch(
+        "analytics.data_fetcher.fetch_history",
+        return_value=_yf_frame([good, bad]),
+    ):
+        result = fetch_bars("AAPL", "1d", start_ms)
+    assert len(result) == 1
+    assert result.iloc[0]["close"] == 186.0
+    assert not result["close"].isna().any()
+
+
+def test_fetch_bars_all_nan_returns_empty_columns() -> None:
+    """A fetch whose only rows are NaN collapses to the empty canonical frame."""
+    bad = _row()
+    bad["close"] = float("nan")
+    start_ms = int(datetime(2024, 1, 15, tzinfo=UTC).timestamp() * 1000)
+    with patch(
+        "analytics.data_fetcher.fetch_history",
+        return_value=_yf_frame([bad]),
+    ):
+        result = fetch_bars("AAPL", "1d", start_ms)
+    assert result.empty
+    assert list(result.columns) == OHLCV_COLUMNS
+
+
 def test_fetch_bars_4h_resamples_from_1h() -> None:
     """Caller asks for 4h -> fetcher pulls 1h and resamples anchored to 13:30 UTC."""
     # 8 consecutive 1h bars starting 13:30 UTC -> 2 complete 4h bars
