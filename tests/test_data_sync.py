@@ -113,3 +113,25 @@ class TestSync:
         with patch("analytics.data_sync.fetch_bars", return_value=empty_df):
             total = sync(conn, "AAPL", "1h")
         assert total == 0
+
+
+def test_backfill_quarantines_bad_rows() -> None:
+    conn = _make_conn()
+    df = _make_df([1_000, 2_000, 3_000], symbol="AAPL", timeframe="1d")
+    df.loc[1, "close"] = float("nan")  # one corrupt row
+    with patch("analytics.data_sync.fetch_bars", return_value=df):
+        stored = backfill(conn, "AAPL", "1d", 0)
+    assert stored == 2  # corrupt row dropped
+    row = conn.execute(
+        "SELECT COUNT(*) FROM ohlcv WHERE symbol = 'AAPL' AND timeframe = '1d'"
+    ).fetchone()
+    assert row is not None
+    assert row[0] == 2
+
+
+def test_backfill_clean_data_stores_all_rows() -> None:
+    conn = _make_conn()
+    df = _make_df([1_000, 2_000, 3_000], symbol="MSFT", timeframe="1d")
+    with patch("analytics.data_sync.fetch_bars", return_value=df):
+        stored = backfill(conn, "MSFT", "1d", 0)
+    assert stored == 3  # unchanged behaviour on clean data
