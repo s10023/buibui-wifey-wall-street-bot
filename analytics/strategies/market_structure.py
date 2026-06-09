@@ -1,6 +1,10 @@
 """Detector: Market Structure Break (BOS / CHoCH) — extracted from `analytics/indicators_lib.py` in strat-2.
 
-No behaviour change. Function body byte-identical to pre-split source.
+Phase 0.2 lookahead fix (2026-06-09): the signal `open_time` is stamped at the
+swing *confirmation* bar (`row_idx + swing_lookback`) rather than the swing bar
+itself, because the centered swing window reads `swing_lookback` future bars to
+confirm the swing. The swing *price* level is still taken from the swing bar.
+See docs/redesign/phase0-lookahead-audit.md.
 """
 
 import pandas as pd
@@ -59,7 +63,17 @@ def detect_market_structure(
     trend: str = "unknown"
 
     for row_idx, price, typ in swings:
-        open_time = int(df.iloc[row_idx]["open_time"])
+        # The swing at `row_idx` is confirmed by a centered window that reads
+        # `swing_lookback` bars *after* it, so it only becomes knowable at bar
+        # `row_idx + swing_lookback`. Stamp the signal there (the first causal
+        # open_time) while keeping the swing *price* level from `row_idx`. The
+        # centered `min_periods=window` guarantees every swing bar satisfies
+        # `row_idx <= n-1-swing_lookback`, so `confirm_idx` is always in-bounds;
+        # the guard is belt-and-braces and stays causal if that ever changes.
+        confirm_idx = row_idx + swing_lookback
+        if confirm_idx >= n:
+            continue
+        open_time = int(df.iloc[confirm_idx]["open_time"])
 
         if typ == "H":
             if last_sh is not None and price > last_sh:

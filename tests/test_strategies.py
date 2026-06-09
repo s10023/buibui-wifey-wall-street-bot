@@ -565,6 +565,25 @@ class TestDetectMarketStructure:
         short_signals = result[result["direction"] == "short"]
         assert len(short_signals) >= 1
 
+    def test_signal_stamped_at_confirmation_bar(self) -> None:
+        """Phase 0.2 lookahead fix: a swing confirmed by the centered window is
+        stamped at the confirmation bar (swing_bar + swing_lookback) — the bar at
+        which the swing first becomes knowable — while the swing *price* level is
+        still taken from the swing bar (not the confirmation bar)."""
+        df = self._make_zigzag_up()
+        result = detect_market_structure(df, swing_lookback=1)
+        long_signals = result[result["direction"] == "long"]
+        assert not long_signals.empty
+        first = long_signals.iloc[0]
+        # peak2 (high=120) sits at idx 4 (open_time _BASE_TIME+4); with
+        # swing_lookback=1 it is confirmed one bar later at idx 5.
+        assert int(first["open_time"]) == _BASE_TIME + 5
+        # the swing bar itself must never be the signal stamp.
+        assert _BASE_TIME + 4 not in result["open_time"].values
+        # the structural price level is still the swing-bar high, not the
+        # confirmation bar's — only the timestamp moved.
+        assert "120.00" in str(first["reason"])
+
 
 # ---------------------------------------------------------------------------
 # Funding Rate Mean Reversion
