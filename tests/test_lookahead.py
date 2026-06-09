@@ -21,7 +21,9 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from analytics.backtest.engine import run_backtest
 from analytics.strategies._registry import DETECTOR_REGISTRY
+from tests.conftest import _candle, _make_ohlcv
 
 _FIXTURE_DIR = Path(__file__).parent / "fixtures"
 _MAX_TRUNC_POINTS = 25
@@ -36,7 +38,9 @@ def _load_fixture(tf: str) -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 
-def _normalize_signals_at(sig: pd.DataFrame, t: int) -> list[tuple[tuple[str, object], ...]]:
+def _normalize_signals_at(
+    sig: pd.DataFrame, t: int
+) -> list[tuple[tuple[str, object], ...]]:
     """Order-independent, float-stable view of the signals whose open_time == t."""
     if sig.empty or "open_time" not in sig.columns:
         return []
@@ -89,11 +93,17 @@ def test_harness_catches_injected_lookahead() -> None:
         ot = d["open_time"].to_numpy()
         cl = d["close"].to_numpy(dtype=float)
         rows = [
-            {"open_time": int(ot[i]), "direction": "long",
-             "reason": "peek", "sl_price": float(cl[i + 1])}
+            {
+                "open_time": int(ot[i]),
+                "direction": "long",
+                "reason": "peek",
+                "sl_price": float(cl[i + 1]),
+            }
             for i in range(n - 1)
         ]
-        return pd.DataFrame(rows, columns=["open_time", "direction", "reason", "sl_price"])
+        return pd.DataFrame(
+            rows, columns=["open_time", "direction", "reason", "sl_price"]
+        )
 
     assert _first_lookahead_violation(peeking, df) is not None
 
@@ -136,3 +146,57 @@ def test_detector_has_no_lookahead(
         f"{detector_name} on {tf}: signals at open_time={violation} differ between "
         f"the full-series and truncated-at-t runs — the detector reads future bars."
     )
+
+
+# --- Backtest entry-path causality (Task 2) ---------------------------------
+
+_T = 1_700_000_000_000
+
+
+def _long_signal(open_time: int) -> pd.DataFrame:
+    return pd.DataFrame(
+        [{"open_time": open_time, "direction": "long", "reason": "test"}],
+        columns=["open_time", "direction", "reason"],
+    )
+
+
+def test_backtest_entry_is_strictly_next_bar_open() -> None:
+    """Entry fills at the NEXT bar's open — never the signal bar's close, never a future bar."""
+    ohlcv = _make_ohlcv(
+        [
+            _candle(_T + 0, 100, 105, 95, 102),  # idx 0: signal candle (close=102)
+            _candle(_T + 1, 100, 103, 99, 101),  # idx 1: entry candle (open=100)
+            _candle(_T + 2, 101, 106, 99, 105),  # idx 2: resolves
+        ]
+    )
+    res = run_backtest(
+        ohlcv, _long_signal(_T + 0), "AAPL", "4h", "fvg", sl_pct=0.02, tp_r=2.0
+    )
+    assert len(res.trades) == 1
+    tr = res.trades[0]
+    assert tr.signal_time == _T + 0
+    assert tr.entry_time == _T + 1  # strictly the next bar
+    assert tr.entry_price == pytest.approx(
+        100.0
+    )  # that bar's OPEN, not the signal close (102)
+
+
+def test_backtest_entry_independent_of_future_bars() -> None:
+    """Truncating the series right after the entry bar leaves entry price/time unchanged."""
+    candles = [
+        _candle(_T + 0, 100, 105, 95, 102),  # signal
+        _candle(_T + 1, 100, 103, 99, 101),  # entry (no SL/TP hit here)
+        _candle(_T + 2, 101, 106, 99, 105),  # would resolve the trade in the full run
+        _candle(_T + 3, 105, 130, 104, 129),  # large future move
+    ]
+    sig = _long_signal(_T + 0)
+    full = run_backtest(
+        _make_ohlcv(candles), sig, "AAPL", "4h", "fvg", sl_pct=0.02, tp_r=2.0
+    )
+    trunc = run_backtest(
+        _make_ohlcv(candles[:2]), sig, "AAPL", "4h", "fvg", sl_pct=0.02, tp_r=2.0
+    )
+    assert len(full.trades) == 1 and len(trunc.trades) == 1
+    assert trunc.trades[0].entry_time == full.trades[0].entry_time == _T + 1
+    assert trunc.trades[0].entry_price == pytest.approx(full.trades[0].entry_price)
+    assert trunc.trades[0].entry_price == pytest.approx(100.0)
