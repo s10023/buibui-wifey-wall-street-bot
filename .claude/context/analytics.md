@@ -19,8 +19,20 @@ Detailed API reference for `analytics/`. Load this when working on any analytics
 ## data_fetcher.py / data_sync.py / analytics_runner.py
 
 - `data_fetcher.py` — pure fetch: yfinance → canonical OHLCV DataFrames (no DB). `fetch_bars(symbol, interval, start_ms, limit=BARS_MAX_LIMIT)` wraps `utils.yfinance_client.fetch_history`; supported intervals `1h | 4h | 1d | 1wk` (4h synthesised via 1h resample anchored to 13:30 UTC, US RTH open). `OHLCV_COLUMNS` excludes `vwap` and `taker_buy_volume` (yfinance OHLCV has neither). `BARS_MAX_LIMIT = 5000`. Tests patch `analytics.data_fetcher.fetch_history`.
-- `data_sync.py` — yfinance-backed orchestration (T5, 2026-05-15). `backfill(conn, symbol, timeframe, start_ms)` is a single `fetch_bars` call (no client param, no pagination loop); `sync(conn, symbol, timeframe)` re-fetches from the latest stored `open_time`. `sync_funding_rates` / `sync_open_interest` removed in T5.
+- `data_sync.py` — yfinance-backed orchestration (T5, 2026-05-15). `backfill(conn, symbol, timeframe, start_ms)` is a single `fetch_bars` call (no client param, no pagination loop), gated on `data_quality.check_ohlcv` + `quarantine` between fetch and upsert (Phase 0.5) — corrupt rows are dropped before storage, soft anomalies logged; the return count reflects stored (clean) rows. `sync(conn, symbol, timeframe)` re-fetches from the latest stored `open_time` and delegates to `backfill`, so it inherits the gate. `sync_funding_rates` / `sync_open_interest` removed in T5.
 - `analytics_runner.py` — thin wrapper: opens DB, resolves symbols via `utils.config_validation.load_stocks_config`, delegates to `data_sync`. No client object (yfinance is module-level, no auth).
+
+## data_quality.py — OHLCV ingest integrity monitor (Phase 0.5)
+
+Pure detection + quarantine helper for OHLCV frames. No DB, no network, no side effects. Wired into `data_sync.backfill` between `fetch_bars` and `upsert_ohlcv`; additive — clean data is a pass-through, so behaviour (and regression goldens) are unchanged on good data.
+
+- `check_ohlcv(df, *, return_outlier_pct=0.5) -> DataQualityReport` — never mutates the input, never logs, never raises on dirty data. Reports positional row indices (0..n-1 over an internally reset index).
+- `DataQualityReport` (frozen dataclass) — index tuples per finding plus derived props:
+  - **Quarantine sets** (dropped before storage, via `quarantine_idx`): `nan_idx` (NaN in any OHLCV field), `nonpositive_price_idx` (price ≤ 0), `bad_bar_idx` (broken geometry: `high < low/open/close`, `low > open/close`), `duplicate_time_idx` (later-duplicate `open_time`, `keep="first"`).
+  - **Warn-only sets** (logged, kept — never silently delete a real 20% move or a halt bar): `zero_volume_idx`, `return_outlier_idx` (`|pct_change| > return_outlier_pct`), `suspected_split_idx` (`close` ratio within ±5% of a canonical split factor 0.5/⅓/0.25/0.2/2/3/4/5), `nonmonotonic_idx` (`open_time` goes backwards).
+  - Props: `quarantine_idx`, `has_warnings`, `is_clean` (n_rows>0 ∧ no quarantine ∧ no warnings), `summary()` (human-readable count string).
+- `quarantine(df, report) -> (clean, dropped)` — splits on `report.quarantine_idx`; positional, never mutates input; clean frame on a clean report returns the whole frame + an empty `dropped`.
+- **Out of scope:** calendar-aware cadence-gap detection (equity weekends/holidays make naive gap checks fire constantly without a trading calendar).
 
 ## strategies/ — strategy signal detection package
 
