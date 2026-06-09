@@ -19,6 +19,7 @@ import pandas as pd
 
 from analytics.backtest.gates import _is_low_volume, _is_volume_spike
 from analytics.backtest.live_parity_config import LiveParityConfig
+from analytics.backtest.stats_overfit import sharpe_ratio
 
 if TYPE_CHECKING:
     from analytics.signal.types import SignalEvent
@@ -182,6 +183,12 @@ class BacktestResult:
     def avg_r(self) -> float:
         r_values = [t.pnl_r for t in self.closed_trades if t.pnl_r is not None]
         return sum(r_values) / len(r_values) if r_values else 0.0
+
+    @property
+    def sharpe(self) -> float:
+        """Per-trade Sharpe over the closed-trade R series (0.0 when < 2 trades)."""
+        r_values = [t.pnl_r for t in self.closed_trades if t.pnl_r is not None]
+        return sharpe_ratio(r_values)
 
     @property
     def total_r(self) -> float:
