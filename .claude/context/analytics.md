@@ -98,6 +98,16 @@ Pure detection + quarantine helper for OHLCV frames. No DB, no network, no side 
 - `SweepRow` / `AuditRow` expose `long/short_oos_avg_r`, `long/short_oos_n` (Gate 3)
 - `_directional_split_hint(row)` fires when |↑OOS − ↓OOS| ≥ 0.1R and n ≥ 3 each
 - Parallelized: Phase 1 detects signals sequentially (needs DB conn), Phase 2 runs grid via `ProcessPoolExecutor` using `_sweep_grid_worker` / `_audit_strategy_worker` (picklable, take pre-computed DataFrames)
+- **Overfitting controls (Phase 0.3a/b):** after the grid completes (before the `top_n` truncation), `_attach_overfit_stats(rows)` computes per-config IS/OOS Sharpe + a Deflated Sharpe and one sweep-level PBO over the full grid, attaching an `OverfitStats` to each `SweepRow.overfit_stats`. `format_sweep_results` prints `trials N=… PBO=…%` + the recommended config's per-trade Sharpe + Deflated Sharpe (a probability — ≥95% = robust). PBO matrix columns are sorted by params for run-to-run reproducibility. See `backtest/stats_overfit.py`
+
+## stats_overfit.py — overfitting / multiple-testing controls (Phase 0.3a/b)
+
+- Lives in `analytics/backtest/`. Pure math — numpy + stdlib `statistics.NormalDist` (Φ / Φ⁻¹; **no scipy**), no DB, no engine import (so `engine` → `stats_overfit` is one-directional, no cycle)
+- `sharpe_ratio(returns)` — per-trade R Sharpe `mean/std` (sample std ddof=1, non-annualized — the engine's native unit). `0.0` on n<2 or zero-variance. `_moments(returns)` → `(mean, std, skew, kurt)` with non-excess kurtosis (normal == 3). `BacktestResult.sharpe` wraps this over closed-trade `pnl_r`
+- `probabilistic_sharpe_ratio(sr, n, skew, kurt, sr_star=0.0)` — PSR = Φ((SR−SR\*)·√(n−1) / √(1 − skew·SR + (kurt−1)/4·SR²)). `expected_max_sharpe(sr_variance, n_trials)` — SR\*₀ = √V·[(1−γ)·Z⁻¹(1−1/N) + γ·Z⁻¹(1−1/(N·e))] (γ = Euler–Mascheroni). `deflated_sharpe_ratio(observed_sr, trial_sharpes, n_returns, skew, kurt)` = PSR evaluated against SR\*₀ estimated from the cross-trial Sharpe variance — Bailey & López de Prado 2014. DSR is a **probability** in [0,1]
+- `probability_of_backtest_overfitting(perf_matrix, n_splits=16)` → `PBOResult(pbo, n_combinations, logits)` — CSCV (Bailey et al. 2017): partitions the T rows into S contiguous submatrices, and for every C(S, S/2) IS/OOS split ranks configs by IS mean R, takes the IS-best, records its OOS rank as a logit; PBO = P(logit < 0) (IS-best below OOS median). Performance metric = mean R per column (robust on sparse submatrices). `NaN` when < 2 configs or T < S
+- `build_performance_matrix(trade_points, n_rows)` — time-buckets each config's `(entry_time, pnl_r)` points into a T×N matrix over the shared time span (the common axis CSCV needs; per-trade R is not row-alignable across configs with different `tp_r`)
+- `OverfitStats(is_sharpe, oos_sharpe, deflated_sharpe, n_trials, pbo)` — carrier attached to `SweepRow.overfit_stats`. 0.3c purged-embargoed CV is a later PR (does not touch `param_sweep._split_ohlcv`)
 
 ## digest_lib.py — aggregation over backtest_runs
 
