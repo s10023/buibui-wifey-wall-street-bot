@@ -40,9 +40,16 @@ def fetch_history(
         DataFrame with columns ``open, high, low, close, volume`` and a
         UTC-naive DatetimeIndex. Empty DataFrame on no data.
 
-    ``auto_adjust=False`` preserves raw prices (S/R levels need absolute close).
-    ``actions=False`` strips Dividends and Stock Splits columns. Split adjustment
-    is applied by yfinance by default; dividend adjustment is not.
+    As-of adjustment convention (Phase 0.2 lookahead audit):
+    ``auto_adjust=False`` preserves the raw print as ``close`` (absolute S/R
+    levels need it). ``actions=False`` strips the Dividends/Stock-Splits columns.
+    Dividends are **not** back-adjusted. **Splits are still back-applied** by
+    yfinance to historical OHLC, so a split effective after a given bar is
+    embedded into that bar's price — a mild, bounded as-of violation. On the
+    liquid mega-cap universe splits are rare and this bias is small; eliminating
+    it would require unadjusted data plus manual as-of corporate-action
+    application, which is out of the free-data scope. See
+    ``docs/redesign/phase0-lookahead-audit.md``.
     """
     yf_interval = YF_INTERVALS[interval]
     raw = cast(
