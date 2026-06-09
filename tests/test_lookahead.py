@@ -110,15 +110,10 @@ def test_harness_catches_injected_lookahead() -> None:
 
 # Detectors with a confirmed, tracked lookahead leak. xfail(strict) so the
 # follow-up fix PR is forced to remove the entry when it makes the cell causal.
-_KNOWN_LOOKAHEAD_DETECTORS = {
-    # bos stamps the signal at the swing bar, but the centered rolling window
-    # (2*swing_lookback+1, center=True) confirms the swing using swing_lookback
-    # FUTURE bars — so the emission decision at open_time t depends on bars after
-    # t. Fix = shift the signal open_time to the confirmation bar
-    # (i + swing_lookback). Deferred to a dedicated PR with full backtest
-    # re-validation; see docs/redesign/phase0-lookahead-audit.md.
-    "bos",
-}
+# Currently empty: the only known leak (`bos`, centered swing window) was fixed
+# by shifting the signal open_time to the confirmation bar (row_idx +
+# swing_lookback) — see docs/redesign/phase0-lookahead-audit.md.
+_KNOWN_LOOKAHEAD_DETECTORS: set[str] = set()
 
 
 @pytest.mark.parametrize("tf", ["4h", "1d", "1wk"])

@@ -30,8 +30,8 @@ proves the harness has teeth by flagging a deliberately peeking detector.
 
 | # | Read site | File : function | Class | Evidence |
 | --- | --- | --- | --- | --- |
-| 1 | Detector signal emission (15 of 16 detectors) | `analytics/strategies/*.py` via `DETECTOR_REGISTRY` | causal | Harness `test_detector_has_no_lookahead` green across 4h/1d/1wk for all detectors except `bos`. Forward-scan detectors (`wick_fill`, `fvg`, `eqh_eql`, `order_block`, `marubozu`) emit on the *fill/retest* bar `j` and read only bars `i..j` (all `<= j`). |
-| 2 | `bos` (break-of-structure) signal emission | `analytics/strategies/market_structure.py : detect_market_structure` | **leaking** | Centered rolling window (`2*swing_lookback+1`, `center=True`) confirms a swing high/low at bar `i` using `swing_lookback` bars *after* `i`, but the signal is stamped at bar `i`'s `open_time`. Harness flags all 3 TFs. See Findings. |
+| 1 | Detector signal emission (all 16 detectors) | `analytics/strategies/*.py` via `DETECTOR_REGISTRY` | causal | Harness `test_detector_has_no_lookahead` green across 4h/1d/1wk for every detector. Forward-scan detectors (`wick_fill`, `fvg`, `eqh_eql`, `order_block`, `marubozu`) emit on the *fill/retest* bar `j` and read only bars `i..j` (all `<= j`). |
+| 2 | `bos` (break-of-structure) signal emission | `analytics/strategies/market_structure.py : detect_market_structure` | causal (was leaking; **fixed** 2026-06-09) | Centered rolling window (`2*swing_lookback+1`, `center=True`) confirms a swing at bar `i` using `swing_lookback` bars *after* `i`. The signal `open_time` is now stamped at the confirmation bar `i + swing_lookback` (swing *price* still from bar `i`), so the emission decision is causal. Harness green on all 3 TFs. See Findings. |
 | 3 | Volume confirmation rolling mean | `analytics/strategies/_shared.py : volume_confirm` | causal | Trailing window (`center=False`); the signal bar's volume vs the prior rolling mean. |
 | 4 | EMA / slope | `analytics/strategies/_shared.py : compute_ema`, `ema_cross_count` | causal | `ewm` value at `i` is a weighted sum of bars `<= i`; truncating future bars cannot change it. |
 | 5 | Backtest entry fill | `analytics/backtest/engine.py : run_backtest` (`entry_idx = sig_idx + 1; entry_price = opens_np[entry_idx]`) | causal | Harness `test_backtest_entry_is_strictly_next_bar_open` + `test_backtest_entry_independent_of_future_bars`. Next-bar-open. |
@@ -45,49 +45,50 @@ proves the harness has teeth by flagging a deliberately peeking detector.
 
 ## Findings
 
-One real leak was discovered by the Task 1 harness; the rest of the pipeline is
-causal.
+One real leak was discovered by the Task 1 harness; it has since been fixed and
+the rest of the pipeline is causal.
 
-### `bos` (break-of-structure) — confirmed lookahead, fix deferred
+### `bos` (break-of-structure) — confirmed lookahead, now fixed (2026-06-09)
 
 - **Mechanism.** `detect_market_structure` flags swing highs/lows with a
   *centered* rolling window: `window = 2 * swing_lookback + 1` and
   `center=True` (`market_structure.py:38-46`). A swing high at bar `i` is
   `high[i] == max(high[i-swing_lookback .. i+swing_lookback])`, so the
   confirmation reads `swing_lookback` (default 5) bars *after* `i`. The emitted
-  BOS/CHoCH signal, however, is stamped at the swing bar's own `open_time`
-  (`market_structure.py:62`, `open_time = int(df.iloc[row_idx]["open_time"])`).
-  The decision to emit at `open_time` `t` therefore depends on bars after `t`.
+  BOS/CHoCH signal was originally stamped at the swing bar's own `open_time`,
+  so the decision to emit at `open_time` `t` depended on bars after `t`.
 - **Detection.** `tests/test_lookahead.py::test_detector_has_no_lookahead`
-  flags `bos` on all three timeframes (4h/1d/1wk): the signal at the truncation
-  boundary vanishes once the future confirmation bars are removed.
-- **Live impact.** In live mode the last closed candle can never be a confirmed
-  swing (it needs `swing_lookback` more bars), so live `bos` only fires once a
-  swing is already `swing_lookback` candles in the past — while the backtest
-  assumes entry at `swing_bar + 1`'s open. That is a backtest-vs-live timing
-  divergence, exactly the class of bug Phase 0 exists to surface.
-- **Fix (deferred to a dedicated PR).** Shift the signal `open_time` forward to
-  the *confirmation* bar (`i + swing_lookback`) — the bar at which the swing
-  first becomes knowable — while keeping the swing *price* level from bar `i`.
-  This is a behaviour change that moves backtest results, confidence ratings and
-  alert timing, so it requires a full `make db-update` (backtest + recalibrate +
-  golden refresh) and a deliberate review of the golden movement. It is
-  intentionally **not** bundled into this characterization-harness PR.
-- **Guard in the meantime.** The three `bos` cells are marked
-  `xfail(strict=True)` in `tests/test_lookahead.py`
-  (`_KNOWN_LOOKAHEAD_DETECTORS`). `strict=True` means the moment `bos` is made
-  causal, the cells flip to `XPASS` and fail the suite — forcing the follow-up
-  PR to remove the marker. This keeps the leak tracked without going red on
-  `main`.
+  flagged `bos` on all three timeframes (4h/1d/1wk): the signal at the
+  truncation boundary vanished once the future confirmation bars were removed.
+- **Live impact (pre-fix).** In live mode the last closed candle can never be a
+  confirmed swing (it needs `swing_lookback` more bars), so live `bos` only
+  fired once a swing was already `swing_lookback` candles in the past — while
+  the backtest assumed entry at `swing_bar + 1`'s open. That backtest-vs-live
+  timing divergence is exactly the class of bug Phase 0 exists to surface.
+- **Fix (shipped).** The signal `open_time` is now stamped at the *confirmation*
+  bar (`row_idx + swing_lookback`) — the bar at which the swing first becomes
+  knowable — while the swing *price* level is still taken from bar `row_idx`
+  (`market_structure.py`). The centered `min_periods=window` guarantees every
+  swing bar satisfies `row_idx <= n-1-swing_lookback`, so the confirmation index
+  is always in-bounds; an explicit `confirm_idx >= n` guard keeps the detector
+  causal if that invariant ever changes. The harness now passes on all 3 TFs and
+  the `_KNOWN_LOOKAHEAD_DETECTORS` set is empty. A unit guard
+  (`tests/test_strategies.py::TestDetectMarketStructure::test_signal_stamped_at_confirmation_bar`)
+  pins the open_time shift at the swing level.
+- **Golden movement.** This is a behaviour change, so `make db-update` was run.
+  The regression movement is isolated to exactly the three `bos` cells
+  (`bos/4h`, `bos/1d`, `bos/1wk`) in both `golden_signal_watch.json` and
+  `golden_weekdays.json`; no other strategy cell moved (the committed fixture
+  parquets were held fixed so the goldens attribute purely to the fix). `bos`
+  trade counts drop (e.g. `bos/4h` 18 → 2) because signals now land on
+  confirmation bars — the correct causal population.
 
 ### Everything else — causal, no leak
 
-- 15 of the 16 detectors, the backtest next-bar-open entry fill, the ATR SL,
-  the regime gate, the HTF-EMA gate and the live forming-bar exclusion are all
-  proven causal (rows 1, 3–10). The only as-of caveat is the bounded split
+- All 16 detectors, the backtest next-bar-open entry fill, the ATR SL, the
+  regime gate, the HTF-EMA gate and the live forming-bar exclusion are proven
+  causal (rows 1–10). The only as-of caveat is the bounded split
   back-adjustment (row 11), accepted and documented below.
-- `make test-regression` is byte-identical: this deliverable adds only tests and
-  docs and changes no detector or engine code, so no golden moved.
 
 ## Adjustment convention (row 11, expanded)
 
