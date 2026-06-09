@@ -105,7 +105,9 @@ def check_ohlcv(
     n = len(df)
     empty: tuple[int, ...] = ()
     if n == 0:
-        return DataQualityReport(0, empty, empty, empty, empty, empty, empty, empty, empty)
+        return DataQualityReport(
+            0, empty, empty, empty, empty, empty, empty, empty, empty
+        )
 
     nan_mask = df[_OHLCV_NUMERIC].isna().any(axis=1)
     nonpos_mask = (df[_PRICE_COLS] <= 0).any(axis=1) & ~nan_mask

@@ -122,10 +122,11 @@ def test_backfill_quarantines_bad_rows() -> None:
     with patch("analytics.data_sync.fetch_bars", return_value=df):
         stored = backfill(conn, "AAPL", "1d", 0)
     assert stored == 2  # corrupt row dropped
-    rows = conn.execute(
+    row = conn.execute(
         "SELECT COUNT(*) FROM ohlcv WHERE symbol = 'AAPL' AND timeframe = '1d'"
-    ).fetchone()[0]
-    assert rows == 2
+    ).fetchone()
+    assert row is not None
+    assert row[0] == 2
 
 
 def test_backfill_clean_data_stores_all_rows() -> None:

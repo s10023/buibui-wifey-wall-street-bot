@@ -71,7 +71,8 @@ def test_duplicate_timestamp_quarantines_later_row() -> None:
 
 def test_nonmonotonic_timestamp_is_warned_not_dropped() -> None:
     df = _frame([{}, {}, {}])
-    df.loc[2, "open_time"] = df.loc[0, "open_time"] - 1  # goes backwards
+    # row 0's open_time is 1_000 (see _frame); 0 is earlier than every row -> backwards
+    df.loc[2, "open_time"] = 0
     rep = check_ohlcv(df)
     assert rep.nonmonotonic_idx == (2,)
     assert 2 not in rep.quarantine_idx  # warn-only
@@ -85,7 +86,9 @@ def test_zero_volume_is_warned_not_dropped() -> None:
 
 def test_return_outlier_flagged() -> None:
     # row 1 close jumps +80% vs row 0 (101 -> 181.8): outlier, not split-like
-    rep = check_ohlcv(_frame([{}, {"open": 180.0, "high": 182.0, "low": 179.0, "close": 181.8}, {}]))
+    rep = check_ohlcv(
+        _frame([{}, {"open": 180.0, "high": 182.0, "low": 179.0, "close": 181.8}, {}])
+    )
     assert 1 in rep.return_outlier_idx
     assert 1 not in rep.suspected_split_idx
 
@@ -100,7 +103,9 @@ def test_suspected_split_flagged() -> None:
 
 def test_normal_move_not_flagged() -> None:
     # +3% day is neither outlier nor split
-    rep = check_ohlcv(_frame([{}, {"open": 103.0, "high": 105.0, "low": 102.0, "close": 104.0}, {}]))
+    rep = check_ohlcv(
+        _frame([{}, {"open": 103.0, "high": 105.0, "low": 102.0, "close": 104.0}, {}])
+    )
     assert rep.return_outlier_idx == ()
     assert rep.suspected_split_idx == ()
 
