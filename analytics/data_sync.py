@@ -10,6 +10,7 @@ import logging
 import duckdb
 
 from analytics.data_fetcher import fetch_bars
+from analytics.data_quality import check_ohlcv, quarantine
 from analytics.data_store import (
     get_latest_open_time,
     upsert_ohlcv,
@@ -30,9 +31,26 @@ def backfill(
     df = fetch_bars(symbol, timeframe, start_ms)
     if df.empty:
         return 0
-    upsert_ohlcv(conn, df)
-    logging.info("backfill %s %s: stored %d rows", symbol, timeframe, len(df))
-    return len(df)
+
+    report = check_ohlcv(df)
+    if not report.is_clean:
+        logging.warning("data-quality %s %s: %s", symbol, timeframe, report.summary())
+    clean, dropped = quarantine(df, report)
+    if clean.empty:
+        logging.warning(
+            "data-quality %s %s: all %d rows quarantined", symbol, timeframe, len(df)
+        )
+        return 0
+
+    upsert_ohlcv(conn, clean)
+    logging.info(
+        "backfill %s %s: stored %d rows (%d quarantined)",
+        symbol,
+        timeframe,
+        len(clean),
+        len(dropped),
+    )
+    return len(clean)
 
 
 def sync(
