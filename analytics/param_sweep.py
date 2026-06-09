@@ -337,13 +337,19 @@ def _attach_overfit_stats(rows: list[SweepRow]) -> None:
         return
     n_trials = len(rows)
     is_sharpes = [sharpe_ratio(_closed_r(r.is_result)) for r in rows]
+    # Build the PBO matrix in a deterministic column order (rows arrive in
+    # ProcessPoolExecutor completion order, and configs with identical trades —
+    # e.g. an inert tp_r under a structural SL — create exact CSCV argmax ties
+    # whose tie-break is column-index sensitive). Sort by params so the reported
+    # PBO is reproducible run-to-run.
+    ordered = sorted(rows, key=lambda r: tuple(sorted(r.params.items())))
     trade_points = [
         [
             (t.entry_time, t.pnl_r)
             for t in (*r.is_result.closed_trades, *r.oos_result.closed_trades)
             if t.pnl_r is not None
         ]
-        for r in rows
+        for r in ordered
     ]
     pbo = probability_of_backtest_overfitting(
         build_performance_matrix(trade_points, _PBO_MATRIX_ROWS)
@@ -632,13 +638,16 @@ def format_sweep_results(
         )
         stats = best.overfit_stats
         if stats is not None:
+            # DSR is a probability (PSR vs the multiple-testing-deflated null),
+            # not an R-multiple — render Sharpe as a plain ratio, DSR/PBO as %.
             pbo_str = "n/a" if math.isnan(stats.pbo) else _fmt_pct(stats.pbo)
             lines.append(
                 f"  Overfit controls: trials N={stats.n_trials}  PBO={pbo_str}"
             )
             lines.append(
-                f"  Recommended Sharpe={_fmt_r(stats.is_sharpe)}  "
-                f"Deflated Sharpe={_fmt_r(stats.deflated_sharpe)}"
+                f"  Recommended config: per-trade Sharpe={stats.is_sharpe:+.2f}  "
+                f"Deflated Sharpe={_fmt_pct(stats.deflated_sharpe)} "
+                "(P[edge real]; ≥95% = robust)"
             )
         hint = _directional_split_hint(best)
         if hint:

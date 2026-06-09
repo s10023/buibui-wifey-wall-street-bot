@@ -529,6 +529,37 @@ class TestOverfitStatsWiring:
         assert "PBO" in out
         assert "N=9" in out
 
+    def test_pbo_is_order_independent(self) -> None:
+        # PBO must be reproducible regardless of the order rows arrive in from
+        # the process pool (deterministic column ordering inside the matrix).
+        from analytics.param_sweep import _attach_overfit_stats
+
+        def _rows() -> list[SweepRow]:
+            out: list[SweepRow] = []
+            for i in range(6):
+                wins = [_win("long", r=1.0 + i)] * (3 + i)
+                losses = [_loss("long")] * 2
+                out.append(
+                    SweepRow(
+                        params={"tp_r": 1.0 + 0.5 * i},
+                        is_result=_make_result(long_trades=wins + losses),
+                        oos_result=_make_result(long_trades=wins + losses),
+                        is_score=1.0,
+                        oos_score=1.0,
+                        decay=1.0,
+                        overfit=False,
+                    )
+                )
+            return out
+
+        forward = _rows()
+        reverse = list(reversed(_rows()))
+        _attach_overfit_stats(forward)
+        _attach_overfit_stats(reverse)
+        assert forward[0].overfit_stats is not None
+        assert reverse[0].overfit_stats is not None
+        assert forward[0].overfit_stats.pbo == reverse[0].overfit_stats.pbo
+
     def test_format_renders_na_for_nan_pbo(self) -> None:
         from analytics.backtest.stats_overfit import OverfitStats
 
