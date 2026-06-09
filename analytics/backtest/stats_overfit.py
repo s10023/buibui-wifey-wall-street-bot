@@ -118,6 +118,21 @@ def deflated_sharpe_ratio(
 
 
 @dataclass(frozen=True)
+class OverfitStats:
+    """Per-config + sweep-level overfitting figures attached to a SweepRow.
+
+    is_sharpe / oos_sharpe / deflated_sharpe are per-config; n_trials and pbo are
+    sweep-level (identical on every row of a given sweep).
+    """
+
+    is_sharpe: float
+    oos_sharpe: float
+    deflated_sharpe: float
+    n_trials: int
+    pbo: float
+
+
+@dataclass(frozen=True)
 class PBOResult:
     """Probability of Backtest Overfitting via CSCV.
 

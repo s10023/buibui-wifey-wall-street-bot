@@ -31,11 +31,22 @@ from typing import TYPE_CHECKING, Any
 import duckdb
 import pandas as pd
 
+from analytics.backtest.stats_overfit import (
+    OverfitStats,
+    build_performance_matrix,
+    deflated_sharpe_ratio,
+    probability_of_backtest_overfitting,
+    sharpe_ratio,
+)
+from analytics.backtest.stats_overfit import _moments as _r_moments
 from analytics.backtest_lib import BacktestResult, run_backtest
 from analytics.backtest_runner import detect_signals_for_strategy
 from analytics.data_store import DEFAULT_DB_PATH, get_ohlcv
 from analytics.perf_timer import timed
 from analytics.strategies import KNOWN_STRATEGIES, STRATEGY_REGISTRY
+
+# Timeline buckets fed to CSCV when computing sweep-level PBO.
+_PBO_MATRIX_ROWS = 100
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -174,6 +185,7 @@ class SweepRow:
     oos_score: float
     decay: float  # oos_score / is_score; NaN when is_score == 0
     overfit: bool  # True when decay < 0.4 or OOS avg_r < 0
+    overfit_stats: OverfitStats | None = None  # DSR/PBO (Phase 0.3a/b)
 
     @property
     def is_avg_r(self) -> float | None:
@@ -306,6 +318,47 @@ def _sweep_grid_worker(
         decay=decay,
         overfit=overfit,
     )
+
+
+def _closed_r(result: BacktestResult) -> list[float]:
+    return [t.pnl_r for t in result.closed_trades if t.pnl_r is not None]
+
+
+def _attach_overfit_stats(rows: list[SweepRow]) -> None:
+    """Compute DSR per config + a sweep-level PBO over the full grid, in place.
+
+    Per-config: IS/OOS per-trade Sharpe and a Deflated Sharpe that haircuts the
+    IS Sharpe by the grid's trial count and cross-trial Sharpe dispersion.
+    Sweep-level: one CSCV PBO over a time-bucketed full-history performance
+    matrix (NaN when too few configs/trades to compute). Mutates each row's
+    ``overfit_stats``.
+    """
+    if not rows:
+        return
+    n_trials = len(rows)
+    is_sharpes = [sharpe_ratio(_closed_r(r.is_result)) for r in rows]
+    trade_points = [
+        [
+            (t.entry_time, t.pnl_r)
+            for t in (*r.is_result.closed_trades, *r.oos_result.closed_trades)
+            if t.pnl_r is not None
+        ]
+        for r in rows
+    ]
+    pbo = probability_of_backtest_overfitting(
+        build_performance_matrix(trade_points, _PBO_MATRIX_ROWS)
+    ).pbo
+    for r, is_sr in zip(rows, is_sharpes, strict=True):
+        is_r = _closed_r(r.is_result)
+        _, _, skew, kurt = _r_moments(is_r)
+        dsr = deflated_sharpe_ratio(is_sr, is_sharpes, len(is_r), skew, kurt)
+        r.overfit_stats = OverfitStats(
+            is_sharpe=is_sr,
+            oos_sharpe=sharpe_ratio(_closed_r(r.oos_result)),
+            deflated_sharpe=dsr,
+            n_trials=n_trials,
+            pbo=pbo,
+        )
 
 
 def run_param_sweep(
@@ -459,6 +512,11 @@ def run_param_sweep(
                     print(".", end="", flush=True)
         print(" done")
 
+    # --- Overfitting controls (Phase 0.3a/b) over the full grid -------------
+    # Computed before the top_n truncation so the cross-trial Sharpe variance
+    # and the PBO matrix see every trial, not just the survivors.
+    _attach_overfit_stats(rows)
+
     # Primary sort: IS score (composite). Fallback: when all scores are 0 (every config
     # has negative avg_r), sort by IS avg_r directly so the "least bad" configs surface
     # rather than arbitrary grid-order entries.
@@ -572,6 +630,16 @@ def format_sweep_results(
             f"trades={best.oos_trades}  "
             f"decay={_fmt_decay(best.decay)}"
         )
+        stats = best.overfit_stats
+        if stats is not None:
+            pbo_str = "n/a" if math.isnan(stats.pbo) else _fmt_pct(stats.pbo)
+            lines.append(
+                f"  Overfit controls: trials N={stats.n_trials}  PBO={pbo_str}"
+            )
+            lines.append(
+                f"  Recommended Sharpe={_fmt_r(stats.is_sharpe)}  "
+                f"Deflated Sharpe={_fmt_r(stats.deflated_sharpe)}"
+            )
         hint = _directional_split_hint(best)
         if hint:
             lines.append(hint)
