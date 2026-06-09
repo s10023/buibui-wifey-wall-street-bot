@@ -19,8 +19,10 @@ input rather than raising.
 
 from __future__ import annotations
 
+import itertools
 import math
 from collections.abc import Sequence
+from dataclasses import dataclass
 from statistics import NormalDist
 
 import numpy as np
@@ -113,3 +115,91 @@ def deflated_sharpe_ratio(
     else:
         sr_star = expected_max_sharpe(float(arr.var(ddof=1)), arr.size)
     return probabilistic_sharpe_ratio(observed_sr, n_returns, skew, kurt, sr_star)
+
+
+@dataclass(frozen=True)
+class PBOResult:
+    """Probability of Backtest Overfitting via CSCV.
+
+    ``pbo`` is the fraction of IS/OOS partitions where the IS-best config lands
+    below the OOS median (logit < 0); NaN when not computable (< 2 configs, or
+    fewer timeline blocks than ``n_splits`` can halve).
+    """
+
+    pbo: float
+    n_combinations: int
+    logits: tuple[float, ...]
+
+
+def _col_mean(block: np.ndarray) -> np.ndarray:
+    """Per-config performance over a submatrix: mean R per column."""
+    return block.mean(axis=0)
+
+
+def probability_of_backtest_overfitting(
+    perf_matrix: np.ndarray,
+    n_splits: int = 16,
+) -> PBOResult:
+    """CSCV PBO over a T×N matrix (rows = time-aligned observations, cols = trials).
+
+    Partitions the T rows into ``S`` (even, ≤ T) contiguous submatrices, then for
+    every way of choosing S/2 of them as in-sample: ranks configs by IS mean R,
+    takes the IS-best, and records its OOS rank as a logit. PBO = P(logit < 0).
+    """
+    m = np.asarray(perf_matrix, dtype=float)
+    if m.ndim != 2:
+        raise ValueError("perf_matrix must be 2-D (T observations × N configs)")
+    t, n = m.shape
+    s = n_splits - (n_splits % 2)
+    while s > t:
+        s -= 2
+    if n < _MIN_N or s < _MIN_N:
+        return PBOResult(float("nan"), 0, ())
+
+    blocks = np.array_split(np.arange(t), s)
+    logits: list[float] = []
+    for is_combo in itertools.combinations(range(s), s // 2):
+        is_set = set(is_combo)
+        is_rows = np.concatenate([blocks[i] for i in is_combo])
+        oos_rows = np.concatenate([blocks[i] for i in range(s) if i not in is_set])
+        is_perf = _col_mean(m[is_rows])
+        oos_perf = _col_mean(m[oos_rows])
+        best = int(np.argmax(is_perf))
+        # dense rank of every config's OOS perf (1 = worst … n = best)
+        order = oos_perf.argsort()
+        ranks = np.empty(n, dtype=float)
+        ranks[order] = np.arange(1, n + 1)
+        omega = ranks[best] / (n + 1)
+        omega = min(max(omega, 1e-6), 1.0 - 1e-6)
+        logits.append(math.log(omega / (1.0 - omega)))
+
+    arr = np.asarray(logits)
+    pbo = float((arr < 0.0).mean())
+    return PBOResult(pbo, len(logits), tuple(float(x) for x in logits))
+
+
+def build_performance_matrix(
+    trade_points: Sequence[Sequence[tuple[int, float]]],
+    n_rows: int,
+) -> np.ndarray:
+    """Time-align per-config (entry_time_ms, pnl_r) points into a T×N matrix.
+
+    Each column is one config; each row is an equal-width time bucket over the
+    shared [min entry_time, max entry_time] span; the cell is the summed R of
+    that config's trades in that bucket (0 where the config has no trade). The
+    common time axis is what lets CSCV re-partition rows across configs.
+    """
+    n = len(trade_points)
+    all_times = [t for cfg in trade_points for (t, _) in cfg]
+    if n == 0 or not all_times or n_rows < 1:
+        return np.zeros((0, n), dtype=float)
+    t0 = min(all_times)
+    span = (max(all_times) - t0) or 1
+    m = np.zeros((n_rows, n), dtype=float)
+    for j, cfg in enumerate(trade_points):
+        for t, r in cfg:
+            b = int((t - t0) / span * n_rows)
+            if b >= n_rows:
+                b = n_rows - 1
+            m[b, j] += r
+    return m

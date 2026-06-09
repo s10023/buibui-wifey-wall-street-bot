@@ -2,13 +2,20 @@
 
 import math
 
+import numpy as np
+
 from analytics.backtest.stats_overfit import (
+    PBOResult,
     _moments,
+    build_performance_matrix,
     deflated_sharpe_ratio,
     expected_max_sharpe,
     probabilistic_sharpe_ratio,
+    probability_of_backtest_overfitting,
     sharpe_ratio,
 )
+
+_RNG = np.random.default_rng(0)
 
 
 def test_sharpe_zero_mean_is_zero() -> None:
@@ -82,3 +89,59 @@ def test_dsr_single_trial_equals_psr0() -> None:
     dsr = deflated_sharpe_ratio(0.4, [0.4], n_returns=50, skew=0.0, kurt=3.0)
     psr0 = probabilistic_sharpe_ratio(0.4, n=50, skew=0.0, kurt=3.0)
     assert abs(dsr - psr0) < 1e-9
+
+
+def test_pbo_dominant_config_is_low() -> None:
+    # config 0 is consistently best in every row ⇒ never overfit ⇒ PBO ≈ 0
+    noise = _RNG.normal(0, 0.1, size=(200, 5))
+    noise[:, 0] += 1.0
+    res = probability_of_backtest_overfitting(noise, n_splits=10)
+    assert isinstance(res, PBOResult)
+    assert res.pbo < 0.1
+
+
+def test_pbo_adversarial_is_high() -> None:
+    # IS-best column is engineered to be OOS-worst on every split ⇒ PBO ≈ 1
+    t = 200
+    half = t // 2
+    m = _RNG.normal(0, 0.05, size=(t, 4))
+    m[:half, 0] += 1.0  # column 0 dominates the first half (IS on many combos)
+    m[half:, 0] -= 1.0  # ...and is worst in the second half (OOS)
+    res = probability_of_backtest_overfitting(m, n_splits=8)
+    assert res.pbo > 0.5
+
+
+def test_pbo_pure_noise_near_half() -> None:
+    # no real edge ⇒ OOS rank of the IS-best is a coin flip ⇒ PBO ≈ 0.5 in
+    # expectation. A single matrix is noisy at this size, so average several.
+    rng = np.random.default_rng(0)
+    vals = [
+        probability_of_backtest_overfitting(
+            rng.normal(0, 1.0, size=(300, 8)), n_splits=10
+        ).pbo
+        for _ in range(8)
+    ]
+    assert 0.35 < sum(vals) / len(vals) < 0.65
+
+
+def test_pbo_degenerate_is_nan() -> None:
+    one_col = _RNG.normal(0, 1.0, size=(100, 1))
+    assert math.isnan(probability_of_backtest_overfitting(one_col).pbo)
+    tiny = _RNG.normal(0, 1.0, size=(1, 5))  # fewer rows than splits can halve
+    assert math.isnan(probability_of_backtest_overfitting(tiny, n_splits=16).pbo)
+
+
+def test_build_performance_matrix_buckets_by_time() -> None:
+    # 2 buckets over span [0, 100): bucket0 = [0, 50), bucket1 = [50, 100].
+    cfg_a = [(0, 1.0), (100, 2.0)]  # t=100 clamps into the last bucket
+    cfg_b = [(0, -1.0), (10, 0.5)]  # both land in bucket0 ⇒ summed
+    m = build_performance_matrix([cfg_a, cfg_b], n_rows=2)
+    assert m.shape == (2, 2)
+    assert m[0, 0] == 1.0 and m[1, 0] == 2.0  # cfg_a: bucket0=1.0, bucket1=2.0
+    assert m[0, 1] == -0.5  # cfg_b: -1.0 and 0.5 both land in bucket0
+    assert m[1, 1] == 0.0
+
+
+def test_build_performance_matrix_empty() -> None:
+    assert build_performance_matrix([], n_rows=4).shape == (0, 0)
+    assert build_performance_matrix([[], []], n_rows=4).shape == (0, 2)
