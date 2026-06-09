@@ -38,3 +38,22 @@ def test_fetch_history_returns_empty_df_on_no_data() -> None:
     with patch("utils.yfinance_client.yf.Ticker", return_value=mock_ticker):
         df = fetch_history("INVALID", interval="1d", period="6mo")
         assert df.empty
+
+
+def test_fetch_history_never_auto_adjusts_prices() -> None:
+    """As-of adjustment guard: auto_adjust MUST stay False so the close is the raw
+    print. (Split factors are still back-applied by yfinance — a bounded as-of
+    violation documented in the module docstring and docs/redesign/phase0-lookahead-audit.md.)
+    """
+    from utils.yfinance_client import fetch_history
+
+    mock_ticker = MagicMock()
+    mock_ticker.history.return_value = pd.DataFrame(
+        {"Open": [1.0], "High": [2.0], "Low": [0.5], "Close": [1.5], "Volume": [100]},
+        index=pd.DatetimeIndex(["2026-01-02"], tz="America/New_York"),
+    )
+    with patch("utils.yfinance_client.yf.Ticker", return_value=mock_ticker):
+        fetch_history("AAPL", interval="1d")
+    kwargs = mock_ticker.history.call_args.kwargs
+    assert kwargs["auto_adjust"] is False
+    assert kwargs["actions"] is False
