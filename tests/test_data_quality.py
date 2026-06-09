@@ -75,3 +75,31 @@ def test_nonmonotonic_timestamp_is_warned_not_dropped() -> None:
     rep = check_ohlcv(df)
     assert rep.nonmonotonic_idx == (2,)
     assert 2 not in rep.quarantine_idx  # warn-only
+
+
+def test_zero_volume_is_warned_not_dropped() -> None:
+    rep = check_ohlcv(_frame([{}, {"volume": 0.0}, {}]))
+    assert rep.zero_volume_idx == (1,)
+    assert 1 not in rep.quarantine_idx
+
+
+def test_return_outlier_flagged() -> None:
+    # row 1 close jumps +80% vs row 0 (101 -> 181.8): outlier, not split-like
+    rep = check_ohlcv(_frame([{}, {"open": 180.0, "high": 182.0, "low": 179.0, "close": 181.8}, {}]))
+    assert 1 in rep.return_outlier_idx
+    assert 1 not in rep.suspected_split_idx
+
+
+def test_suspected_split_flagged() -> None:
+    # row 1 close halves vs row 0 (101 -> ~50.5): ratio ~0.5 == 2:1 split
+    rep = check_ohlcv(
+        _frame([{}, {"open": 50.0, "high": 51.0, "low": 49.5, "close": 50.5}, {}])
+    )
+    assert 1 in rep.suspected_split_idx
+
+
+def test_normal_move_not_flagged() -> None:
+    # +3% day is neither outlier nor split
+    rep = check_ohlcv(_frame([{}, {"open": 103.0, "high": 105.0, "low": 102.0, "close": 104.0}, {}]))
+    assert rep.return_outlier_idx == ()
+    assert rep.suspected_split_idx == ()

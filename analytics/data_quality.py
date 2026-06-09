@@ -17,6 +17,10 @@ import pandas as pd
 _PRICE_COLS = ["open", "high", "low", "close"]
 _OHLCV_NUMERIC = _PRICE_COLS + ["volume"]
 
+# canonical price ratios (new/old close) that signal an unadjusted split
+_SPLIT_FACTORS: tuple[float, ...] = (0.5, 1.0 / 3.0, 0.25, 0.2, 2.0, 3.0, 4.0, 5.0)
+_SPLIT_TOL: float = 0.05  # within ±5% (relative) of a canonical factor
+
 
 @dataclass(frozen=True)
 class DataQualityReport:
@@ -82,6 +86,12 @@ def _idx_tuple(mask: "pd.Series[bool]") -> tuple[int, ...]:
     return tuple(int(i) for i in mask.index[mask.to_numpy()])
 
 
+def _is_split_like(ratio: float) -> bool:
+    if pd.isna(ratio):
+        return False
+    return any(abs(ratio - f) <= _SPLIT_TOL * f for f in _SPLIT_FACTORS)
+
+
 def check_ohlcv(
     df: pd.DataFrame,
     *,
@@ -107,14 +117,20 @@ def check_ohlcv(
     dup_mask = df["open_time"].duplicated(keep="first")
     nonmono_mask = df["open_time"].diff() < 0
 
+    zero_vol_mask = valid & (df["volume"] <= 0)
+    ret = df["close"].pct_change()
+    ratio = df["close"] / df["close"].shift(1)
+    outlier_mask = valid & (ret.abs() > return_outlier_pct)
+    split_mask = valid & ratio.apply(_is_split_like)
+
     return DataQualityReport(
         n_rows=n,
         nan_idx=_idx_tuple(nan_mask),
         nonpositive_price_idx=_idx_tuple(nonpos_mask),
         bad_bar_idx=_idx_tuple(bad_bar_mask),
         duplicate_time_idx=_idx_tuple(dup_mask),
-        zero_volume_idx=empty,
-        return_outlier_idx=empty,
-        suspected_split_idx=empty,
+        zero_volume_idx=_idx_tuple(zero_vol_mask),
+        return_outlier_idx=_idx_tuple(outlier_mask),
+        suspected_split_idx=_idx_tuple(split_mask),
         nonmonotonic_idx=_idx_tuple(nonmono_mask),
     )
