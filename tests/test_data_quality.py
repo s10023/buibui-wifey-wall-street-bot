@@ -59,3 +59,19 @@ def test_empty_frame() -> None:
     assert rep.n_rows == 0
     assert rep.quarantine_idx == ()
     assert rep.is_clean is False
+
+
+def test_duplicate_timestamp_quarantines_later_row() -> None:
+    df = _frame([{}, {}, {}])
+    df.loc[2, "open_time"] = df.loc[1, "open_time"]  # row 2 duplicates row 1
+    rep = check_ohlcv(df)
+    assert rep.duplicate_time_idx == (2,)
+    assert 2 in rep.quarantine_idx
+
+
+def test_nonmonotonic_timestamp_is_warned_not_dropped() -> None:
+    df = _frame([{}, {}, {}])
+    df.loc[2, "open_time"] = df.loc[0, "open_time"] - 1  # goes backwards
+    rep = check_ohlcv(df)
+    assert rep.nonmonotonic_idx == (2,)
+    assert 2 not in rep.quarantine_idx  # warn-only

@@ -104,14 +104,17 @@ def check_ohlcv(
     hi, lo, op, cl = df["high"], df["low"], df["open"], df["close"]
     bad_bar_mask = valid & ((hi < lo) | (hi < op) | (hi < cl) | (lo > op) | (lo > cl))
 
+    dup_mask = df["open_time"].duplicated(keep="first")
+    nonmono_mask = df["open_time"].diff() < 0
+
     return DataQualityReport(
         n_rows=n,
         nan_idx=_idx_tuple(nan_mask),
         nonpositive_price_idx=_idx_tuple(nonpos_mask),
         bad_bar_idx=_idx_tuple(bad_bar_mask),
-        duplicate_time_idx=empty,
+        duplicate_time_idx=_idx_tuple(dup_mask),
         zero_volume_idx=empty,
         return_outlier_idx=empty,
         suspected_split_idx=empty,
-        nonmonotonic_idx=empty,
+        nonmonotonic_idx=_idx_tuple(nonmono_mask),
     )
