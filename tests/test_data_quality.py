@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from analytics.data_quality import DataQualityReport, check_ohlcv
+from analytics.data_quality import DataQualityReport, check_ohlcv, quarantine
 
 _COLS = ["symbol", "timeframe", "open_time", "open", "high", "low", "close", "volume"]
 
@@ -103,3 +103,23 @@ def test_normal_move_not_flagged() -> None:
     rep = check_ohlcv(_frame([{}, {"open": 103.0, "high": 105.0, "low": 102.0, "close": 104.0}, {}]))
     assert rep.return_outlier_idx == ()
     assert rep.suspected_split_idx == ()
+
+
+def test_quarantine_drops_only_bad_rows() -> None:
+    df = _frame([{}, {"close": float("nan")}, {}, {"low": 0.0}])
+    rep = check_ohlcv(df)
+    clean, dropped = quarantine(df, rep)
+    assert len(clean) == 2
+    assert len(dropped) == 2
+    assert clean["close"].tolist() == [101.0, 101.0]
+    # input frame is untouched
+    assert len(df) == 4
+
+
+def test_quarantine_clean_frame_is_passthrough() -> None:
+    df = _frame([{}, {}, {}])
+    rep = check_ohlcv(df)
+    clean, dropped = quarantine(df, rep)
+    assert len(clean) == 3
+    assert dropped.empty
+    assert list(clean.columns) == list(df.columns)

@@ -134,3 +134,21 @@ def check_ohlcv(
         suspected_split_idx=_idx_tuple(split_mask),
         nonmonotonic_idx=_idx_tuple(nonmono_mask),
     )
+
+
+def quarantine(
+    df: pd.DataFrame,
+    report: DataQualityReport,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split ``df`` into (clean, dropped) using ``report.quarantine_idx``.
+
+    Indices are positional over a reset index — call with the same frame passed
+    to ``check_ohlcv``. Never mutates the input.
+    """
+    df = df.reset_index(drop=True)
+    drop = list(report.quarantine_idx)
+    if not drop:
+        return df, df.iloc[0:0].reset_index(drop=True)
+    clean = df.drop(index=drop).reset_index(drop=True)
+    dropped = df.loc[drop].reset_index(drop=True)
+    return clean, dropped
