@@ -148,7 +148,7 @@ class PBOResult:
 
 def _col_mean(block: np.ndarray) -> np.ndarray:
     """Per-config performance over a submatrix: mean R per column."""
-    return block.mean(axis=0)
+    return np.asarray(block.mean(axis=0), dtype=float)
 
 
 def probability_of_backtest_overfitting(
