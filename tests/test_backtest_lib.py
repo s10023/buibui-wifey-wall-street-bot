@@ -1749,3 +1749,53 @@ class TestDirectionalTpR:
         # TP for short = entry - tp_r * sl_dist (tp_r=2.0, not tp_r_long=0.5)
         expected_tp = trade.entry_price - 2.0 * (trade.sl_price - trade.entry_price)
         assert trade.tp_price == pytest.approx(expected_tp)
+
+
+def test_backtest_result_sharpe_matches_helper() -> None:
+    from analytics.backtest.engine import BacktestResult, Trade
+    from analytics.backtest.stats_overfit import sharpe_ratio
+
+    trades = [
+        Trade(
+            0,
+            1,
+            100.0,
+            "long",
+            99.0,
+            102.0,
+            exit_time=2,
+            exit_price=102.0,
+            outcome="win",
+        ),
+        Trade(
+            0,
+            1,
+            100.0,
+            "long",
+            99.0,
+            102.0,
+            exit_time=2,
+            exit_price=98.0,
+            outcome="loss",
+        ),
+        Trade(
+            0,
+            1,
+            100.0,
+            "long",
+            99.0,
+            102.0,
+            exit_time=2,
+            exit_price=101.0,
+            outcome="win",
+        ),
+    ]
+    res = BacktestResult("AAPL", "1d", "bos", trades=trades)
+    expected = sharpe_ratio([t.pnl_r for t in res.closed_trades if t.pnl_r is not None])
+    assert res.sharpe == expected
+
+
+def test_backtest_result_sharpe_empty_is_zero() -> None:
+    from analytics.backtest.engine import BacktestResult
+
+    assert BacktestResult("AAPL", "1d", "bos").sharpe == 0.0

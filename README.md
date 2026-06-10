@@ -22,7 +22,7 @@ Forked from the parent `buibui-moon-trader-bot` (crypto / Binance Futures); the 
   weekly P1/P2, avg return by day-of-week, and weekly P2 timing with P1 flip risk. Cached in DB, served via `GET /api/stats/{symbol}`, shown on the Stats web page.
 
 - **Backtest Engine**
-  Sweep, combo, and cross-TF backtest modes against the same detectors that drive the live scanner. Walk-forward optimisation (`wifey param-sweep`) for per-strategy `tp_r` tuning.
+  Sweep, combo, and cross-TF backtest modes against the same detectors that drive the live scanner. Walk-forward optimisation (`wifey param-sweep`) for per-strategy `tp_r` tuning, with each sweep reporting a Deflated Sharpe Ratio + Probability of Backtest Overfitting (Bailey & López de Prado) so the chosen `tp_r` is haircut for the number of grid trials.
 
 ---
 

@@ -480,3 +480,100 @@ class TestLiveParityForwarding:
             assert kwargs["regime_series"] is None
             assert kwargs["strategy_params"] is None
             assert kwargs["htf_slope_series_by_anchor"] is None
+
+
+# ---------------------------------------------------------------------------
+# Overfit-controls wiring (Phase 0.3a/b — DSR + PBO)
+# ---------------------------------------------------------------------------
+
+
+class TestOverfitStatsWiring:
+    def test_sweep_row_carries_overfit_stats(self) -> None:
+        from analytics.backtest.stats_overfit import OverfitStats
+
+        row = SweepRow(
+            params={"tp_r": 2.0},
+            is_result=_make_result(),
+            oos_result=_make_result(),
+            is_score=0.0,
+            oos_score=0.0,
+            decay=float("nan"),
+            overfit=False,
+            overfit_stats=OverfitStats(0.3, 0.2, 0.6, n_trials=9, pbo=0.4),
+        )
+        assert row.overfit_stats is not None
+        assert row.overfit_stats.deflated_sharpe == 0.6
+        assert row.overfit_stats.n_trials == 9
+
+    def test_sweep_row_overfit_stats_defaults_none(self) -> None:
+        # existing constructors that omit overfit_stats stay valid
+        assert _make_sweep_row().overfit_stats is None
+
+    def test_format_renders_dsr_and_pbo(self) -> None:
+        from analytics.backtest.stats_overfit import OverfitStats
+
+        wins = [_win("long", r=3.0) for _ in range(8)]
+        res = _make_result(long_trades=wins)
+        row = SweepRow(
+            params={"tp_r": 2.0},
+            is_result=res,
+            oos_result=res,
+            is_score=1.0,
+            oos_score=1.0,
+            decay=1.0,
+            overfit=False,
+            overfit_stats=OverfitStats(0.5, 0.4, 0.7, n_trials=9, pbo=0.33),
+        )
+        out = format_sweep_results([row], "fvg", "BTCUSDT", "4h")
+        assert "Deflated Sharpe" in out
+        assert "PBO" in out
+        assert "N=9" in out
+
+    def test_pbo_is_order_independent(self) -> None:
+        # PBO must be reproducible regardless of the order rows arrive in from
+        # the process pool (deterministic column ordering inside the matrix).
+        from analytics.param_sweep import _attach_overfit_stats
+
+        def _rows() -> list[SweepRow]:
+            out: list[SweepRow] = []
+            for i in range(6):
+                wins = [_win("long", r=1.0 + i)] * (3 + i)
+                losses = [_loss("long")] * 2
+                out.append(
+                    SweepRow(
+                        params={"tp_r": 1.0 + 0.5 * i},
+                        is_result=_make_result(long_trades=wins + losses),
+                        oos_result=_make_result(long_trades=wins + losses),
+                        is_score=1.0,
+                        oos_score=1.0,
+                        decay=1.0,
+                        overfit=False,
+                    )
+                )
+            return out
+
+        forward = _rows()
+        reverse = list(reversed(_rows()))
+        _attach_overfit_stats(forward)
+        _attach_overfit_stats(reverse)
+        assert forward[0].overfit_stats is not None
+        assert reverse[0].overfit_stats is not None
+        assert forward[0].overfit_stats.pbo == reverse[0].overfit_stats.pbo
+
+    def test_format_renders_na_for_nan_pbo(self) -> None:
+        from analytics.backtest.stats_overfit import OverfitStats
+
+        wins = [_win("long", r=3.0) for _ in range(8)]
+        res = _make_result(long_trades=wins)
+        row = SweepRow(
+            params={"tp_r": 2.0},
+            is_result=res,
+            oos_result=res,
+            is_score=1.0,
+            oos_score=1.0,
+            decay=1.0,
+            overfit=False,
+            overfit_stats=OverfitStats(0.5, 0.4, 0.7, n_trials=1, pbo=float("nan")),
+        )
+        out = format_sweep_results([row], "fvg", "BTCUSDT", "4h")
+        assert "n/a" in out
