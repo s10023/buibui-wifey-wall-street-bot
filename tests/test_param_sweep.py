@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
 from analytics.backtest_lib import BacktestResult, Trade
 from analytics.param_sweep import (
     AuditRow,
     SweepRow,
     _audit_strategy_worker,
+    _dedup_trades,
     _directional_split_hint,
+    _row_from_results,
+    _score,
     _sweep_grid_worker,
     format_audit_results,
     format_sweep_results,
@@ -37,13 +42,13 @@ def _make_result(
     return result
 
 
-def _win(direction: str, r: float = 1.0) -> Trade:
+def _win(direction: str, r: float = 1.0, signal_time: int = _BASE_TIME) -> Trade:
     entry = 100.0
     sl = entry - 5.0 if direction == "long" else entry + 5.0
     tp = entry + r * 5.0 if direction == "long" else entry - r * 5.0
     t = Trade(
-        signal_time=_BASE_TIME,
-        entry_time=_BASE_TIME + 1,
+        signal_time=signal_time,
+        entry_time=signal_time + 1,
         entry_price=entry,
         direction=direction,
         sl_price=sl,
@@ -55,13 +60,13 @@ def _win(direction: str, r: float = 1.0) -> Trade:
     return t
 
 
-def _loss(direction: str) -> Trade:
+def _loss(direction: str, signal_time: int = _BASE_TIME) -> Trade:
     entry = 100.0
     sl = entry - 5.0 if direction == "long" else entry + 5.0
     tp = entry + 10.0 if direction == "long" else entry - 10.0
     t = Trade(
-        signal_time=_BASE_TIME,
-        entry_time=_BASE_TIME + 1,
+        signal_time=signal_time,
+        entry_time=signal_time + 1,
         entry_price=entry,
         direction=direction,
         sl_price=sl,
@@ -71,6 +76,22 @@ def _loss(direction: str) -> Trade:
     t.outcome = "loss"
     t.exit_price = sl
     return t
+
+
+def _open_trade(direction: str, signal_time: int = _BASE_TIME) -> Trade:
+    """An unresolved trade (outcome='open') — what segment truncation produces."""
+    entry = 100.0
+    sl = entry - 5.0 if direction == "long" else entry + 5.0
+    tp = entry + 10.0 if direction == "long" else entry - 10.0
+    return Trade(
+        signal_time=signal_time,
+        entry_time=signal_time + 1,
+        entry_price=entry,
+        direction=direction,
+        sl_price=sl,
+        tp_price=tp,
+        fee_pct=0.0,
+    )
 
 
 def _make_sweep_row(
@@ -577,3 +598,62 @@ class TestOverfitStatsWiring:
         )
         out = format_sweep_results([row], "fvg", "BTCUSDT", "4h")
         assert "n/a" in out
+
+
+# ---------------------------------------------------------------------------
+# _dedup_trades + _row_from_results (Phase 0.3c CV building blocks)
+# ---------------------------------------------------------------------------
+
+
+class TestDedupTrades:
+    def test_keeps_distinct_signal_times(self) -> None:
+        a = _win("long", signal_time=_BASE_TIME + 1)
+        b = _win("long", signal_time=_BASE_TIME + 2)
+        assert _dedup_trades([a, b]) == [a, b]
+
+    def test_keeps_both_directions_at_same_signal_time(self) -> None:
+        a, b = _win("long"), _win("short")
+        assert _dedup_trades([a, b]) == [a, b]
+
+    def test_collapses_duplicate_resolved_instances(self) -> None:
+        assert len(_dedup_trades([_win("long"), _win("long")])) == 1
+
+    def test_prefers_resolved_over_earlier_open(self) -> None:
+        o, w = _open_trade("long"), _win("long")
+        assert _dedup_trades([o, w]) == [w]
+
+    def test_keeps_resolved_over_later_open(self) -> None:
+        w, o = _win("long"), _open_trade("long")
+        assert _dedup_trades([w, o]) == [w]
+
+    def test_preserves_first_appearance_order(self) -> None:
+        t3 = _win("long", signal_time=_BASE_TIME + 3)
+        t1 = _win("long", signal_time=_BASE_TIME + 1)
+        t2 = _win("long", signal_time=_BASE_TIME + 2)
+        assert _dedup_trades([t3, t1, t2]) == [t3, t1, t2]
+
+
+class TestRowFromResults:
+    def test_scores_and_decay_match_score_function(self) -> None:
+        bt_is = _make_result(long_trades=[_win("long", 2.0), _win("long", 2.0)])
+        bt_oos = _make_result(long_trades=[_win("long", 2.0)])
+        row = _row_from_results({"tp_r": 2.0}, bt_is, bt_oos, is_min=1)
+        assert row.is_score == pytest.approx(_score(bt_is, 1))
+        assert row.oos_score == pytest.approx(_score(bt_oos, 1))
+        assert row.decay == pytest.approx(row.oos_score / row.is_score)
+        assert not row.overfit
+
+    def test_negative_oos_flags_overfit(self) -> None:
+        bt_is = _make_result(long_trades=[_win("long", 2.0), _win("long", 2.0)])
+        bt_oos = _make_result(long_trades=[_loss("long")])
+        row = _row_from_results({"tp_r": 2.0}, bt_is, bt_oos, is_min=1)
+        assert row.overfit
+
+    def test_zero_is_score_gives_nan_decay(self) -> None:
+        bt_is = _make_result()  # no trades → score 0
+        bt_oos = _make_result(long_trades=[_win("long", 2.0)])
+        row = _row_from_results({"tp_r": 2.0}, bt_is, bt_oos, is_min=1)
+        assert math.isnan(row.decay)
+        assert (
+            not row.overfit
+        )  # positive OOS + NaN decay → not flagged (legacy semantics)

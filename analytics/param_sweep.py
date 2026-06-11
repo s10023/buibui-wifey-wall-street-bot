@@ -39,7 +39,7 @@ from analytics.backtest.stats_overfit import (
     sharpe_ratio,
 )
 from analytics.backtest.stats_overfit import _moments as _r_moments
-from analytics.backtest_lib import BacktestResult, run_backtest
+from analytics.backtest_lib import BacktestResult, Trade, run_backtest
 from analytics.backtest_runner import detect_signals_for_strategy
 from analytics.data_store import DEFAULT_DB_PATH, get_ohlcv
 from analytics.perf_timer import timed
@@ -234,6 +234,53 @@ class SweepRow:
 # ---------------------------------------------------------------------------
 
 
+def _row_from_results(
+    params: dict[str, Any],
+    bt_is: BacktestResult,
+    bt_oos: BacktestResult,
+    is_min: int,
+) -> SweepRow:
+    """Score an IS/OOS result pair into a SweepRow (shared by both grid workers)."""
+    is_s = _score(bt_is, is_min)
+    oos_s = _score(bt_oos, 1)
+    decay = (oos_s / is_s) if is_s > 0 else float("nan")
+    oos_avg_r = bt_oos.avg_r
+    overfit = (oos_avg_r is None or oos_avg_r <= 0) or (
+        not math.isnan(decay) and decay < 0.4
+    )
+    return SweepRow(
+        params=params,
+        is_result=bt_is,
+        oos_result=bt_oos,
+        is_score=is_s,
+        oos_score=oos_s,
+        decay=decay,
+        overfit=overfit,
+    )
+
+
+def _dedup_trades(trades: list[Trade]) -> list[Trade]:
+    """Collapse duplicate (signal_time, direction) trades across CV folds.
+
+    The same signal appears in the train segments of several folds. Backtesting
+    each segment independently yields identical resolved trades (same bars,
+    same params — the engine is deterministic), except when a fold layout cuts
+    a segment short and censors the trade as outcome="open". Keep one instance
+    per key, preferring a resolved one; order follows first appearance.
+    """
+    by_key: dict[tuple[int, str], Trade] = {}
+    order: list[tuple[int, str]] = []
+    for t in trades:
+        key = (t.signal_time, t.direction)
+        existing = by_key.get(key)
+        if existing is None:
+            by_key[key] = t
+            order.append(key)
+        elif existing.outcome == "open" and t.outcome != "open":
+            by_key[key] = t
+    return [by_key[k] for k in order]
+
+
 def _sweep_grid_worker(
     params: dict[str, Any],
     ohlcv_is: pd.DataFrame,
@@ -302,22 +349,7 @@ def _sweep_grid_worker(
         strategy_params=strategy_params,
         htf_slope_series_by_anchor=htf_slope_series_by_anchor,
     )
-    is_s = _score(bt_is, is_min)
-    oos_s = _score(bt_oos, 1)
-    decay = (oos_s / is_s) if is_s > 0 else float("nan")
-    oos_avg_r = bt_oos.avg_r
-    overfit = (oos_avg_r is None or oos_avg_r <= 0) or (
-        not math.isnan(decay) and decay < 0.4
-    )
-    return SweepRow(
-        params=params,
-        is_result=bt_is,
-        oos_result=bt_oos,
-        is_score=is_s,
-        oos_score=oos_s,
-        decay=decay,
-        overfit=overfit,
-    )
+    return _row_from_results(params, bt_is, bt_oos, is_min)
 
 
 def _closed_r(result: BacktestResult) -> list[float]:
