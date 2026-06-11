@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
+from analytics.backtest.cv_splits import FoldSplit
 from analytics.backtest_lib import BacktestResult, Trade
 from analytics.param_sweep import (
     AuditRow,
@@ -19,6 +20,7 @@ from analytics.param_sweep import (
     _row_from_results,
     _score,
     _sweep_grid_worker,
+    _sweep_grid_worker_cv,
     format_audit_results,
     format_sweep_results,
 )
@@ -657,3 +659,49 @@ class TestRowFromResults:
         assert (
             not row.overfit
         )  # positive OOS + NaN decay → not flagged (legacy semantics)
+
+
+class TestSweepGridWorkerCv:
+    def test_pools_test_folds_and_dedups_train_segments(self) -> None:
+        ohlcv = pd.DataFrame({"open_time": [0]})
+        sigs = pd.DataFrame({"open_time": [0]})
+        seg = (ohlcv, sigs)
+        folds = [
+            FoldSplit(
+                fold=0, test_ohlcv=ohlcv, test_signals=sigs, train_segments=(seg,)
+            ),
+            FoldSplit(
+                fold=1, test_ohlcv=ohlcv, test_signals=sigs, train_segments=(seg,)
+            ),
+        ]
+        dup_open = _open_trade("long")  # censored instance of a train signal
+        dup_resolved = _win("long")  # resolved instance of the same (signal_time, dir)
+        test_a = _win("long", signal_time=_BASE_TIME + 10)
+        test_b = _loss("long", signal_time=_BASE_TIME + 20)
+        # worker call order: fold0 train seg → fold0 test → fold1 train seg → fold1 test
+        results = [
+            _make_result(long_trades=[dup_open]),
+            _make_result(long_trades=[test_a]),
+            _make_result(long_trades=[dup_resolved]),
+            _make_result(long_trades=[test_b]),
+        ]
+        with patch(
+            "analytics.param_sweep.run_backtest", side_effect=results
+        ) as mock_bt:
+            row = _sweep_grid_worker_cv(
+                {"tp_r": 2.0},
+                folds,
+                "AAPL",
+                "1d",
+                "bos",
+                0.0,
+                1,
+            )
+        assert mock_bt.call_count == 4
+        assert row.params == {"tp_r": 2.0}
+        assert row.is_result.symbol == "AAPL"
+        # open+resolved duplicates collapse to the single resolved instance
+        assert row.is_trades == 1
+        assert row.is_result.trades == [dup_resolved]
+        # disjoint test folds pool directly — no dedup
+        assert row.oos_trades == 2

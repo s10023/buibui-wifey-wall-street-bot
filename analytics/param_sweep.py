@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any
 import duckdb
 import pandas as pd
 
+from analytics.backtest.cv_splits import FoldSplit
 from analytics.backtest.stats_overfit import (
     OverfitStats,
     build_performance_matrix,
@@ -348,6 +349,80 @@ def _sweep_grid_worker(
         regime_series=regime_series,
         strategy_params=strategy_params,
         htf_slope_series_by_anchor=htf_slope_series_by_anchor,
+    )
+    return _row_from_results(params, bt_is, bt_oos, is_min)
+
+
+def _sweep_grid_worker_cv(
+    params: dict[str, Any],
+    folds: list[FoldSplit],
+    symbol: str,
+    timeframe: str,
+    strategy: str,
+    fee_pct: float,
+    is_min: int,
+    atr_sl_multiplier: float | None = None,
+    atr_sl_floor: bool = False,
+    *,
+    live_parity: LiveParityConfig | None = None,
+    bias_cfg: BiasConfig | None = None,
+    regime_series: pd.Series | None = None,
+    strategy_params: dict[str, StrategyOverride] | None = None,
+    htf_slope_series_by_anchor: Mapping[tuple[str, int, int], pd.Series] | None = None,
+) -> SweepRow:
+    """Purged-CV grid worker — module-level so ProcessPoolExecutor can pickle it.
+
+    Per fold: backtest each train segment standalone (pooled into the IS trade
+    list) and the test fold (pooled into OOS). Per-segment truncation censors
+    boundary-straddling trades as outcome="open" — the mechanical purge. Test
+    folds are disjoint so OOS pools directly; train segments overlap across
+    folds, so IS trades are deduped by (signal_time, direction), preferring
+    resolved instances, then sorted chronologically.
+    """
+    tp_r = float(params.get("tp_r", 2.0))
+    sl_pct = float(params.get("sl_pct", 0.02))
+
+    def _bt(ohlcv: pd.DataFrame, signals: pd.DataFrame) -> BacktestResult:
+        return run_backtest(
+            ohlcv,
+            signals,
+            symbol,
+            timeframe,
+            strategy,
+            sl_pct=sl_pct,
+            tp_r=tp_r,
+            fee_pct=fee_pct,
+            atr_sl_multiplier=atr_sl_multiplier,
+            atr_sl_floor=atr_sl_floor,
+            live_parity=live_parity,
+            bias_cfg=bias_cfg,
+            regime_series=regime_series,
+            strategy_params=strategy_params,
+            htf_slope_series_by_anchor=htf_slope_series_by_anchor,
+        )
+
+    train_trades: list[Trade] = []
+    test_trades: list[Trade] = []
+    for fold in folds:
+        for seg_ohlcv, seg_signals in fold.train_segments:
+            train_trades.extend(_bt(seg_ohlcv, seg_signals).trades)
+        test_trades.extend(_bt(fold.test_ohlcv, fold.test_signals).trades)
+
+    deduped = _dedup_trades(train_trades)
+    deduped.sort(key=lambda t: (t.entry_time, t.signal_time))
+    bt_is = BacktestResult(
+        symbol=symbol,
+        timeframe=timeframe,
+        strategy=strategy,
+        fee_pct=fee_pct,
+        trades=deduped,
+    )
+    bt_oos = BacktestResult(
+        symbol=symbol,
+        timeframe=timeframe,
+        strategy=strategy,
+        fee_pct=fee_pct,
+        trades=test_trades,
     )
     return _row_from_results(params, bt_is, bt_oos, is_min)
 
