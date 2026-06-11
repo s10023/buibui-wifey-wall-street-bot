@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import math
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
 
-from analytics.backtest.cv_splits import FoldSplit
+from analytics.backtest.cv_splits import CvConfig, FoldSplit
 from analytics.backtest_lib import BacktestResult, Trade
 from analytics.param_sweep import (
     AuditRow,
+    ParamRange,
     SweepRow,
     _audit_strategy_worker,
     _dedup_trades,
@@ -23,7 +24,9 @@ from analytics.param_sweep import (
     _sweep_grid_worker_cv,
     format_audit_results,
     format_sweep_results,
+    run_param_sweep,
 )
+from tests.conftest import _candle, _make_ohlcv
 
 _BASE_TIME = 1_700_000_000_000
 
@@ -705,3 +708,87 @@ class TestSweepGridWorkerCv:
         assert row.is_result.trades == [dup_resolved]
         # disjoint test folds pool directly — no dedup
         assert row.oos_trades == 2
+
+
+class TestRunParamSweepCv:
+    """Integration: real engine + ProcessPoolExecutor; DB + detection mocked out.
+
+    Synthetic series: every candle opens at 100 with high 103 / low 99, so a
+    long with sl_pct=0.02 (sl 98) and tp_r ≤ 1.0 (tp ≤ 102) wins on its entry
+    bar and never touches the SL — fully deterministic fills.
+    """
+
+    def _ohlcv(self, n: int = 60) -> pd.DataFrame:
+        return _make_ohlcv(
+            [
+                _candle(_BASE_TIME + i * 3_600_000, 100.0, 103.0, 99.0, 100.0)
+                for i in range(n)
+            ]
+        )
+
+    def _signals(self, rows: list[int]) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "open_time": [_BASE_TIME + r * 3_600_000 for r in rows],
+                "direction": ["long"] * len(rows),
+                "reason": ["test"] * len(rows),
+            }
+        )
+
+    @patch("analytics.param_sweep.detect_signals_for_strategy")
+    @patch("analytics.param_sweep.get_ohlcv")
+    def test_purged_cv_pools_train_and_test_folds(
+        self, mock_ohlcv: Any, mock_detect: Any
+    ) -> None:
+        mock_ohlcv.return_value = self._ohlcv()
+        mock_detect.return_value = self._signals([5, 12, 19, 26, 33, 40, 46, 54])
+        rows = run_param_sweep(
+            conn=MagicMock(),
+            strategy="bos",
+            symbol="AAPL",
+            timeframe="1h",
+            days=30,
+            param_ranges=[ParamRange("tp_r", [1.0])],
+            wfo_split=0.7,
+            min_trades=2,
+            fee_pct=0.0,
+            top_n=5,
+            cv=CvConfig(mode="purged", n_folds=5, embargo_bars=1),
+        )
+        assert len(rows) == 1
+        row = rows[0]
+        # ≥6 of the 8 signals resolve inside their fold/segment (a signal whose
+        # entry or resolution bar falls past a slice end is censored — fine)
+        assert row.oos_trades >= 6
+        assert row.oos_win_rate == 1.0
+        assert row.is_trades >= 6
+        assert row.is_win_rate == 1.0
+        assert not row.overfit
+        assert row.overfit_stats is not None
+
+    @patch("analytics.param_sweep.detect_signals_for_strategy")
+    @patch("analytics.param_sweep.get_ohlcv")
+    def test_contiguous_cv_config_matches_cv_none(
+        self, mock_ohlcv: Any, mock_detect: Any
+    ) -> None:
+        mock_ohlcv.return_value = self._ohlcv()
+        mock_detect.return_value = self._signals([5, 12, 19, 26, 33, 40, 46, 54])
+        kwargs: dict[str, Any] = {
+            "strategy": "bos",
+            "symbol": "AAPL",
+            "timeframe": "1h",
+            "days": 30,
+            "param_ranges": [ParamRange("tp_r", [0.5, 1.0])],
+            "wfo_split": 0.7,
+            "min_trades": 2,
+            "fee_pct": 0.0,
+            "top_n": 5,
+        }
+        legacy = run_param_sweep(conn=MagicMock(), **kwargs)
+        contiguous = run_param_sweep(
+            conn=MagicMock(), cv=CvConfig(mode="contiguous"), **kwargs
+        )
+        assert [r.params for r in legacy] == [r.params for r in contiguous]
+        assert [r.is_score for r in legacy] == [r.is_score for r in contiguous]
+        assert [r.oos_score for r in legacy] == [r.oos_score for r in contiguous]
+        assert [r.decay for r in legacy] == [r.decay for r in contiguous]
