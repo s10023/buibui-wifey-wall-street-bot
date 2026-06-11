@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any
 import duckdb
 import pandas as pd
 
+from analytics.backtest.cv_splits import CvConfig, FoldSplit, purged_kfold_split
 from analytics.backtest.stats_overfit import (
     OverfitStats,
     build_performance_matrix,
@@ -39,7 +40,7 @@ from analytics.backtest.stats_overfit import (
     sharpe_ratio,
 )
 from analytics.backtest.stats_overfit import _moments as _r_moments
-from analytics.backtest_lib import BacktestResult, run_backtest
+from analytics.backtest_lib import BacktestResult, Trade, run_backtest
 from analytics.backtest_runner import detect_signals_for_strategy
 from analytics.data_store import DEFAULT_DB_PATH, get_ohlcv
 from analytics.perf_timer import timed
@@ -234,6 +235,53 @@ class SweepRow:
 # ---------------------------------------------------------------------------
 
 
+def _row_from_results(
+    params: dict[str, Any],
+    bt_is: BacktestResult,
+    bt_oos: BacktestResult,
+    is_min: int,
+) -> SweepRow:
+    """Score an IS/OOS result pair into a SweepRow (shared by both grid workers)."""
+    is_s = _score(bt_is, is_min)
+    oos_s = _score(bt_oos, 1)
+    decay = (oos_s / is_s) if is_s > 0 else float("nan")
+    oos_avg_r = bt_oos.avg_r
+    overfit = (oos_avg_r is None or oos_avg_r <= 0) or (
+        not math.isnan(decay) and decay < 0.4
+    )
+    return SweepRow(
+        params=params,
+        is_result=bt_is,
+        oos_result=bt_oos,
+        is_score=is_s,
+        oos_score=oos_s,
+        decay=decay,
+        overfit=overfit,
+    )
+
+
+def _dedup_trades(trades: list[Trade]) -> list[Trade]:
+    """Collapse duplicate (signal_time, direction) trades across CV folds.
+
+    The same signal appears in the train segments of several folds. Backtesting
+    each segment independently yields identical resolved trades (same bars,
+    same params — the engine is deterministic), except when a fold layout cuts
+    a segment short and censors the trade as outcome="open". Keep one instance
+    per key, preferring a resolved one; order follows first appearance.
+    """
+    by_key: dict[tuple[int, str], Trade] = {}
+    order: list[tuple[int, str]] = []
+    for t in trades:
+        key = (t.signal_time, t.direction)
+        existing = by_key.get(key)
+        if existing is None:
+            by_key[key] = t
+            order.append(key)
+        elif existing.outcome == "open" and t.outcome != "open":
+            by_key[key] = t
+    return [by_key[k] for k in order]
+
+
 def _sweep_grid_worker(
     params: dict[str, Any],
     ohlcv_is: pd.DataFrame,
@@ -302,29 +350,90 @@ def _sweep_grid_worker(
         strategy_params=strategy_params,
         htf_slope_series_by_anchor=htf_slope_series_by_anchor,
     )
-    is_s = _score(bt_is, is_min)
-    oos_s = _score(bt_oos, 1)
-    decay = (oos_s / is_s) if is_s > 0 else float("nan")
-    oos_avg_r = bt_oos.avg_r
-    overfit = (oos_avg_r is None or oos_avg_r <= 0) or (
-        not math.isnan(decay) and decay < 0.4
+    return _row_from_results(params, bt_is, bt_oos, is_min)
+
+
+def _sweep_grid_worker_cv(
+    params: dict[str, Any],
+    folds: list[FoldSplit],
+    symbol: str,
+    timeframe: str,
+    strategy: str,
+    fee_pct: float,
+    is_min: int,
+    atr_sl_multiplier: float | None = None,
+    atr_sl_floor: bool = False,
+    *,
+    live_parity: LiveParityConfig | None = None,
+    bias_cfg: BiasConfig | None = None,
+    regime_series: pd.Series | None = None,
+    strategy_params: dict[str, StrategyOverride] | None = None,
+    htf_slope_series_by_anchor: Mapping[tuple[str, int, int], pd.Series] | None = None,
+) -> SweepRow:
+    """Purged-CV grid worker — module-level so ProcessPoolExecutor can pickle it.
+
+    Per fold: backtest each train segment standalone (pooled into the IS trade
+    list) and the test fold (pooled into OOS). Per-segment truncation censors
+    boundary-straddling trades as outcome="open" — the mechanical purge. Test
+    folds are disjoint so OOS pools directly; train segments overlap across
+    folds, so IS trades are deduped by (signal_time, direction), preferring
+    resolved instances, then sorted chronologically.
+    """
+    tp_r = float(params.get("tp_r", 2.0))
+    sl_pct = float(params.get("sl_pct", 0.02))
+
+    def _bt(ohlcv: pd.DataFrame, signals: pd.DataFrame) -> BacktestResult:
+        return run_backtest(
+            ohlcv,
+            signals,
+            symbol,
+            timeframe,
+            strategy,
+            sl_pct=sl_pct,
+            tp_r=tp_r,
+            fee_pct=fee_pct,
+            atr_sl_multiplier=atr_sl_multiplier,
+            atr_sl_floor=atr_sl_floor,
+            live_parity=live_parity,
+            bias_cfg=bias_cfg,
+            regime_series=regime_series,
+            strategy_params=strategy_params,
+            htf_slope_series_by_anchor=htf_slope_series_by_anchor,
+        )
+
+    train_trades: list[Trade] = []
+    test_trades: list[Trade] = []
+    for fold in folds:
+        for seg_ohlcv, seg_signals in fold.train_segments:
+            train_trades.extend(_bt(seg_ohlcv, seg_signals).trades)
+        test_trades.extend(_bt(fold.test_ohlcv, fold.test_signals).trades)
+
+    deduped = _dedup_trades(train_trades)
+    deduped.sort(key=lambda t: (t.entry_time, t.signal_time))
+    bt_is = BacktestResult(
+        symbol=symbol,
+        timeframe=timeframe,
+        strategy=strategy,
+        fee_pct=fee_pct,
+        trades=deduped,
     )
-    return SweepRow(
-        params=params,
-        is_result=bt_is,
-        oos_result=bt_oos,
-        is_score=is_s,
-        oos_score=oos_s,
-        decay=decay,
-        overfit=overfit,
+    bt_oos = BacktestResult(
+        symbol=symbol,
+        timeframe=timeframe,
+        strategy=strategy,
+        fee_pct=fee_pct,
+        trades=test_trades,
     )
+    return _row_from_results(params, bt_is, bt_oos, is_min)
 
 
 def _closed_r(result: BacktestResult) -> list[float]:
     return [t.pnl_r for t in result.closed_trades if t.pnl_r is not None]
 
 
-def _attach_overfit_stats(rows: list[SweepRow]) -> None:
+def _attach_overfit_stats(
+    rows: list[SweepRow], *, pooled_oos_only: bool = False
+) -> None:
     """Compute DSR per config + a sweep-level PBO over the full grid, in place.
 
     Per-config: IS/OOS per-trade Sharpe and a Deflated Sharpe that haircuts the
@@ -332,6 +441,11 @@ def _attach_overfit_stats(rows: list[SweepRow]) -> None:
     Sweep-level: one CSCV PBO over a time-bucketed full-history performance
     matrix (NaN when too few configs/trades to compute). Mutates each row's
     ``overfit_stats``.
+
+    ``pooled_oos_only=True`` (purged-CV mode) builds the PBO matrix from each
+    config's OOS pool alone: the test folds tile the full history exactly once,
+    whereas the CV train pool overlaps them — including both would double-count
+    every trade in the CSCV matrix. Legacy mode keeps IS+OOS (disjoint windows).
     """
     if not rows:
         return
@@ -346,7 +460,11 @@ def _attach_overfit_stats(rows: list[SweepRow]) -> None:
     trade_points = [
         [
             (t.entry_time, t.pnl_r)
-            for t in (*r.is_result.closed_trades, *r.oos_result.closed_trades)
+            for t in (
+                r.oos_result.closed_trades
+                if pooled_oos_only
+                else (*r.is_result.closed_trades, *r.oos_result.closed_trades)
+            )
             if t.pnl_r is not None
         ]
         for r in ordered
@@ -389,6 +507,7 @@ def run_param_sweep(
     regime_series: pd.Series | None = None,
     strategy_params: dict[str, StrategyOverride] | None = None,
     htf_slope_series_by_anchor: Mapping[tuple[str, int, int], pd.Series] | None = None,
+    cv: CvConfig | None = None,
 ) -> list[SweepRow]:
     """Run WFO grid sweep. Returns rows sorted by IS score (descending).
 
@@ -403,6 +522,12 @@ def run_param_sweep(
     ``regime_series`` / ``htf_slope_series_by_anchor`` are the pre-computed HTF
     series for ``symbol`` indexed by HTF ``open_time`` (built once by the caller
     via the backtest_runner helpers); the engine binary-searches them per signal.
+
+    ``cv`` selects the walk-forward geometry (Phase 0.3c): ``None`` or
+    ``mode="contiguous"`` keeps the legacy single ``wfo_split`` IS/OOS split
+    (byte-identical output); ``mode="purged"`` runs purged+embargoed K-fold CV
+    (LdP AFML ch. 7) — IS = train segments pooled across folds and deduped by
+    (signal_time, direction), OOS = the disjoint test folds pooled directly.
     """
     end_ms = int(time.time() * 1000)
     start_ms = since_ms if since_ms is not None else end_ms - days * 24 * 3_600 * 1_000
@@ -416,7 +541,11 @@ def run_param_sweep(
         )
         return []
 
-    ohlcv_is, ohlcv_oos = _split_ohlcv(ohlcv_full, wfo_split)
+    cv_active = cv if cv is not None and cv.mode == "purged" else None
+    ohlcv_is = pd.DataFrame()
+    ohlcv_oos = pd.DataFrame()
+    if cv_active is None:
+        ohlcv_is, ohlcv_oos = _split_ohlcv(ohlcv_full, wfo_split)
 
     # Detect signals once on full history, then split by candle timestamp.
     # This avoids running detection on a truncated window (which would miss
@@ -453,8 +582,18 @@ def run_param_sweep(
         if allowed_days is not None:
             signals_full = filter_signals_by_day(signals_full, allowed_days)
 
-    # Split signals at the same timestamp boundary as OHLCV.
-    if not ohlcv_is.empty and not ohlcv_oos.empty:
+    # Split signals at the same timestamp boundary as OHLCV (legacy contiguous
+    # mode) or into purged+embargoed K folds (cv mode, Phase 0.3c).
+    folds: list[FoldSplit] = []
+    if cv_active is not None:
+        try:
+            folds = purged_kfold_split(ohlcv_full, signals_full, cv_active)
+        except ValueError as e:
+            print(f"  ERROR: {e}", file=sys.stderr)
+            return []
+        signals_is = pd.DataFrame()
+        signals_oos = pd.DataFrame()
+    elif not ohlcv_is.empty and not ohlcv_oos.empty:
         split_ts = int(ohlcv_oos.iloc[0]["open_time"])
         signals_is = signals_full[signals_full["open_time"] < split_ts].copy()
         signals_oos = signals_full[signals_full["open_time"] >= split_ts].copy()
@@ -480,37 +619,67 @@ def run_param_sweep(
     )
     workers = max(1, min((os.cpu_count() or 2) - 1, n))
     print(f"\n  Sweep: {strategy} / {symbol} / {timeframe}{sl_note}")
-    print(
-        f"  Grid size: {n} combos | IS candles: {len(ohlcv_is)} | OOS candles: {len(ohlcv_oos)}"
-        f" | workers: {workers}"
-    )
+    if cv_active is not None:
+        embargo = cv_active.resolve_embargo_bars(len(ohlcv_full))
+        print(
+            f"  Grid size: {n} combos | CV: {cv_active.n_folds} purged folds "
+            f"(purge={cv_active.purge_bars}, embargo={embargo} bars) "
+            f"over {len(ohlcv_full)} candles | workers: {workers}"
+        )
+    else:
+        print(
+            f"  Grid size: {n} combos | IS candles: {len(ohlcv_is)} | OOS candles: {len(ohlcv_oos)}"
+            f" | workers: {workers}"
+        )
 
     rows: list[SweepRow] = []
     with timed(f"grid ({n} combos)"):
         with ProcessPoolExecutor(max_workers=workers) as pool:
-            futures = {
-                pool.submit(
-                    _sweep_grid_worker,
-                    p,
-                    ohlcv_is,
-                    signals_is,
-                    ohlcv_oos,
-                    signals_oos,
-                    symbol,
-                    timeframe,
-                    strategy,
-                    fee_pct,
-                    is_min,
-                    atr_sl_multiplier,
-                    atr_sl_floor,
-                    live_parity=live_parity,
-                    bias_cfg=bias_cfg,
-                    regime_series=regime_series,
-                    strategy_params=strategy_params,
-                    htf_slope_series_by_anchor=htf_slope_series_by_anchor,
-                ): p
-                for p in grid
-            }
+            if cv_active is not None:
+                futures = {
+                    pool.submit(
+                        _sweep_grid_worker_cv,
+                        p,
+                        folds,
+                        symbol,
+                        timeframe,
+                        strategy,
+                        fee_pct,
+                        is_min,
+                        atr_sl_multiplier,
+                        atr_sl_floor,
+                        live_parity=live_parity,
+                        bias_cfg=bias_cfg,
+                        regime_series=regime_series,
+                        strategy_params=strategy_params,
+                        htf_slope_series_by_anchor=htf_slope_series_by_anchor,
+                    ): p
+                    for p in grid
+                }
+            else:
+                futures = {
+                    pool.submit(
+                        _sweep_grid_worker,
+                        p,
+                        ohlcv_is,
+                        signals_is,
+                        ohlcv_oos,
+                        signals_oos,
+                        symbol,
+                        timeframe,
+                        strategy,
+                        fee_pct,
+                        is_min,
+                        atr_sl_multiplier,
+                        atr_sl_floor,
+                        live_parity=live_parity,
+                        bias_cfg=bias_cfg,
+                        regime_series=regime_series,
+                        strategy_params=strategy_params,
+                        htf_slope_series_by_anchor=htf_slope_series_by_anchor,
+                    ): p
+                    for p in grid
+                }
             print("  Running...", end="", flush=True)
             for done, fut in enumerate(as_completed(futures), start=1):
                 rows.append(fut.result())
@@ -521,7 +690,7 @@ def run_param_sweep(
     # --- Overfitting controls (Phase 0.3a/b) over the full grid -------------
     # Computed before the top_n truncation so the cross-trial Sharpe variance
     # and the PBO matrix see every trial, not just the survivors.
-    _attach_overfit_stats(rows)
+    _attach_overfit_stats(rows, pooled_oos_only=cv_active is not None)
 
     # Primary sort: IS score (composite). Fallback: when all scores are 0 (every config
     # has negative avg_r), sort by IS avg_r directly so the "least bad" configs surface
