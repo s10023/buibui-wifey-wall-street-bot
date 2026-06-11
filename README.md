@@ -22,7 +22,7 @@ Forked from the parent `buibui-moon-trader-bot` (crypto / Binance Futures); the 
   weekly P1/P2, avg return by day-of-week, and weekly P2 timing with P1 flip risk. Cached in DB, served via `GET /api/stats/{symbol}`, shown on the Stats web page.
 
 - **Backtest Engine**
-  Sweep, combo, and cross-TF backtest modes against the same detectors that drive the live scanner. Walk-forward optimisation (`wifey param-sweep`) for per-strategy `tp_r` tuning, with each sweep reporting a Deflated Sharpe Ratio + Probability of Backtest Overfitting (Bailey & López de Prado) so the chosen `tp_r` is haircut for the number of grid trials.
+  Sweep, combo, and cross-TF backtest modes against the same detectors that drive the live scanner. Walk-forward optimisation (`wifey param-sweep`) for per-strategy `tp_r` tuning, with each sweep reporting a Deflated Sharpe Ratio + Probability of Backtest Overfitting (Bailey & López de Prado) so the chosen `tp_r` is haircut for the number of grid trials. Sweeps can optionally run purged + embargoed K-fold CV (`--cv-mode purged`, López de Prado AFML ch. 7) instead of the single contiguous split, censoring trades that straddle fold boundaries and embargoing the bars after each test fold.
 
 ---
 
@@ -53,7 +53,7 @@ buibui-wifey-wall-street-bot/
 │   ├── signal_test_runner.py        # Historical replay: no DB writes, no cooldown; --at / --lookback
 │   ├── stats_lib.py                 # Pure stats lib: compute_p1p2_daily, compute_hourly_extremes, compute_adr, compute_dow_patterns, compute_session_breakdown, compute_weekly_p1p2, compute_all → StatsBundle
 │   ├── backtest_config.py           # BacktestSweepConfig + load_backtest_config() for TOML sweep mode
-│   ├── param_sweep.py               # WFO sweep lib: run_param_sweep / run_strategy_audit; parallelized via ProcessPoolExecutor
+│   ├── param_sweep.py               # WFO sweep lib: run_param_sweep / run_strategy_audit; optional purged+embargoed K-fold CV (--cv-mode purged)
 │   ├── digest_lib.py                # 12 pre-canned SQL queries; run_digest; DigestScope; powers wifey digest
 │   ├── cme_gap_lib.py               # CME gap detection + alert warning helper
 │   ├── zones_lib.py                 # Structural zone extraction (geometry only): FVG, OB, EQH/EQL, BOS, Fib, OTE, swing points
