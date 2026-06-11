@@ -3,9 +3,27 @@
 from __future__ import annotations
 
 import argparse
+from typing import TYPE_CHECKING
 
 from analytics.strategies import KNOWN_STRATEGIES
 from cli._common import parse_since_to_ms
+
+if TYPE_CHECKING:
+    from analytics.backtest.cv_splits import CvConfig
+
+
+def _cv_from_args(args: argparse.Namespace) -> CvConfig | None:
+    """Build a CvConfig from --cv-* flags; None when mode is contiguous (legacy)."""
+    if args.cv_mode != "purged":
+        return None
+    from analytics.backtest.cv_splits import CvConfig
+
+    return CvConfig(
+        mode="purged",
+        n_folds=args.cv_folds,
+        purge_bars=args.cv_purge_bars,
+        embargo_bars=args.cv_embargo_bars,
+    )
 
 
 def run_param_sweep(args: argparse.Namespace) -> None:
@@ -42,9 +60,12 @@ def run_param_sweep(args: argparse.Namespace) -> None:
 
     _window = f"since {args.since}" if args.since else f"{args.days}d"
     print(f"\nParam sweep  {args.strategy} / {args.symbol} / {args.timeframe}")
-    print(
-        f"Window: {_window}  WFO split: {args.wfo_split:.0%} IS / {1 - args.wfo_split:.0%} OOS"
-    )
+    if args.cv_mode == "purged":
+        print(f"Window: {_window}  CV: purged {args.cv_folds}-fold + embargo")
+    else:
+        print(
+            f"Window: {_window}  WFO split: {args.wfo_split:.0%} IS / {1 - args.wfo_split:.0%} OOS"
+        )
     print(f"Grid: {grid_size} combos  Min trades: {min_trades}  Top-N: {args.top_n}")
     print(f"Params: {', '.join(r.name for r in param_ranges)}")
 
@@ -73,6 +94,7 @@ def run_param_sweep(args: argparse.Namespace) -> None:
                 day_filter=args.day_filter,
                 atr_sl_multiplier=args.atr_sl_multiplier,
                 atr_sl_floor=args.atr_sl_floor,
+                cv=_cv_from_args(args),
             )
     finally:
         conn.close()
@@ -219,6 +241,37 @@ def add_param_sweep_subparser(
         dest="day_filter",
         choices=["off", "weekdays", "tue_thu"],
         help="Restrict signals to allowed weekdays before WFO split (default: off)",
+    )
+    param_sweep_parser.add_argument(
+        "--cv-mode",
+        type=str,
+        default="contiguous",
+        dest="cv_mode",
+        choices=["contiguous", "purged"],
+        help="CV geometry: contiguous = legacy single IS/OOS split (default); "
+        "purged = purged+embargoed K-fold CV (Phase 0.3c, LdP AFML ch. 7)",
+    )
+    param_sweep_parser.add_argument(
+        "--cv-folds",
+        type=int,
+        default=5,
+        dest="cv_folds",
+        help="Fold count for --cv-mode purged (default: 5)",
+    )
+    param_sweep_parser.add_argument(
+        "--cv-purge-bars",
+        type=int,
+        default=0,
+        dest="cv_purge_bars",
+        help="Bars purged from the end of each pre-test train segment (default: 0 — "
+        "the engine already censors boundary-straddling trades as open)",
+    )
+    param_sweep_parser.add_argument(
+        "--cv-embargo-bars",
+        type=int,
+        default=None,
+        dest="cv_embargo_bars",
+        help="Bars embargoed after each test fold (default: ~1%% of candles)",
     )
     param_sweep_parser.add_argument(
         "--atr-sl-multiplier",
