@@ -216,6 +216,16 @@ export const getStrategies = (configName?: string | null) => {
 export const getActiveConfig = () =>
   apiFetch<ActiveConfigResponse>("/api/active-config");
 
+export interface UniversePolicyResponse {
+  scope: string;
+  as_of: string;
+  survivorship_note: string;
+  n_symbols: number | null;
+}
+
+export const getUniversePolicy = () =>
+  apiFetch<UniversePolicyResponse>("/api/universe-policy");
+
 export const getOhlcv = (params: {
   symbol: string;
   timeframe: string;

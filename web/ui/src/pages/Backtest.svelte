@@ -3,8 +3,10 @@
   import {
     runBacktest,
     getBacktestRuns,
+    getUniversePolicy,
     type BacktestResponse,
     type BacktestRunSummary,
+    type UniversePolicyResponse,
   } from "../api";
   import { symbols } from "../stores/config";
   import { strategiesStore, strategyNames } from "../stores/strategies";
@@ -23,6 +25,7 @@
   let runs = $state<BacktestRunSummary[]>([]);
   let runsLoading = $state(true);
   let runsError = $state<string | null>(null);
+  let universePolicy = $state<UniversePolicyResponse | null>(null);
 
   // Multi-select filters — empty Set = no filter (all pass)
   let selSymbols = $state(new Set<string>());
@@ -61,7 +64,13 @@
     }
   }
 
-  onMount(() => { void loadRuns(); });
+  onMount(() => {
+    void loadRuns();
+    // Best-effort: the caveat banner is informational, never blocks the page
+    getUniversePolicy()
+      .then((p) => { universePolicy = p; })
+      .catch(() => {});
+  });
 
   const availableDayFilters = $derived(
     [...new Set(runs.map((r) => r.day_filter))].sort(),
@@ -375,6 +384,13 @@
       {showForm ? "✕ Close" : "▶ Run Backtest"}
     </button>
   </div>
+
+  {#if universePolicy}
+    <p class="universe-caveat">
+      Universe: {universePolicy.scope} (as_of={universePolicy.as_of}{universePolicy.n_symbols !== null ? `, ${universePolicy.n_symbols} symbols` : ""})
+      — ⚠ {universePolicy.survivorship_note}
+    </p>
+  {/if}
 
   <!-- ── Sub-tab bar ──────────────────────────────────────────────────────── -->
   <div class="sub-tabs">
@@ -924,6 +940,13 @@
   .toggle-btn {
     font-size: 10px;
     padding: 4px 12px;
+  }
+
+  .universe-caveat {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin: -6px 0 12px;
+    line-height: 1.5;
   }
 
   .toggle-btn.active {
