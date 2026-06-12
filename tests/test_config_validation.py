@@ -1,8 +1,19 @@
+import json
+from pathlib import Path
 from typing import Any
 
 import pytest
 
-from utils.config_validation import validate_coins_config, validate_stocks_config
+from utils.config_validation import (
+    DEFAULT_UNIVERSE_POLICY,
+    UNIVERSE_POLICY_KEY,
+    UniversePolicy,
+    load_stocks_config,
+    load_universe_policy,
+    validate_coins_config,
+    validate_stocks_config,
+    validate_universe_policy,
+)
 
 
 class TestValidateCoinsConfig:
@@ -195,3 +206,122 @@ class TestValidateStocksConfig:
         }
         with pytest.raises(ValueError, match="MSTR.*sl_pct"):
             validate_stocks_config(config)
+
+
+_POLICY_BLOCK = {
+    "scope": "liquid_large_cap",
+    "as_of": "today",
+    "survivorship_note": "Hand-picked mega-caps; survivorship bias unbounded.",
+}
+
+
+class TestValidateUniversePolicy:
+    """Tests for validate_universe_policy()."""
+
+    def test_valid_block(self) -> None:
+        assert validate_universe_policy(_POLICY_BLOCK) is True
+
+    def test_fixed_as_of(self) -> None:
+        assert validate_universe_policy({**_POLICY_BLOCK, "as_of": "fixed"}) is True
+
+    def test_not_a_dict(self) -> None:
+        with pytest.raises(ValueError, match="must be a dict"):
+            validate_universe_policy("nope")
+
+    def test_missing_field(self) -> None:
+        block = {k: v for k, v in _POLICY_BLOCK.items() if k != "survivorship_note"}
+        with pytest.raises(ValueError, match="missing required"):
+            validate_universe_policy(block)
+
+    def test_unknown_field(self) -> None:
+        with pytest.raises(ValueError, match="unknown field"):
+            validate_universe_policy({**_POLICY_BLOCK, "selected_at": "2026-05-14"})
+
+    def test_bad_as_of(self) -> None:
+        with pytest.raises(ValueError, match="as_of"):
+            validate_universe_policy({**_POLICY_BLOCK, "as_of": "yesterday"})
+
+    def test_empty_scope(self) -> None:
+        with pytest.raises(ValueError, match="scope"):
+            validate_universe_policy({**_POLICY_BLOCK, "scope": "  "})
+
+
+class TestStocksConfigWithUniversePolicy:
+    """The reserved universe_policy key inside stocks.json."""
+
+    def test_policy_block_accepted(self) -> None:
+        config: dict[str, Any] = {
+            UNIVERSE_POLICY_KEY: dict(_POLICY_BLOCK),
+            "AAPL": {"sl_pct": 0.05},
+        }
+        assert validate_stocks_config(config) is True
+
+    def test_invalid_policy_block_rejected(self) -> None:
+        config: dict[str, Any] = {
+            UNIVERSE_POLICY_KEY: {"scope": "x"},
+            "AAPL": {"sl_pct": 0.05},
+        }
+        with pytest.raises(ValueError, match="universe_policy"):
+            validate_stocks_config(config)
+
+    def test_load_strips_policy_key(self, tmp_path: Path) -> None:
+        path = tmp_path / "stocks.json"
+        path.write_text(
+            json.dumps({UNIVERSE_POLICY_KEY: _POLICY_BLOCK, "AAPL": {"sl_pct": 0.05}})
+        )
+        loaded = load_stocks_config(path)
+        assert list(loaded.keys()) == ["AAPL"]
+
+
+class TestLoadUniversePolicy:
+    """Tests for load_universe_policy()."""
+
+    def test_missing_file_returns_default(self, tmp_path: Path) -> None:
+        assert load_universe_policy(tmp_path / "absent.json") == DEFAULT_UNIVERSE_POLICY
+
+    def test_absent_block_returns_default(self, tmp_path: Path) -> None:
+        path = tmp_path / "stocks.json"
+        path.write_text(json.dumps({"AAPL": {"sl_pct": 0.05}}))
+        assert load_universe_policy(path) == DEFAULT_UNIVERSE_POLICY
+
+    def test_block_parsed(self, tmp_path: Path) -> None:
+        path = tmp_path / "stocks.json"
+        path.write_text(
+            json.dumps({UNIVERSE_POLICY_KEY: _POLICY_BLOCK, "AAPL": {"sl_pct": 0.05}})
+        )
+        policy = load_universe_policy(path)
+        assert policy.scope == "liquid_large_cap"
+        assert policy.as_of == "today"
+
+    def test_invalid_block_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "stocks.json"
+        path.write_text(json.dumps({UNIVERSE_POLICY_KEY: {"scope": "x"}}))
+        with pytest.raises(ValueError):
+            load_universe_policy(path)
+
+
+class TestUniversePolicyType:
+    """Tests for the UniversePolicy dataclass helpers."""
+
+    def test_summary(self) -> None:
+        policy = UniversePolicy(**_POLICY_BLOCK)
+        assert policy.summary() == "liquid_large_cap (as_of=today)"
+
+    def test_to_json_round_trip(self) -> None:
+        policy = UniversePolicy(**_POLICY_BLOCK)
+        assert json.loads(policy.to_json()) == _POLICY_BLOCK
+
+    def test_describe_contains_note_and_count(self) -> None:
+        policy = UniversePolicy(**_POLICY_BLOCK)
+        text = policy.describe(13)
+        assert "Universe: liquid_large_cap (as_of=today, 13 symbols)" in text
+        assert _POLICY_BLOCK["survivorship_note"] in text
+
+    def test_describe_without_count(self) -> None:
+        policy = UniversePolicy(**_POLICY_BLOCK)
+        assert "Universe: liquid_large_cap (as_of=today)" in policy.describe()
+
+    def test_default_policy_describes_current_behaviour(self) -> None:
+        assert DEFAULT_UNIVERSE_POLICY.scope == "liquid_large_cap"
+        assert DEFAULT_UNIVERSE_POLICY.as_of == "today"
+        assert "survivorship" in DEFAULT_UNIVERSE_POLICY.survivorship_note
