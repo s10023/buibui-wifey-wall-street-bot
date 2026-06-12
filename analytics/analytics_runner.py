@@ -10,17 +10,20 @@ import duckdb
 
 from analytics.data_store import DEFAULT_DB_PATH, init_schema
 from analytics.data_sync import backfill, sync
-from utils.config_validation import load_stocks_config
+from utils.config_validation import load_stocks_config, load_universe_policy
 
 
 def _resolve_symbols(symbols: list[str] | None) -> list[str]:
     if symbols:
         return symbols
     try:
-        return list(load_stocks_config().keys())
+        resolved = list(load_stocks_config().keys())
     except Exception as e:
         logging.error("Failed to load stocks config: %s", e)
         sys.exit(1)
+    policy = load_universe_policy()
+    logging.info("Universe: %s (%d symbols)", policy.summary(), len(resolved))
+    return resolved
 
 
 @contextmanager

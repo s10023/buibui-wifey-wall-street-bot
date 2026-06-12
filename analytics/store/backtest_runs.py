@@ -78,6 +78,7 @@ def upsert_backtest_run(
     sweep_id: str | None = None,
     adr_suppress_threshold: float | None = None,
     volume_suppress: bool | None = None,
+    universe_policy: str | None = None,
 ) -> str:
     """Insert or replace a backtest aggregate result row.
 
@@ -131,6 +132,7 @@ def upsert_backtest_run(
         "short_total_r": result.short_total_r,
         "recovery_factor": result.recovery_factor,
         "volume_suppress": volume_suppress,
+        "universe_policy": universe_policy,
     }
     df = pd.DataFrame([row])
     conn.register("_bt_run_upsert_df", df)
@@ -144,7 +146,7 @@ def upsert_backtest_run(
             "long_closed_trades, long_win_count, long_win_rate, long_avg_r, "
             "short_closed_trades, short_win_count, short_win_rate, short_avg_r, "
             "long_total_r, short_total_r, volume_suppress, adr_suppress_threshold, "
-            "recovery_factor "
+            "recovery_factor, universe_policy "
             "FROM _bt_run_upsert_df"
         )
     finally:

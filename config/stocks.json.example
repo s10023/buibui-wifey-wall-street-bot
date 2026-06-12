@@ -1,4 +1,9 @@
 {
+  "universe_policy": {
+    "scope": "liquid_large_cap",
+    "as_of": "today",
+    "survivorship_note": "Watchlist hand-picked at fork time (2026-05-14) from today's mega-caps — a forward-looking selection over the backtested history. Results carry survivorship/selection bias; do not extrapolate these results beyond this watchlist."
+  },
   "AAPL": { "sl_pct": 0.05 },
   "MSFT": { "sl_pct": 0.05 },
   "GOOGL": { "sl_pct": 0.05 },

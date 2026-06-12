@@ -16,6 +16,7 @@ from analytics.data_store import (
 )
 from analytics.digest_lib import QUERY_NAMES, DigestScope, run_digest
 from analytics.strategies import KNOWN_STRATEGIES
+from utils.config_validation import load_universe_policy
 from web.api.deps import get_db, require_token
 from web.api.models.backtest import (
     BacktestRequest,
@@ -171,6 +172,7 @@ def run_backtest_endpoint(
         body.fee_pct,
         "off",
         volume_suppress=None,
+        universe_policy=load_universe_policy().to_json(),
     )
     upsert_backtest_trades(db, result, run_id)
     return _result_to_response(result)

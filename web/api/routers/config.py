@@ -8,9 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from analytics.data_store import get_confidence_ratings
 from analytics.strategies import STRATEGY_REGISTRY
-from utils.config_validation import load_stocks_config
+from utils.config_validation import load_stocks_config, load_universe_policy
 from web.api.deps import get_db, require_token
-from web.api.models.active_config import ActiveConfigResponse
+from web.api.models.active_config import ActiveConfigResponse, UniversePolicyResponse
 
 router = APIRouter(dependencies=[Depends(require_token)])
 
@@ -48,6 +48,26 @@ def get_strategies(
             if strategy in specs:
                 specs[strategy]["confidence"] = tf_stars
     return specs
+
+
+@router.get("/universe-policy")
+def get_universe_policy() -> UniversePolicyResponse:
+    """Return the active universe policy + survivorship caveat (Phase 0.1).
+
+    n_symbols reflects the current watchlist size; None when stocks.json
+    is unreadable (the caveat is still worth surfacing without a count).
+    """
+    policy = load_universe_policy()
+    try:
+        n_symbols: int | None = len(load_stocks_config())
+    except Exception:
+        n_symbols = None
+    return UniversePolicyResponse(
+        scope=policy.scope,
+        as_of=policy.as_of,
+        survivorship_note=policy.survivorship_note,
+        n_symbols=n_symbols,
+    )
 
 
 @router.get("/active-config")

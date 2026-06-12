@@ -77,6 +77,7 @@ from analytics.signal_config import (
 from analytics.strategies import STRATEGY_REGISTRY, compute_htf_ema_slope
 from signals.cooldown_store import CooldownStore
 from signals.registry import SIGNAL_REGISTRY
+from utils.config_validation import load_universe_policy
 
 logger = logging.getLogger(__name__)
 
@@ -1177,6 +1178,10 @@ def run_scan_cycle(
     # accumulates passively. Cache hits (BacktestSnapshot) are excluded — only
     # full BacktestResult objects land here. Covers combos that fired this cycle.
     if backtest_cfg and backtest_cfg.save_results and bt_to_save:
+        try:
+            universe_policy_json: str | None = load_universe_policy().to_json()
+        except ValueError:
+            universe_policy_json = None
         for (sym, tf, strategy), bt_result in bt_to_save.items():
             if bt_result is None:
                 continue
@@ -1198,6 +1203,7 @@ def run_scan_cycle(
                         strategy_params, strategy, backtest_cfg.volume_suppress
                     )
                     or None,
+                    universe_policy=universe_policy_json,
                 )
             except Exception:
                 logger.exception(
