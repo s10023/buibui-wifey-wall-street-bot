@@ -31,6 +31,20 @@ Forked from the parent `buibui-moon-trader-bot` (crypto / Binance Futures); the 
 Per-symbol `sl_pct` defined in `config/stocks.json` (see `stocks.json.example`).
 Live SL flows from the active signal-watch TOML; per-symbol overrides take precedence.
 
+### Universe policy (Phase 0.1)
+
+`config/stocks.json` carries a reserved top-level `universe_policy` block
+(`{scope, as_of: "fixed"|"today", survivorship_note}`) declaring how the
+watchlist was selected. The watchlist was hand-picked at fork time from
+today's mega-caps — a forward-looking selection over the backtested history —
+so every backtest surface states the bias instead of hiding it: the CLI
+runners print the policy + survivorship caveat, every saved `backtest_runs`
+row is stamped with the active policy JSON (`universe_policy` column), and
+the Backtest web page shows the caveat via `GET /api/universe-policy`. When
+the block is absent the documented default applies (`liquid_large_cap`,
+`as_of="today"`). Free point-in-time constituent data is out of scope —
+the policy bounds the bias, it does not remove it.
+
 ---
 
 ## Directory Structure
@@ -700,6 +714,7 @@ make web-full CONFIG=config/signal_watch.toml   # build UI then start server
 | `GET` | `/api/health` | Health check — no auth required |
 | `GET` | `/api/config` | Per-symbol config from `stocks.json` |
 | `GET` | `/api/active-config` | Active TOML config the server was started with (empty defaults when no `--config` passed) |
+| `GET` | `/api/universe-policy` | Active universe policy + survivorship caveat (+ watchlist size) |
 | `GET` | `/api/strategies` | All strategy specs with params and confidence (auto-uses active config's star ratings) |
 | `GET` | `/api/ohlcv` | OHLCV candles (`?symbol=&timeframe=&start_ms=&end_ms=`) |
 | `POST` | `/api/signals` | Detect strategy signals on historical data |
