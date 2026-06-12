@@ -57,7 +57,7 @@ from analytics.strategies import (
     KNOWN_STRATEGIES,
     seasonality_stats,
 )
-from utils.config_validation import load_stocks_config
+from utils.config_validation import load_stocks_config, load_universe_policy
 
 _SIMPLE_DETECTORS = DETECTOR_REGISTRY
 
@@ -407,6 +407,7 @@ def _collect_sweep_results(
     htf_slope_by_symbol: (
         dict[str, dict[tuple[str, int, int], pd.Series]] | None
     ) = None,
+    universe_policy: str | None = None,
 ) -> tuple[list[BacktestResult], list[str]]:
     """Run one full symbol × TF × strategy grid for a given tp_r value.
 
@@ -566,6 +567,7 @@ def _collect_sweep_results(
                 sweep_id=sweep_id,
                 adr_suppress_threshold=cfg.adr_suppress_threshold,
                 volume_suppress=cfg.effective_volume_suppress(strategy) or None,
+                universe_policy=universe_policy,
             )
             upsert_backtest_trades(conn, bt, run_id)
 
@@ -589,6 +591,7 @@ def run_backtest_sweep(
     symbols = cfg.symbols
     if symbols is None:
         symbols = list(load_stocks_config().keys())
+    universe = load_universe_policy()
 
     strategies = cfg.strategies if cfg.strategies is not None else _SWEEP_STRATEGIES
 
@@ -623,6 +626,7 @@ def run_backtest_sweep(
             f"{n_tfs} {tf_word} × "
             f"{n_strats} {strat_word} ({window_label})"
         )
+    print(universe.describe(len(symbols)))
 
     single_run_mode = not tp_sweep_mode and not atr_sweep_mode
     sweep_id = str(uuid.uuid4()) if cfg.save_results and single_run_mode else None
@@ -768,6 +772,7 @@ def run_backtest_sweep(
                     ratings_map=ratings_map,
                     regime_series_by_symbol=regime_series_by_symbol,
                     htf_slope_by_symbol=htf_slope_by_symbol,
+                    universe_policy=universe.to_json(),
                 )
             print(
                 format_sweep_table(
@@ -818,6 +823,9 @@ def run_backtest_cmd(
 
     end_ms = int(datetime.datetime.now(datetime.UTC).timestamp() * 1000)
     start_ms = since_ms if since_ms is not None else end_ms - days * 24 * 3_600 * 1_000
+
+    universe = load_universe_policy()
+    print(universe.describe())
 
     conn: duckdb.DuckDBPyConnection = duckdb.connect(
         str(db_path), read_only=not save_results
@@ -927,6 +935,7 @@ def run_backtest_cmd(
                 tp_r=tp_r,
                 fee_pct=fee_pct,
                 day_filter="off",
+                universe_policy=universe.to_json(),
             )
             upsert_backtest_trades(conn, bt_result, run_id)
             print(f"\n  Results saved to DB (run_id={run_id})")
@@ -1050,6 +1059,7 @@ def run_combo_backtest_cmd(
         symbols = symbols or cfg.symbols or []
         if not symbols:
             symbols = list(load_stocks_config().keys())
+        print(load_universe_policy().describe(len(symbols)))
         timeframes = timeframes or cfg.timeframes or []
         if day_filter == "off":
             day_filter = cfg.day_filter
@@ -1291,6 +1301,7 @@ def run_cross_tf_combo_backtest_cmd(
             symbols = cfg.symbols or []
         if not symbols:
             symbols = list(load_stocks_config().keys())
+        print(load_universe_policy().describe(len(symbols)))
         if day_filter == "off":
             day_filter = cfg.day_filter
         if not sl_pct or sl_pct == 0.02:
