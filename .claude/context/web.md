@@ -7,7 +7,7 @@ Detailed reference for `web/`. Load this when working on the FastAPI backend or 
 - `main.py` — app + StaticFiles mount; reads `WIFEY_CONFIG` env var (set by `wifey web --config <toml>`); stores `app.state.config_name` + `app.state.active_config`
 - `deps.py` — `get_db` (per-request read-only DuckDB conn) + `require_token` (Bearer auth)
 - `routers/` — config, ohlcv, fib, signals, backtest, stats, zones (T16-full removed the Binance-Futures-only `positions` / `prices` / `stream` routers; Phase B will re-introduce per the equities broker)
-- `models/` — Pydantic models per router; `active_config.py` → `ActiveConfigResponse` + `StrategyParamsModel`; `zones.py` → `ZoneBox`, `ZoneLine`, `SwingPoint`, `ZonesResponse`
+- `models/` — Pydantic models per router; `active_config.py` → `ActiveConfigResponse` + `StrategyParamsModel` + `UniversePolicyResponse`; `zones.py` → `ZoneBox`, `ZoneLine`, `SwingPoint`, `ZonesResponse`
 
 ### Key endpoints
 
@@ -15,6 +15,7 @@ Detailed reference for `web/`. Load this when working on the FastAPI backend or 
 - `GET /api/backtest/runs` / `POST /api/backtest` — `BacktestRunSummary` has `stars/long_stars/short_stars: int | None`, `long/short_total_r/recovery_factor: float | None`; validators coerce pandas NaN → None
 - `GET /api/strategies?config=<name>` — confidence values with per-config DB ratings override
 - `GET /api/active-config` — `config_name`, `symbols`, `timeframes`, `strategies`, `day_filter`, `tp_r`, `sl_pct`, `fee_pct`, `adr_suppress_threshold`, `strategy_params`, `min_trades`, `min_trades_per_tf`; empty defaults when no `--config`
+- `GET /api/universe-policy` — active `universe_policy` from stocks.json (`scope`, `as_of`, `survivorship_note`) + best-effort `n_symbols` (None when stocks.json unreadable); Phase 0.1 honesty surface, feeds the Backtest page caveat banner. `POST /api/backtest` stamps the policy JSON onto each saved run
 - `GET /api/stats/{symbol}?days=180` — cached daily in `stats_cache` table; `weekly_current_state`, `daily_distance`, `weekly_wick_percentile` always live (never cached), injected via `_inject_live_fields()`
 - `GET /api/live-outcomes?days&min_n` — cross-symbol roll-up of the live `signal_alert_outcomes` ledger (all-time integrity roll-up + per-(strategy, tf, direction) + per-strategy win-rate/avg-R); never cached, own router (not the per-symbol StatsBundle)
 - `GET /api/backtest/analysis?use_config=true` — 12 digest query cards; `use_config=true` scopes via `DigestScope`
@@ -25,7 +26,7 @@ Build: `make web-build` → `web/ui/dist/` served by FastAPI StaticFiles.
 
 ### Key files
 
-- `src/api.ts` — typed client; `getStrategies(configName?)`, `getActiveConfig()`
+- `src/api.ts` — typed client; `getStrategies(configName?)`, `getActiveConfig()`, `getUniversePolicy()`
 - `src/stores/` — config, strategies, watchlist, `activeConfig.ts` (exposes `activeConfigStore`, `configName`, `configDefaultSymbol`)
 - `src/pages/` — Chart, Backtest, SignalFeed, Stats
 - `src/components/` — Nav, CandleChart, BacktestResult, …

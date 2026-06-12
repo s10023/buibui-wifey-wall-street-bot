@@ -6,11 +6,11 @@ Detailed API reference for `analytics/`. Load this when working on any analytics
 
 - `upsert_signals(conn, df)` / `get_signals_history(conn, symbol, tf, start_ms, end_ms)`
 - `list_backtest_runs(conn)` — newest-first; JOINs `stars`, `long_stars`, `short_stars` from `confidence_ratings` by `(strategy, tf, day_filter, direction)`; PARTITION BY includes `adr_suppress_threshold` so ADR-on/off runs appear as separate rows
-- `upsert_backtest_run` / `upsert_backtest_trades`
+- `upsert_backtest_run` / `upsert_backtest_trades` — `upsert_backtest_run` accepts `universe_policy: str | None = None` (Phase 0.1 policy JSON stamp; all four call sites — sweep runner, single-run CLI, scanner persistence, web `POST /api/backtest` — pass `load_universe_policy().to_json()`)
 - `upsert_confidence_ratings(conn, config_name, ratings, win_rates, day_filter=None, direction="combined")` — PK `(config_name, strategy, tf, direction)`; direction = `'combined'` | `'long'` | `'short'`
 - `get_confidence_ratings(conn, config_name, direction="combined")` / `get_directional_confidence_ratings(conn, config_name)` → `{strategy: {tf: {"long": stars, "short": stars}}}`
-- `backtest_runs` columns: `adr_suppress_threshold REAL NULL`, `recovery_factor DOUBLE NULL`, `volume_suppress BOOLEAN NULL`
-- `_backtest_run_id` appends `|adr:X` / `|vol_suppress` for unique run_id per param combo
+- `backtest_runs` columns: `adr_suppress_threshold REAL NULL`, `recovery_factor DOUBLE NULL`, `volume_suppress BOOLEAN NULL`, `universe_policy TEXT NULL` (Phase 0.1 — migration-list only, never in CREATE TABLE, so fresh + migrated DBs share one physical column order; `upsert_backtest_run`'s INSERT…SELECT is positional)
+- `_backtest_run_id` appends `|adr:X` / `|vol_suppress` for unique run_id per param combo; `universe_policy` is deliberately excluded from the hash (metadata, doesn't change P&L)
 - **D10 same-TF**: `backtest_combos` table; `upsert_combo_run` → stable `combo_id` (`symbol|tf|A+B|wN|day_filter`, no timestamp → `INSERT OR REPLACE`); `list_combo_runs(conn)`; `get_combo_lookup(conn)` → `dict[(symbol, tf, frozenset({a,b})), row_dict]` best avg_r per pair
 - **D10 cross-TF**: `backtest_cross_tf_combos` keyed by `(symbol, tf_htf, tf_ltf, strategy_htf, strategy_ltf, window_hours, day_filter)`; `upsert_cross_tf_combo_run` / `list_cross_tf_combo_runs` / `get_cross_tf_combo_lookup` → ordered key (not frozenset — HTF/LTF roles are distinct)
 - **CRITICAL**: `_upsert` uses explicit `conn.register`/`conn.unregister` in try/finally — do NOT switch to implicit replacement scan; it causes malloc heap corruption at `conn.close()`. Never drop the try/finally.
@@ -20,7 +20,7 @@ Detailed API reference for `analytics/`. Load this when working on any analytics
 
 - `data_fetcher.py` — pure fetch: yfinance → canonical OHLCV DataFrames (no DB). `fetch_bars(symbol, interval, start_ms, limit=BARS_MAX_LIMIT)` wraps `utils.yfinance_client.fetch_history`; supported intervals `1h | 4h | 1d | 1wk` (4h synthesised via 1h resample anchored to 13:30 UTC, US RTH open). `OHLCV_COLUMNS` excludes `vwap` and `taker_buy_volume` (yfinance OHLCV has neither). `BARS_MAX_LIMIT = 5000`. Tests patch `analytics.data_fetcher.fetch_history`.
 - `data_sync.py` — yfinance-backed orchestration (T5, 2026-05-15). `backfill(conn, symbol, timeframe, start_ms)` is a single `fetch_bars` call (no client param, no pagination loop), gated on `data_quality.check_ohlcv` + `quarantine` between fetch and upsert (Phase 0.5) — corrupt rows are dropped before storage, soft anomalies logged; the return count reflects stored (clean) rows. `sync(conn, symbol, timeframe)` re-fetches from the latest stored `open_time` and delegates to `backfill`, so it inherits the gate. `sync_funding_rates` / `sync_open_interest` removed in T5.
-- `analytics_runner.py` — thin wrapper: opens DB, resolves symbols via `utils.config_validation.load_stocks_config`, delegates to `data_sync`. No client object (yfinance is module-level, no auth).
+- `analytics_runner.py` — thin wrapper: opens DB, resolves symbols via `utils.config_validation.load_stocks_config`, delegates to `data_sync`. No client object (yfinance is module-level, no auth). `_resolve_symbols` logs the active universe policy summary (`load_universe_policy().summary()`) whenever the implicit watchlist fallback is used (Phase 0.1 — no unstated symbol set).
 
 ## data_quality.py — OHLCV ingest integrity monitor (Phase 0.5)
 
