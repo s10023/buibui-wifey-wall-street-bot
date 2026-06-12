@@ -1,6 +1,13 @@
-"""Pydantic model for GET /api/active-config response."""
+"""Pydantic models for GET /api/active-config and GET /api/universe-policy."""
 
 from pydantic import BaseModel
+
+
+class UniversePolicyResponse(BaseModel):
+    scope: str
+    as_of: str
+    survivorship_note: str
+    n_symbols: int | None = None
 
 
 class StrategyParamsModel(BaseModel):

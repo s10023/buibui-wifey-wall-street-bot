@@ -87,6 +87,44 @@ def test_backtest_returns_result(
     assert data["short_win_rate"] is None
 
 
+def test_backtest_run_stamps_universe_policy(
+    web_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The endpoint's upsert_backtest_run call carries the active universe policy."""
+    monkeypatch.setattr(
+        "web.api.routers.backtest.get_ohlcv", lambda *a, **kw: _make_ohlcv()
+    )
+    monkeypatch.setattr(
+        "web.api.routers.backtest.detect_signals_for_strategy",
+        lambda *a, **kw: _make_signals(),
+    )
+    result = BacktestResult(symbol="AAPL", timeframe="1d", strategy="fvg")
+    monkeypatch.setattr(
+        "web.api.routers.backtest.run_backtest", lambda *a, **kw: result
+    )
+    from utils.config_validation import UniversePolicy
+
+    policy = UniversePolicy(
+        scope="liquid_large_cap",
+        as_of="today",
+        survivorship_note="Test caveat: survivors only.",
+    )
+    monkeypatch.setattr("web.api.routers.backtest.load_universe_policy", lambda: policy)
+    captured: dict[str, object] = {}
+
+    def _fake_upsert(*args: object, **kwargs: object) -> str:
+        captured.update(kwargs)
+        return "run123"
+
+    monkeypatch.setattr("web.api.routers.backtest.upsert_backtest_run", _fake_upsert)
+    resp = web_client.post(
+        "/api/backtest",
+        json={"symbol": "AAPL", "timeframe": "1d", "strategy": "fvg"},
+    )
+    assert resp.status_code == 200
+    assert captured["universe_policy"] == policy.to_json()
+
+
 def test_backtest_unknown_strategy_returns_422(
     web_client: TestClient,
 ) -> None:
