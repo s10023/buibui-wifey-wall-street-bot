@@ -124,6 +124,10 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
         ("short_total_r", "DOUBLE"),
         ("recovery_factor", "DOUBLE"),
         ("volume_suppress", "BOOLEAN"),
+        # Phase 0.1: universe policy stamp (JSON) — migration-list only, never
+        # in CREATE TABLE, so fresh and migrated DBs share one physical column
+        # order (upsert_backtest_run's INSERT…SELECT is positional).
+        ("universe_policy", "TEXT"),
     ]:
         if col not in existing_bt_cols:
             conn.execute(f"ALTER TABLE backtest_runs ADD COLUMN {col} {dtype}")
