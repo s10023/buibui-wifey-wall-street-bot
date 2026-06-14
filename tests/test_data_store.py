@@ -601,7 +601,7 @@ class TestGetWinRateByStrategy:
             "INSERT INTO backtest_runs VALUES (?, 'BTCUSDT', '4h', 'bos', "
             "1690000000000, 1700000000000, 90, 0.02, 2.0, 0.0, 'off', "
             "25, 25, 15, 10, 0.6, 0.5, 12.5, 3.0, 1700000001000, NULL, "
-            "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)",
+            "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)",
             [run_id],
         )
         df = get_win_rate_by_strategy(conn)
@@ -617,7 +617,7 @@ class TestGetWinRateByStrategy:
             "INSERT INTO backtest_runs VALUES (?, 'BTCUSDT', '4h', 'fvg', "
             "1690000000000, 1700000000000, 90, 0.02, 2.0, 0.0, 'off', "
             "5, 5, 3, 2, 0.6, 0.4, 2.0, 1.0, 1700000001000, NULL, "
-            "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)",
+            "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)",
             [run_id],
         )
         df = get_win_rate_by_strategy(conn)
@@ -859,3 +859,50 @@ class TestBacktestCache:
         assert snap is not None
         assert bool(snap.closed_trades)
         assert not bool(snap.short_closed_trades)
+
+
+class TestBacktestRunIdCostModel:
+    def test_none_cost_model_keeps_legacy_hash(self) -> None:
+        from analytics.data_store import _backtest_run_id
+
+        legacy = _backtest_run_id("SPY", "4h", "bos", 90, 0.02, 2.0, 0.0, "off")
+        explicit = _backtest_run_id(
+            "SPY", "4h", "bos", 90, 0.02, 2.0, 0.0, "off", cost_model=None
+        )
+        assert legacy == explicit
+
+    def test_cost_model_changes_hash(self) -> None:
+        from analytics.data_store import _backtest_run_id
+
+        legacy = _backtest_run_id("SPY", "4h", "bos", 90, 0.02, 2.0, 0.0, "off")
+        costed = _backtest_run_id(
+            "SPY", "4h", "bos", 90, 0.02, 2.0, 0.0, "off", cost_model='{"x":1}'
+        )
+        assert legacy != costed
+        # Deterministic for the same stamp.
+        assert costed == _backtest_run_id(
+            "SPY", "4h", "bos", 90, 0.02, 2.0, 0.0, "off", cost_model='{"x":1}'
+        )
+
+    def test_upsert_persists_cost_model_column(
+        self, conn: duckdb.DuckDBPyConnection
+    ) -> None:
+        from analytics.data_store import upsert_backtest_run
+
+        result = BacktestResult(symbol="SPY", timeframe="4h", strategy="bos")
+        run_id = upsert_backtest_run(
+            conn,
+            result,
+            days=90,
+            data_start_ms=0,
+            data_end_ms=1,
+            sl_pct=0.02,
+            tp_r=2.0,
+            fee_pct=0.0,
+            day_filter="off",
+            cost_model='{"impact_coef":1.0}',
+        )
+        row = conn.execute(
+            "SELECT cost_model FROM backtest_runs WHERE run_id = ?", [run_id]
+        ).fetchone()
+        assert row is not None and row[0] == '{"impact_coef":1.0}'
