@@ -11,6 +11,7 @@ from collections.abc import Mapping
 
 import pandas as pd
 
+from analytics.backtest.cost_model import CostModel
 from analytics.backtest_lib import (
     BacktestResult,
     filter_signals_by_day,
@@ -52,6 +53,7 @@ def _compute_backtest(
     volume_spike_boost_short: bool | None = None,
     tp_r_long: float | None = None,
     tp_r_short: float | None = None,
+    cost_model: CostModel | None = None,
 ) -> BacktestResult | None:
     """Run strategy detector on ohlcv[:-1] and backtest the resulting signals.
 
@@ -67,6 +69,8 @@ def _compute_backtest(
     volume_spike_boost: exempt spike candles (> 3× rolling mean) from suppression.
     volume_suppress_long/short: directional overrides — take precedence over volume_suppress.
     volume_spike_boost_long/short: directional overrides — take precedence over volume_spike_boost.
+    cost_model: Phase 0.4 equity cost model — forwarded to run_backtest;
+    None keeps the flat fee_pct path.
     """
     hist_df = ohlcv_df.iloc[:-1]
     if len(hist_df) < 3:
@@ -117,6 +121,7 @@ def _compute_backtest(
         volume_spike_boost_short=volume_spike_boost_short,
         tp_r_long=tp_r_long,
         tp_r_short=tp_r_short,
+        cost_model=cost_model,
     )
 
 

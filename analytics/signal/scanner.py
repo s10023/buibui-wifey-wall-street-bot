@@ -631,6 +631,9 @@ def run_scan_cycle(
                         eff_vsb_short or None,
                         eff_adr_exempt,
                         eff_atr_floor,
+                        cost_model=backtest_cfg.cost_model.to_json()
+                        if backtest_cfg.cost_model is not None
+                        else None,
                     )
                     last_candle_ts = int(ohlcv_df["open_time"].iloc[-2])
                     cache_key = _make_bt_cache_key(run_id, last_candle_ts)
@@ -667,6 +670,7 @@ def run_scan_cycle(
                                 volume_spike_boost_short=eff_vsb_short,
                                 tp_r_long=tp_r_long_eff,
                                 tp_r_short=tp_r_short_eff,
+                                cost_model=backtest_cfg.cost_model,
                             )
                             if bt_result is not None:
                                 put_backtest_cache(
@@ -704,6 +708,7 @@ def run_scan_cycle(
                         volume_spike_boost_short=eff_vsb_short,
                         tp_r_long=tp_r_long_eff,
                         tp_r_short=tp_r_short_eff,
+                        cost_model=backtest_cfg.cost_model,
                     )
                     bt_to_save[bt_key] = bt_result
                 bt_results[event.strategy] = bt_result
@@ -1204,6 +1209,9 @@ def run_scan_cycle(
                     )
                     or None,
                     universe_policy=universe_policy_json,
+                    cost_model=backtest_cfg.cost_model.to_json()
+                    if backtest_cfg.cost_model is not None
+                    else None,
                 )
             except Exception:
                 logger.exception(

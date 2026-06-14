@@ -550,6 +550,7 @@ def _collect_sweep_results(
                 if htf_slope_by_symbol is not None
                 else None
             ),
+            cost_model=cfg.cost_model,
         )
         results.append(bt)
 
@@ -568,6 +569,9 @@ def _collect_sweep_results(
                 adr_suppress_threshold=cfg.adr_suppress_threshold,
                 volume_suppress=cfg.effective_volume_suppress(strategy) or None,
                 universe_policy=universe_policy,
+                cost_model=cfg.cost_model.to_json()
+                if cfg.cost_model is not None
+                else None,
             )
             upsert_backtest_trades(conn, bt, run_id)
 
@@ -692,6 +696,7 @@ def run_backtest_sweep(
                             if htf_slope_by_symbol is not None
                             else None
                         ),
+                        cost_model=cfg.cost_model,
                     )
                     tp_results.append(bt)
                 results_by_tp[tp_r] = tp_results
@@ -749,6 +754,7 @@ def run_backtest_sweep(
                             if htf_slope_by_symbol is not None
                             else None
                         ),
+                        cost_model=cfg.cost_model,
                     )
                     atr_results.append(bt)
                 results_by_atr[atr_mult] = atr_results
