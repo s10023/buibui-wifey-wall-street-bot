@@ -24,8 +24,8 @@ Forked from the parent `buibui-moon-trader-bot` (crypto / Binance Futures); the 
 - **Backtest Engine**
   Sweep, combo, and cross-TF backtest modes against the same detectors that drive the live scanner. Walk-forward optimisation (`wifey param-sweep`) for per-strategy `tp_r` tuning, with each sweep reporting a Deflated Sharpe Ratio + Probability of Backtest Overfitting (Bailey & López de Prado) so the chosen `tp_r` is haircut for the number of grid trials. Sweeps can optionally run purged + embargoed K-fold CV (`--cv-mode purged`, López de Prado AFML ch. 7) instead of the single contiguous split, censoring trades that straddle fold boundaries and embargoing the bars after each test fold.
 
-- **Equity cost model (Phase 0.4, default off)**
-  The optional `[backtest.cost_model]` TOML block replaces the flat `fee_pct` with half-spread by liquidity bucket + square-root market impact + short borrow + commission, charged per-trade in R. See `config/strategy_params.toml` for the commented reference block; enabling it intentionally changes backtest P&L (a deliberate golden-moving step).
+- **Equity cost model (Phase 0.4, ON for live configs since step 2)**
+  The `[backtest.cost_model]` TOML block replaces the flat `fee_pct` with half-spread by liquidity bucket + square-root market impact + short borrow + commission, charged per-trade in R. Enabled in `config/strategy_params.toml` (inherited by both `signal_watch` configs) since Phase 0.4 step 2 (#80) — the flip moved the regression goldens by design. The code default is still off (`cost_model=None` → byte-identical flat-fee path), so the single-combo backtest CLI and web `POST /api/backtest` stay flat-fee.
 
 ---
 
