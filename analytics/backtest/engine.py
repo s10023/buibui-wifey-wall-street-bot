@@ -17,6 +17,12 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 
+from analytics.backtest.cost_model import (
+    CostContext,
+    CostModel,
+    bars_per_day_for_tf,
+    build_cost_context,
+)
 from analytics.backtest.gates import _is_low_volume, _is_volume_spike
 from analytics.backtest.live_parity_config import LiveParityConfig
 from analytics.backtest.stats_overfit import sharpe_ratio
@@ -91,6 +97,10 @@ class Trade:
     fee_pct: float = 0.0
     low_volume: bool = False  # True when signal candle volume < 1.5× rolling mean
     volume_spike: bool = False  # True when signal candle volume > 3× rolling mean
+    # Phase 0.4: when set, pnl_r charges the decomposed equity cost stack
+    # (spread + impact + borrow + commission) instead of the flat fee_pct.
+    cost_model: CostModel | None = None
+    cost_ctx: CostContext | None = None
 
     @property
     def pnl_r(self) -> float | None:
@@ -102,6 +112,10 @@ class Trade:
 
         This correctly penalises tight-SL strategies (e.g. wick_fill on 15m)
         where fees consume a large fraction of the actual risk taken.
+
+        Cost-model path (Phase 0.4): when cost_model is set, the flat fee is
+        replaced by the decomposed equity cost stack (spread + impact +
+        borrow + commission) priced from cost_ctx — fee_pct is ignored.
         """
         if self.exit_price is None:
             return None
@@ -112,6 +126,8 @@ class Trade:
             raw_r = (self.exit_price - self.entry_price) / risk
         else:
             raw_r = (self.entry_price - self.exit_price) / risk
+        if self.cost_model is not None:
+            return raw_r - self.cost_model.cost_r(self, self.cost_ctx)
         fee_drag_r = 2.0 * self.fee_pct * self.entry_price / risk
         return raw_r - fee_drag_r
 
@@ -796,6 +812,7 @@ def run_backtest(
     regime_series: pd.Series | None = None,
     strategy_params: dict[str, StrategyOverride] | None = None,
     htf_slope_series_by_anchor: Mapping[tuple[str, int, int], pd.Series] | None = None,
+    cost_model: CostModel | None = None,
 ) -> BacktestResult:
     """Simulate trades from signals on historical OHLCV.
 
@@ -839,6 +856,11 @@ def run_backtest(
          `live_parity.cooldown_bars_per_tf`.
     All gates default off and no-op when their inputs are absent — existing
     callers see no behavioural change.
+
+    cost_model: Phase 0.4 equity cost model. When set, each Trade carries the
+        model plus a causal CostContext (trailing ADV + daily sigma ending at
+        the signal bar) and pnl_r replaces the flat fee_pct with the
+        decomposed cost. None (default) keeps the flat-fee path byte-identical.
     """
     if live_parity is not None and any(
         live_parity.is_on(gate) for gate in _LIVE_PARITY_GATE_ORDER
@@ -917,6 +939,15 @@ def run_backtest(
     highs_np = ohlcv["high"].to_numpy(dtype=float)
     lows_np = ohlcv["low"].to_numpy(dtype=float)
     closes_np = ohlcv["close"].to_numpy(dtype=float)
+    # Phase 0.4: pre-extract volume + resolve the context window only when a
+    # cost model is active — the default path stays untouched.
+    volumes_np: np.ndarray[Any, np.dtype[np.float64]] | None = None
+    cost_bars_per_day = 1.0
+    cost_window_bars = 0
+    if cost_model is not None:
+        volumes_np = ohlcv["volume"].to_numpy(dtype=float)
+        cost_bars_per_day = bars_per_day_for_tf(timeframe)
+        cost_window_bars = max(2, round(cost_model.adv_window_days * cost_bars_per_day))
     time_to_idx: dict[int, int] = {int(t): i for i, t in enumerate(ohlcv_times_np)}
     n_candles = len(ohlcv_times_np)
 
@@ -1031,6 +1062,12 @@ def run_backtest(
             sl_price = entry_price * (1.0 + sl_pct)
             tp_price = entry_price - eff_tp_r * (sl_price - entry_price)
 
+        cost_ctx: CostContext | None = None
+        if cost_model is not None and volumes_np is not None:
+            cost_ctx = build_cost_context(
+                closes_np, volumes_np, sig_idx, cost_bars_per_day, cost_window_bars
+            )
+
         trade = Trade(
             signal_time=signal_time,
             entry_time=entry_time,
@@ -1041,6 +1078,8 @@ def run_backtest(
             fee_pct=fee_pct,
             low_volume=is_low_vol,
             volume_spike=is_spike,
+            cost_model=cost_model,
+            cost_ctx=cost_ctx,
         )
 
         # Vectorized candle scan: find first SL-hit and first TP-hit index using
