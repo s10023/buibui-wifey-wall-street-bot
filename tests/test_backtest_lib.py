@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from analytics.backtest.cost_model import CostContext, CostModel
 from analytics.backtest_lib import (
     BacktestResult,
     Trade,
@@ -1799,3 +1800,112 @@ def test_backtest_result_sharpe_empty_is_zero() -> None:
     from analytics.backtest.engine import BacktestResult
 
     assert BacktestResult("AAPL", "1d", "bos").sharpe == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Phase 0.4 cost model wiring
+# ---------------------------------------------------------------------------
+
+
+class TestTradePnlRWithCostModel:
+    def test_cost_model_replaces_flat_fee(self) -> None:
+        trade = Trade(
+            signal_time=0,
+            entry_time=1,
+            entry_price=100.0,
+            direction="long",
+            sl_price=98.0,
+            tp_price=104.0,
+            exit_time=2,
+            exit_price=104.0,
+            outcome="win",
+            fee_pct=0.01,  # must be IGNORED when cost_model is set
+            cost_model=CostModel(),
+            cost_ctx=CostContext(adv_dollars=1e8, sigma_daily=0.02),
+        )
+        # raw_r = (104-100)/2 = 2.0; cost = 0.03 spread + 0.02 impact = 0.05
+        assert trade.pnl_r == pytest.approx(2.0 - 0.05)
+
+    def test_default_none_keeps_flat_fee_path(self) -> None:
+        flat = Trade(
+            signal_time=0,
+            entry_time=1,
+            entry_price=100.0,
+            direction="long",
+            sl_price=98.0,
+            tp_price=104.0,
+            exit_time=2,
+            exit_price=104.0,
+            outcome="win",
+            fee_pct=0.001,
+        )
+        # fee_drag_r = 2 × 0.001 × 100 / 2 = 0.1
+        assert flat.pnl_r == pytest.approx(2.0 - 0.1)
+
+
+class TestRunBacktestCostModel:
+    def _ohlcv(self) -> pd.DataFrame:
+        # 10 hourly bars; signal at bar 5 → entry bar 6 open=100,
+        # sl_pct=0.02 → SL 98 (never hit, lows 99.5), tp_r=2 → TP 104
+        # hit at bar 8 (high 105).
+        n = 10
+        return pd.DataFrame(
+            {
+                "open_time": [i * 3_600_000 for i in range(n)],
+                "open": [100.0] * n,
+                "high": [101.0] * 8 + [105.0, 105.0],
+                "low": [99.5] * n,
+                "close": [100.0] * n,
+                "volume": [1_000_000.0] * n,
+            }
+        )
+
+    def _signals(self) -> pd.DataFrame:
+        return _make_signals([{"open_time": 5 * 3_600_000, "direction": "long"}])
+
+    def test_cost_model_none_is_identical(self) -> None:
+        base = run_backtest(
+            self._ohlcv(), self._signals(), "SPY", "1h", "fvg", fee_pct=0.001
+        )
+        explicit = run_backtest(
+            self._ohlcv(),
+            self._signals(),
+            "SPY",
+            "1h",
+            "fvg",
+            fee_pct=0.001,
+            cost_model=None,
+        )
+        assert [t.__dict__ for t in base.trades] == [
+            t.__dict__ for t in explicit.trades
+        ]
+
+    def test_cost_model_changes_pnl_not_fills(self) -> None:
+        model = CostModel()
+        base = run_backtest(self._ohlcv(), self._signals(), "SPY", "1h", "fvg")
+        costed = run_backtest(
+            self._ohlcv(), self._signals(), "SPY", "1h", "fvg", cost_model=model
+        )
+        assert len(base.trades) == len(costed.trades) == 1
+        b, c = base.trades[0], costed.trades[0]
+        # Fills/outcomes untouched — the model only re-prices pnl_r.
+        assert (
+            c.entry_time,
+            c.exit_time,
+            c.outcome,
+            c.entry_price,
+            c.exit_price,
+        ) == (
+            b.entry_time,
+            b.exit_time,
+            b.outcome,
+            b.entry_price,
+            b.exit_price,
+        )
+        assert c.cost_model is model
+        assert c.cost_ctx is not None
+        assert c.cost_ctx.adv_dollars is not None and c.cost_ctx.adv_dollars > 0.0
+        expected_cost = model.cost_r(c, c.cost_ctx)
+        assert expected_cost > 0.0
+        assert b.pnl_r is not None and c.pnl_r is not None
+        assert c.pnl_r == pytest.approx(b.pnl_r - expected_cost)

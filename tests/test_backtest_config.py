@@ -305,3 +305,26 @@ tp_r_15m = 3.5
         assert cfg.effective_tp_r("doji", "BTCUSDT", "15m") == 3.5
         assert cfg.effective_tp_r("doji", "SOLUSDT", "15m") == 4.0
         assert cfg.effective_tp_r("doji", "ETHUSDT", "1h") == 3.0
+
+
+class TestCostModelBacktestConfig:
+    def test_defaults_to_none(self) -> None:
+        assert BacktestSweepConfig().cost_model is None
+
+    def test_loads_enabled_block(self, tmp_path: Path) -> None:
+        p = tmp_path / "cfg.toml"
+        p.write_text(
+            'symbols = ["SPY"]\n'
+            "\n"
+            "[backtest.cost_model]\n"
+            "enabled = true\n"
+            "notional_usd = 25000.0\n"
+        )
+        cfg = load_backtest_config(p)
+        assert cfg.cost_model is not None
+        assert cfg.cost_model.notional_usd == 25_000.0
+
+    def test_disabled_block_is_none(self, tmp_path: Path) -> None:
+        p = tmp_path / "cfg.toml"
+        p.write_text('symbols = ["SPY"]\n\n[backtest.cost_model]\nenabled = false\n')
+        assert load_backtest_config(p).cost_model is None

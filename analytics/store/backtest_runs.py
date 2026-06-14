@@ -29,6 +29,7 @@ def _backtest_run_id(
     volume_spike_boost_short: bool | None = None,
     adr_exempt: bool = False,
     atr_sl_floor: bool = False,
+    cost_model: str | None = None,
 ) -> str:
     """Return a deterministic 16-char hex ID for a backtest param combination.
 
@@ -62,6 +63,8 @@ def _backtest_run_id(
         key += "|adr_exempt"
     if atr_sl_floor:
         key += "|atr_floor"
+    if cost_model is not None:
+        key += f"|cost:{cost_model}"
     return hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
@@ -79,6 +82,7 @@ def upsert_backtest_run(
     adr_suppress_threshold: float | None = None,
     volume_suppress: bool | None = None,
     universe_policy: str | None = None,
+    cost_model: str | None = None,
 ) -> str:
     """Insert or replace a backtest aggregate result row.
 
@@ -96,6 +100,7 @@ def upsert_backtest_run(
         day_filter,
         adr_suppress_threshold,
         volume_suppress,
+        cost_model=cost_model,
     )
     row: dict[str, Any] = {
         "run_id": run_id,
@@ -133,6 +138,7 @@ def upsert_backtest_run(
         "recovery_factor": result.recovery_factor,
         "volume_suppress": volume_suppress,
         "universe_policy": universe_policy,
+        "cost_model": cost_model,
     }
     df = pd.DataFrame([row])
     conn.register("_bt_run_upsert_df", df)
@@ -146,7 +152,7 @@ def upsert_backtest_run(
             "long_closed_trades, long_win_count, long_win_rate, long_avg_r, "
             "short_closed_trades, short_win_count, short_win_rate, short_avg_r, "
             "long_total_r, short_total_r, volume_suppress, adr_suppress_threshold, "
-            "recovery_factor, universe_policy "
+            "recovery_factor, universe_policy, cost_model "
             "FROM _bt_run_upsert_df"
         )
     finally:

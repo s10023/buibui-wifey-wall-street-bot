@@ -133,6 +133,21 @@ min_trades_1d  = 2
 min_trades_1wk = 1
 min_avg_r = 0.0
 
+# Phase 0.4 equity cost model — replaces the flat fee_pct with half-spread
+# (by dollar-ADV liquidity bucket) + sqrt market impact + short borrow +
+# commission, all charged in R. Off by default; enabling it MOVES regression
+# goldens (deliberate step-2 decision — see spec §4.4: db-update + golden
+# refresh + recalibrate). Values below are the built-in conservative defaults.
+# [backtest.cost_model]
+# enabled = false
+# adv_thresholds = [5e6, 5e7, 5e8]          # dollar-ADV bucket edges
+# half_spread_bps = [20.0, 8.0, 3.0, 1.0]   # per bucket, least → most liquid
+# impact_coef = 1.0                         # sqrt-law coefficient
+# notional_usd = 10000.0                    # assumed order size
+# borrow_rate_annual = 0.01                 # shorts: conservative constant
+# commission_bps = 0.0                      # US retail ≈ 0
+# adv_window_days = 20.0                    # trailing ADV / sigma window
+
 # Per-strategy flags consistent across all three main configs.
 # Only non-tp_r fields are here — tp_r values are calibrated per day_filter in each config.
 # Strategies not listed here have no per-strategy flag override (loader default applies).

@@ -128,6 +128,10 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
         # in CREATE TABLE, so fresh and migrated DBs share one physical column
         # order (upsert_backtest_run's INSERT…SELECT is positional).
         ("universe_policy", "TEXT"),
+        # Phase 0.4: cost-model stamp (canonical JSON of the active CostModel;
+        # NULL = flat-fee run) — migration-list only, same positional-INSERT
+        # constraint as universe_policy above.
+        ("cost_model", "TEXT"),
     ]:
         if col not in existing_bt_cols:
             conn.execute(f"ALTER TABLE backtest_runs ADD COLUMN {col} {dtype}")

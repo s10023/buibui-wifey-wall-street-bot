@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from analytics.backtest.cost_model import CostModel
 from analytics.signal_config import (
     SignalWatchConfig,
     StrategyOverride,
@@ -1247,3 +1248,36 @@ min_avg_r_short = 0.2
         from analytics.signal_config import BacktestFilterConfig
 
         assert BacktestFilterConfig(cache_enabled=False).cache_enabled is False
+
+
+class TestCostModelConfig:
+    def test_absent_block_is_none(self, tmp_path: Path) -> None:
+        p = _write_toml(tmp_path, 'timeframes = ["4h"]\n')
+        assert load_signal_config(p).backtest.cost_model is None
+
+    def test_disabled_block_is_none(self, tmp_path: Path) -> None:
+        content = """
+timeframes = ["4h"]
+
+[backtest.cost_model]
+enabled = false
+"""
+        p = _write_toml(tmp_path, content)
+        assert load_signal_config(p).backtest.cost_model is None
+
+    def test_enabled_block_parses_overrides(self, tmp_path: Path) -> None:
+        content = """
+timeframes = ["4h"]
+
+[backtest.cost_model]
+enabled = true
+impact_coef = 0.5
+borrow_rate_annual = 0.02
+"""
+        p = _write_toml(tmp_path, content)
+        model = load_signal_config(p).backtest.cost_model
+        assert model is not None
+        assert model.impact_coef == 0.5
+        assert model.borrow_rate_annual == 0.02
+        # Unset keys keep the conservative defaults.
+        assert model.half_spread_bps == CostModel().half_spread_bps

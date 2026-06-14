@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from analytics.backtest.cost_model import CostModel, cost_model_from_toml
 from analytics.backtest.live_parity_config import LiveParityConfig
 
 if TYPE_CHECKING:
@@ -184,6 +185,9 @@ class BacktestSweepConfig:
     # T6 backtest-live parity toggles. Defaults to a no-op config so existing
     # callers see no behavioural change. Loaded from `[backtest.live_parity]`.
     live_parity: LiveParityConfig = field(default_factory=LiveParityConfig)
+    # Phase 0.4 equity cost model — None = legacy flat fee_pct path. Loaded
+    # from `[backtest.cost_model]`; off by default (goldens byte-identical).
+    cost_model: CostModel | None = None
     # Live `[bias]` block (regime gate, F8 HTF EMA, direction filter, ADR
     # threshold). Populated by `load_backtest_config()` from the same TOML the
     # signal daemon reads, via `load_signal_config(path).bias`. None when the
@@ -493,6 +497,7 @@ def load_backtest_config(path: str | Path) -> BacktestSweepConfig:
         cooldown=bool(_lp_raw.get("cooldown", False)),
         cooldown_bars_per_tf=_lp_cooldown,
     )
+    cost_model_cfg = cost_model_from_toml(_bt_section.get("cost_model"))
 
     # Reuse the live-config parser for `[bias]` and `[strategy_params]`
     # (single source of truth for the live gate inputs). Lazy import to keep
@@ -541,6 +546,7 @@ def load_backtest_config(path: str | Path) -> BacktestSweepConfig:
             _bt_section.get("volume_spike_boost", data.get("volume_spike_boost", False))
         ),
         live_parity=live_parity_cfg,
+        cost_model=cost_model_cfg,
         bias=bias_cfg,
         config_name=Path(path).stem,
         live_strategy_params=live_strategy_params,

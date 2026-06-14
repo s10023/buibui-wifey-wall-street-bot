@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from analytics.backtest.cost_model import CostModel, cost_model_from_toml
+
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """Recursively merge override into base.
@@ -180,6 +182,10 @@ class BacktestFilterConfig:
     save_results: bool = True
     # Taker fee per leg (e.g. 0.0005 = 0.05%); applied to each backtest trade
     fee_pct: float = 0.0
+    # Phase 0.4 equity cost model — None = legacy flat fee_pct path.
+    # Parsed from the [backtest.cost_model] TOML block; when set it replaces
+    # fee_pct inside pnl_r. Off by default so goldens stay byte-identical.
+    cost_model: CostModel | None = None
     # Minimum SL distance from entry as a fraction (e.g. 0.005 = 0.5%).
     # Widens structural SLs that land too close to entry (prevents fee-drag explosion).
     min_sl_pct: float = 0.0
@@ -539,6 +545,7 @@ def load_signal_config(path: str | Path) -> SignalWatchConfig:
         min_sl_pct=float(raw_bt.get("min_sl_pct", data.get("min_sl_pct", 0.0))),
         volume_suppress=bool(raw_bt.get("volume_suppress", False)),
         volume_spike_boost=bool(raw_bt.get("volume_spike_boost", False)),
+        cost_model=cost_model_from_toml(raw_bt.get("cost_model")),
     )
 
     raw_strategy_params = data.get("strategy_params", {})

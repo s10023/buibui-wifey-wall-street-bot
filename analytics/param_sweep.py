@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import itertools
 import math
+import multiprocessing as mp
 import os
 import sys
 import time
@@ -45,6 +46,15 @@ from analytics.backtest_runner import detect_signals_for_strategy
 from analytics.data_store import DEFAULT_DB_PATH, get_ohlcv
 from analytics.perf_timer import timed
 from analytics.strategies import KNOWN_STRATEGIES, STRATEGY_REGISTRY
+
+# Worker processes start via "spawn", not the Linux default "fork". Forking a
+# parent that has already imported numpy/pandas/duckdb copies their loaded
+# native state into the child, which can segfault the worker on memory-
+# constrained hosts (observed as BrokenProcessPool / "Fatal Python error:
+# Segmentation fault" under CI). spawn boots a clean interpreter that
+# re-imports modules fresh — the standard, fork-safety-correct remedy. Submit
+# args are already pickled either way, so this is behaviour-preserving.
+_MP_CONTEXT = mp.get_context("spawn")
 
 # Timeline buckets fed to CSCV when computing sweep-level PBO.
 _PBO_MATRIX_ROWS = 100
@@ -634,7 +644,7 @@ def run_param_sweep(
 
     rows: list[SweepRow] = []
     with timed(f"grid ({n} combos)"):
-        with ProcessPoolExecutor(max_workers=workers) as pool:
+        with ProcessPoolExecutor(max_workers=workers, mp_context=_MP_CONTEXT) as pool:
             if cv_active is not None:
                 futures = {
                     pool.submit(
@@ -1058,7 +1068,10 @@ def run_strategy_audit(
             to_submit.append((strat, sigs_is, sigs_oos))
 
     tp_values_list = [float(v) for v in tp_values]
-    with timed("backtest grid"), ProcessPoolExecutor(max_workers=workers) as pool:
+    with (
+        timed("backtest grid"),
+        ProcessPoolExecutor(max_workers=workers, mp_context=_MP_CONTEXT) as pool,
+    ):
         futures = {
             pool.submit(
                 _audit_strategy_worker,
