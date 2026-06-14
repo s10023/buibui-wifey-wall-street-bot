@@ -178,6 +178,7 @@ def test_golden_metrics(
                 sl_pct=cfg.sl_pct,
                 tp_r=cfg.effective_tp_r(strategy, FIXTURE_SYMBOL, tf),
                 fee_pct=cfg.backtest.fee_pct,
+                cost_model=cfg.backtest.cost_model,
                 min_sl_pct=cfg.min_sl_pct,
                 volume_suppress=cfg.effective_volume_suppress(strategy),
                 volume_spike_boost=cfg.effective_volume_spike_boost(strategy),
