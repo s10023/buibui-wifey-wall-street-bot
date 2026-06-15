@@ -112,6 +112,15 @@ For each strategy × TF:
 5. If all overfit → skip, note "fully overfit — keep current"
 6. If no rows pass OOS n → skip, note "insufficient trades"
 
+**Commit-gate refusal (N2):** the sweep footer prints a commit-gate verdict
+(`DSR ≥ 0.95 ∧ PBO ≤ 0.5 ∧ n ≥ MinTRL`). It is **additive** to filters 1–3 —
+both must hold. Before applying a winner in Step 5:
+
+- `✓ COMMIT-GATE: PASS` → apply normally.
+- `✗ COMMIT-GATE: DO-NOT-COMMIT` → **halt the apply for that cell.** Surface the
+  verdict + reason in the skipped table; do not write the tp_r.
+- `⚠ COMMIT-GATE: INSUFFICIENT` → skip the cell; note "insufficient — gate".
+
 **Global vs per-symbol:**
 - If all symbols agree within 0.5 step → use global strategy-level `tp_r`
 - If any symbol diverges by > 0.5 → use TF-specific key (e.g. `tp_r_1h`) or per-symbol override in `[strategy_params.<name>.per_symbol.<SYMBOL>]`

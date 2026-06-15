@@ -46,6 +46,12 @@ from analytics.backtest_runner import detect_signals_for_strategy
 from analytics.data_store import DEFAULT_DB_PATH, get_ohlcv
 from analytics.perf_timer import timed
 from analytics.strategies import KNOWN_STRATEGIES, STRATEGY_REGISTRY
+from analytics.sweep_guard import (
+    DECISION_INSUFFICIENT,
+    CommitGateVerdict,
+    TrialPerf,
+    evaluate_commit_gate,
+)
 
 # Worker processes start via "spawn", not the Linux default "fork". Forking a
 # parent that has already imported numpy/pandas/duckdb copies their loaded
@@ -268,6 +274,75 @@ def _row_from_results(
         decay=decay,
         overfit=overfit,
     )
+
+
+# ---------------------------------------------------------------------------
+# Commit gate (N2) — overfitting refusal for the chosen tp_r
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ParamSweepReport:
+    """``run_param_sweep`` result: the (truncated) rows plus the commit gate.
+
+    ``gate`` is computed over the **full** grid (``n_grid`` trials) before the
+    top-N truncation, so the deflation reflects the true search size.
+    """
+
+    rows: list[SweepRow]
+    gate: CommitGateVerdict
+    n_grid: int
+
+
+def _empty_report(reason: str) -> ParamSweepReport:
+    return ParamSweepReport(
+        rows=[],
+        gate=CommitGateVerdict(DECISION_INSUFFICIENT, None, None, None, 0, 0, [reason]),
+        n_grid=0,
+    )
+
+
+def _recommended_row(rows: list[SweepRow]) -> SweepRow | None:
+    """Top non-overfit config — the one the apply-skill would commit."""
+    clean = [r for r in rows if not r.overfit]
+    return clean[0] if clean else None
+
+
+def _row_to_trialperf(row: SweepRow) -> TrialPerf:
+    """Adapt a SweepRow into the gate's per-trial return series.
+
+    Pools the IS + OOS closed trades (disjoint by timestamp) into a single
+    chronological full-window series of (entry_time, R)."""
+    trades = list(row.is_result.closed_trades) + list(row.oos_result.closed_trades)
+    pairs = sorted((t.entry_time, t.pnl_r) for t in trades if t.pnl_r is not None)
+    label = ", ".join(f"{k}={v}" for k, v in row.params.items())
+    return TrialPerf(
+        label=label,
+        returns=[r for _, r in pairs],
+        times=[ts for ts, _ in pairs],
+    )
+
+
+def _compute_sweep_gate(
+    trial_rows: list[SweepRow], chosen_row: SweepRow | None, n_grid: int
+) -> CommitGateVerdict:
+    """Gate verdict: deflate ``chosen_row`` against the full ``trial_rows`` grid.
+
+    ``chosen_row`` is the recommended (committable) config the apply-skill would
+    write; ``trial_rows`` is the whole grid (for cross-trial variance + PBO)."""
+    if chosen_row is None:
+        return CommitGateVerdict(
+            DECISION_INSUFFICIENT,
+            None,
+            None,
+            None,
+            0,
+            len(trial_rows),
+            ["no non-overfit config to evaluate"],
+        )
+    chosen = _row_to_trialperf(chosen_row)
+    all_trials = [_row_to_trialperf(r) for r in trial_rows]
+    return evaluate_commit_gate(chosen, all_trials, n_grid=n_grid)
 
 
 def _dedup_trades(trades: list[Trade]) -> list[Trade]:
@@ -518,8 +593,9 @@ def run_param_sweep(
     strategy_params: dict[str, StrategyOverride] | None = None,
     htf_slope_series_by_anchor: Mapping[tuple[str, int, int], pd.Series] | None = None,
     cv: CvConfig | None = None,
-) -> list[SweepRow]:
-    """Run WFO grid sweep. Returns rows sorted by IS score (descending).
+) -> ParamSweepReport:
+    """Run WFO grid sweep. Returns a report (rows sorted by IS score, descending,
+    plus the overfitting commit gate computed over the full grid).
 
     The live-parity inputs are threaded into every grid ``run_backtest`` call so
     each cell's trade counts reflect the live-filtered population (regime,
@@ -549,7 +625,7 @@ def run_param_sweep(
             "Run 'wifey analytics backfill' first.",
             file=sys.stderr,
         )
-        return []
+        return _empty_report("no OHLCV data")
 
     cv_active = cv if cv is not None and cv.mode == "purged" else None
     ohlcv_is = pd.DataFrame()
@@ -575,7 +651,7 @@ def run_param_sweep(
             f"(missing funding or secondary data).",
             file=sys.stderr,
         )
-        return []
+        return _empty_report("signal detection failed")
 
     if adr_suppress_threshold is not None and not signals_full.empty:
         from analytics.signal_lib import _filter_signals_by_adr
@@ -600,7 +676,7 @@ def run_param_sweep(
             folds = purged_kfold_split(ohlcv_full, signals_full, cv_active)
         except ValueError as e:
             print(f"  ERROR: {e}", file=sys.stderr)
-            return []
+            return _empty_report(str(e))
         signals_is = pd.DataFrame()
         signals_oos = pd.DataFrame()
     elif not ohlcv_is.empty and not ohlcv_oos.empty:
@@ -711,7 +787,12 @@ def run_param_sweep(
     else:
         rows.sort(key=lambda r: r.is_score, reverse=True)
 
-    return rows[:top_n]
+    top_rows = rows[:top_n]
+    # Gate the recommended (top non-overfit) row the apply-skill would commit,
+    # deflated against the full grid (n combos) so a truncated top-N cannot
+    # inflate DSR.
+    gate = _compute_sweep_gate(rows, _recommended_row(top_rows), n_grid=n)
+    return ParamSweepReport(rows=top_rows, gate=gate, n_grid=n)
 
 
 # ---------------------------------------------------------------------------
@@ -761,12 +842,39 @@ def _directional_split_hint(row: SweepRow) -> str:
     )
 
 
+def _fmt_gate(gate: CommitGateVerdict) -> list[str]:
+    """Render the N2 commit-gate verdict as printable lines."""
+    dsr = "—" if gate.dsr is None else f"{gate.dsr:.2f}"
+    pbo = "—" if gate.pbo is None else f"{gate.pbo:.2f}"
+    if gate.min_trl is None:
+        trl = "—"
+    elif math.isinf(gate.min_trl):
+        trl = "∞"
+    else:
+        trl = f"{math.ceil(gate.min_trl)}"
+    metrics = (
+        f"DSR={dsr}  PBO={pbo}  MinTRL={trl}  n={gate.n_obs}  trials={gate.n_trials}"
+    )
+    if gate.decision == "COMMIT":
+        return [f"\n  ✓ COMMIT-GATE: PASS   {metrics}"]
+    if gate.decision == DECISION_INSUFFICIENT:
+        why = "; ".join(gate.reasons) or "not enough data"
+        return [
+            f"\n  ⚠ COMMIT-GATE: INSUFFICIENT (do not commit)   {metrics}",
+            f"      {why}",
+        ]
+    why = "; ".join(gate.reasons) or "failed overfitting gate"
+    return [f"\n  ✗ COMMIT-GATE: DO-NOT-COMMIT   {metrics}", f"      {why}"]
+
+
 def format_sweep_results(
     rows: list[SweepRow],
     strategy: str,
     symbol: str,
     timeframe: str,
     current_toml: dict[str, Any] | None = None,
+    *,
+    gate: CommitGateVerdict | None = None,
 ) -> str:
     if not rows:
         return "  No results."
@@ -831,6 +939,8 @@ def format_sweep_results(
         hint = _directional_split_hint(best)
         if hint:
             lines.append(hint)
+        if gate is not None:
+            lines.extend(_fmt_gate(gate))
     else:
         all_negative = all((r.is_avg_r or 0.0) < 0 for r in rows)
         if all_negative:
@@ -1295,7 +1405,7 @@ def main(argv: list[str] | None = None) -> None:
 
     conn: duckdb.DuckDBPyConnection = duckdb.connect(str(args.db), read_only=True)
     try:
-        rows = run_param_sweep(
+        report = run_param_sweep(
             conn=conn,
             strategy=args.strategy,
             symbol=args.symbol,
@@ -1310,7 +1420,15 @@ def main(argv: list[str] | None = None) -> None:
     finally:
         conn.close()
 
-    print(format_sweep_results(rows, args.strategy, args.symbol, args.timeframe))
+    print(
+        format_sweep_results(
+            report.rows,
+            args.strategy,
+            args.symbol,
+            args.timeframe,
+            gate=report.gate,
+        )
+    )
 
 
 if __name__ == "__main__":

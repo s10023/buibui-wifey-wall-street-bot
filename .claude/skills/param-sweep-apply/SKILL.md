@@ -34,6 +34,18 @@ Either:
 5. If **all rows are OVERFIT** → skip strategy × TF, note "fully overfit"
 6. If **no rows pass OOS n threshold** → skip, note "insufficient trades"
 
+### Commit-gate refusal (N2)
+
+The sweep footer now prints a commit-gate verdict for the recommended config
+(`DSR ≥ 0.95 ∧ PBO ≤ 0.5 ∧ n ≥ MinTRL` — the multiple-testing correction the
+filters above lack). It is **additive** to filters 1–3 (both must hold):
+
+- `✓ COMMIT-GATE: PASS` → committable.
+- `✗ COMMIT-GATE: DO-NOT-COMMIT` → **do NOT write the tp_r to TOML.** Report the
+  verdict line and its reason (failed DSR / PBO / MinTRL) and skip the write.
+- `⚠ COMMIT-GATE: INSUFFICIENT` → not yet decidable (too few trades / trials).
+  Skip the write; note "insufficient — gate".
+
 ### When to update TOML vs leave unchanged
 
 - Update if new best tp_r **differs from current** by ≥ 0.5 (one step)

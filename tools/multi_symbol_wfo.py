@@ -703,7 +703,7 @@ def _sweep_cell(
                 if lp_ctx is not None and lp_ctx.htf_by_sym is not None
                 else None
             ),
-        )
+        ).rows
         per_symbol_results[sym] = rows
 
     any_grid = False

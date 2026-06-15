@@ -78,7 +78,7 @@ def run_param_sweep(args: argparse.Namespace) -> None:
     conn: duckdb.DuckDBPyConnection = duckdb.connect(str(db_path), read_only=True)
     try:
         with timed("param-sweep total"):
-            rows = _run(
+            report = _run(
                 conn=conn,
                 strategy=args.strategy,
                 symbol=args.symbol,
@@ -99,7 +99,15 @@ def run_param_sweep(args: argparse.Namespace) -> None:
     finally:
         conn.close()
 
-    print(format_sweep_results(rows, args.strategy, args.symbol, args.timeframe))
+    print(
+        format_sweep_results(
+            report.rows,
+            args.strategy,
+            args.symbol,
+            args.timeframe,
+            gate=report.gate,
+        )
+    )
 
 
 def run_param_audit(args: argparse.Namespace) -> None:
