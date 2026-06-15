@@ -46,6 +46,12 @@ from analytics.backtest_runner import detect_signals_for_strategy
 from analytics.data_store import DEFAULT_DB_PATH, get_ohlcv
 from analytics.perf_timer import timed
 from analytics.strategies import KNOWN_STRATEGIES, STRATEGY_REGISTRY
+from analytics.sweep_guard import (
+    DECISION_INSUFFICIENT,
+    CommitGateVerdict,
+    TrialPerf,
+    evaluate_commit_gate,
+)
 
 # Worker processes start via "spawn", not the Linux default "fork". Forking a
 # parent that has already imported numpy/pandas/duckdb copies their loaded
@@ -268,6 +274,77 @@ def _row_from_results(
         decay=decay,
         overfit=overfit,
     )
+
+
+# ---------------------------------------------------------------------------
+# Commit gate (N2) — overfitting refusal for the chosen tp_r
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ParamSweepReport:
+    """``run_param_sweep`` result: the (truncated) rows plus the commit gate.
+
+    ``gate`` is computed over the **full** grid (``n_grid`` trials) before the
+    top-N truncation, so the deflation reflects the true search size.
+    """
+
+    rows: list[SweepRow]
+    gate: CommitGateVerdict
+    n_grid: int
+
+
+def _empty_report(reason: str) -> ParamSweepReport:
+    return ParamSweepReport(
+        rows=[],
+        gate=CommitGateVerdict(
+            DECISION_INSUFFICIENT, None, None, None, 0, 0, [reason]
+        ),
+        n_grid=0,
+    )
+
+
+def _recommended_row(rows: list[SweepRow]) -> SweepRow | None:
+    """Top non-overfit config — the one the apply-skill would commit."""
+    clean = [r for r in rows if not r.overfit]
+    return clean[0] if clean else None
+
+
+def _row_to_trialperf(row: SweepRow) -> TrialPerf:
+    """Adapt a SweepRow into the gate's per-trial return series.
+
+    Pools the IS + OOS closed trades (disjoint by timestamp) into a single
+    chronological full-window series of (entry_time, R)."""
+    trades = list(row.is_result.closed_trades) + list(row.oos_result.closed_trades)
+    pairs = sorted((t.entry_time, t.pnl_r) for t in trades if t.pnl_r is not None)
+    label = ", ".join(f"{k}={v}" for k, v in row.params.items())
+    return TrialPerf(
+        label=label,
+        returns=[r for _, r in pairs],
+        times=[ts for ts, _ in pairs],
+    )
+
+
+def _compute_sweep_gate(
+    trial_rows: list[SweepRow], chosen_row: SweepRow | None, n_grid: int
+) -> CommitGateVerdict:
+    """Gate verdict: deflate ``chosen_row`` against the full ``trial_rows`` grid.
+
+    ``chosen_row`` is the recommended (committable) config the apply-skill would
+    write; ``trial_rows`` is the whole grid (for cross-trial variance + PBO)."""
+    if chosen_row is None:
+        return CommitGateVerdict(
+            DECISION_INSUFFICIENT,
+            None,
+            None,
+            None,
+            0,
+            len(trial_rows),
+            ["no non-overfit config to evaluate"],
+        )
+    chosen = _row_to_trialperf(chosen_row)
+    all_trials = [_row_to_trialperf(r) for r in trial_rows]
+    return evaluate_commit_gate(chosen, all_trials, n_grid=n_grid)
 
 
 def _dedup_trades(trades: list[Trade]) -> list[Trade]:

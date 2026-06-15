@@ -14,11 +14,15 @@ from analytics.backtest_lib import BacktestResult, Trade
 from analytics.param_sweep import (
     AuditRow,
     ParamRange,
+    ParamSweepReport,
     SweepRow,
     _audit_strategy_worker,
+    _compute_sweep_gate,
     _dedup_trades,
     _directional_split_hint,
+    _recommended_row,
     _row_from_results,
+    _row_to_trialperf,
     _score,
     _sweep_grid_worker,
     _sweep_grid_worker_cv,
@@ -26,6 +30,7 @@ from analytics.param_sweep import (
     format_sweep_results,
     run_param_sweep,
 )
+from analytics.sweep_guard import CommitGateVerdict
 from tests.conftest import _candle, _make_ohlcv
 
 _BASE_TIME = 1_700_000_000_000
@@ -115,6 +120,20 @@ def _make_sweep_row(
         oos_score=0.5,
         decay=0.5,
         overfit=overfit,
+    )
+
+
+def _verdict(
+    decision: str, reasons: list[str] | None = None
+) -> CommitGateVerdict:
+    return CommitGateVerdict(
+        decision=decision,
+        dsr=0.97,
+        pbo=0.10,
+        min_trl=30.0,
+        n_obs=40,
+        n_trials=99,
+        reasons=reasons or [],
     )
 
 
@@ -214,6 +233,39 @@ class TestDirectionalSplitHint:
 
 # ---------------------------------------------------------------------------
 # format_sweep_results — directional columns present
+# ---------------------------------------------------------------------------
+
+
+class TestCommitGateWiring:
+    def test_row_to_trialperf_pools_is_and_oos(self) -> None:
+        row = _make_sweep_row(
+            long_trades=[_win("long")], short_trades=[_loss("short")]
+        )
+        # add an IS trade so pooling is observable
+        row.is_result.trades.append(_win("long", 2.0))
+        tp = _row_to_trialperf(row)
+        # 1 IS win + 1 OOS win + 1 OOS loss = 3 closed trades
+        assert len(tp.returns) == 3
+        assert len(tp.times) == len(tp.returns)
+        assert tp.returns.count(-1.0) == 1  # the short loss
+
+    def test_recommended_row_skips_overfit(self) -> None:
+        overfit = _make_sweep_row(
+            tp_r=1.0, overfit=True, long_trades=[_win("long")]
+        )
+        clean = _make_sweep_row(
+            tp_r=2.0, overfit=False, long_trades=[_win("long")]
+        )
+        assert _recommended_row([overfit, clean]) is clean
+        assert _recommended_row([overfit]) is None
+
+    def test_compute_sweep_gate_insufficient_when_no_clean_row(self) -> None:
+        overfit = _make_sweep_row(overfit=True, long_trades=[_win("long")])
+        gate = _compute_sweep_gate([overfit], None, n_grid=1)
+        assert gate.decision == "INSUFFICIENT"
+        assert not gate.committable
+
+
 # ---------------------------------------------------------------------------
 
 
