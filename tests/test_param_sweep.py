@@ -14,7 +14,6 @@ from analytics.backtest_lib import BacktestResult, Trade
 from analytics.param_sweep import (
     AuditRow,
     ParamRange,
-    ParamSweepReport,
     SweepRow,
     _audit_strategy_worker,
     _compute_sweep_gate,
@@ -123,9 +122,7 @@ def _make_sweep_row(
     )
 
 
-def _verdict(
-    decision: str, reasons: list[str] | None = None
-) -> CommitGateVerdict:
+def _verdict(decision: str, reasons: list[str] | None = None) -> CommitGateVerdict:
     return CommitGateVerdict(
         decision=decision,
         dsr=0.97,
@@ -238,9 +235,7 @@ class TestDirectionalSplitHint:
 
 class TestCommitGateWiring:
     def test_row_to_trialperf_pools_is_and_oos(self) -> None:
-        row = _make_sweep_row(
-            long_trades=[_win("long")], short_trades=[_loss("short")]
-        )
+        row = _make_sweep_row(long_trades=[_win("long")], short_trades=[_loss("short")])
         # add an IS trade so pooling is observable
         row.is_result.trades.append(_win("long", 2.0))
         tp = _row_to_trialperf(row)
@@ -250,12 +245,8 @@ class TestCommitGateWiring:
         assert tp.returns.count(-1.0) == 1  # the short loss
 
     def test_recommended_row_skips_overfit(self) -> None:
-        overfit = _make_sweep_row(
-            tp_r=1.0, overfit=True, long_trades=[_win("long")]
-        )
-        clean = _make_sweep_row(
-            tp_r=2.0, overfit=False, long_trades=[_win("long")]
-        )
+        overfit = _make_sweep_row(tp_r=1.0, overfit=True, long_trades=[_win("long")])
+        clean = _make_sweep_row(tp_r=2.0, overfit=False, long_trades=[_win("long")])
         assert _recommended_row([overfit, clean]) is clean
         assert _recommended_row([overfit]) is None
 
@@ -264,6 +255,29 @@ class TestCommitGateWiring:
         gate = _compute_sweep_gate([overfit], None, n_grid=1)
         assert gate.decision == "INSUFFICIENT"
         assert not gate.committable
+
+    def test_format_renders_commit_pass(self) -> None:
+        row = _make_sweep_row(long_trades=[_win("long")] * 3)
+        out = format_sweep_results([row], "fvg", "SPY", "4h", gate=_verdict("COMMIT"))
+        assert "COMMIT-GATE: PASS" in out
+        assert "DSR=0.97" in out
+
+    def test_format_renders_do_not_commit(self) -> None:
+        row = _make_sweep_row(long_trades=[_win("long")] * 3)
+        out = format_sweep_results(
+            [row],
+            "fvg",
+            "SPY",
+            "4h",
+            gate=_verdict("DO_NOT_COMMIT", ["DSR 0.40 < 0.95"]),
+        )
+        assert "DO-NOT-COMMIT" in out
+        assert "DSR 0.40 < 0.95" in out
+
+    def test_format_no_gate_is_backcompat(self) -> None:
+        row = _make_sweep_row(long_trades=[_win("long")] * 3)
+        out = format_sweep_results([row], "fvg", "SPY", "4h")
+        assert "COMMIT-GATE" not in out
 
 
 # ---------------------------------------------------------------------------
@@ -794,7 +808,7 @@ class TestRunParamSweepCv:
     ) -> None:
         mock_ohlcv.return_value = self._ohlcv()
         mock_detect.return_value = self._signals([5, 12, 19, 26, 33, 40, 46, 54])
-        rows = run_param_sweep(
+        report = run_param_sweep(
             conn=MagicMock(),
             strategy="bos",
             symbol="AAPL",
@@ -807,7 +821,10 @@ class TestRunParamSweepCv:
             top_n=5,
             cv=CvConfig(mode="purged", n_folds=5, embargo_bars=1),
         )
+        rows = report.rows
         assert len(rows) == 1
+        assert report.gate is not None
+        assert report.n_grid == 1
         row = rows[0]
         # ≥6 of the 8 signals resolve inside their fold/segment (a signal whose
         # entry or resolution bar falls past a slice end is censored — fine)
@@ -836,10 +853,10 @@ class TestRunParamSweepCv:
             "fee_pct": 0.0,
             "top_n": 5,
         }
-        legacy = run_param_sweep(conn=MagicMock(), **kwargs)
+        legacy = run_param_sweep(conn=MagicMock(), **kwargs).rows
         contiguous = run_param_sweep(
             conn=MagicMock(), cv=CvConfig(mode="contiguous"), **kwargs
-        )
+        ).rows
         assert [r.params for r in legacy] == [r.params for r in contiguous]
         assert [r.is_score for r in legacy] == [r.is_score for r in contiguous]
         assert [r.oos_score for r in legacy] == [r.oos_score for r in contiguous]

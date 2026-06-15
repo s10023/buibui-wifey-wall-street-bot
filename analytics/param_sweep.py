@@ -297,9 +297,7 @@ class ParamSweepReport:
 def _empty_report(reason: str) -> ParamSweepReport:
     return ParamSweepReport(
         rows=[],
-        gate=CommitGateVerdict(
-            DECISION_INSUFFICIENT, None, None, None, 0, 0, [reason]
-        ),
+        gate=CommitGateVerdict(DECISION_INSUFFICIENT, None, None, None, 0, 0, [reason]),
         n_grid=0,
     )
 
@@ -595,8 +593,9 @@ def run_param_sweep(
     strategy_params: dict[str, StrategyOverride] | None = None,
     htf_slope_series_by_anchor: Mapping[tuple[str, int, int], pd.Series] | None = None,
     cv: CvConfig | None = None,
-) -> list[SweepRow]:
-    """Run WFO grid sweep. Returns rows sorted by IS score (descending).
+) -> ParamSweepReport:
+    """Run WFO grid sweep. Returns a report (rows sorted by IS score, descending,
+    plus the overfitting commit gate computed over the full grid).
 
     The live-parity inputs are threaded into every grid ``run_backtest`` call so
     each cell's trade counts reflect the live-filtered population (regime,
@@ -626,7 +625,7 @@ def run_param_sweep(
             "Run 'wifey analytics backfill' first.",
             file=sys.stderr,
         )
-        return []
+        return _empty_report("no OHLCV data")
 
     cv_active = cv if cv is not None and cv.mode == "purged" else None
     ohlcv_is = pd.DataFrame()
@@ -652,7 +651,7 @@ def run_param_sweep(
             f"(missing funding or secondary data).",
             file=sys.stderr,
         )
-        return []
+        return _empty_report("signal detection failed")
 
     if adr_suppress_threshold is not None and not signals_full.empty:
         from analytics.signal_lib import _filter_signals_by_adr
@@ -677,7 +676,7 @@ def run_param_sweep(
             folds = purged_kfold_split(ohlcv_full, signals_full, cv_active)
         except ValueError as e:
             print(f"  ERROR: {e}", file=sys.stderr)
-            return []
+            return _empty_report(str(e))
         signals_is = pd.DataFrame()
         signals_oos = pd.DataFrame()
     elif not ohlcv_is.empty and not ohlcv_oos.empty:
@@ -788,7 +787,12 @@ def run_param_sweep(
     else:
         rows.sort(key=lambda r: r.is_score, reverse=True)
 
-    return rows[:top_n]
+    top_rows = rows[:top_n]
+    # Gate the recommended (top non-overfit) row the apply-skill would commit,
+    # deflated against the full grid (n combos) so a truncated top-N cannot
+    # inflate DSR.
+    gate = _compute_sweep_gate(rows, _recommended_row(top_rows), n_grid=n)
+    return ParamSweepReport(rows=top_rows, gate=gate, n_grid=n)
 
 
 # ---------------------------------------------------------------------------
@@ -838,12 +842,39 @@ def _directional_split_hint(row: SweepRow) -> str:
     )
 
 
+def _fmt_gate(gate: CommitGateVerdict) -> list[str]:
+    """Render the N2 commit-gate verdict as printable lines."""
+    dsr = "—" if gate.dsr is None else f"{gate.dsr:.2f}"
+    pbo = "—" if gate.pbo is None else f"{gate.pbo:.2f}"
+    if gate.min_trl is None:
+        trl = "—"
+    elif math.isinf(gate.min_trl):
+        trl = "∞"
+    else:
+        trl = f"{math.ceil(gate.min_trl)}"
+    metrics = (
+        f"DSR={dsr}  PBO={pbo}  MinTRL={trl}  n={gate.n_obs}  trials={gate.n_trials}"
+    )
+    if gate.decision == "COMMIT":
+        return [f"\n  ✓ COMMIT-GATE: PASS   {metrics}"]
+    if gate.decision == DECISION_INSUFFICIENT:
+        why = "; ".join(gate.reasons) or "not enough data"
+        return [
+            f"\n  ⚠ COMMIT-GATE: INSUFFICIENT (do not commit)   {metrics}",
+            f"      {why}",
+        ]
+    why = "; ".join(gate.reasons) or "failed overfitting gate"
+    return [f"\n  ✗ COMMIT-GATE: DO-NOT-COMMIT   {metrics}", f"      {why}"]
+
+
 def format_sweep_results(
     rows: list[SweepRow],
     strategy: str,
     symbol: str,
     timeframe: str,
     current_toml: dict[str, Any] | None = None,
+    *,
+    gate: CommitGateVerdict | None = None,
 ) -> str:
     if not rows:
         return "  No results."
@@ -908,6 +939,8 @@ def format_sweep_results(
         hint = _directional_split_hint(best)
         if hint:
             lines.append(hint)
+        if gate is not None:
+            lines.extend(_fmt_gate(gate))
     else:
         all_negative = all((r.is_avg_r or 0.0) < 0 for r in rows)
         if all_negative:
@@ -1372,7 +1405,7 @@ def main(argv: list[str] | None = None) -> None:
 
     conn: duckdb.DuckDBPyConnection = duckdb.connect(str(args.db), read_only=True)
     try:
-        rows = run_param_sweep(
+        report = run_param_sweep(
             conn=conn,
             strategy=args.strategy,
             symbol=args.symbol,
@@ -1387,7 +1420,15 @@ def main(argv: list[str] | None = None) -> None:
     finally:
         conn.close()
 
-    print(format_sweep_results(rows, args.strategy, args.symbol, args.timeframe))
+    print(
+        format_sweep_results(
+            report.rows,
+            args.strategy,
+            args.symbol,
+            args.timeframe,
+            gate=report.gate,
+        )
+    )
 
 
 if __name__ == "__main__":
