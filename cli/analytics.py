@@ -13,6 +13,7 @@ def run_analytics_backfill(args: argparse.Namespace) -> None:
         symbols=args.symbols,
         timeframes=args.timeframes,
         since_ms=parse_since_to_ms(args.since),
+        use_universe=args.universe,
     )
 
 
@@ -20,6 +21,7 @@ def run_analytics_sync(args: argparse.Namespace) -> None:
     analytics_runner.run_sync(
         symbols=args.symbols,
         timeframes=args.timeframes,
+        use_universe=args.universe,
     )
 
 
@@ -52,6 +54,12 @@ def add_analytics_subparser(
         default="2023-01-01",
         help="Start date in YYYY-MM-DD format (default: 2023-01-01)",
     )
+    backfill_parser.add_argument(
+        "--universe",
+        action="store_true",
+        help="Resolve symbols from config/universe.json (research breadth "
+        "universe) instead of the stocks.json live watchlist",
+    )
     backfill_parser.set_defaults(func=run_analytics_backfill)
 
     # 'sync' subcommand
@@ -69,5 +77,11 @@ def add_analytics_subparser(
         nargs="+",
         default=["1h", "4h"],
         help="Timeframes to sync (default: 1h 4h)",
+    )
+    sync_parser.add_argument(
+        "--universe",
+        action="store_true",
+        help="Resolve symbols from config/universe.json (research breadth "
+        "universe) instead of the stocks.json live watchlist",
     )
     sync_parser.set_defaults(func=run_analytics_sync)

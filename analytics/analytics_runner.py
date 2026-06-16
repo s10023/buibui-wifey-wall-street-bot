@@ -10,12 +10,27 @@ import duckdb
 
 from analytics.data_store import DEFAULT_DB_PATH, init_schema
 from analytics.data_sync import backfill, sync
-from utils.config_validation import load_stocks_config, load_universe_policy
+from utils.config_validation import (
+    load_research_universe,
+    load_stocks_config,
+    load_universe_policy,
+)
 
 
-def _resolve_symbols(symbols: list[str] | None) -> list[str]:
+def _resolve_symbols(
+    symbols: list[str] | None, *, use_universe: bool = False
+) -> list[str]:
     if symbols:
         return symbols
+    if use_universe:
+        try:
+            universe = load_research_universe()
+        except Exception as e:
+            logging.error("Failed to load research universe: %s", e)
+            sys.exit(1)
+        resolved = universe.active_symbols()
+        logging.info("%s", universe.describe())
+        return resolved
     try:
         resolved = list(load_stocks_config().keys())
     except Exception as e:
@@ -41,8 +56,10 @@ def run_backfill(
     timeframes: list[str],
     since_ms: int,
     db_path: Path = DEFAULT_DB_PATH,
+    *,
+    use_universe: bool = False,
 ) -> None:
-    resolved = _resolve_symbols(symbols)
+    resolved = _resolve_symbols(symbols, use_universe=use_universe)
     with _open_session(db_path) as conn:
         for symbol in resolved:
             for timeframe in timeframes:
@@ -57,8 +74,10 @@ def run_sync(
     symbols: list[str] | None,
     timeframes: list[str],
     db_path: Path = DEFAULT_DB_PATH,
+    *,
+    use_universe: bool = False,
 ) -> None:
-    resolved = _resolve_symbols(symbols)
+    resolved = _resolve_symbols(symbols, use_universe=use_universe)
     with _open_session(db_path) as conn:
         for symbol in resolved:
             for timeframe in timeframes:
