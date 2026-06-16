@@ -7,10 +7,14 @@ import pytest
 from utils.config_validation import (
     DEFAULT_UNIVERSE_POLICY,
     UNIVERSE_POLICY_KEY,
+    ResearchUniverse,
+    UniverseMember,
     UniversePolicy,
+    load_research_universe,
     load_stocks_config,
     load_universe_policy,
     validate_coins_config,
+    validate_research_universe,
     validate_stocks_config,
     validate_universe_policy,
 )
@@ -325,3 +329,186 @@ class TestUniversePolicyType:
         assert DEFAULT_UNIVERSE_POLICY.scope == "liquid_large_cap"
         assert DEFAULT_UNIVERSE_POLICY.as_of == "today"
         assert "survivorship" in DEFAULT_UNIVERSE_POLICY.survivorship_note
+
+
+class TestResearchUniverseDataclasses:
+    """Tests for UniverseMember + ResearchUniverse carriers."""
+
+    def _universe(self) -> ResearchUniverse:
+        return ResearchUniverse(
+            policy=UniversePolicy(
+                scope="liquid_large_cap_breadth",
+                as_of="today",
+                survivorship_note="bounded to today's survivors",
+            ),
+            membership_as_of="2026-06-16",
+            members=(
+                UniverseMember(
+                    symbol="AAPL",
+                    sector="Information Technology",
+                    kind="stock",
+                    delisted=False,
+                ),
+                UniverseMember(symbol="SPY", sector="ETF", kind="etf", delisted=False),
+                UniverseMember(
+                    symbol="OLD", sector="Energy", kind="stock", delisted=True
+                ),
+            ),
+        )
+
+    def test_symbols_preserves_order(self) -> None:
+        assert self._universe().symbols() == ["AAPL", "SPY", "OLD"]
+
+    def test_active_symbols_drops_delisted(self) -> None:
+        assert self._universe().active_symbols() == ["AAPL", "SPY"]
+
+    def test_stocks_filters_to_kind_stock(self) -> None:
+        # active stocks only — excludes the ETF and the delisted name
+        assert self._universe().stocks() == ["AAPL"]
+
+    def test_n_active_counts_non_delisted(self) -> None:
+        assert self._universe().n_active == 2
+
+    def test_describe_mentions_scope_and_membership_date(self) -> None:
+        text = self._universe().describe()
+        assert "liquid_large_cap_breadth" in text
+        assert "2026-06-16" in text
+        assert "bounded to today's survivors" in text
+
+
+class TestValidateResearchUniverse:
+    """Tests for validate_research_universe()."""
+
+    def _valid(self) -> dict[str, Any]:
+        return {
+            "universe_policy": {
+                "scope": "liquid_large_cap_breadth",
+                "as_of": "today",
+                "survivorship_note": "bounded to today's survivors",
+            },
+            "membership_as_of": "2026-06-16",
+            "members": {
+                "AAPL": {
+                    "sector": "Information Technology",
+                    "kind": "stock",
+                    "delisted": False,
+                },
+                "SPY": {"sector": "ETF", "kind": "etf", "delisted": False},
+            },
+        }
+
+    def test_valid_config(self) -> None:
+        assert validate_research_universe(self._valid()) is True
+
+    def test_not_a_dict(self) -> None:
+        with pytest.raises(ValueError, match="must be a dict"):
+            validate_research_universe([])
+
+    def test_missing_members(self) -> None:
+        cfg = self._valid()
+        del cfg["members"]
+        with pytest.raises(ValueError, match="missing 'members'"):
+            validate_research_universe(cfg)
+
+    def test_empty_members(self) -> None:
+        cfg = self._valid()
+        cfg["members"] = {}
+        with pytest.raises(ValueError, match="at least one member"):
+            validate_research_universe(cfg)
+
+    def test_bad_membership_as_of(self) -> None:
+        cfg = self._valid()
+        cfg["membership_as_of"] = "06/16/2026"
+        with pytest.raises(ValueError, match="membership_as_of"):
+            validate_research_universe(cfg)
+
+    def test_member_missing_field(self) -> None:
+        cfg = self._valid()
+        cfg["members"]["AAPL"] = {
+            "sector": "Information Technology",
+            "kind": "stock",
+        }
+        with pytest.raises(ValueError, match="missing required field 'delisted'"):
+            validate_research_universe(cfg)
+
+    def test_bad_kind(self) -> None:
+        cfg = self._valid()
+        cfg["members"]["AAPL"]["kind"] = "future"
+        with pytest.raises(ValueError, match="kind must be one of"):
+            validate_research_universe(cfg)
+
+    def test_delisted_not_bool(self) -> None:
+        cfg = self._valid()
+        cfg["members"]["AAPL"]["delisted"] = "no"
+        with pytest.raises(ValueError, match="delisted must be a bool"):
+            validate_research_universe(cfg)
+
+    def test_invalid_policy_propagates(self) -> None:
+        cfg = self._valid()
+        cfg["universe_policy"]["as_of"] = "yesterday"
+        with pytest.raises(ValueError, match="as_of must be one of"):
+            validate_research_universe(cfg)
+
+
+class TestLoadResearchUniverse:
+    """Tests for load_research_universe()."""
+
+    def _write(self, tmp_path: Path, payload: dict[str, Any]) -> Path:
+        p = tmp_path / "universe.json"
+        p.write_text(json.dumps(payload))
+        return p
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "universe_policy": {
+                "scope": "liquid_large_cap_breadth",
+                "as_of": "today",
+                "survivorship_note": "bounded to today's survivors",
+            },
+            "membership_as_of": "2026-06-16",
+            "members": {
+                "AAPL": {
+                    "sector": "Information Technology",
+                    "kind": "stock",
+                    "delisted": False,
+                },
+                "SPY": {"sector": "ETF", "kind": "etf", "delisted": False},
+            },
+        }
+
+    def test_loads_and_parses(self, tmp_path: Path) -> None:
+        path = self._write(tmp_path, self._payload())
+        uni = load_research_universe(path)
+        assert isinstance(uni, ResearchUniverse)
+        assert uni.policy.scope == "liquid_large_cap_breadth"
+        assert uni.membership_as_of == "2026-06-16"
+        assert uni.symbols() == ["AAPL", "SPY"]
+        assert uni.stocks() == ["AAPL"]
+
+    def test_missing_file_raises(self, tmp_path: Path) -> None:
+        with pytest.raises(FileNotFoundError, match="not found"):
+            load_research_universe(tmp_path / "nope.json")
+
+    def test_invalid_file_raises(self, tmp_path: Path) -> None:
+        payload = self._payload()
+        payload["members"]["AAPL"]["kind"] = "future"
+        path = self._write(tmp_path, payload)
+        with pytest.raises(ValueError, match="kind must be one of"):
+            load_research_universe(path)
+
+
+class TestShippedUniverseFile:
+    """The committed config/universe.json must load, validate, and be sane."""
+
+    def test_shipped_universe_loads(self) -> None:
+        uni = load_research_universe(Path("config/universe.json"))
+        assert uni.n_active >= 50
+        # the live-watchlist single names are all present in the breadth set
+        for sym in ("AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "AMD", "TSLA"):
+            assert sym in uni.symbols()
+        # ETFs are tagged kind="etf" and excluded from the stocks() cross-section
+        assert "SPY" in uni.symbols()
+        assert "SPY" not in uni.stocks()
+        # bounded claim is declared
+        assert uni.policy.as_of == "today"
+        assert "survivorship" in uni.policy.survivorship_note.lower()

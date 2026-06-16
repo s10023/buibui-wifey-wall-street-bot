@@ -11,7 +11,7 @@ DEV_PORT ?= 5173
 PYTHON_FILES = $(shell find . -name "*.py" -not -path "./venv/*" -not -path "./.venv/*")
 DOCKER_IMAGE = wifey-bot
 
-.PHONY: lint lint-md lint-md-fix lint-py-check lint-py typecheck test test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
+.PHONY: lint lint-md lint-md-fix lint-py-check lint-py typecheck test test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-universe-backfill universe-coverage wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
 
 lint: lint-md lint-py
 
@@ -112,6 +112,15 @@ wifey-analytics-sync:
 	@poetry run python wifey.py analytics sync \
 		$(if $(SYMBOLS),--symbols $(SYMBOLS),) \
 		$(if $(TIMEFRAMES),--timeframes $(TIMEFRAMES),)
+
+wifey-universe-backfill:
+	@echo "📥 Backfilling the research breadth universe (config/universe.json)..."
+	@poetry run python wifey.py analytics backfill --universe \
+		--timeframes 4h 1d 1wk --since $(or $(SINCE),2018-01-01)
+
+universe-coverage:
+	@PYTHONPATH=. poetry run python tools/universe_coverage.py \
+		$(if $(DB),--db $(DB),)
 
 wifey-backtest:
 	@echo "📊 Running backtest..."

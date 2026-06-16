@@ -1,4 +1,5 @@
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -69,6 +70,66 @@ DEFAULT_UNIVERSE_POLICY = UniversePolicy(
 )
 
 
+_DEFAULT_UNIVERSE_PATH = Path("config/universe.json")
+_VALID_MEMBER_KIND = frozenset({"stock", "etf"})
+_MEMBERSHIP_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_UNIVERSE_MEMBER_FIELDS = frozenset({"sector", "kind", "delisted"})
+
+
+@dataclass(frozen=True)
+class UniverseMember:
+    """One member of the research breadth universe (N3).
+
+    delisted is a lifecycle seam: all current members are survivors (False); the
+    field exists so the coverage report can flag lifecycle bias and a future PIT
+    ingest has somewhere to write.
+    """
+
+    symbol: str
+    sector: str
+    kind: str
+    delisted: bool
+
+
+@dataclass(frozen=True)
+class ResearchUniverse:
+    """The research breadth universe — distinct from the live-alert watchlist.
+
+    Carries the Phase 0.1 UniversePolicy verbatim plus a membership snapshot date
+    and the per-symbol member list.
+    """
+
+    policy: UniversePolicy
+    membership_as_of: str
+    members: tuple[UniverseMember, ...]
+
+    def symbols(self) -> list[str]:
+        """Every member symbol, in declaration order."""
+        return [m.symbol for m in self.members]
+
+    def active_symbols(self) -> list[str]:
+        """Member symbols that are not flagged delisted (still tradeable)."""
+        return [m.symbol for m in self.members if not m.delisted]
+
+    def stocks(self) -> list[str]:
+        """Active single-name stocks only (excludes ETFs) — the XS-momentum set."""
+        return [m.symbol for m in self.members if not m.delisted and m.kind == "stock"]
+
+    @property
+    def n_active(self) -> int:
+        """Count of non-delisted members."""
+        return len(self.active_symbols())
+
+    def describe(self) -> str:
+        """Multi-line honesty paragraph for coverage-report / CLI output."""
+        return (
+            f"Research universe: {self.policy.scope} "
+            f"(as_of={self.policy.as_of}, membership_as_of={self.membership_as_of}, "
+            f"{self.n_active} active members)\n"
+            f"  ⚠ {self.policy.survivorship_note}"
+        )
+
+
 def validate_universe_policy(block: Any) -> bool:
     """Validate a universe_policy block. Raises ValueError if invalid."""
     if not isinstance(block, dict):
@@ -92,6 +153,76 @@ def validate_universe_policy(block: Any) -> bool:
             f"universe_policy: as_of must be one of {sorted(_VALID_AS_OF)}, "
             f"got {block['as_of']!r}"
         )
+    return True
+
+
+def validate_research_universe(config_dict: Any) -> bool:
+    """Validate a research-universe config dict. Raises ValueError if invalid.
+
+    Shape::
+
+        {
+          "universe_policy": {scope, as_of, survivorship_note},
+          "membership_as_of": "YYYY-MM-DD",
+          "members": {SYMBOL: {sector, kind, delisted}, ...}
+        }
+    """
+    if not isinstance(config_dict, dict):
+        raise ValueError("research universe config must be a dict")
+    if UNIVERSE_POLICY_KEY not in config_dict:
+        raise ValueError("research universe: missing 'universe_policy'")
+    validate_universe_policy(config_dict[UNIVERSE_POLICY_KEY])
+
+    as_of = config_dict.get("membership_as_of")
+    if not isinstance(as_of, str) or not _MEMBERSHIP_DATE_RE.match(as_of):
+        raise ValueError(
+            "research universe: membership_as_of must be a 'YYYY-MM-DD' string, "
+            f"got {as_of!r}"
+        )
+
+    members = config_dict.get("members")
+    if members is None:
+        raise ValueError("research universe: missing 'members'")
+    if not isinstance(members, dict):
+        raise ValueError("research universe: 'members' must be a dict")
+    if not members:
+        raise ValueError("research universe: 'members' must have at least one member")
+
+    for symbol, params in members.items():
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise ValueError(
+                f"research universe: member key {symbol!r} must be a string"
+            )
+        if not isinstance(params, dict):
+            raise ValueError(f"research universe: member '{symbol}' must be a dict")
+        missing = _UNIVERSE_MEMBER_FIELDS - set(params)
+        if missing:
+            raise ValueError(
+                f"research universe: member '{symbol}' missing required field "
+                f"'{sorted(missing)[0]}'"
+            )
+        unknown = set(params) - _UNIVERSE_MEMBER_FIELDS
+        if unknown:
+            raise ValueError(
+                f"research universe: member '{symbol}' unknown field(s) "
+                f"{sorted(unknown)}"
+            )
+        for field_name in ("sector", "kind"):
+            value = params[field_name]
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"research universe: member '{symbol}' {field_name} must be "
+                    "a non-empty string"
+                )
+        if params["kind"] not in _VALID_MEMBER_KIND:
+            raise ValueError(
+                f"research universe: member '{symbol}' kind must be one of "
+                f"{sorted(_VALID_MEMBER_KIND)}, got {params['kind']!r}"
+            )
+        if not isinstance(params["delisted"], bool):
+            raise ValueError(
+                f"research universe: member '{symbol}' delisted must be a bool"
+            )
     return True
 
 
@@ -202,4 +333,35 @@ def load_universe_policy(path: Path = _DEFAULT_STOCKS_PATH) -> UniversePolicy:
         scope=block["scope"],
         as_of=block["as_of"],
         survivorship_note=block["survivorship_note"],
+    )
+
+
+def load_research_universe(path: Path = _DEFAULT_UNIVERSE_PATH) -> ResearchUniverse:
+    """Load and validate ``config/universe.json``. Raises if missing or invalid."""
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} not found — the research breadth universe (N3) lives here."
+        )
+    with path.open() as f:
+        config: dict[str, Any] = json.load(f)
+    validate_research_universe(config)
+    block = config[UNIVERSE_POLICY_KEY]
+    policy = UniversePolicy(
+        scope=block["scope"],
+        as_of=block["as_of"],
+        survivorship_note=block["survivorship_note"],
+    )
+    members = tuple(
+        UniverseMember(
+            symbol=symbol,
+            sector=params["sector"],
+            kind=params["kind"],
+            delisted=params["delisted"],
+        )
+        for symbol, params in config["members"].items()
+    )
+    return ResearchUniverse(
+        policy=policy,
+        membership_as_of=config["membership_as_of"],
+        members=members,
     )

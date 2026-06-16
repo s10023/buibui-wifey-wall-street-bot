@@ -48,6 +48,29 @@ the block is absent the documented default applies (`liquid_large_cap`,
 `as_of="today"`). Free point-in-time constituent data is out of scope —
 the policy bounds the bias, it does not remove it.
 
+### Research breadth universe (N3)
+
+`config/stocks.json` is the **live-alert watchlist** (13 symbols the daemon
+scans). For backtest / cross-sectional research there is a separate, larger
+**research breadth universe** in `config/universe.json` (committed/tracked, not
+gitignored — it is a reproducible research artifact): ~50 liquid US large-caps
+plus 4 index/sector ETFs, each tagged with `sector`, `kind` (`stock`|`etf`) and
+a `delisted` lifecycle flag, under its own `universe_policy` + a
+`membership_as_of` snapshot date. Membership is **point-in-time-bounded, not
+scraped**: for mega-caps in-sample delisting is ≈ 0, so the universe declares the
+selection bias rather than chasing paywalled delisted-price history.
+
+```bash
+make wifey-universe-backfill      # ingest the breadth universe OHLCV (4h/1d/1wk)
+make universe-coverage            # read-only coverage report (bars + date range,
+                                  # missing-symbol roll-up, lifecycle-bias header)
+# or directly:
+poetry run python wifey.py analytics backfill --universe --timeframes 4h 1d 1wk
+```
+
+The live signal scanner is unaffected — it still resolves symbols from
+`stocks.json`, so the breadth universe never floods the alert channel.
+
 ---
 
 ## Directory Structure
@@ -789,6 +812,8 @@ make poetry-update
 make wifey-analytics-backfill              # Backfill from 2023-01-01 (default)
 make wifey-analytics-backfill SINCE=2024-01-01   # Backfill from custom date
 make wifey-analytics-sync                  # Incremental sync
+make wifey-universe-backfill               # Backfill the research breadth universe
+make universe-coverage                     # OHLCV coverage report over the universe
 ```
 
 **Backtest:**
