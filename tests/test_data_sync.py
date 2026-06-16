@@ -1,6 +1,7 @@
 """Tests for analytics/data_sync.py."""
 
 import inspect
+from datetime import date
 from typing import Any
 from unittest.mock import patch
 
@@ -9,6 +10,7 @@ import pandas as pd
 import pytest
 
 from analytics.data_fetcher import OHLCV_COLUMNS
+from analytics.data_quality import SessionGapReport
 from analytics.data_store import (
     get_latest_open_time,
     init_schema,
@@ -135,3 +137,29 @@ def test_backfill_clean_data_stores_all_rows() -> None:
     with patch("analytics.data_sync.fetch_bars", return_value=df):
         stored = backfill(conn, "MSFT", "1d", 0)
     assert stored == 3  # unchanged behaviour on clean data
+
+
+class TestBackfillSessionGapWarning:
+    def test_backfill_warns_on_session_gap(self, caplog: Any) -> None:
+        conn = _make_conn()
+        df = _make_df([1_000, 2_000, 3_000], timeframe="1d")
+        gappy = SessionGapReport("1d", "session", 2, 3, (date(2024, 1, 3),))
+        with (
+            patch("analytics.data_sync.fetch_bars", return_value=df),
+            patch("analytics.data_sync.check_session_gaps", return_value=gappy),
+            caplog.at_level("WARNING"),
+        ):
+            backfill(conn, "AAPL", "1d", 0)
+        assert any("session gap" in r.message.lower() for r in caplog.records)
+
+    def test_backfill_silent_when_no_gaps(self, caplog: Any) -> None:
+        conn = _make_conn()
+        df = _make_df([1_000, 2_000, 3_000], timeframe="1d")
+        clean = SessionGapReport("1d", "session", 3, 3, ())
+        with (
+            patch("analytics.data_sync.fetch_bars", return_value=df),
+            patch("analytics.data_sync.check_session_gaps", return_value=clean),
+            caplog.at_level("WARNING"),
+        ):
+            backfill(conn, "AAPL", "1d", 0)
+        assert not any("session gap" in r.message.lower() for r in caplog.records)
