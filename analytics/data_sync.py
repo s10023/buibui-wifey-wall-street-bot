@@ -15,6 +15,7 @@ from analytics.data_store import (
     get_latest_open_time,
     upsert_ohlcv,
 )
+from analytics.trading_calendar import check_session_gaps
 
 
 def backfill(
@@ -41,6 +42,13 @@ def backfill(
             "data-quality %s %s: all %d rows quarantined", symbol, timeframe, len(df)
         )
         return 0
+
+    if len(clean) >= 2:
+        gap_report = check_session_gaps(clean, timeframe)
+        if gap_report.has_gaps:
+            logging.warning(
+                "session gap %s %s: %s", symbol, timeframe, gap_report.summary()
+            )
 
     upsert_ohlcv(conn, clean)
     logging.info(

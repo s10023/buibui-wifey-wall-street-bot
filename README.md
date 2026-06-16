@@ -85,7 +85,8 @@ buibui-wifey-wall-street-bot/
 │   ├── data_fetcher.py              # Pure yfinance → canonical OHLCV DataFrames (fetch_bars; 4h synthesised from 1h @ 13:30 UTC)
 │   ├── data_store.py                # Pure DuckDB read/write (schema, upsert, query helpers); tables: ohlcv, signals, signal_alert_outcomes, backtest_runs, backtest_trades, backtest_cache, stats_cache
 │   ├── data_sync.py                 # Backfill + incremental sync orchestration (single fetch_bars call; gated on data_quality between fetch and upsert)
-│   ├── data_quality.py              # Phase 0.5 OHLCV integrity monitor: check_ohlcv → DataQualityReport + quarantine (drop corrupt rows, log soft anomalies)
+│   ├── data_quality.py              # Phase 0.5 OHLCV integrity monitor: check_ohlcv → DataQualityReport + quarantine; N3 PR2 adds pure detect_session_gaps (calendar-aware missing-session detection)
+│   ├── trading_calendar.py          # N3 PR2 NYSE (XNYS) calendar wrapper (only exchange_calendars importer): nyse_sessions + check_session_gaps bridge; backfill flags missing trading sessions warn-only
 │   ├── strategies/                  # Per-detector strategy package (22 active strategies + STRATEGY_REGISTRY + DETECTOR_REGISTRY)
 │   ├── signal_config.py             # Pure config loader: SignalWatchConfig, BacktestFilterConfig, BiasConfig, ComboConfig; TOML extends support
 │   ├── signal_lib.py                # Pure scan lib: scan_symbol(), run_scan_cycle(); injects StatsContext into alerts
