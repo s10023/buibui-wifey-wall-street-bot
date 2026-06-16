@@ -13,7 +13,7 @@
     "svelte": "^5.55.9",
     "svelte-check": "^4.4.5",
     "typescript": "^5.4.0",
-    "vite": "^8.0.5"
+    "vite": "^8.0.16"
   },
   "dependencies": {
     "lightweight-charts": "^4.2.0"
