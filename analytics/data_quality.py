@@ -4,10 +4,12 @@ No DB, no network, no side effects. `check_ohlcv` returns a typed report of
 integrity problems by positional row index (0..n-1 over a reset index).
 `quarantine` (Task 4) drops only the unambiguously-bad rows.
 
-Calendar-aware gap detection is intentionally out of scope: equity
-weekends/holidays make naive cadence checks fire constantly without a trading
-calendar. We flag only unambiguous timestamp anomalies (duplicates,
-non-monotonic order — Task 2).
+``check_ohlcv`` stays calendar-free (no library dependency, pure): it flags only
+unambiguous timestamp anomalies (duplicates, non-monotonic order). Calendar-aware
+*session-gap* detection (N3 PR2) lives in the pure ``detect_session_gaps`` /
+``SessionGapReport`` below, fed an NYSE trading-date list by
+``analytics.trading_calendar`` (the only module importing ``exchange_calendars``).
+Missing sessions are warn-only — absent data, never quarantined.
 """
 
 from collections.abc import Sequence
