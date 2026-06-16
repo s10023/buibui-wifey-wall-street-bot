@@ -53,8 +53,9 @@ the policy bounds the bias, it does not remove it.
 `config/stocks.json` is the **live-alert watchlist** (13 symbols the daemon
 scans). For backtest / cross-sectional research there is a separate, larger
 **research breadth universe** in `config/universe.json` (committed/tracked, not
-gitignored — it is a reproducible research artifact): ~50 liquid US large-caps
-plus 4 index/sector ETFs, each tagged with `sector`, `kind` (`stock`|`etf`) and
+gitignored — it is a reproducible research artifact): ~100 liquid US large-caps
+tracking the S&P 100 (OEX) constituents plus 4 index/sector ETFs (105 members),
+each tagged with `sector`, `kind` (`stock`|`etf`) and
 a `delisted` lifecycle flag, under its own `universe_policy` + a
 `membership_as_of` snapshot date. Membership is **point-in-time-bounded, not
 scraped**: for mega-caps in-sample delisting is ≈ 0, so the universe declares the
