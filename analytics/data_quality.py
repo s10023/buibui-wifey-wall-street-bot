@@ -10,7 +10,9 @@ calendar. We flag only unambiguous timestamp anomalies (duplicates,
 non-monotonic order — Task 2).
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import date, timedelta
 
 import pandas as pd
 
@@ -154,3 +156,96 @@ def quarantine(
     clean = df.drop(index=drop).reset_index(drop=True)
     dropped = df.loc[drop].reset_index(drop=True)
     return clean, dropped
+
+
+def _et_date(open_time_ms: int) -> date:
+    """America/New_York session date for a UTC epoch-ms ``open_time``.
+
+    Daily/weekly bars are midnight-ET-in-UTC (04:00/05:00 UTC by DST); 4h bars
+    are 13:30-UTC RTH bins. All map to the ET calendar date of the session.
+    """
+    return (
+        pd.Timestamp(open_time_ms, unit="ms", tz="UTC")
+        .tz_convert("America/New_York")
+        .date()
+    )
+
+
+def _week_start(d: date) -> date:
+    """Monday of ``d``'s ISO week (weekly-bar anchor key)."""
+    return d - timedelta(days=d.weekday())
+
+
+@dataclass(frozen=True)
+class SessionGapReport:
+    """Missing trading sessions for one (symbol, timeframe) OHLCV series.
+
+    ``unit`` is ``"week"`` for ``1wk`` (gaps reported as the Monday of a skipped
+    trading week) and ``"session"`` otherwise (gaps reported as the missing
+    trading-day dates). Warn-only — a gap is absent data, never quarantined.
+    """
+
+    timeframe: str
+    unit: str
+    n_present: int
+    n_expected: int
+    missing: tuple[date, ...]
+
+    @property
+    def n_missing(self) -> int:
+        return len(self.missing)
+
+    @property
+    def has_gaps(self) -> bool:
+        return bool(self.missing)
+
+    def summary(self) -> str:
+        if not self.missing:
+            return f"no session gaps ({self.n_present} {self.unit}s present)"
+        sample = ", ".join(d.isoformat() for d in self.missing[:5])
+        more = "" if self.n_missing <= 5 else f", +{self.n_missing - 5} more"
+        return (
+            f"{self.n_missing} {self.unit} gap(s) "
+            f"({self.n_present}/{self.n_expected} present): {sample}{more}"
+        )
+
+
+def detect_session_gaps(
+    open_times: Sequence[int],
+    timeframe: str,
+    sessions: Sequence[date],
+) -> SessionGapReport:
+    """Find expected trading sessions absent from ``open_times`` (pure).
+
+    ``sessions`` is the NYSE trading-date list spanning the observed range
+    (supplied by the caller via ``analytics.trading_calendar.nyse_sessions`` —
+    this function never touches a calendar library). For ``1wk`` the unit is the
+    trading *week* (Monday anchor); otherwise the trading *day*. Expected
+    sessions are clamped to the observed ``[min, max]`` bar range so only interior
+    gaps are flagged.
+    """
+    is_weekly = timeframe == "1wk"
+    unit = "week" if is_weekly else "session"
+
+    if not open_times:
+        return SessionGapReport(timeframe, unit, 0, 0, ())
+
+    present_dates = sorted({_et_date(t) for t in open_times})
+    lo, hi = present_dates[0], present_dates[-1]
+    in_range = [s for s in sessions if lo <= s <= hi]
+
+    if is_weekly:
+        present_keys = {_week_start(d) for d in present_dates}
+        expected_keys = sorted({_week_start(s) for s in in_range})
+    else:
+        present_keys = set(present_dates)
+        expected_keys = sorted(set(in_range))
+
+    missing = tuple(k for k in expected_keys if k not in present_keys)
+    return SessionGapReport(
+        timeframe=timeframe,
+        unit=unit,
+        n_present=len(present_keys),
+        n_expected=len(expected_keys),
+        missing=missing,
+    )
