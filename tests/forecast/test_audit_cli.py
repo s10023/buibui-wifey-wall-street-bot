@@ -13,6 +13,7 @@ def test_build_g2_report_row_smoke() -> None:
         _seed(conn, s, 600, k)
     row = build_g2_report_row(conn, "universe @2bps", syms, 2.0)
     assert row["label"] == "universe @2bps"
-    assert row["days"] > 0
+    days = row["days"]
+    assert isinstance(days, int) and days > 0
     for key in ("sharpe", "dsr", "pbo", "boot_lo", "boot_hi", "min_trl"):
         assert key in row

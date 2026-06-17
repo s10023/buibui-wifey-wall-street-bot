@@ -10,7 +10,7 @@ def _closes(n: int = 600) -> dict[str, pd.Series]:
     rng = np.random.default_rng(3)
     idx = pd.date_range("2018-01-01", periods=n, freq="D", tz="UTC")
     out = {}
-    for k, sym in enumerate(("AAA", "BBB", "CCC")):
+    for sym in ("AAA", "BBB", "CCC"):
         steps = rng.normal(0.0006, 0.012, size=n)
         out[sym] = pd.Series(100.0 * np.exp(np.cumsum(steps)), index=idx)
     return out

@@ -18,8 +18,7 @@ def _seed(conn: duckdb.DuckDBPyConnection, sym: str, n: int, seed: int) -> None:
             "symbol": sym,
             "timeframe": "1d",
             "open_time": [
-                int((start + pd.Timedelta(days=i)).timestamp() * 1000)
-                for i in range(n)
+                int((start + pd.Timedelta(days=i)).timestamp() * 1000) for i in range(n)
             ],
             "open": close,
             "high": close * 1.01,

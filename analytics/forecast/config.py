@@ -52,7 +52,7 @@ class ForecastConfig:
         return longest_slow + self.vol_span
 
     @classmethod
-    def from_toml(cls, path: Path | str) -> "ForecastConfig":
+    def from_toml(cls, path: Path | str) -> ForecastConfig:
         with open(path, "rb") as f:
             data = tomllib.load(f)
         bt = data.get("backtest", {})
