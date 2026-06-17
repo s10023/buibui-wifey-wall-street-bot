@@ -1,0 +1,1 @@
+"""EWMAC trend sleeve (P2, equity port). Re-exports filled in Task 9."""
