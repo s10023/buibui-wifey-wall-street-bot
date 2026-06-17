@@ -55,11 +55,14 @@ scans). For backtest / cross-sectional research there is a separate, larger
 **research breadth universe** in `config/universe.json` (committed/tracked, not
 gitignored — it is a reproducible research artifact): ~100 liquid US large-caps
 tracking the S&P 100 (OEX) constituents plus 4 index/sector ETFs (105 members),
-each tagged with `sector`, `kind` (`stock`|`etf`) and
-a `delisted` lifecycle flag, under its own `universe_policy` + a
-`membership_as_of` snapshot date. Membership is **point-in-time-bounded, not
-scraped**: for mega-caps in-sample delisting is ≈ 0, so the universe declares the
-selection bias rather than chasing paywalled delisted-price history.
+each tagged with `sector`, `kind` (`stock`|`etf`), a `delisted` lifecycle flag
+and an optional `listed` first-trading date (on names that list after the
+backfill start), under its own `universe_policy` + a `membership_as_of` snapshot
+date. Membership is **point-in-time-bounded, not scraped**: for mega-caps
+in-sample delisting is ≈ 0, so the universe declares the selection bias rather
+than chasing paywalled delisted-price history. For pooled cross-sectional studies
+that need a uniform lookback, `load_research_universe(min_history_days=…)`
+excludes short-history names (e.g. GEV/PLTR/UBER) via that `listed` seam.
 
 ```bash
 make wifey-universe-backfill      # ingest the breadth universe OHLCV (4h/1d/1wk)
