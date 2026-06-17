@@ -1,6 +1,7 @@
 import json
 import re
 from dataclasses import dataclass
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -74,6 +75,7 @@ _DEFAULT_UNIVERSE_PATH = Path("config/universe.json")
 _VALID_MEMBER_KIND = frozenset({"stock", "etf"})
 _MEMBERSHIP_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _UNIVERSE_MEMBER_FIELDS = frozenset({"sector", "kind", "delisted"})
+_UNIVERSE_MEMBER_OPTIONAL_FIELDS = frozenset({"listed"})
 
 
 @dataclass(frozen=True)
@@ -83,12 +85,19 @@ class UniverseMember:
     delisted is a lifecycle seam: all current members are survivors (False); the
     field exists so the coverage report can flag lifecycle bias and a future PIT
     ingest has somewhere to write.
+
+    listed is the member's first available 1d bar date (``YYYY-MM-DD``, ≈ the
+    first-trading / when-issued date), or ``None`` for a full-history survivor
+    that lists on or before the universe backfill start. It is the history seam
+    consumed by ``ResearchUniverse.with_min_history`` to exclude short-history
+    names from pooled cross-sectional studies.
     """
 
     symbol: str
     sector: str
     kind: str
     delisted: bool
+    listed: str | None = None
 
 
 @dataclass(frozen=True)
@@ -119,6 +128,35 @@ class ResearchUniverse:
     def n_active(self) -> int:
         """Count of non-delisted members."""
         return len(self.active_symbols())
+
+    def with_min_history(self, min_history_days: int) -> "ResearchUniverse":
+        """Return a copy keeping only members with enough history.
+
+        A member qualifies when it has at least ``min_history_days`` of history
+        as of ``membership_as_of`` — i.e. its ``listed`` date is on or before
+        ``membership_as_of - min_history_days``. Members with no ``listed`` date
+        are assumed full-history survivors and are always kept. A cap of ``0``
+        (or less) is the identity (every member kept).
+
+        Anchored to the fixed ``membership_as_of`` snapshot (not today's date)
+        so the filtered set is reproducible regardless of run time. Pure — no DB
+        access; the original is untouched (frozen dataclass).
+        """
+        if min_history_days <= 0:
+            return self
+        cutoff = date.fromisoformat(self.membership_as_of) - timedelta(
+            days=min_history_days
+        )
+        kept = tuple(
+            m
+            for m in self.members
+            if m.listed is None or date.fromisoformat(m.listed) <= cutoff
+        )
+        return ResearchUniverse(
+            policy=self.policy,
+            membership_as_of=self.membership_as_of,
+            members=kept,
+        )
 
     def describe(self) -> str:
         """Multi-line honesty paragraph for coverage-report / CLI output."""
@@ -201,7 +239,8 @@ def validate_research_universe(config_dict: Any) -> bool:
                 f"research universe: member '{symbol}' missing required field "
                 f"'{sorted(missing)[0]}'"
             )
-        unknown = set(params) - _UNIVERSE_MEMBER_FIELDS
+        allowed = _UNIVERSE_MEMBER_FIELDS | _UNIVERSE_MEMBER_OPTIONAL_FIELDS
+        unknown = set(params) - allowed
         if unknown:
             raise ValueError(
                 f"research universe: member '{symbol}' unknown field(s) "
@@ -222,6 +261,14 @@ def validate_research_universe(config_dict: Any) -> bool:
         if not isinstance(params["delisted"], bool):
             raise ValueError(
                 f"research universe: member '{symbol}' delisted must be a bool"
+            )
+        listed = params.get("listed")
+        if listed is not None and (
+            not isinstance(listed, str) or not _MEMBERSHIP_DATE_RE.match(listed)
+        ):
+            raise ValueError(
+                f"research universe: member '{symbol}' listed must be a "
+                f"'YYYY-MM-DD' string or absent, got {listed!r}"
             )
     return True
 
@@ -336,8 +383,19 @@ def load_universe_policy(path: Path = _DEFAULT_STOCKS_PATH) -> UniversePolicy:
     )
 
 
-def load_research_universe(path: Path = _DEFAULT_UNIVERSE_PATH) -> ResearchUniverse:
-    """Load and validate ``config/universe.json``. Raises if missing or invalid."""
+def load_research_universe(
+    path: Path = _DEFAULT_UNIVERSE_PATH,
+    *,
+    min_history_days: int | None = None,
+) -> ResearchUniverse:
+    """Load and validate ``config/universe.json``. Raises if missing or invalid.
+
+    When ``min_history_days`` is given, the loaded universe is passed through
+    ``ResearchUniverse.with_min_history`` so short-history names (post-backfill
+    listings carrying a ``listed`` date) are excluded — useful for pooled
+    cross-sectional studies that need a uniform lookback. ``None`` (the default)
+    keeps every member.
+    """
     if not path.exists():
         raise FileNotFoundError(
             f"{path} not found — the research breadth universe (N3) lives here."
@@ -357,11 +415,15 @@ def load_research_universe(path: Path = _DEFAULT_UNIVERSE_PATH) -> ResearchUnive
             sector=params["sector"],
             kind=params["kind"],
             delisted=params["delisted"],
+            listed=params.get("listed"),
         )
         for symbol, params in config["members"].items()
     )
-    return ResearchUniverse(
+    universe = ResearchUniverse(
         policy=policy,
         membership_as_of=config["membership_as_of"],
         members=members,
     )
+    if min_history_days is not None:
+        universe = universe.with_min_history(min_history_days)
+    return universe

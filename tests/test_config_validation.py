@@ -375,6 +375,58 @@ class TestResearchUniverseDataclasses:
         assert "2026-06-16" in text
         assert "bounded to today's survivors" in text
 
+    def _staggered(self) -> ResearchUniverse:
+        # membership_as_of 2026-06-16; OLD has full history (listed=None),
+        # MID listed ~6yr ago, NEW listed ~2yr ago.
+        return ResearchUniverse(
+            policy=UniversePolicy(
+                scope="liquid_large_cap_breadth",
+                as_of="today",
+                survivorship_note="bounded to today's survivors",
+            ),
+            membership_as_of="2026-06-16",
+            members=(
+                UniverseMember("OLD", "Energy", "stock", False),
+                UniverseMember(
+                    "MID", "Industrials", "stock", False, listed="2020-09-30"
+                ),
+                UniverseMember(
+                    "NEW", "Information Technology", "stock", False, listed="2024-03-27"
+                ),
+            ),
+        )
+
+    def test_with_min_history_drops_short_history_names(self) -> None:
+        # require ~3yr of history: NEW (≈2.2yr) drops, MID (≈5.7yr) and OLD stay
+        filtered = self._staggered().with_min_history(min_history_days=365 * 3)
+        assert filtered.symbols() == ["OLD", "MID"]
+
+    def test_with_min_history_keeps_untagged_full_history(self) -> None:
+        # even a huge cap keeps listed=None members (assumed full history)
+        filtered = self._staggered().with_min_history(min_history_days=365 * 100)
+        assert filtered.symbols() == ["OLD"]
+
+    def test_with_min_history_boundary_inclusive(self) -> None:
+        # MID listed exactly cap days before membership_as_of stays (>= is kept)
+        uni = self._staggered()
+        # 2026-06-16 minus 2020-09-30 = 2085 days
+        filtered = uni.with_min_history(min_history_days=2085)
+        assert "MID" in filtered.symbols()
+
+    def test_with_min_history_zero_is_identity(self) -> None:
+        assert self._staggered().with_min_history(min_history_days=0).symbols() == [
+            "OLD",
+            "MID",
+            "NEW",
+        ]
+
+    def test_with_min_history_returns_new_universe(self) -> None:
+        uni = self._staggered()
+        filtered = uni.with_min_history(min_history_days=365 * 100)
+        # original is untouched (frozen dataclass, pure filter)
+        assert uni.symbols() == ["OLD", "MID", "NEW"]
+        assert filtered is not uni
+
 
 class TestValidateResearchUniverse:
     """Tests for validate_research_universe()."""
@@ -443,6 +495,23 @@ class TestValidateResearchUniverse:
         with pytest.raises(ValueError, match="delisted must be a bool"):
             validate_research_universe(cfg)
 
+    def test_optional_listed_accepted(self) -> None:
+        cfg = self._valid()
+        cfg["members"]["AAPL"]["listed"] = "2020-09-30"
+        assert validate_research_universe(cfg) is True
+
+    def test_bad_listed_format_rejected(self) -> None:
+        cfg = self._valid()
+        cfg["members"]["AAPL"]["listed"] = "09/30/2020"
+        with pytest.raises(ValueError, match="listed must be a 'YYYY-MM-DD'"):
+            validate_research_universe(cfg)
+
+    def test_unknown_field_still_rejected(self) -> None:
+        cfg = self._valid()
+        cfg["members"]["AAPL"]["ipo"] = "2020-09-30"
+        with pytest.raises(ValueError, match="unknown field"):
+            validate_research_universe(cfg)
+
     def test_invalid_policy_propagates(self) -> None:
         cfg = self._valid()
         cfg["universe_policy"]["as_of"] = "yesterday"
@@ -496,6 +565,30 @@ class TestLoadResearchUniverse:
         with pytest.raises(ValueError, match="kind must be one of"):
             load_research_universe(path)
 
+    def test_parses_listed_field(self, tmp_path: Path) -> None:
+        payload = self._payload()
+        payload["members"]["AAPL"]["listed"] = "2020-09-30"
+        path = self._write(tmp_path, payload)
+        uni = load_research_universe(path)
+        members = {m.symbol: m for m in uni.members}
+        assert members["AAPL"].listed == "2020-09-30"
+        assert members["SPY"].listed is None
+
+    def test_min_history_days_filters_at_load(self, tmp_path: Path) -> None:
+        payload = self._payload()
+        payload["members"]["NEW"] = {
+            "sector": "Information Technology",
+            "kind": "stock",
+            "delisted": False,
+            "listed": "2024-03-27",
+        }
+        path = self._write(tmp_path, payload)
+        # default keeps everything
+        assert load_research_universe(path).symbols() == ["AAPL", "SPY", "NEW"]
+        # a 3yr floor drops the 2024 listing only
+        filtered = load_research_universe(path, min_history_days=365 * 3)
+        assert filtered.symbols() == ["AAPL", "SPY"]
+
 
 class TestShippedUniverseFile:
     """The committed config/universe.json must load, validate, and be sane."""
@@ -512,3 +605,33 @@ class TestShippedUniverseFile:
         # bounded claim is declared
         assert uni.policy.as_of == "today"
         assert "survivorship" in uni.policy.survivorship_note.lower()
+
+    def test_shipped_short_history_names_are_tagged(self) -> None:
+        # the post-2018 listings carry a `listed` date; everyone else is None
+        uni = load_research_universe(Path("config/universe.json"))
+        listed = {m.symbol: m.listed for m in uni.members if m.listed is not None}
+        assert listed == {
+            "UBER": "2019-05-10",
+            "PLTR": "2020-09-30",
+            "GEV": "2024-03-27",
+        }
+
+    def test_shipped_min_history_filter_drops_recent_listings(self) -> None:
+        # as of membership_as_of (2026-06-16) the three tagged names carry
+        # 2594 (UBER) / 2085 (PLTR) / 811 (GEV) days of history.
+        full = load_research_universe(Path("config/universe.json"))
+        # a ~3yr floor drops only GEV (PLTR/UBER comfortably clear it)
+        three_yr = load_research_universe(
+            Path("config/universe.json"), min_history_days=365 * 3
+        )
+        assert set(full.symbols()) - set(three_yr.symbols()) == {"GEV"}
+        # a ~6yr floor additionally drops PLTR; UBER (≈7.1yr) survives
+        six_yr = load_research_universe(
+            Path("config/universe.json"), min_history_days=365 * 6
+        )
+        assert set(full.symbols()) - set(six_yr.symbols()) == {"PLTR", "GEV"}
+        # an ~8yr floor drops all three post-2018 listings
+        strict = load_research_universe(
+            Path("config/universe.json"), min_history_days=365 * 8
+        )
+        assert set(full.symbols()) - set(strict.symbols()) == {"UBER", "PLTR", "GEV"}
