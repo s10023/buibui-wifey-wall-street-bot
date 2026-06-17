@@ -11,7 +11,7 @@ DEV_PORT ?= 5173
 PYTHON_FILES = $(shell find . -name "*.py" -not -path "./venv/*" -not -path "./.venv/*")
 DOCKER_IMAGE = wifey-bot
 
-.PHONY: lint lint-md lint-md-fix lint-py-check lint-py typecheck test test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-universe-backfill universe-coverage wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
+.PHONY: lint lint-md lint-md-fix lint-py-check lint-py typecheck test test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-universe-backfill universe-coverage wifey-forecast-audit wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
 
 lint: lint-md lint-py
 
@@ -121,6 +121,10 @@ wifey-universe-backfill:
 universe-coverage:
 	@PYTHONPATH=. poetry run python tools/universe_coverage.py \
 		$(if $(DB),--db $(DB),)
+
+wifey-forecast-audit:
+	@echo "📈 G2 audit — EWMAC trend sleeve over the breadth universe (1d)..."
+	@PYTHONPATH=. poetry run python tools/forecast_audit.py $(ARGS)
 
 wifey-backtest:
 	@echo "📊 Running backtest..."
