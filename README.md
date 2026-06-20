@@ -821,6 +821,7 @@ make wifey-universe-backfill               # Backfill the research breadth unive
 make universe-coverage                     # OHLCV coverage report over the universe
 make wifey-forecast-audit                  # G2 audit — EWMAC trend sleeve (read-only)
 make wifey-xsmom-audit                     # G3 audit — XS-momentum sleeve (read-only)
+make wifey-exit-audit                      # Exit MFE/MAE diagnostic — live ledger (read-only)
 ```
 
 **Backtest:**
