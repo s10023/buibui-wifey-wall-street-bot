@@ -32,10 +32,13 @@
      `taker_buy_volume` from the fixture dicts. Symbol/TF strings stay verbatim
      (`BTCUSDT` / `ETHUSDT`, `1h` / `4h`) — they are synthetic in-memory inserts,
      and keeping them verbatim minimises future `/sync-parent` diff noise.
-- **The wifey ledger has real data.** `signal_alert_outcomes` currently holds
-  **2,697 resolved rows** (`win`/`loss`/`expired`) — the diagnostic produces a
-  real equity verdict the moment the CLI lands. (MEMORY's "live ledger young
-  (n≈0)" note is stale; update it in the post-branch sweep.)
+- **The wifey ledger is young.** `signal_alert_outcomes` holds ~48 total rows,
+  **22 resolved** (`win`/`loss`/`expired`), the rest still `open` — the diagnostic
+  runs and scores them all, but 22 is far below any usable cohort floor, so the
+  real-ledger verdict (Task 4) is expected to be INCONCLUSIVE / instrument-ready
+  rather than a statistical exit-fixable call. (Confirms MEMORY's "live ledger
+  young" note. An earlier scratch query of "2,697 resolved" was a mistake — that
+  count was the **parent** repo's crypto ledger, not wifey's.)
 - **Verified wifey import surface** (used by this plan):
   - `from analytics.store.market_data import get_ohlcv`
     — `get_ohlcv(conn, symbol, timeframe, start, end) -> pd.DataFrame`, columns
@@ -78,6 +81,7 @@
 ### Task 1: Package skeleton + `compute_excursions`
 
 **Files:**
+
 - Create: `analytics/exits/__init__.py`
 - Create: `analytics/exits/mfe_mae.py`
 - Test: `tests/test_mfe_mae.py`
@@ -584,7 +588,7 @@ def compute_excursions(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
 
 Run: `poetry run pytest tests/test_mfe_mae.py -q`
 Expected: 9 passed. (Task 1's test file contains only `TestExcursionConventions`
-+ `TestComputeExcursionsRobustness` and imports only `compute_excursions`;
+and `TestComputeExcursionsRobustness`, and imports only `compute_excursions`;
 `TestAggregateCohorts` is added in Task 2.)
 
 - [ ] **Step 6: Run lint + typecheck on the new files**
@@ -604,6 +608,7 @@ git commit -m "feat(exits): MFE/MAE excursion compute — equity port (#433, par
 ### Task 2: `aggregate_cohorts` (the §2 verdict-grid roll-up)
 
 **Files:**
+
 - Modify: `analytics/exits/mfe_mae.py` (append `aggregate_cohorts`)
 - Modify: `analytics/exits/__init__.py` (export `aggregate_cohorts`)
 - Test: `tests/test_mfe_mae.py` (add `TestAggregateCohorts`, add the import)
@@ -762,6 +767,7 @@ git commit -m "feat(exits): MFE/MAE cohort aggregation — verdict-grid roll-up 
 ### Task 3: Diagnose-mode CLI + Makefile target
 
 **Files:**
+
 - Create: `tools/exit_audit.py`
 - Modify: `Makefile`
 
@@ -887,14 +893,14 @@ two audit targets (after the `wifey-xsmom-audit` recipe at ~line 132):
 
 ```makefile
 wifey-exit-audit:
-	@echo "🚪 Exit MFE/MAE diagnostic over the live alert ledger (spec §2)..."
-	@PYTHONPATH=. poetry run python tools/exit_audit.py $(ARGS)
+    @echo "🚪 Exit MFE/MAE diagnostic over the live alert ledger (spec §2)..."
+    @PYTHONPATH=. poetry run python tools/exit_audit.py $(ARGS)
 ```
 
 > **Note for the engineer:** the recipe lines above must be indented with a
-> literal **TAB**, not spaces (Makefile syntax). The `.PHONY` edit: append
-> ` wifey-exit-audit` immediately after `wifey-xsmom-audit` in the existing
-> `.PHONY:` list at the top of the Makefile.
+> literal **TAB**, not spaces (Makefile syntax). The `.PHONY` edit: add
+> `wifey-exit-audit` (space-separated) immediately after `wifey-xsmom-audit` in
+> the existing `.PHONY:` list at the top of the Makefile.
 
 - [ ] **Step 4: Verify the make target dispatches**
 
@@ -918,13 +924,14 @@ git commit -m "feat(exits): exit_audit diagnose-mode CLI + make wifey-exit-audit
 ### Task 4: Full gate + real-ledger run → verdict doc
 
 **Files:**
+
 - Create: `docs/audits/2026-06-20-exit-mfe-mae-diagnostic-equity.md`
 
 - [ ] **Step 1: Full local gate**
 
 Run: `make lint-py && make typecheck && make test`
 Expected: ruff clean, mypy strict clean, full suite green (existing pass count
-+ 12 new `test_mfe_mae.py` tests; 3 pre-existing skips).
+plus 12 new `test_mfe_mae.py` tests; 3 pre-existing skips).
 
 - [ ] **Step 2: Confirm regression goldens are byte-identical**
 
@@ -937,14 +944,18 @@ means something non-additive slipped in; investigate before continuing.
 - [ ] **Step 3: Run the diagnostic over the real ledger**
 
 Run:
+
 ```bash
 make wifey-exit-audit ARGS="--min-n 20 --csv /tmp/exit-excursions.csv"
 ```
-Expected: a coverage line (`N of 2697 resolved alerts scored`), the overall
-cohort roll-up table, the per-(strategy, tf, direction) table, and the verdict
-footer. Capture the full stdout — it is the raw material for Step 4.
 
-> If coverage is surprisingly low (e.g. `0 of 2697`), check that the local
+Expected: a coverage line (`N of M resolved alerts scored`, where M is the
+current resolved count — ~22 on the young ledger), the overall cohort roll-up
+table, the per-(strategy, tf, direction) table (likely empty at `min_n=20` while
+the ledger is thin), and the verdict footer. Capture the full stdout — it is the
+raw material for Step 4.
+
+> If coverage is surprisingly low (e.g. `0 of N`), check that the local
 > `analytics.db` is the live one (`ls -la analytics.db`) and that resolved rows
 > carry non-NULL `candle_ts_ms` / `entry_price` / `sl_price` / `rr_ratio` /
 > `outcome_filled_at_ms`. A low score with a high resolved count points at
@@ -953,13 +964,15 @@ footer. Capture the full stdout — it is the raw material for Step 4.
 - [ ] **Step 4: Write the verdict note**
 
 Create `docs/audits/2026-06-20-exit-mfe-mae-diagnostic-equity.md` capturing:
+
 - one-line headline verdict against the §2 grid (exit-fixable vs entry-broken
-  vs mixed), keyed off the **expired** cohort's `reach_05` / `reach_10` /
-  `tp_r_p50` and the **loss** cohort's `mfe_mean`;
+  vs mixed — or INCONCLUSIVE if n is too thin), keyed off the **expired**
+  cohort's `reach_05` / `reach_10` / `tp_r_p50` and the **loss** cohort's
+  `mfe_mean`;
 - the overall cohort roll-up table (paste from Step 3);
 - the per-cell highlights (the cells with the clearest exit-fixable or
   entry-broken signature);
-- coverage (`N scored of 2697`) and the data caveat (live ledger, equity
+- coverage (`N scored of M`) and the data caveat (live ledger young, equity
   4h/1d/1wk, costs gross);
 - an explicit **recommendation on #437**: does the diagnostic justify building
   the exit-policy A/B (clear exit-fixable cohorts), or does it say "entries are
@@ -987,6 +1000,7 @@ git commit -m "docs(exits): MFE/MAE diagnostic equity verdict + #437 recommendat
 ### Task 5: PR + post-branch docs sweep
 
 **Files:** (decided by the `/post-branch` behaviour gate — likely)
+
 - Modify: `CLAUDE.md` (Project Structure: `analytics/exits/` entry + `tools/exit_audit.py` entry)
 - Modify: `.claude/context/analytics.md` (new `## exits/` section)
 - Modify: `README.md` (the `wifey-exit-audit` make target, if README lists audit targets)
@@ -997,6 +1011,7 @@ git commit -m "docs(exits): MFE/MAE diagnostic equity verdict + #437 recommendat
 ```bash
 git push -u origin HEAD
 ```
+
 (Uses the `git@github.com-personal:` SSH alias configured for this repo.)
 
 - [ ] **Step 2: Create the PR (s10023 account must be active)**
@@ -1008,6 +1023,7 @@ gh pr create --repo s10023/buibui-wifey-wall-street-bot \
   --body-file /tmp/pr-exit-mfe-mae.md
 gh auth switch --user KhaiJianNgFRG
 ```
+
 (Write the PR body with the `/pr-summary` skill first → `/tmp/pr-<branch>.md`.
 The work account `KhaiJianNgFRG` is NOT a collaborator, hence the
 switch-create-restore.)
@@ -1020,8 +1036,8 @@ proposes targeted edits. Confirm each edit before writing. Key edits expected:
 add the `analytics/exits/` bullet to CLAUDE.md Project Structure (note: §2
 diagnostic only, #437 deferred), the new `## exits/` section in
 `.claude/context/analytics.md`, the make target in README, and the MEMORY
-Current State update (including correcting the stale "live ledger young (n≈0
-resolved)" note — it's 2,697 resolved now).
+Current State update (the "live ledger young" note stays accurate — it is ~22
+resolved, and the verdict turns on that thinness).
 
 - [ ] **Step 4: Rewrite the handoff prompt**
 
@@ -1050,4 +1066,3 @@ starts informed.
   the parent verbatim.
 - **Additive read-only invariant:** asserted in Task 4 Step 2 (goldens
   byte-identical). If that check fails the PR is not actually additive — stop.
-```
