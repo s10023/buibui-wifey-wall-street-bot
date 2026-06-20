@@ -14,7 +14,7 @@ import duckdb
 import pandas as pd
 import pytest
 
-from analytics.exits import compute_excursions
+from analytics.exits import aggregate_cohorts, compute_excursions
 from analytics.store import init_schema, upsert_signal_outcome
 
 _HOUR = 3_600_000
@@ -283,3 +283,52 @@ class TestComputeExcursionsRobustness:
         eth = exc[exc["symbol"] == "ETHUSDT"].iloc[0]
         assert eth["mfe_r"] == pytest.approx(4.0)  # (12-10)/0.5
         assert eth["mae_r"] == pytest.approx(0.6)  # (10-9.7)/0.5
+
+
+class TestAggregateCohorts:
+    def _exc_df(self) -> pd.DataFrame:
+        rows = [
+            # 4 expired in one cell: MFE 0.2 / 0.6 / 1.5 / 0.1
+            ("e1", "expired", 0.2, 0.3),
+            ("e2", "expired", 0.6, 0.5),
+            ("e3", "expired", 1.5, 0.4),
+            ("e4", "expired", 0.1, 1.1),
+            # 1 loss in same cell (filtered out at min_n=2)
+            ("l1", "loss", 0.8, 1.2),
+        ]
+        return pd.DataFrame(
+            [
+                {
+                    "signal_id": sid,
+                    "symbol": "BTCUSDT",
+                    "tf": "1h",
+                    "strategy": "fvg",
+                    "direction": "long",
+                    "outcome": outcome,
+                    "outcome_r": -0.1,
+                    "rr_ratio": 2.0,
+                    "mfe_r": mfe,
+                    "mae_r": mae,
+                    "bars_held": 10,
+                }
+                for sid, outcome, mfe, mae in rows
+            ]
+        )
+
+    def test_reach_fractions_and_min_n(self) -> None:
+        agg = aggregate_cohorts(self._exc_df(), min_n=2)
+        assert len(agg) == 1
+        row = agg.iloc[0]
+        assert row["outcome"] == "expired"
+        assert row["n"] == 4
+        assert row["reach_05"] == pytest.approx(0.5)
+        assert row["reach_10"] == pytest.approx(0.25)
+        assert row["tp_r_p50"] == pytest.approx(2.0)
+
+    def test_overall_rollup_groups_by_outcome_only(self) -> None:
+        agg = aggregate_cohorts(self._exc_df(), by=(), min_n=1)
+        assert set(agg["outcome"]) == {"expired", "loss"}
+        assert "strategy" not in agg.columns
+
+    def test_empty_input_returns_empty(self) -> None:
+        assert aggregate_cohorts(pd.DataFrame(), min_n=1).empty

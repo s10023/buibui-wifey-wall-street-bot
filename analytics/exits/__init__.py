@@ -5,6 +5,14 @@ policy / replay / A/B layer (parent PR #437) is a deferred follow-up and will
 extend these exports.
 """
 
-from analytics.exits.mfe_mae import EXCURSION_COLUMNS, compute_excursions
+from analytics.exits.mfe_mae import (
+    EXCURSION_COLUMNS,
+    aggregate_cohorts,
+    compute_excursions,
+)
 
-__all__ = ["EXCURSION_COLUMNS", "compute_excursions"]
+__all__ = [
+    "EXCURSION_COLUMNS",
+    "aggregate_cohorts",
+    "compute_excursions",
+]

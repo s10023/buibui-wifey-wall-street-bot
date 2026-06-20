@@ -167,3 +167,44 @@ def compute_excursions(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
                 }
             )
     return pd.DataFrame(out, columns=EXCURSION_COLUMNS)
+
+
+def aggregate_cohorts(
+    excursions: pd.DataFrame,
+    *,
+    by: tuple[str, ...] = ("strategy", "tf", "direction"),
+    min_n: int = 30,
+) -> pd.DataFrame:
+    """Cohort-level MFE/MAE aggregation — the exit spec §2 table.
+
+    Groups by (outcome, *by); pass by=() for the overall per-cohort roll-up.
+    Columns map onto the spec's 4-pattern verdict grid: reach_05 / reach_10
+    are the share of the cohort whose MFE hit ≥0.5R / ≥1.0R, and tp_r_p50 is
+    the target those trades were asked to reach. Cells below min_n are
+    dropped (diagnostic n-floor).
+    """
+    if excursions.empty:
+        return pd.DataFrame()
+    keys = ["outcome", *by]
+    enriched = excursions.assign(
+        reach_05=(excursions["mfe_r"] >= 0.5).astype(float),
+        reach_10=(excursions["mfe_r"] >= 1.0).astype(float),
+    )
+    agg = (
+        enriched.groupby(keys)
+        .agg(
+            n=("mfe_r", "size"),
+            mfe_mean=("mfe_r", "mean"),
+            mfe_p50=("mfe_r", "median"),
+            mae_mean=("mae_r", "mean"),
+            mae_p50=("mae_r", "median"),
+            reach_05=("reach_05", "mean"),
+            reach_10=("reach_10", "mean"),
+            tp_r_p50=("rr_ratio", "median"),
+            bars_held_p50=("bars_held", "median"),
+            outcome_r_mean=("outcome_r", "mean"),
+        )
+        .reset_index()
+    )
+    agg = agg[agg["n"] >= min_n]
+    return agg.sort_values(keys).reset_index(drop=True)
