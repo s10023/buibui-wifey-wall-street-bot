@@ -102,6 +102,8 @@ def run_xs_backtest(
     closes: dict[str, pd.Series],
     fundings: dict[str, pd.Series],
     cfg: ForecastConfig,
+    *,
+    leverage: pd.DataFrame | None = None,
 ) -> XSBookResult:
     """Causal dollar-neutral long-short book over the demeaned forecast.
 
@@ -109,8 +111,12 @@ def run_xs_backtest(
     `|Δlev|*(fee+slip)` + funding `leverage*funding` (shorts receive funding).
     Aggregate = SUM of legs (long-short portfolio P&L; the level is set by the
     causal 20%-vol governor, so sum-vs-mean is only a scale it absorbs).
+
+    When ``leverage`` is supplied (e.g. the residual-forecast matrix), it is used
+    verbatim for sizing while P&L is still booked on the actual ``closes``;
+    ``leverage=None`` reproduces the demeaned-EWMAC book byte-identically.
     """
-    leverage = xs_leverage(closes, cfg)
+    leverage = xs_leverage(closes, cfg) if leverage is None else leverage
     union = pd.DatetimeIndex(leverage.index)
     cost = cfg.fee_pct + cfg.slippage_pct
 

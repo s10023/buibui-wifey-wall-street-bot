@@ -6,110 +6,2548 @@
   },
   "membership_as_of": "2026-06-16",
   "members": {
-    "AAPL": { "sector": "Information Technology", "kind": "stock", "delisted": false },
-    "ACN": { "sector": "Information Technology", "kind": "stock", "delisted": false },
-    "ADBE": { "sector": "Information Technology", "kind": "stock", "delisted": false },
-    "AMAT": { "sector": "Information Technology", "kind": "stock", "delisted": false },
-    "AMD": { "sector": "Information Technology", "kind": "stock", "delisted": false },
-    "AVGO": { "sector": "Information Technology", "kind": "stock", "delisted": false },
-    "CRM": { "sector": "Information Technology", "kind": "stock", "delisted": false },
-    "CSCO": { "sector": "Information Technology", "kind": "stock", "delisted": false },
-    "IBM": { "sector": "Information Technology", "kind": "stock", "delisted": false },
-    "INTC": { "sector": "Information Technology", "kind": "stock", "delisted": false },
-    "INTU": { "sector": "Information Technology", "kind": "stock", "delisted": false },
-    "LRCX": { "sector": "Information Technology", "kind": "stock", "delisted": false },
-    "MSFT": { "sector": "Information Technology", "kind": "stock", "delisted": false },
-    "MSTR": { "sector": "Information Technology", "kind": "stock", "delisted": false },
-    "MU": { "sector": "Information Technology", "kind": "stock", "delisted": false },
-    "NOW": { "sector": "Information Technology", "kind": "stock", "delisted": false },
-    "NVDA": { "sector": "Information Technology", "kind": "stock", "delisted": false },
-    "ORCL": { "sector": "Information Technology", "kind": "stock", "delisted": false },
-    "PLTR": { "sector": "Information Technology", "kind": "stock", "delisted": false, "listed": "2020-09-30" },
-    "QCOM": { "sector": "Information Technology", "kind": "stock", "delisted": false },
-    "TXN": { "sector": "Information Technology", "kind": "stock", "delisted": false },
-    "CMCSA": { "sector": "Communication Services", "kind": "stock", "delisted": false },
-    "DIS": { "sector": "Communication Services", "kind": "stock", "delisted": false },
-    "GOOGL": { "sector": "Communication Services", "kind": "stock", "delisted": false },
-    "META": { "sector": "Communication Services", "kind": "stock", "delisted": false },
-    "NFLX": { "sector": "Communication Services", "kind": "stock", "delisted": false },
-    "T": { "sector": "Communication Services", "kind": "stock", "delisted": false },
-    "TMUS": { "sector": "Communication Services", "kind": "stock", "delisted": false },
-    "VZ": { "sector": "Communication Services", "kind": "stock", "delisted": false },
-    "AMZN": { "sector": "Consumer Discretionary", "kind": "stock", "delisted": false },
-    "BKNG": { "sector": "Consumer Discretionary", "kind": "stock", "delisted": false },
-    "GM": { "sector": "Consumer Discretionary", "kind": "stock", "delisted": false },
-    "HD": { "sector": "Consumer Discretionary", "kind": "stock", "delisted": false },
-    "LOW": { "sector": "Consumer Discretionary", "kind": "stock", "delisted": false },
-    "MCD": { "sector": "Consumer Discretionary", "kind": "stock", "delisted": false },
-    "NKE": { "sector": "Consumer Discretionary", "kind": "stock", "delisted": false },
-    "SBUX": { "sector": "Consumer Discretionary", "kind": "stock", "delisted": false },
-    "TSLA": { "sector": "Consumer Discretionary", "kind": "stock", "delisted": false },
-    "CL": { "sector": "Consumer Staples", "kind": "stock", "delisted": false },
-    "COST": { "sector": "Consumer Staples", "kind": "stock", "delisted": false },
-    "KO": { "sector": "Consumer Staples", "kind": "stock", "delisted": false },
-    "MDLZ": { "sector": "Consumer Staples", "kind": "stock", "delisted": false },
-    "MO": { "sector": "Consumer Staples", "kind": "stock", "delisted": false },
-    "PEP": { "sector": "Consumer Staples", "kind": "stock", "delisted": false },
-    "PG": { "sector": "Consumer Staples", "kind": "stock", "delisted": false },
-    "PM": { "sector": "Consumer Staples", "kind": "stock", "delisted": false },
-    "WMT": { "sector": "Consumer Staples", "kind": "stock", "delisted": false },
-    "ABBV": { "sector": "Health Care", "kind": "stock", "delisted": false },
-    "ABT": { "sector": "Health Care", "kind": "stock", "delisted": false },
-    "AMGN": { "sector": "Health Care", "kind": "stock", "delisted": false },
-    "BMY": { "sector": "Health Care", "kind": "stock", "delisted": false },
-    "CVS": { "sector": "Health Care", "kind": "stock", "delisted": false },
-    "DHR": { "sector": "Health Care", "kind": "stock", "delisted": false },
-    "GILD": { "sector": "Health Care", "kind": "stock", "delisted": false },
-    "ISRG": { "sector": "Health Care", "kind": "stock", "delisted": false },
-    "JNJ": { "sector": "Health Care", "kind": "stock", "delisted": false },
-    "LLY": { "sector": "Health Care", "kind": "stock", "delisted": false },
-    "MDT": { "sector": "Health Care", "kind": "stock", "delisted": false },
-    "MRK": { "sector": "Health Care", "kind": "stock", "delisted": false },
-    "PFE": { "sector": "Health Care", "kind": "stock", "delisted": false },
-    "TMO": { "sector": "Health Care", "kind": "stock", "delisted": false },
-    "UNH": { "sector": "Health Care", "kind": "stock", "delisted": false },
-    "AXP": { "sector": "Financials", "kind": "stock", "delisted": false },
-    "BAC": { "sector": "Financials", "kind": "stock", "delisted": false },
-    "BLK": { "sector": "Financials", "kind": "stock", "delisted": false },
-    "BNY": { "sector": "Financials", "kind": "stock", "delisted": false },
-    "BRK-B": { "sector": "Financials", "kind": "stock", "delisted": false },
-    "C": { "sector": "Financials", "kind": "stock", "delisted": false },
-    "COF": { "sector": "Financials", "kind": "stock", "delisted": false },
-    "GS": { "sector": "Financials", "kind": "stock", "delisted": false },
-    "JPM": { "sector": "Financials", "kind": "stock", "delisted": false },
-    "MA": { "sector": "Financials", "kind": "stock", "delisted": false },
-    "MS": { "sector": "Financials", "kind": "stock", "delisted": false },
-    "SCHW": { "sector": "Financials", "kind": "stock", "delisted": false },
-    "USB": { "sector": "Financials", "kind": "stock", "delisted": false },
-    "V": { "sector": "Financials", "kind": "stock", "delisted": false },
-    "WFC": { "sector": "Financials", "kind": "stock", "delisted": false },
-    "BA": { "sector": "Industrials", "kind": "stock", "delisted": false },
-    "CAT": { "sector": "Industrials", "kind": "stock", "delisted": false },
-    "DE": { "sector": "Industrials", "kind": "stock", "delisted": false },
-    "EMR": { "sector": "Industrials", "kind": "stock", "delisted": false },
-    "FDX": { "sector": "Industrials", "kind": "stock", "delisted": false },
-    "GD": { "sector": "Industrials", "kind": "stock", "delisted": false },
-    "GE": { "sector": "Industrials", "kind": "stock", "delisted": false },
-    "GEV": { "sector": "Industrials", "kind": "stock", "delisted": false, "listed": "2024-03-27" },
-    "HON": { "sector": "Industrials", "kind": "stock", "delisted": false },
-    "LMT": { "sector": "Industrials", "kind": "stock", "delisted": false },
-    "MMM": { "sector": "Industrials", "kind": "stock", "delisted": false },
-    "RTX": { "sector": "Industrials", "kind": "stock", "delisted": false },
-    "UBER": { "sector": "Industrials", "kind": "stock", "delisted": false, "listed": "2019-05-10" },
-    "UNP": { "sector": "Industrials", "kind": "stock", "delisted": false },
-    "UPS": { "sector": "Industrials", "kind": "stock", "delisted": false },
-    "COP": { "sector": "Energy", "kind": "stock", "delisted": false },
-    "CVX": { "sector": "Energy", "kind": "stock", "delisted": false },
-    "XOM": { "sector": "Energy", "kind": "stock", "delisted": false },
-    "LIN": { "sector": "Materials", "kind": "stock", "delisted": false },
-    "AMT": { "sector": "Real Estate", "kind": "stock", "delisted": false },
-    "SPG": { "sector": "Real Estate", "kind": "stock", "delisted": false },
-    "DUK": { "sector": "Utilities", "kind": "stock", "delisted": false },
-    "NEE": { "sector": "Utilities", "kind": "stock", "delisted": false },
-    "SO": { "sector": "Utilities", "kind": "stock", "delisted": false },
-    "DIA": { "sector": "ETF", "kind": "etf", "delisted": false },
-    "IWM": { "sector": "ETF", "kind": "etf", "delisted": false },
-    "QQQ": { "sector": "ETF", "kind": "etf", "delisted": false },
-    "SPY": { "sector": "ETF", "kind": "etf", "delisted": false }
+    "AAPL": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ACN": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ADBE": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AMAT": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AMD": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AVGO": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CRM": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CSCO": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "IBM": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "INTC": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "INTU": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "LRCX": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MSFT": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MSTR": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MU": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "NOW": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "NVDA": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ORCL": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PLTR": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false,
+      "listed": "2020-09-30"
+    },
+    "QCOM": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TXN": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CMCSA": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DIS": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "GOOGL": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "META": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "NFLX": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "T": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TMUS": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "VZ": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AMZN": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BKNG": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "GM": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "HD": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "LOW": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MCD": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "NKE": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SBUX": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TSLA": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CL": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "COST": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "KO": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MDLZ": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MO": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PEP": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PG": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PM": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "WMT": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ABBV": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ABT": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AMGN": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BMY": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CVS": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DHR": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "GILD": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ISRG": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "JNJ": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "LLY": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MDT": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MRK": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PFE": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TMO": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "UNH": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AXP": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BAC": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BLK": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BNY": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BRK-B": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "C": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "COF": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "GS": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "JPM": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MA": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MS": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SCHW": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "USB": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "V": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "WFC": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BA": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CAT": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DE": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "EMR": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "FDX": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "GD": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "GE": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "GEV": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false,
+      "listed": "2024-03-27"
+    },
+    "HON": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "LMT": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MMM": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "RTX": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "UBER": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false,
+      "listed": "2019-05-10"
+    },
+    "UNP": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "UPS": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "COP": {
+      "sector": "Energy",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CVX": {
+      "sector": "Energy",
+      "kind": "stock",
+      "delisted": false
+    },
+    "XOM": {
+      "sector": "Energy",
+      "kind": "stock",
+      "delisted": false
+    },
+    "LIN": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AMT": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SPG": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DUK": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "NEE": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SO": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DIA": {
+      "sector": "ETF",
+      "kind": "etf",
+      "delisted": false
+    },
+    "IWM": {
+      "sector": "ETF",
+      "kind": "etf",
+      "delisted": false
+    },
+    "QQQ": {
+      "sector": "ETF",
+      "kind": "etf",
+      "delisted": false
+    },
+    "SPY": {
+      "sector": "ETF",
+      "kind": "etf",
+      "delisted": false
+    },
+    "AOS": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AES": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AFL": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "A": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "APD": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ABNB": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AKAM": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ALB": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ARE": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ALGN": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ALLE": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "LNT": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ALL": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "GOOG": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AMCR": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AEE": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AEP": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AIG": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AWK": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AMP": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AME": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "APH": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ADI": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AON": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "APA": {
+      "sector": "Energy",
+      "kind": "stock",
+      "delisted": false
+    },
+    "APO": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "APP": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "APTV": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ACGL": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ADM": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ARES": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ANET": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AJG": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AIZ": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ATO": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ADSK": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ADP": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AZO": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AVB": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AVY": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "AXON": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BKR": {
+      "sector": "Energy",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BALL": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BAX": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BDX": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BBY": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TECH": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BIIB": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BX": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "XYZ": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BSX": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BR": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BRO": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BF-B": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BLDR": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BG": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BXP": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CHRW": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CDNS": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CPT": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CAH": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CCL": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CARR": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CVNA": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CASY": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CBOE": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CBRE": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CDW": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "COR": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CNC": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CNP": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CF": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CRL": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CHTR": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CMG": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CB": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CHD": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CIEN": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CI": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CINF": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CTAS": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CFG": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CLX": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CME": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CMS": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CTSH": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "COHR": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "COIN": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "FIX": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CAG": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ED": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "STZ": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CEG": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "COO": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CPRT": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "GLW": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CPAY": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CTVA": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CSGP": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CRH": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CRWD": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CCI": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CSX": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "CMI": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DRI": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DDOG": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DVA": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DECK": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DELL": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DAL": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DVN": {
+      "sector": "Energy",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DXCM": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "FANG": {
+      "sector": "Energy",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DLR": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DG": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DLTR": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "D": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DPZ": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DASH": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DOV": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DOW": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DHI": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DTE": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DD": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ETN": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "EBAY": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SATS": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ECL": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "EIX": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "EW": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "EA": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ELV": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "EME": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ETR": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "EOG": {
+      "sector": "Energy",
+      "kind": "stock",
+      "delisted": false
+    },
+    "EQT": {
+      "sector": "Energy",
+      "kind": "stock",
+      "delisted": false
+    },
+    "EFX": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "EQIX": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "EQR": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ERIE": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ESS": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "EL": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "EG": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "EVRG": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ES": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "EXC": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "EXE": {
+      "sector": "Energy",
+      "kind": "stock",
+      "delisted": false
+    },
+    "EXPE": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "EXPD": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "EXR": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "FFIV": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "FDS": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "FICO": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "FAST": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "FRT": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "FDXF": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "FIS": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "FITB": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "FSLR": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "FE": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "FISV": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "FLEX": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "F": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "FTNT": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "FTV": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "FOXA": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "FOX": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "BEN": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "FCX": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "GRMN": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "IT": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "GEHC": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "GEN": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "GNRC": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "GIS": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "GPC": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "GPN": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "GL": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "GDDY": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "HAL": {
+      "sector": "Energy",
+      "kind": "stock",
+      "delisted": false
+    },
+    "HIG": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "HAS": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "HCA": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DOC": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "HSIC": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "HSY": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "HPE": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "HLT": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "HRL": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "HST": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "HWM": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "HPQ": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "HUBB": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "HUM": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "HBAN": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "HII": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "IEX": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "IDXX": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ITW": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "INCY": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "IR": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PODD": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "IBKR": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ICE": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "IFF": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "IP": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "IVZ": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "INVH": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "IQV": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "IRM": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "JBHT": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "JBL": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "JKHY": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "J": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "JCI": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "KVUE": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "KDP": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "KEY": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "KEYS": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "KMB": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "KIM": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "KMI": {
+      "sector": "Energy",
+      "kind": "stock",
+      "delisted": false
+    },
+    "KKR": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "KLAC": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "KHC": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "KR": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "LHX": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "LH": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "LVS": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "LDOS": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "LEN": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "LII": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "LYV": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "L": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "LULU": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "LITE": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "LYB": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MTB": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MPC": {
+      "sector": "Energy",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MAR": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MRSH": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MLM": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MRVL": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MAS": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MKC": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MCK": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MET": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MTD": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MGM": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MCHP": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MAA": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MRNA": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TAP": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MPWR": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MNST": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MCO": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MOS": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MSI": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "MSCI": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "NDAQ": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "NTAP": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "NEM": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "NWSA": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "NWS": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "NI": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "NDSN": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "NSC": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "NTRS": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "NOC": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "NCLH": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "NRG": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "NUE": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "NVR": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "NXPI": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ORLY": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "OXY": {
+      "sector": "Energy",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ODFL": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "OMC": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ON": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "OKE": {
+      "sector": "Energy",
+      "kind": "stock",
+      "delisted": false
+    },
+    "OTIS": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PCAR": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PKG": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PANW": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PSKY": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PH": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PAYX": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PYPL": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PNR": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PCG": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PSX": {
+      "sector": "Energy",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PNW": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PNC": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PPG": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PPL": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PFG": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PGR": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PLD": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PRU": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PEG": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PTC": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PSA": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PHM": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "PWR": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "DGX": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "Q": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "RL": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "RJF": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "O": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "REG": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "REGN": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "RF": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "RSG": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "RMD": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "RVTY": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "HOOD": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ROK": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ROL": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ROP": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ROST": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "RCL": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SPGI": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SNDK": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SBAC": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SLB": {
+      "sector": "Energy",
+      "kind": "stock",
+      "delisted": false
+    },
+    "STX": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SRE": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SHW": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SWKS": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SJM": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SW": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SNA": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SOLV": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "LUV": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SWK": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "STT": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "STLD": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "STE": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SYK": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SMCI": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SYF": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SNPS": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "SYY": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TROW": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TTWO": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TPR": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TRGP": {
+      "sector": "Energy",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TGT": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TEL": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TDY": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TER": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TPL": {
+      "sector": "Energy",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TXT": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TJX": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TKO": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TTD": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TSCO": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TT": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TDG": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TRV": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TRMB": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TFC": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TYL": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "TSN": {
+      "sector": "Consumer Staples",
+      "kind": "stock",
+      "delisted": false
+    },
+    "UDR": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ULTA": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "UAL": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "URI": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "UHS": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "VLO": {
+      "sector": "Energy",
+      "kind": "stock",
+      "delisted": false
+    },
+    "VEEV": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "VTR": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "VLTO": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "VRSN": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "VRSK": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "VRTX": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "VRT": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "VTRS": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "VICI": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "VST": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "VMC": {
+      "sector": "Materials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "WRB": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "GWW": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "WAB": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "WBD": {
+      "sector": "Communication Services",
+      "kind": "stock",
+      "delisted": false
+    },
+    "WM": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "WAT": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "WEC": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "WELL": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "WST": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "WDC": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "WY": {
+      "sector": "Real Estate",
+      "kind": "stock",
+      "delisted": false
+    },
+    "WSM": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "WMB": {
+      "sector": "Energy",
+      "kind": "stock",
+      "delisted": false
+    },
+    "WTW": {
+      "sector": "Financials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "WDAY": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "WYNN": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "XEL": {
+      "sector": "Utilities",
+      "kind": "stock",
+      "delisted": false
+    },
+    "XYL": {
+      "sector": "Industrials",
+      "kind": "stock",
+      "delisted": false
+    },
+    "YUM": {
+      "sector": "Consumer Discretionary",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ZBRA": {
+      "sector": "Information Technology",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ZBH": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    },
+    "ZTS": {
+      "sector": "Health Care",
+      "kind": "stock",
+      "delisted": false
+    }
   }
 }

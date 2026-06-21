@@ -140,3 +140,50 @@ def evaluate_xs(
         corr_to_trend=corr_to_trend,
         trend_sharpe=trend_sharpe,
     )
+
+
+@dataclass(frozen=True)
+class ResidualGridReport:
+    """The 2x2 grid's per-cell XSReports + the pre-registered gate verdict."""
+
+    cells: dict[str, XSReport]
+    committed_key: str
+    passed: bool
+
+
+_GATE_SHARPE = 0.7  # pre-registered equity long-short momentum bar
+
+
+def evaluate_residual_grid(
+    books: dict[str, XSBookResult],
+    cfg: ForecastConfig,
+    trend_by_universe: dict[str, npt.NDArray[np.float64]],
+    *,
+    committed_key: str = "broad_residual_skip",
+) -> ResidualGridReport:
+    """Score the 2x2 and read the pre-registered gate on the committed cell.
+
+    The 4-book family feeds the DSR deflation + the CSCV/PBO trial count (the
+    honest multiple-testing set = the constructions we selected among). Each
+    cell's corr_to_trend uses its own universe's trend returns (key prefix before
+    the first '_').
+    """
+    family = {k: v.portfolio_return for k, v in books.items()}
+    cells: dict[str, XSReport] = {}
+    for key, book in books.items():
+        universe = key.split("_")[0]
+        cells[key] = evaluate_xs(
+            book,
+            cfg,
+            trial_returns=family,
+            trend_returns=trend_by_universe[universe],
+        )
+    c = cells[committed_key]
+    passed = bool(
+        c.dsr >= 0.95
+        and c.pbo <= 0.5
+        and c.boot_lo > 0.0
+        and c.n_obs >= c.min_trl
+        and c.sharpe_annual >= _GATE_SHARPE
+    )
+    return ResidualGridReport(cells=cells, committed_key=committed_key, passed=passed)
