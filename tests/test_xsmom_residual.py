@@ -9,6 +9,7 @@ from analytics.xsmom.residual import (
     residual_returns,
     rolling_beta,
     sector_neutral_demean,
+    xs_residual_leverage,
 )
 
 
@@ -100,3 +101,19 @@ def test_injected_default_leverage_is_byte_identical() -> None:
     injected = run_xs_backtest(closes, fundings, cfg, leverage=lev)
     np.testing.assert_array_equal(base.portfolio_return, injected.portfolio_return)
     np.testing.assert_array_equal(base.governor, injected.governor)
+
+
+def test_xs_residual_leverage_shape_and_causality() -> None:
+    closes = _toy_closes()  # defined in Task 7
+    cfg = ForecastConfig(speeds=((16, 64, 3.75), (32, 128, 2.65)))
+    lev = xs_residual_leverage(closes, cfg, beta_window=60)
+    assert set(lev.columns) == set(closes)
+
+    closes2 = {k: v.copy() for k, v in closes.items()}
+    closes2["A"].iloc[-1] *= 1.5  # bump the LAST (future-most) bar of A
+    lev2 = xs_residual_leverage(closes2, cfg, beta_window=60)
+    a = lev["A"].to_numpy()
+    b = lev2["A"].to_numpy()
+    # leverage is shifted one day, so today's last-bar bump cannot move any
+    # past leverage; assert the interior is unchanged (causal).
+    np.testing.assert_array_equal(a[:-1], b[:-1])

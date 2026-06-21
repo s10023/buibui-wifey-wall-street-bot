@@ -83,3 +83,41 @@ def sector_neutral_demean(
         sub = forecasts[cols]
         out[cols] = sub.sub(sub.mean(axis=1), axis=0)
     return out
+
+
+def xs_residual_leverage(
+    closes: dict[str, pd.Series],
+    cfg: ForecastConfig,
+    *,
+    beta_window: int = _BETA_WINDOW,
+    sector_map: dict[str, str] | None = None,
+) -> pd.DataFrame:
+    """Causal cross-sectional leverage from *residual* momentum, sized on
+    *actual* return vol.
+
+    Forecast = EWMAC on the residual price series (relative residual strength),
+    demeaned cross-sectionally (sector-neutral when `sector_map` is given),
+    `.shift(1)`-ed, then vol-parity scaled by each name's ACTUAL annualized return
+    vol so the position targets real vol. Mirrors `xs_leverage` exactly except for
+    the residual forecast input and the optional sector-neutral demean.
+    """
+    resid_closes = residual_closes(closes, beta_window)
+    f = xs_forecasts(resid_closes, cfg)
+    demeaned = (
+        sector_neutral_demean(f, sector_map)
+        if sector_map is not None
+        else f.sub(f.mean(axis=1), axis=0)
+    )
+    demeaned_shifted = demeaned.shift(1)
+    union = pd.DatetimeIndex(demeaned.index)
+    ann = np.sqrt(cfg.annualization_days)
+
+    lev_cols: dict[str, pd.Series] = {}
+    for sym, close in closes.items():
+        vol_ann = ew_return_vol(close, cfg.vol_span).mul(ann).reindex(union)
+        lev = (demeaned_shifted[sym] / 10.0) * (cfg.vol_target_annual / vol_ann)
+        lev_cols[sym] = lev.replace([np.inf, -np.inf], np.nan)
+    lev_df = pd.DataFrame(lev_cols, index=union)
+    if cfg.xs_dollar_neutral:
+        lev_df = lev_df.sub(lev_df.mean(axis=1), axis=0)
+    return lev_df
