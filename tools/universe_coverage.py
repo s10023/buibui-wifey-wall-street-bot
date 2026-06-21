@@ -164,6 +164,11 @@ def main() -> None:
 
     universe = load_research_universe(args.universe_path)
     conn = duckdb.connect(str(args.db), read_only=True)
+    # Disable the statistics-propagation optimizer: its aggregate fast-path hits
+    # an InternalException ("index 0 within vector of size 0") on a large
+    # freshly-inserted ohlcv table (same DuckDB bug worked around in
+    # analytics/store/market_data.get_latest_open_time).
+    conn.execute("SET disabled_optimizers='statistics_propagation'")
     try:
         rows = build_coverage_rows(conn, universe, args.timeframes)
     finally:
