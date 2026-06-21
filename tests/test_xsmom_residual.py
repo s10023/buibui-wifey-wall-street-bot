@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 
+from analytics.forecast.config import ForecastConfig
+from analytics.xsmom.book import run_xs_backtest, xs_leverage
 from analytics.xsmom.residual import (
     residual_close,
     residual_closes,
@@ -78,3 +80,23 @@ def test_sector_neutral_demean_zeroes_within_sector() -> None:
     assert abs(out.loc[idx[0], "A"] + out.loc[idx[0], "B"]) < 1e-12
     assert abs(out.loc[idx[0], "A"] - (-1.0)) < 1e-12  # 1 - mean(1,3) = -1
     assert abs(out.loc[idx[0], "C"]) < 1e-12
+
+
+def _toy_closes() -> dict[str, pd.Series]:
+    idx = pd.date_range("2020-01-01", periods=400, freq="D")
+    rng = np.random.default_rng(3)
+    out = {}
+    for s in ("A", "B", "C", "D"):
+        out[s] = pd.Series(100.0 * np.cumprod(1 + rng.normal(0, 0.01, 400)), index=idx)
+    return out
+
+
+def test_injected_default_leverage_is_byte_identical() -> None:
+    closes = _toy_closes()
+    fundings: dict[str, pd.Series] = {}
+    cfg = ForecastConfig()
+    base = run_xs_backtest(closes, fundings, cfg)
+    lev = xs_leverage(closes, cfg)
+    injected = run_xs_backtest(closes, fundings, cfg, leverage=lev)
+    np.testing.assert_array_equal(base.portfolio_return, injected.portfolio_return)
+    np.testing.assert_array_equal(base.governor, injected.governor)
