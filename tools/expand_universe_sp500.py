@@ -58,10 +58,17 @@ def _load_constituents_from_csv(path: Path) -> list[tuple[str, str]]:
 
 
 def _load_constituents_from_wikipedia() -> list[tuple[str, str]]:
+    import urllib.request
+    from io import StringIO
+
     import pandas as pd
 
     url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-    table = pd.read_html(url)[0]
+    # Wikipedia 403s the default urllib UA; send a browser UA. (read_html needs
+    # an HTML parser, e.g. lxml; use --from-csv for a parser-free offline run.)
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    html = urllib.request.urlopen(req, timeout=30).read().decode("utf-8")
+    table = pd.read_html(StringIO(html))[0]
     return [
         (str(s).strip().upper().replace(".", "-"), str(sec).strip())
         for s, sec in zip(table["Symbol"], table["GICS Sector"])
