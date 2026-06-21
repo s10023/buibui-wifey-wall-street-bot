@@ -6,6 +6,7 @@ from analytics.xsmom.residual import (
     residual_closes,
     residual_returns,
     rolling_beta,
+    sector_neutral_demean,
 )
 
 
@@ -64,3 +65,16 @@ def test_residual_closes_covers_all_symbols() -> None:
     }
     out = residual_closes(closes, window=20)
     assert set(out) == {"A", "B"}
+
+
+def test_sector_neutral_demean_zeroes_within_sector() -> None:
+    idx = pd.date_range("2020-01-01", periods=2, freq="D")
+    forecasts = pd.DataFrame(
+        {"A": [1.0, 2.0], "B": [3.0, 4.0], "C": [10.0, 10.0]}, index=idx
+    )
+    sector_map = {"A": "Tech", "B": "Tech", "C": "Energy"}
+    out = sector_neutral_demean(forecasts, sector_map)
+    # within Tech each row sums to ~0; single-name Energy sector -> 0
+    assert abs(out.loc[idx[0], "A"] + out.loc[idx[0], "B"]) < 1e-12
+    assert abs(out.loc[idx[0], "A"] - (-1.0)) < 1e-12  # 1 - mean(1,3) = -1
+    assert abs(out.loc[idx[0], "C"]) < 1e-12

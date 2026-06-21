@@ -65,3 +65,21 @@ def residual_closes(
     """Residual price series per instrument vs the equal-weight market."""
     mkt = equal_weight_market_return(closes)
     return {sym: residual_close(c, mkt, window) for sym, c in closes.items()}
+
+
+def sector_neutral_demean(
+    forecasts: pd.DataFrame, sector_map: dict[str, str]
+) -> pd.DataFrame:
+    """Cross-sectionally demean within each GICS sector (skipna per row).
+
+    Columns absent from `sector_map` are grouped under their own None bucket and
+    demeaned among themselves. Each row of each sector group sums to ~0.
+    """
+    out = forecasts.copy()
+    groups: dict[str | None, list[str]] = {}
+    for col in forecasts.columns:
+        groups.setdefault(sector_map.get(str(col)), []).append(str(col))
+    for cols in groups.values():
+        sub = forecasts[cols]
+        out[cols] = sub.sub(sub.mean(axis=1), axis=0)
+    return out
