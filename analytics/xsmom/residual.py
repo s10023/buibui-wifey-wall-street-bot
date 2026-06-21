@@ -29,3 +29,14 @@ def rolling_beta(inst_ret: pd.Series, mkt_ret: pd.Series, window: int) -> pd.Ser
     var = df["m"].rolling(window, min_periods=window).var()
     beta = cov / var
     return beta.replace([np.inf, -np.inf], np.nan)
+
+
+def residual_returns(
+    inst_ret: pd.Series, mkt_ret: pd.Series, beta: pd.Series
+) -> pd.Series:
+    """`r_i - beta_i * r_mkt`, aligned on the union of the three indices."""
+    idx = inst_ret.index.union(mkt_ret.index).union(beta.index)
+    i = inst_ret.reindex(idx)
+    m = mkt_ret.reindex(idx)
+    b = beta.reindex(idx)
+    return i - b * m
