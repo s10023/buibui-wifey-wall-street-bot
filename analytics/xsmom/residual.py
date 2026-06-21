@@ -40,3 +40,28 @@ def residual_returns(
     m = mkt_ret.reindex(idx)
     b = beta.reindex(idx)
     return i - b * m
+
+
+_BETA_WINDOW = 252  # a-priori trailing sessions for the market beta
+
+
+def residual_close(
+    inst_close: pd.Series, mkt_ret: pd.Series, window: int
+) -> pd.Series:
+    """Synthetic residual *price* = cumprod(1 + residual_returns).
+
+    Feedable to `combine_forecasts` as a price series so EWMAC momentum is
+    computed on the beta-stripped path. Leading warm-up bars are NaN.
+    """
+    inst_ret = inst_close.pct_change()
+    beta = rolling_beta(inst_ret, mkt_ret, window)
+    resid = residual_returns(inst_ret, mkt_ret, beta)
+    return (1.0 + resid).cumprod()
+
+
+def residual_closes(
+    closes: dict[str, pd.Series], window: int = _BETA_WINDOW
+) -> dict[str, pd.Series]:
+    """Residual price series per instrument vs the equal-weight market."""
+    mkt = equal_weight_market_return(closes)
+    return {sym: residual_close(c, mkt, window) for sym, c in closes.items()}
