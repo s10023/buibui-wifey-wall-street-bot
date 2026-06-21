@@ -7,7 +7,6 @@ from analytics.store.market_data import upsert_ohlcv
 from analytics.store.schema import init_schema
 from analytics.xsmom.replay import replay_residual_grid
 
-
 _DAY = 86_400_000
 _T0 = 1_514_764_800_000  # 2018-01-01T00:00:00Z in ms
 
