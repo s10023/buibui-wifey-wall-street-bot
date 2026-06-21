@@ -4,6 +4,7 @@ import pandas as pd
 from analytics.forecast.config import ForecastConfig
 from analytics.xsmom.book import run_xs_backtest, xs_leverage
 from analytics.xsmom.residual import (
+    long_only_residual_leverage,
     residual_close,
     residual_closes,
     residual_returns,
@@ -117,3 +118,18 @@ def test_xs_residual_leverage_shape_and_causality() -> None:
     # leverage is shifted one day, so today's last-bar bump cannot move any
     # past leverage; assert the interior is unchanged (causal).
     np.testing.assert_array_equal(a[:-1], b[:-1])
+
+
+def test_long_only_residual_leverage_is_nonnegative_and_causal() -> None:
+    closes = _toy_closes()  # defined in Task 7
+    cfg = ForecastConfig(speeds=((16, 64, 3.75), (32, 128, 2.65)))
+    lev = long_only_residual_leverage(closes, cfg, beta_window=60, quantile=0.5)
+    stacked = lev.to_numpy()
+    finite = stacked[np.isfinite(stacked)]
+    assert (finite >= 0.0).all()  # long-only: no negative legs
+    assert finite.any()  # at least some non-zero longs emerge
+
+    closes2 = {k: v.copy() for k, v in closes.items()}
+    closes2["A"].iloc[-1] *= 1.5  # bump the future-most bar
+    lev2 = long_only_residual_leverage(closes2, cfg, beta_window=60, quantile=0.5)
+    np.testing.assert_array_equal(lev["A"].to_numpy()[:-1], lev2["A"].to_numpy()[:-1])
