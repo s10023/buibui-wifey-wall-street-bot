@@ -11,8 +11,12 @@ def _book(mean: float, seed: int, n: int = 600) -> XSBookResult:
     r = rng.normal(mean, 0.01, n)
     idx = pd.date_range("2018-01-01", periods=n, freq="D")
     return XSBookResult(
-        daily_index=idx, portfolio_return=r, pre_governor_return=r,
-        governor=np.ones(n), active_count=np.full(n, 5), per_instrument_net={},
+        daily_index=idx,
+        portfolio_return=r,
+        pre_governor_return=r,
+        governor=np.ones(n),
+        active_count=np.full(n, 5),
+        per_instrument_net={},
     )
 
 
@@ -32,7 +36,10 @@ def test_evaluate_residual_grid_reads_committed_cell() -> None:
     # the gate reads the committed cell only
     c = rep.cells["broad_residual_skip"]
     expected = (
-        c.dsr >= 0.95 and c.pbo <= 0.5 and c.boot_lo > 0.0
-        and c.n_obs >= c.min_trl and c.sharpe_annual >= 0.7
+        c.dsr >= 0.95
+        and c.pbo <= 0.5
+        and c.boot_lo > 0.0
+        and c.n_obs >= c.min_trl
+        and c.sharpe_annual >= 0.7
     )
     assert rep.passed == expected

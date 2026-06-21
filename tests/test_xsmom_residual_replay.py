@@ -8,17 +8,23 @@ from analytics.store.schema import init_schema
 from analytics.xsmom.replay import replay_residual_grid
 
 
+_DAY = 86_400_000
+_T0 = 1_514_764_800_000  # 2018-01-01T00:00:00Z in ms
+
+
 def _seed(conn: duckdb.DuckDBPyConnection, sym: str, seed: int) -> None:
-    idx = pd.date_range("2018-01-01", periods=500, freq="D")
     rng = np.random.default_rng(seed)
     close = 100.0 * np.cumprod(1 + rng.normal(0.0003, 0.01, 500))
     df = pd.DataFrame(
         {
             "symbol": sym,
             "timeframe": "1d",
-            "open_time": (idx.asi8 // 10**6),
-            "open": close, "high": close * 1.01, "low": close * 0.99,
-            "close": close, "volume": 1_000_000.0,
+            "open_time": [_T0 + i * _DAY for i in range(500)],
+            "open": close,
+            "high": close * 1.01,
+            "low": close * 0.99,
+            "close": close,
+            "volume": 1_000_000.0,
         }
     )
     upsert_ohlcv(conn, df)
@@ -33,11 +39,18 @@ def test_replay_residual_grid_returns_four_books() -> None:
     sector_map = {s: ("Tech" if i % 2 == 0 else "Energy") for i, s in enumerate(syms)}
     cfg = ForecastConfig()
     books = replay_residual_grid(
-        conn, cfg, beta_window=60, mega_symbols=syms[:3],
-        broad_symbols=syms, sector_map=sector_map,
+        conn,
+        cfg,
+        beta_window=60,
+        mega_symbols=syms[:3],
+        broad_symbols=syms,
+        sector_map=sector_map,
     )
     assert set(books) == {
-        "mega_raw", "mega_residual_skip", "broad_raw", "broad_residual_skip",
+        "mega_raw",
+        "mega_residual_skip",
+        "broad_raw",
+        "broad_residual_skip",
     }
     assert books["broad_residual_skip"].portfolio_return.shape[0] > 0
 
@@ -52,7 +65,11 @@ def test_residual_audit_build_row_smoke() -> None:
         _seed(conn, s, seed=i)
     sector_map = {s: ("Tech" if i % 2 == 0 else "Energy") for i, s in enumerate(syms)}
     rep = build_grid(
-        conn, mega=syms[:3], broad=syms, sector_map=sector_map, slippage_bps=2.0,
+        conn,
+        mega=syms[:3],
+        broad=syms,
+        sector_map=sector_map,
+        slippage_bps=2.0,
     )
     assert rep.committed_key == "broad_residual_skip"
     assert "broad_residual_skip" in rep.cells

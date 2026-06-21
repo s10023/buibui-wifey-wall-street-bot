@@ -21,27 +21,30 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 UNIVERSE_PATH = Path("config/universe.json")
 SNAPSHOT_PATH = Path("config/universe_sp100_snapshot.json")
 
 
 def merge_constituents(
-    universe: dict[str, object],
+    universe: dict[str, Any],
     constituents: list[tuple[str, str]],
-) -> tuple[dict[str, object], list[str]]:
+) -> tuple[dict[str, Any], list[str]]:
     """Return (merged_universe, sp100_snapshot).
 
     Snapshot = the sorted pre-existing kind=="stock" symbols. New constituent
     symbols are added as kind=stock/delisted=False; existing members are left
     byte-identical (idempotent).
     """
-    members: dict[str, dict[str, object]] = dict(universe["members"])  # type: ignore[arg-type]
+    members: dict[str, Any] = dict(universe["members"])
     snapshot = sorted(s for s, m in members.items() if m.get("kind") == "stock")
     for symbol, sector in constituents:
         if symbol not in members:
             members[symbol] = {
-                "sector": sector, "kind": "stock", "delisted": False,
+                "sector": sector,
+                "kind": "stock",
+                "delisted": False,
             }
     merged = dict(universe)
     merged["members"] = members
@@ -53,8 +56,11 @@ def _load_constituents_from_csv(path: Path) -> list[tuple[str, str]]:
 
     with open(path, newline="") as f:
         reader = csv.DictReader(f)
-        return [(row["Symbol"].strip().upper(), row["Sector"].strip())
-                for row in reader if row.get("Symbol")]
+        return [
+            (row["Symbol"].strip().upper(), row["Sector"].strip())
+            for row in reader
+            if row.get("Symbol")
+        ]
 
 
 def _load_constituents_from_wikipedia() -> list[tuple[str, str]]:
@@ -71,7 +77,7 @@ def _load_constituents_from_wikipedia() -> list[tuple[str, str]]:
     table = pd.read_html(StringIO(html))[0]
     return [
         (str(s).strip().upper().replace(".", "-"), str(sec).strip())
-        for s, sec in zip(table["Symbol"], table["GICS Sector"])
+        for s, sec in zip(table["Symbol"], table["GICS Sector"], strict=True)
     ]
 
 
@@ -92,8 +98,10 @@ def main() -> None:
     args.universe.write_text(json.dumps(merged, indent=2) + "\n")
     args.snapshot.write_text(json.dumps(snapshot, indent=2) + "\n")
     n_new = len(merged["members"]) - len(universe["members"])
-    print(f"Merged {len(constituents)} constituents (+{n_new} new). "
-          f"Snapshot: {len(snapshot)} S&P-100 stocks -> {args.snapshot}")
+    print(
+        f"Merged {len(constituents)} constituents (+{n_new} new). "
+        f"Snapshot: {len(snapshot)} S&P-100 stocks -> {args.snapshot}"
+    )
 
 
 if __name__ == "__main__":

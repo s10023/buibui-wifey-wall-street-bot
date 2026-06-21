@@ -8,8 +8,11 @@ def test_merge_preserves_existing_and_adds_new(tmp_path: Path) -> None:
         "universe_policy": {"scope": "x", "as_of": "fixed", "survivorship_note": "n"},
         "membership_as_of": "2026-06-16",
         "members": {
-            "AAPL": {"sector": "Information Technology", "kind": "stock",
-                     "delisted": False},
+            "AAPL": {
+                "sector": "Information Technology",
+                "kind": "stock",
+                "delisted": False,
+            },
             "SPY": {"sector": "ETF", "kind": "etf", "delisted": False},
         },
     }
@@ -19,7 +22,9 @@ def test_merge_preserves_existing_and_adds_new(tmp_path: Path) -> None:
 
     assert snapshot == ["AAPL"]  # pre-existing STOCK symbols only (SPY excluded)
     assert merged["members"]["FOO"] == {
-        "sector": "Industrials", "kind": "stock", "delisted": False,
+        "sector": "Industrials",
+        "kind": "stock",
+        "delisted": False,
     }
     # existing entries untouched (idempotent on AAPL, ETF preserved)
     assert merged["members"]["AAPL"]["sector"] == "Information Technology"

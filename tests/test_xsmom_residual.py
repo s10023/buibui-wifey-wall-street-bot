@@ -78,10 +78,12 @@ def test_sector_neutral_demean_zeroes_within_sector() -> None:
     )
     sector_map = {"A": "Tech", "B": "Tech", "C": "Energy"}
     out = sector_neutral_demean(forecasts, sector_map)
+    # column order A, B, C is preserved by sector_neutral_demean (copy + reassign)
+    arr = out.to_numpy()  # row 0 = idx[0]; cols [A, B, C]
     # within Tech each row sums to ~0; single-name Energy sector -> 0
-    assert abs(out.loc[idx[0], "A"] + out.loc[idx[0], "B"]) < 1e-12
-    assert abs(out.loc[idx[0], "A"] - (-1.0)) < 1e-12  # 1 - mean(1,3) = -1
-    assert abs(out.loc[idx[0], "C"]) < 1e-12
+    assert abs(arr[0, 0] + arr[0, 1]) < 1e-12
+    assert abs(arr[0, 0] - (-1.0)) < 1e-12  # 1 - mean(1,3) = -1
+    assert abs(arr[0, 2]) < 1e-12
 
 
 def _toy_closes() -> dict[str, pd.Series]:

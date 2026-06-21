@@ -67,9 +67,7 @@ def _sector_map() -> dict[str, str]:
     """`{symbol: GICS sector}` for active single-name stocks (read-only)."""
     uni = load_research_universe()
     return {
-        m.symbol: m.sector
-        for m in uni.members
-        if not m.delisted and m.kind == "stock"
+        m.symbol: m.sector for m in uni.members if not m.delisted and m.kind == "stock"
     }
 
 

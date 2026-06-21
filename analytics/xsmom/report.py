@@ -173,7 +173,9 @@ def evaluate_residual_grid(
     for key, book in books.items():
         universe = key.split("_")[0]
         cells[key] = evaluate_xs(
-            book, cfg, trial_returns=family,
+            book,
+            cfg,
+            trial_returns=family,
             trend_returns=trend_by_universe[universe],
         )
     c = cells[committed_key]

@@ -61,8 +61,12 @@ def build_grid(
 ) -> ResidualGridReport:
     cfg = dataclasses.replace(ForecastConfig(), slippage_pct=slippage_bps / 10_000.0)
     books = replay_residual_grid(
-        conn, cfg, beta_window=_BETA_WINDOW, mega_symbols=mega,
-        broad_symbols=broad, sector_map=sector_map,
+        conn,
+        cfg,
+        beta_window=_BETA_WINDOW,
+        mega_symbols=mega,
+        broad_symbols=broad,
+        sector_map=sector_map,
     )
     trend = {
         "mega": replay_universe(conn, cfg, symbols=mega).portfolio_return,
@@ -74,11 +78,18 @@ def build_grid(
 def _grid_frame(rep: ResidualGridReport) -> pd.DataFrame:
     rows = []
     for key, c in rep.cells.items():
-        rows.append({
-            "cell": key, "days": c.n_obs, "sharpe": c.sharpe_annual,
-            "dsr": c.dsr, "pbo": c.pbo, "boot_lo": c.boot_lo,
-            "min_trl": c.min_trl, "corr_to_trend": c.corr_to_trend,
-        })
+        rows.append(
+            {
+                "cell": key,
+                "days": c.n_obs,
+                "sharpe": c.sharpe_annual,
+                "dsr": c.dsr,
+                "pbo": c.pbo,
+                "boot_lo": c.boot_lo,
+                "min_trl": c.min_trl,
+                "corr_to_trend": c.corr_to_trend,
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -122,11 +133,16 @@ def main() -> None:
 
     for bps in (0.0, args.slippage_bps, 8.0):
         rep = build_grid(
-            conn, mega=mega, broad=broad, sector_map=sector_map, slippage_bps=bps,
+            conn,
+            mega=mega,
+            broad=broad,
+            sector_map=sector_map,
+            slippage_bps=bps,
         )
         print(f"\n=== 2x2 grid @ {bps:g} bps ===")
-        print(_grid_frame(rep).to_string(index=False,
-              float_format=lambda x: f"{x:+.3f}"))
+        print(
+            _grid_frame(rep).to_string(index=False, float_format=lambda x: f"{x:+.3f}")
+        )
         verdict = "PASS" if rep.passed else "FAIL"
         print(f"committed cell ({rep.committed_key}) @ {bps:g}bps: {verdict}")
 

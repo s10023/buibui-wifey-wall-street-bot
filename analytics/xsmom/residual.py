@@ -45,13 +45,13 @@ def residual_returns(
 _BETA_WINDOW = 252  # a-priori trailing sessions for the market beta
 
 _SLOW_SPEEDS_DEFAULT: tuple[tuple[int, int, float], ...] = (
-    (16, 64, 3.75), (32, 128, 2.65), (64, 256, 1.91),
+    (16, 64, 3.75),
+    (32, 128, 2.65),
+    (64, 256, 1.91),
 )  # default speeds minus the fast (8, 32) leg = the skip-month analog
 
 
-def residual_close(
-    inst_close: pd.Series, mkt_ret: pd.Series, window: int
-) -> pd.Series:
+def residual_close(inst_close: pd.Series, mkt_ret: pd.Series, window: int) -> pd.Series:
     """Synthetic residual *price* = cumprod(1 + residual_returns).
 
     Feedable to `combine_forecasts` as a price series so EWMAC momentum is
