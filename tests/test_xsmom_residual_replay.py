@@ -40,3 +40,21 @@ def test_replay_residual_grid_returns_four_books() -> None:
         "mega_raw", "mega_residual_skip", "broad_raw", "broad_residual_skip",
     }
     assert books["broad_residual_skip"].portfolio_return.shape[0] > 0
+
+
+def test_residual_audit_build_row_smoke() -> None:
+    from tools.xsmom_residual_audit import build_grid, long_only_sharpe
+
+    conn = duckdb.connect(":memory:")
+    init_schema(conn)
+    syms = ["A", "B", "C", "D", "E", "F"]
+    for i, s in enumerate(syms):
+        _seed(conn, s, seed=i)
+    sector_map = {s: ("Tech" if i % 2 == 0 else "Energy") for i, s in enumerate(syms)}
+    rep = build_grid(
+        conn, mega=syms[:3], broad=syms, sector_map=sector_map, slippage_bps=2.0,
+    )
+    assert rep.committed_key == "broad_residual_skip"
+    assert "broad_residual_skip" in rep.cells
+    lo = long_only_sharpe(conn, syms, sector_map, 2.0)
+    assert isinstance(lo, float)
