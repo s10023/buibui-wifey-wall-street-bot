@@ -108,3 +108,23 @@ def test_beta_neutral_leverage_shape_neutrality_and_causality() -> None:
     betas2 = causal_betas(closes2, window=60)
     lev2 = beta_neutral_leverage(cross_sectional_score(betas2), betas2, closes2, cfg)
     np.testing.assert_array_equal(lev["B"].to_numpy()[:-1], lev2["B"].to_numpy()[:-1])
+
+
+from analytics.lowvol.signals import long_only_leverage
+
+
+def test_long_only_leverage_is_nonnegative_and_causal() -> None:
+    closes = _toy_closes()
+    cfg = ForecastConfig()
+    score = cross_sectional_score(causal_betas(closes, window=60))
+    lev = long_only_leverage(score, closes, cfg, quantile=0.5)
+    stacked = lev.to_numpy()
+    finite = stacked[np.isfinite(stacked)]
+    assert (finite >= 0.0).all()  # long-only: no negative legs
+    assert finite.any()  # at least some non-zero longs emerge
+
+    closes2 = {k: v.copy() for k, v in closes.items()}
+    closes2["A"].iloc[-1] *= 1.5  # future-most bar
+    score2 = cross_sectional_score(causal_betas(closes2, window=60))
+    lev2 = long_only_leverage(score2, closes2, cfg, quantile=0.5)
+    np.testing.assert_array_equal(lev["B"].to_numpy()[:-1], lev2["B"].to_numpy()[:-1])

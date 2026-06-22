@@ -115,3 +115,29 @@ def beta_neutral_leverage(
         lev_cols[sym] = lev.replace([np.inf, -np.inf], np.nan)
     lev_df = pd.DataFrame(lev_cols, index=union)
     return _beta_neutralize(lev_df, betas.reindex(union))
+
+
+def long_only_leverage(
+    score: pd.DataFrame,
+    closes: dict[str, pd.Series],
+    cfg: ForecastConfig,
+    *,
+    quantile: float = 0.8,
+) -> pd.DataFrame:
+    """Long-only bottom-quantile leverage (deployable wife-sleeve form).
+
+    Keep names whose cross-sectional `score` is in the top `quantile` AND positive
+    (the lowest-beta / lowest-vol side) each day; each kept name gets a unit
+    vol-targeted long, everything else is 0 (no shorts, no re-center). Mirrors
+    `long_only_residual_leverage`. Causal — `score` is already `.shift(1)`-ed.
+    """
+    union = pd.DatetimeIndex(score.index)
+    ann = np.sqrt(cfg.annualization_days)
+    thresh = score.quantile(quantile, axis=1)
+    longs = score.ge(thresh, axis=0) & score.gt(0.0)
+    lev_cols: dict[str, pd.Series] = {}
+    for sym, close in closes.items():
+        vol_ann = ew_return_vol(close, cfg.vol_span).mul(ann).reindex(union)
+        unit = (cfg.vol_target_annual / vol_ann).replace([np.inf, -np.inf], np.nan)
+        lev_cols[sym] = unit.where(longs[sym], 0.0)
+    return pd.DataFrame(lev_cols, index=union)
