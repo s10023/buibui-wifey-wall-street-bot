@@ -54,3 +54,30 @@ def test_cross_sectional_score_low_metric_is_long() -> None:
     assert score["A"].iloc[0] > 0.0
     assert score["C"].iloc[0] < 0.0
     assert abs(float(score.iloc[0].mean())) < 1e-12  # demeaned -> row sums to ~0
+
+
+from analytics.lowvol.signals import _beta_neutralize
+
+
+def test_beta_neutralize_zeroes_net_portfolio_beta() -> None:
+    idx = pd.date_range("2020-01-01", periods=1, freq="D")
+    lev = pd.DataFrame(
+        {"A": [1.0], "B": [1.0], "C": [-1.0], "D": [-1.0]}, index=idx
+    )  # 2 long, 2 short
+    betas = pd.DataFrame(
+        {"A": [0.5], "B": [0.7], "C": [1.3], "D": [1.5]}, index=idx
+    )
+    out = _beta_neutralize(lev, betas)
+    net = (out * betas).sum(axis=1)
+    assert abs(float(net.iloc[0])) < 1e-12  # beta-neutral by construction
+    # long leg untouched, short leg scaled by k = -beta_long/beta_short = 1.2/2.8
+    assert out["A"].iloc[0] == 1.0
+    assert abs(out["C"].iloc[0] - (-1.0 * 1.2 / 2.8)) < 1e-12
+
+
+def test_beta_neutralize_leaves_degenerate_short_leg_untouched() -> None:
+    idx = pd.date_range("2020-01-01", periods=1, freq="D")
+    lev = pd.DataFrame({"A": [1.0], "B": [1.0]}, index=idx)  # no short leg
+    betas = pd.DataFrame({"A": [0.5], "B": [0.7]}, index=idx)
+    out = _beta_neutralize(lev, betas)
+    assert out["A"].iloc[0] == 1.0 and out["B"].iloc[0] == 1.0  # unchanged (k -> 1.0)

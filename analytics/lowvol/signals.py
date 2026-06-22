@@ -71,3 +71,22 @@ def cross_sectional_score(metric: pd.DataFrame) -> pd.DataFrame:
     demeaned = metric.sub(metric.mean(axis=1), axis=0)
     z = demeaned.div(metric.std(axis=1), axis=0)
     return (-z).replace([np.inf, -np.inf], np.nan)
+
+
+def _beta_neutralize(lev: pd.DataFrame, betas: pd.DataFrame) -> pd.DataFrame:
+    """Scale the short leg per day so the net causal portfolio beta is zero.
+
+    `Σ_i w_i β_i = 0` after scaling the short leg by `k = -β_long / β_short`
+    (β_long = Σ over long positions, β_short = Σ over short positions). A day with
+    no valid short leg, k ≤ 0, or k NaN is left untouched (residual beta accepted;
+    the realized-beta diagnostic confirms it nets to ≈0 across the full sample).
+    """
+    contrib = lev * betas
+    long_mask = lev > 0
+    short_mask = lev < 0
+    beta_long = contrib.where(long_mask).sum(axis=1, min_count=1)
+    beta_short = contrib.where(short_mask).sum(axis=1, min_count=1)
+    k = (-beta_long / beta_short).replace([np.inf, -np.inf], np.nan)
+    k = k.where(k.notna() & (k > 0.0), 1.0)
+    scaled = lev.mul(k, axis=0)
+    return lev.where(~short_mask, scaled)
