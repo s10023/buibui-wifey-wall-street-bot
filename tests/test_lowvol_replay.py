@@ -55,3 +55,17 @@ def test_bab_market_return_is_a_series() -> None:
     mkt = bab_market_return(conn, syms)
     assert isinstance(mkt, pd.Series)
     assert len(mkt) > 0
+
+
+def test_lowvol_audit_build_grid_smoke() -> None:
+    from tools.lowvol_audit import build_grid
+
+    conn = duckdb.connect(":memory:")
+    init_schema(conn)
+    syms = ["A", "B", "C", "D", "E", "F"]
+    for i, s in enumerate(syms):
+        _seed(conn, s, seed=i)
+    rep = build_grid(conn, symbols=syms, slippage_bps=2.0, beta_window=60, vol_window=60)
+    assert rep.committed_key == "beta_neutral_ls"
+    assert "beta_neutral_ls" in rep.cells
+    assert "beta_neutral_ls" in rep.attribution
