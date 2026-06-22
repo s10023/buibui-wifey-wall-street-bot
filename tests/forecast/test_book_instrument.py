@@ -34,3 +34,20 @@ def test_position_is_causal_no_lookahead() -> None:
         base["leverage"].iloc[:-1].fillna(0.0),
         after["leverage"].iloc[:-1].fillna(0.0),
     )
+
+
+def test_long_only_false_is_byte_identical_to_default() -> None:
+    close = _close()
+    zero = pd.Series(0.0, index=close.index)
+    cfg = ForecastConfig()
+    default = instrument_returns(close, zero, cfg)
+    explicit = instrument_returns(close, zero, cfg, long_only=False)
+    assert default.equals(explicit)
+
+
+def test_long_only_true_never_shorts() -> None:
+    close = _close()
+    zero = pd.Series(0.0, index=close.index)
+    out = instrument_returns(close, zero, ForecastConfig(), long_only=True)
+    lev = out["leverage"].dropna()
+    assert (lev >= 0.0).all()

@@ -21,6 +21,8 @@ def instrument_returns(
     close: pd.Series,
     funding_daily: pd.Series,
     cfg: ForecastConfig,
+    *,
+    long_only: bool = False,
 ) -> pd.DataFrame:
     """Causal subsystem returns for one instrument.
 
@@ -28,10 +30,17 @@ def instrument_returns(
     `close`). `funding_daily` is the day's summed funding rate aligned to the
     close index (0.0 where missing). Equities carry no funding, so the caller
     passes an all-zero series.
+
+    When ``long_only`` is True the combined forecast is clipped at zero before
+    sizing (long or flat, never short) — the deployable no-short form. Default
+    False is byte-identical to the signed book.
     """
     forecast = combine_forecasts(
         close, cfg.speeds, cfg.fdm, cfg.vol_span, cfg.cap, weights=cfg.weights
-    ).shift(1)
+    )
+    if long_only:
+        forecast = forecast.clip(lower=0.0)
+    forecast = forecast.shift(1)
     # ew_return_vol is already causal (.shift(1) baked in) — no extra shift
     vol_ann = ew_return_vol(close, cfg.vol_span).mul(np.sqrt(cfg.annualization_days))
 
@@ -74,8 +83,14 @@ def run_forecast_backtest(
     closes: dict[str, pd.Series],
     fundings: dict[str, pd.Series],
     cfg: ForecastConfig,
+    *,
+    long_only: bool = False,
 ) -> ForecastBookResult:
-    """Aggregate per-instrument subsystem returns + causal vol governor."""
+    """Aggregate per-instrument subsystem returns + causal vol governor.
+
+    ``long_only`` is threaded to ``instrument_returns`` (default False is the
+    signed book, byte-identical to before).
+    """
     union = pd.DatetimeIndex([])
     for s in closes.values():
         union = union.union(pd.DatetimeIndex(s.index))
@@ -85,7 +100,7 @@ def run_forecast_backtest(
     net_cols: list[pd.Series] = []
     for sym, close in closes.items():
         fund = fundings.get(sym, pd.Series(0.0, index=close.index))
-        out = instrument_returns(close, fund, cfg)
+        out = instrument_returns(close, fund, cfg, long_only=long_only)
         net = out["net"].reindex(union)
         per_net[sym] = net
         net_cols.append(net)
