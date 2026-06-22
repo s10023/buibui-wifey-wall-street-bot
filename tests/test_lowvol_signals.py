@@ -81,3 +81,30 @@ def test_beta_neutralize_leaves_degenerate_short_leg_untouched() -> None:
     betas = pd.DataFrame({"A": [0.5], "B": [0.7]}, index=idx)
     out = _beta_neutralize(lev, betas)
     assert out["A"].iloc[0] == 1.0 and out["B"].iloc[0] == 1.0  # unchanged (k -> 1.0)
+
+
+from analytics.forecast.config import ForecastConfig
+from analytics.lowvol.signals import beta_neutral_leverage
+
+
+def test_beta_neutral_leverage_shape_neutrality_and_causality() -> None:
+    closes = _toy_closes()
+    cfg = ForecastConfig()
+    betas = causal_betas(closes, window=60)
+    score = cross_sectional_score(betas)
+    lev = beta_neutral_leverage(score, betas, closes, cfg)
+    assert set(lev.columns) == set(closes)
+
+    # net causal portfolio beta ≈ 0 on (essentially) every live day; the median is
+    # robust to the rare degenerate day the k>0 guard leaves un-neutralized. The
+    # exact math is proven deterministically in test_beta_neutralize_*.
+    contrib = (lev * betas).sum(axis=1, min_count=1)
+    live = contrib.dropna()
+    assert len(live) > 0
+    assert float(live.abs().median()) < 1e-6
+
+    closes2 = {k: v.copy() for k, v in closes.items()}
+    closes2["A"].iloc[-1] *= 1.5  # bump the future-most bar
+    betas2 = causal_betas(closes2, window=60)
+    lev2 = beta_neutral_leverage(cross_sectional_score(betas2), betas2, closes2, cfg)
+    np.testing.assert_array_equal(lev["B"].to_numpy()[:-1], lev2["B"].to_numpy()[:-1])

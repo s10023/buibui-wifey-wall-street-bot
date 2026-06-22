@@ -90,3 +90,28 @@ def _beta_neutralize(lev: pd.DataFrame, betas: pd.DataFrame) -> pd.DataFrame:
     k = k.where(k.notna() & (k > 0.0), 1.0)
     scaled = lev.mul(k, axis=0)
     return lev.where(~short_mask, scaled)
+
+
+def beta_neutral_leverage(
+    score: pd.DataFrame,
+    betas: pd.DataFrame,
+    closes: dict[str, pd.Series],
+    cfg: ForecastConfig,
+) -> pd.DataFrame:
+    """Vol-parity long-short leverage from a cross-sectional `score`, beta-neutralized.
+
+    `lev_i = score_i * (vol_target / vol_ann_i)` (vol-parity, the `xs_*_leverage`
+    machinery), then the short leg is scaled so the net causal portfolio beta is
+    zero (`_beta_neutralize`). `score` is already `.shift(1)`-ed via `causal_betas`
+    / `realized_vols`, so no further shift here. `betas` (always the causal market
+    betas) drives the neutralization regardless of which metric `score` ranks on.
+    """
+    union = pd.DatetimeIndex(score.index)
+    ann = np.sqrt(cfg.annualization_days)
+    lev_cols: dict[str, pd.Series] = {}
+    for sym, close in closes.items():
+        vol_ann = ew_return_vol(close, cfg.vol_span).mul(ann).reindex(union)
+        lev = score[sym] * (cfg.vol_target_annual / vol_ann)
+        lev_cols[sym] = lev.replace([np.inf, -np.inf], np.nan)
+    lev_df = pd.DataFrame(lev_cols, index=union)
+    return _beta_neutralize(lev_df, betas.reindex(union))
