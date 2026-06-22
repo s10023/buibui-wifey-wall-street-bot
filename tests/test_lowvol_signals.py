@@ -128,3 +128,16 @@ def test_long_only_leverage_is_nonnegative_and_causal() -> None:
     score2 = cross_sectional_score(causal_betas(closes2, window=60))
     lev2 = long_only_leverage(score2, closes2, cfg, quantile=0.5)
     np.testing.assert_array_equal(lev["B"].to_numpy()[:-1], lev2["B"].to_numpy()[:-1])
+
+
+def test_package_reexports() -> None:
+    import analytics.lowvol as lv
+
+    for name in (
+        "causal_betas",
+        "realized_vols",
+        "cross_sectional_score",
+        "beta_neutral_leverage",
+        "long_only_leverage",
+    ):
+        assert hasattr(lv, name)
