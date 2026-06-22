@@ -65,7 +65,9 @@ def test_lowvol_audit_build_grid_smoke() -> None:
     syms = ["A", "B", "C", "D", "E", "F"]
     for i, s in enumerate(syms):
         _seed(conn, s, seed=i)
-    rep = build_grid(conn, symbols=syms, slippage_bps=2.0, beta_window=60, vol_window=60)
+    rep = build_grid(
+        conn, symbols=syms, slippage_bps=2.0, beta_window=60, vol_window=60
+    )
     assert rep.committed_key == "beta_neutral_ls"
     assert "beta_neutral_ls" in rep.cells
     assert "beta_neutral_ls" in rep.attribution

@@ -29,9 +29,7 @@ def _universe_symbols(min_history_days: int | None) -> list[str]:
     return uni.stocks()  # active single-name stocks; ETFs excluded from the XS set
 
 
-def bab_market_return(
-    conn: duckdb.DuckDBPyConnection, symbols: list[str]
-) -> pd.Series:
+def bab_market_return(conn: duckdb.DuckDBPyConnection, symbols: list[str]) -> pd.Series:
     """Equal-weight market daily return over the symbol set (read-only)."""
     closes, _ = load_daily_inputs(conn, symbols)
     return equal_weight_market_return(closes)

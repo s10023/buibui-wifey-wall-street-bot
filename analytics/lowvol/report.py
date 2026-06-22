@@ -74,7 +74,9 @@ def evaluate_bab_grid(
     )
     lo = cells[long_only_key]
     deploy_grade = bool(
-        passed and c.sharpe_annual >= _DEPLOY_SHARPE and lo.sharpe_annual >= _GATE_SHARPE
+        passed
+        and c.sharpe_annual >= _DEPLOY_SHARPE
+        and lo.sharpe_annual >= _GATE_SHARPE
     )
     return BabGridReport(
         cells=cells,

@@ -1,9 +1,13 @@
 import numpy as np
 import pandas as pd
 
+from analytics.forecast.config import ForecastConfig
 from analytics.lowvol.signals import (
+    _beta_neutralize,
+    beta_neutral_leverage,
     causal_betas,
     cross_sectional_score,
+    long_only_leverage,
     realized_vols,
 )
 
@@ -29,7 +33,9 @@ def test_causal_betas_shape_and_causality() -> None:
     # B's beta vs the EW market: a bump at 200 moves the market return at 200,
     # which only affects rolling windows that include bar 200 (-> shifted 201..260).
     assert b["B"].to_numpy()[150] == b2["B"].to_numpy()[150]  # past unchanged
-    assert b["B"].to_numpy()[230] != b2["B"].to_numpy()[230]  # within reach (non-vacuous)
+    assert (
+        b["B"].to_numpy()[230] != b2["B"].to_numpy()[230]
+    )  # within reach (non-vacuous)
 
 
 def test_realized_vols_is_causal_and_positive() -> None:
@@ -43,7 +49,9 @@ def test_realized_vols_is_causal_and_positive() -> None:
     closes2["A"].iloc[200] *= 1.5  # future bar
     v2 = realized_vols(closes2, window=60)
     assert v["A"].to_numpy()[150] == v2["A"].to_numpy()[150]  # past unchanged
-    assert v["A"].to_numpy()[230] != v2["A"].to_numpy()[230]  # within reach (non-vacuous)
+    assert (
+        v["A"].to_numpy()[230] != v2["A"].to_numpy()[230]
+    )  # within reach (non-vacuous)
 
 
 def test_cross_sectional_score_low_metric_is_long() -> None:
@@ -56,17 +64,12 @@ def test_cross_sectional_score_low_metric_is_long() -> None:
     assert abs(float(score.iloc[0].mean())) < 1e-12  # demeaned -> row sums to ~0
 
 
-from analytics.lowvol.signals import _beta_neutralize
-
-
 def test_beta_neutralize_zeroes_net_portfolio_beta() -> None:
     idx = pd.date_range("2020-01-01", periods=1, freq="D")
     lev = pd.DataFrame(
         {"A": [1.0], "B": [1.0], "C": [-1.0], "D": [-1.0]}, index=idx
     )  # 2 long, 2 short
-    betas = pd.DataFrame(
-        {"A": [0.5], "B": [0.7], "C": [1.3], "D": [1.5]}, index=idx
-    )
+    betas = pd.DataFrame({"A": [0.5], "B": [0.7], "C": [1.3], "D": [1.5]}, index=idx)
     out = _beta_neutralize(lev, betas)
     net = (out * betas).sum(axis=1)
     assert abs(float(net.iloc[0])) < 1e-12  # beta-neutral by construction
@@ -81,10 +84,6 @@ def test_beta_neutralize_leaves_degenerate_short_leg_untouched() -> None:
     betas = pd.DataFrame({"A": [0.5], "B": [0.7]}, index=idx)
     out = _beta_neutralize(lev, betas)
     assert out["A"].iloc[0] == 1.0 and out["B"].iloc[0] == 1.0  # unchanged (k -> 1.0)
-
-
-from analytics.forecast.config import ForecastConfig
-from analytics.lowvol.signals import beta_neutral_leverage
 
 
 def test_beta_neutral_leverage_shape_neutrality_and_causality() -> None:
@@ -108,9 +107,6 @@ def test_beta_neutral_leverage_shape_neutrality_and_causality() -> None:
     betas2 = causal_betas(closes2, window=60)
     lev2 = beta_neutral_leverage(cross_sectional_score(betas2), betas2, closes2, cfg)
     np.testing.assert_array_equal(lev["B"].to_numpy()[:-1], lev2["B"].to_numpy()[:-1])
-
-
-from analytics.lowvol.signals import long_only_leverage
 
 
 def test_long_only_leverage_is_nonnegative_and_causal() -> None:
