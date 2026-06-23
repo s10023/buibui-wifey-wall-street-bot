@@ -11,7 +11,7 @@ DEV_PORT ?= 5173
 PYTHON_FILES = $(shell find . -name "*.py" -not -path "./venv/*" -not -path "./.venv/*")
 DOCKER_IMAGE = wifey-bot
 
-.PHONY: lint lint-md lint-md-fix lint-py-check lint-py typecheck test test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-universe-backfill universe-coverage wifey-forecast-audit wifey-xsmom-audit wifey-xsmom-residual-audit wifey-lowvol-audit wifey-exit-audit wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
+.PHONY: lint lint-md lint-md-fix lint-py-check lint-py typecheck test test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-universe-backfill universe-coverage wifey-forecast-audit wifey-xsmom-audit wifey-xsmom-residual-audit wifey-lowvol-audit wifey-xasset-audit wifey-xasset-backfill wifey-exit-audit wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
 
 lint: lint-md lint-py
 
@@ -137,6 +137,16 @@ wifey-xsmom-residual-audit:
 wifey-lowvol-audit:
 	@echo "🔬 Edge-hunt #2 — low-beta/BAB 2x2 audit over the breadth universe (1d)..."
 	@PYTHONPATH=. poetry run python tools/lowvol_audit.py $(ARGS)
+
+wifey-xasset-audit:
+	@echo "🔬 Edge-hunt #3 — cross-asset TSMOM 2x2 audit over the frozen ETF basket (1d)..."
+	@PYTHONPATH=. poetry run python tools/xasset_audit.py $(ARGS)
+
+wifey-xasset-backfill:
+	@echo "📥 Backfilling the cross-asset TSMOM ETF basket (1d) from $(or $(SINCE),2007-03-01)..."
+	@poetry run python wifey.py analytics backfill \
+		--symbols SPY QQQ EFA EEM TLT IEF LQD GLD SLV DBC USO DBA UUP \
+		--timeframes 1d --since $(or $(SINCE),2007-03-01)
 
 wifey-exit-audit:
 	@echo "🚪 Exit MFE/MAE diagnostic over the live alert ledger (spec §2)..."
