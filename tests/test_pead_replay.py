@@ -17,7 +17,8 @@ from analytics.xsmom.book import equity_curve
 _STOCKS = ("AAPL", "MSFT", "NVDA", "AMZN", "GOOGL")
 _T0 = 1_514_764_800_000  # 2018-01-01 in Unix ms
 _DAY = 86_400_000
-_N = 2_190  # ~6 calendar years of daily bars (covers 2018-2023 earnings)
+_N = 1_100  # ~3 calendar years of daily bars (kept small for the 30s test budget)
+_FY_RANGE = range(2018, 2021)  # 3 fiscal years → SUEs warmed up from 2020-Q1
 
 
 def _ohlcv_rows() -> pd.DataFrame:
@@ -48,7 +49,7 @@ def _earnings_rows() -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for sym in _STOCKS:
         eps = 1.0
-        for fy in range(2018, 2024):
+        for fy in _FY_RANGE:
             for i, fp in enumerate(("Q1", "Q2", "Q3", "Q4")):
                 eps += 0.05 + float(rng.normal(0, 0.08))
                 month = (2, 5, 8, 11)[i]
@@ -97,5 +98,5 @@ def test_spy_benchmark_is_a_nonempty_series() -> None:
 def test_long_short_book_actually_takes_positions() -> None:
     conn = _seeded_conn()
     grid = replay_pead_grid(conn, ForecastConfig(), window=60)
-    # with six years of warmed-up SUEs the dollar-neutral book is non-trivial
+    # with warmed-up SUEs the dollar-neutral book is non-trivial
     assert np.any(grid["broad_ls"].portfolio_return != 0.0)
