@@ -307,6 +307,24 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
             cached_at_ms     BIGINT  NOT NULL
         )
     """)
+    # Edge-hunt #4 (PEAD-lite): free EDGAR earnings facts. Brand-new table touched
+    # by nothing legacy, so it lives in CREATE TABLE with no positional-INSERT
+    # hazard; read-only by every audit path after the one-shot backfill populates it.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS earnings_facts (
+            symbol         TEXT    NOT NULL,
+            cik            TEXT,
+            fy             INTEGER NOT NULL,
+            fp             TEXT    NOT NULL,
+            period_end     DATE,
+            eps_diluted    DOUBLE,
+            announce_date  DATE,
+            filed_date     DATE,
+            accn           TEXT,
+            source         TEXT,
+            PRIMARY KEY (symbol, fy, fp)
+        )
+    """)
     # Backfill existing runs from trades table where split columns are still NULL.
     # Runs after backtest_trades is created so the table always exists.
     conn.execute("""
