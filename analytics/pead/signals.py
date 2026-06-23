@@ -29,9 +29,15 @@ _DRIFT_WINDOW = 60  # pre-registered Bernard-Thomas drift horizon (trading sessi
 
 
 def _union(closes: dict[str, pd.Series]) -> pd.DatetimeIndex:
-    idx = pd.DatetimeIndex([])
+    # Seed from the first real index, not an empty tz-naive one: unioning a
+    # tz-naive empty DatetimeIndex with tz-aware (UTC) DB indices degrades the
+    # result to an object Index and loses `.tz`.
+    idx: pd.DatetimeIndex | None = None
     for s in closes.values():
-        idx = idx.union(pd.DatetimeIndex(s.index))
+        cur = pd.DatetimeIndex(s.index)
+        idx = cur if idx is None else idx.union(cur)
+    if idx is None:
+        return pd.DatetimeIndex([])
     return idx.sort_values()
 
 
@@ -79,6 +85,7 @@ def _active_sue(
     announcements overwrite an overlapping window. For ``long_only`` only positive
     surprises create a position (non-positive → flat / no entry).
     """
+    tz = union.tz
     cols: dict[str, pd.Series] = {}
     for sym in symbols:
         col = pd.Series(np.nan, index=union, dtype="float64")
@@ -87,7 +94,14 @@ def _active_sue(
             s = row["sue"]
             if not np.isfinite(s) or (long_only and s <= 0.0):
                 continue
-            pos = int(union.searchsorted(row["announce_date"], side="right"))
+            ts = pd.Timestamp(row["announce_date"])
+            # align the announcement to the close index's tz (DB closes are UTC,
+            # earnings dates tz-naive) so searchsorted never raises on a tz clash.
+            if tz is not None and ts.tz is None:
+                ts = ts.tz_localize(tz)
+            elif tz is None and ts.tz is not None:
+                ts = ts.tz_localize(None)
+            pos = int(union.searchsorted(ts, side="right"))
             if pos >= len(union):
                 continue
             col.iloc[pos : min(pos + window, len(union))] = float(s)
