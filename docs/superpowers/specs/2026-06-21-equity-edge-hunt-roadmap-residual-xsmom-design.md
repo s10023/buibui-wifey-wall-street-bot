@@ -1,8 +1,19 @@
 # Equity Edge-Hunt Roadmap + Experiment #1 (Residualized XS-Momentum)
 
-**Status:** DRAFT — approved in brainstorm 2026-06-21, pending spec review
-**Date:** 2026-06-21
+**Status:** ARC CONCLUDED 2026-06-24 — all four roadmap families ran and FAILED;
+the pre-registered honest-exit criterion was reached and accepted.
+**Date:** 2026-06-21 (roadmap); concluded 2026-06-24.
 **Owner:** wifey (forked from `buibui-moon-trader-bot`)
+
+> **ARC OUTCOME (2026-06-24).** #1 residual XS-mom (#98), #2 low-vol/BAB (#100),
+> #3 cross-asset TSMOM (#102), #4 PEAD-lite (#104) — **all FAIL.** The honest-exit
+> criterion below fired. Decision (with the user): **accept and re-scope** — the
+> free-data edge-hunt arc is closed, not abandoned. Full synthesis:
+> `docs/audits/2026-06-24-honest-exit-free-data-edge-arc.md`. Dormant options
+> (fresh pre-registrations, NOT retunes): paid-data retests (PIT universe,
+> small-cap PEAD, analyst-SUE, futures-grade TSMOM) and the shared
+> construction-debt fix (beta-neutralize + governor-saturation fix for #2/#4).
+> The roadmap body below is preserved as the historical record.
 
 ## Motivation
 
