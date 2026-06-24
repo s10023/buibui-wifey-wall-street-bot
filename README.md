@@ -819,12 +819,14 @@ make wifey-analytics-backfill SINCE=2024-01-01   # Backfill from custom date
 make wifey-analytics-sync                  # Incremental sync
 make wifey-universe-backfill               # Backfill the research breadth universe
 make wifey-xasset-backfill                 # Backfill the cross-asset TSMOM ETF basket (1d, 2007+)
+make wifey-pead-backfill                    # Ingest EDGAR earnings facts (edge-hunt #4, one-shot)
 make universe-coverage                     # OHLCV coverage report over the universe
 make wifey-forecast-audit                  # G2 audit — EWMAC trend sleeve (read-only)
 make wifey-xsmom-audit                     # G3 audit — XS-momentum sleeve (read-only)
 make wifey-xsmom-residual-audit            # Experiment #1 — residualized XS-mom 2x2 (read-only)
 make wifey-lowvol-audit                     # Edge-hunt #2 — low-beta/BAB 2x2 (read-only)
 make wifey-xasset-audit                     # Edge-hunt #3 — cross-asset TSMOM 2x2 (read-only)
+make wifey-pead-audit                       # Edge-hunt #4 — PEAD-lite 2x2 (read-only)
 make wifey-exit-audit                      # Exit MFE/MAE diagnostic — live ledger (read-only)
 ```
 

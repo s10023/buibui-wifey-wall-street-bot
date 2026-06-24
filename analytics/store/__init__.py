@@ -32,6 +32,10 @@ from analytics.store.confidence import (
     get_directional_confidence_ratings,
     upsert_confidence_ratings,
 )
+from analytics.store.earnings import (
+    get_earnings_facts,
+    upsert_earnings_facts,
+)
 from analytics.store.market_data import (
     get_latest_open_time,
     get_ohlcv,
@@ -61,6 +65,7 @@ __all__ = [
     "get_confidence_ratings",
     "get_cross_tf_combo_lookup",
     "get_directional_confidence_ratings",
+    "get_earnings_facts",
     "get_latest_open_time",
     "get_ohlcv",
     "get_signals_history",
@@ -77,6 +82,7 @@ __all__ = [
     "upsert_combo_run",
     "upsert_confidence_ratings",
     "upsert_cross_tf_combo_run",
+    "upsert_earnings_facts",
     "upsert_ohlcv",
     "upsert_signal_outcome",
     "upsert_signals",
