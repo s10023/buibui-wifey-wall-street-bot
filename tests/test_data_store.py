@@ -84,6 +84,7 @@ class TestInitSchema:
             "backtest_cache",
             "stats_cache",
             "confidence_ratings",
+            "earnings_facts",
         } == tables
 
     def test_idempotent(self, conn: duckdb.DuckDBPyConnection) -> None:

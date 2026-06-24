@@ -16,7 +16,8 @@ _FIX = Path(__file__).parent / "fixtures" / "edgar"
 
 
 def _load(name: str) -> dict[str, Any]:
-    return json.loads((_FIX / name).read_text())
+    data: dict[str, Any] = json.loads((_FIX / name).read_text())
+    return data
 
 
 def test_ticker_to_cik_zero_pads_to_10() -> None:

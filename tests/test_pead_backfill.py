@@ -13,7 +13,8 @@ _FIX = Path(__file__).parent / "fixtures" / "edgar"
 
 
 def _load(name: str) -> dict[str, Any]:
-    return json.loads((_FIX / name).read_text())
+    data: dict[str, Any] = json.loads((_FIX / name).read_text())
+    return data
 
 
 def _rows_by_period() -> dict[tuple[int, str], dict[str, Any]]:
