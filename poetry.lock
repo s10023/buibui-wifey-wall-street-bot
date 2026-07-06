@@ -2,14 +2,14 @@
 
 [[package]]
 name = "aiohappyeyeballs"
-version = "2.6.2"
+version = "2.7.1"
 description = "Happy Eyeballs for asyncio"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "aiohappyeyeballs-2.6.2-py3-none-any.whl", hash = "sha256:4708045e2d7a6c6bdf8aafa8ed39649eaf926a4543b54560659129e3365953c4"},
-    {file = "aiohappyeyeballs-2.6.2.tar.gz", hash = "sha256:e202810ee718bd01fc6ef49e8ea53d023d5cb6b581076d7925aa499fa55dbe64"},
+    {file = "aiohappyeyeballs-2.7.1-py3-none-any.whl", hash = "sha256:9243213661e29250eb41368e5daa826fc017156c3b8a11440826b2e3ed376472"},
+    {file = "aiohappyeyeballs-2.7.1.tar.gz", hash = "sha256:065665c041c42a5938ed220bdcd7230f22527fbec085e1853d2402c8a3615d9d"},
 ]
 
 [[package]]
@@ -810,14 +810,14 @@ tzdata = ">=2025.2"
 
 [[package]]
 name = "fastapi"
-version = "0.138.1"
+version = "0.139.0"
 description = "FastAPI framework, high performance, easy to learn, fast to code, ready for production"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "fastapi-0.138.1-py3-none-any.whl", hash = "sha256:b994cae7ba8b82c976a728b544244de31333fa5f7d261f9a1dffe526444cae23"},
-    {file = "fastapi-0.138.1.tar.gz", hash = "sha256:96e3702dce09ee0dce48856135620d3d865ca684a79fe7513fd7b13a12f82862"},
+    {file = "fastapi-0.139.0-py3-none-any.whl", hash = "sha256:cf15e1e9e667ddb0ad63811e60bd11390d1aac838ca4a7a23f421807b2308189"},
+    {file = "fastapi-0.139.0.tar.gz", hash = "sha256:99ab7b2d92223c76d6cf10757ab3f89d45b38267fc20b2a136cf02f6beac3145"},
 ]
 
 [package.dependencies]
@@ -2837,14 +2837,14 @@ files = [
 
 [[package]]
 name = "typing-extensions"
-version = "4.15.0"
+version = "4.16.0"
 description = "Backported and Experimental Type Hints for Python 3.9+"
 optional = false
 python-versions = ">=3.9"
 groups = ["main", "dev"]
 files = [
-    {file = "typing_extensions-4.15.0-py3-none-any.whl", hash = "sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548"},
-    {file = "typing_extensions-4.15.0.tar.gz", hash = "sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466"},
+    {file = "typing_extensions-4.16.0-py3-none-any.whl", hash = "sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8"},
+    {file = "typing_extensions-4.16.0.tar.gz", hash = "sha256:dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5"},
 ]
 
 [[package]]
@@ -2876,14 +2876,14 @@ files = [
 
 [[package]]
 name = "tzlocal"
-version = "5.4.3"
+version = "5.4.4"
 description = "tzinfo object for the local timezone"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "tzlocal-5.4.3-py3-none-any.whl", hash = "sha256:24ce97bb58e2a973f7640ec2553ab4e6f6d5a0d0d1aa9dc43bca21d89e1feb82"},
-    {file = "tzlocal-5.4.3.tar.gz", hash = "sha256:3a8c9bc18cf47e1dcde252ea0e6a72a6cde320a400b6ac6db1f1f8cccd553c00"},
+    {file = "tzlocal-5.4.4-py3-none-any.whl", hash = "sha256:aae09f0126a8a86fa736be266eb4a471380d26a0de3bc14844e7821fee3e2a15"},
+    {file = "tzlocal-5.4.4.tar.gz", hash = "sha256:8dbb8660838688a7b6ba4fed31d18dedf842afb4d47ca050d6d891c2c15f3be4"},
 ]
 
 [package.dependencies]
@@ -3342,14 +3342,14 @@ propcache = ">=0.2.1"
 
 [[package]]
 name = "yfinance"
-version = "1.4.1"
+version = "1.5.1"
 description = "Download market data from Yahoo! Finance API"
 optional = false
 python-versions = "*"
 groups = ["main"]
 files = [
-    {file = "yfinance-1.4.1-py2.py3-none-any.whl", hash = "sha256:1e1c506ca81dc15635380e7129813a5b32da80201af9bb404cac5d528ecfddc3"},
-    {file = "yfinance-1.4.1.tar.gz", hash = "sha256:9acecec3036b4aa96d1e3120ff85ca4f6f81d239d968f56b6eb7877f89fea7a3"},
+    {file = "yfinance-1.5.1-py2.py3-none-any.whl", hash = "sha256:a5c9cfc1b9c990f217b643e4fb92444e023cc02b2bacdea9c1fb472509fdfe22"},
+    {file = "yfinance-1.5.1.tar.gz", hash = "sha256:89c48a1d45fb870f8e3066c22643c6911118ede9cead747b48925ce8e01a6940"},
 ]
 
 [package.dependencies]
@@ -3372,4 +3372,4 @@ repair = ["scipy (>=1.6.3)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.13,<3.14"
-content-hash = "ede8c4735f7aafb8e789e7bfdc2421669877f8246ac641690446c9d7c983e29d"
+content-hash = "0673400b711876bc0c1ba3dd10fd546ddd4f7e7973e6ec7bd2ff880e4c874cb9"
