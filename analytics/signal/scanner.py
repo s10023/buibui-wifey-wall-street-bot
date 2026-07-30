@@ -327,12 +327,18 @@ def run_scan_cycle(
     catch_up: when True, replay every un-alerted closed candle since the last run
     (not just the latest). scan_symbol emits multi-candle signals and each candle
     is processed as its own group so conflict resolution / confluence stacking stay
-    per-candle correct. A cold-start guard (no prior watermark for a key) restricts
-    the first run to the latest candle so the window is not replayed as a burst.
+    per-candle correct. Backfilled candles (older than the newest closed candle,
+    which is read from OHLCV) are RECORDED — DB signals + outcome-ledger rows +
+    watermark — but never dispatched to Telegram: a stale signal is untradeable
+    noise in the chat, yet real ledger evidence. A cold-start guard (no prior
+    watermark for a key) restricts the first run to the latest candle so the
+    window is not replayed as a burst. Recovery depth is bounded by the
+    200-candle scan window (4h ~33 days, 1d ~200 days, 1wk ~4 years).
     Note: regime / HTF-EMA / ADR / DOW bias context is computed as-of-now and
     applied to historical candles too — a deliberate best-effort approximation for
     a few missed days, not a full as-of-candle replay (see the backtest live-parity
-    path for that).
+    path for that). A deep backfill is look-ahead in the *gating* and should be
+    read as backtest output, not clean out-of-sample evidence.
     """
     from signals.alert_formatter import (
         format_confluence_alert,
@@ -491,28 +497,54 @@ def run_scan_cycle(
 
     # Catch-up: split each (symbol, tf) result into one pseudo-result per candle
     # open_time so Phase 3 processes every missed candle independently (conflict
-    # resolution + confluence stacking stay per-candle correct). Default path =
-    # single latest candle = one group = byte-identical to the pre-catch-up flow.
-    # latest_ot_by_pair feeds the cold-start guard in the watermark filter below.
-    latest_ot_by_pair: dict[tuple[str, str], int] = {}
-    if catch_up:
-        latest_ot_by_pair = {
-            (_s, _t): max((e.open_time for e in _evs), default=-1)
-            for _s, _t, _evs, _g in scan_results
-        }
-        exploded: list[Any] = []
-        for _s, _t, _evs, _g in scan_results:
-            if not _evs:
-                exploded.append((_s, _t, _evs, _g))
-                continue
-            for _ot in sorted({e.open_time for e in _evs}):
-                exploded.append((_s, _t, [e for e in _evs if e.open_time == _ot], _g))
-        scan_results = exploded
+    # resolution + confluence stacking stay per-candle correct). Each group
+    # carries an is_backfill flag: only the newest CLOSED candle may dispatch to
+    # Telegram; older candles are recorded as ledger evidence only. Default
+    # path = single latest candle = one group = byte-identical to the
+    # pre-catch-up flow.
+    _grouped: list[Any] = []
+    for _s, _t, _evs, _g in scan_results:
+        if not catch_up or not _evs:
+            _grouped.append((_s, _t, _evs, _g, False))
+            continue
+        _full = ohlcv_map[(_s, _t)]
+        if len(_full) < 2:
+            _grouped.append((_s, _t, _evs, _g, False))
+            continue
+        # The newest CLOSED candle — taken from OHLCV, not from the events.
+        # Using max(event.open_time) would promote an older candle to "latest"
+        # whenever the newest bar produced no signal, and that candle would
+        # then alert as if it were live. Mirrors scan_symbol's conditional
+        # forming-bar rule: scanned pre-market / after-close the final yfinance
+        # row is already closed, so iloc[-1] is the latest — not the parent's
+        # unconditional iloc[-2].
+        _last_ot = int(_full["open_time"].iloc[-1])
+        _tf_ms = parse_timeframe_secs(_t) * 1000
+        _latest_closed = (
+            int(_full["open_time"].iloc[-2])
+            if int(time.time() * 1000) < _last_ot + _tf_ms
+            else _last_ot
+        )
+        # Cold-start guard: a key with no watermark has never fired, so every
+        # candle in the scan window would look "missed" and burst into the
+        # ledger on first contact. Restrict such keys to the latest candle.
+        _kept = [
+            e
+            for e in _evs
+            if e.open_time == _latest_closed
+            or store.last_marked(_s, _t, e.strategy) is not None
+        ]
+        _by_candle: dict[int, list[SignalEvent]] = {}
+        for _e in _kept:
+            _by_candle.setdefault(_e.open_time, []).append(_e)
+        for _ot in sorted(_by_candle):
+            _grouped.append((_s, _t, _by_candle[_ot], _g, _ot != _latest_closed))
+    scan_results = _grouped
 
     # --- Phase 3: Fan-in — sequential processing of scan results ---
     # All shared-state operations happen here: CooldownStore reads/writes,
     # bt_cache updates, DB writes (upsert_signals, upsert_backtest_run).
-    for symbol, tf, events, overnight_gap in scan_results:
+    for symbol, tf, events, overnight_gap, is_backfill in scan_results:
         ohlcv_df = ohlcv_map[(symbol, tf)]
         funding_df = funding_map.get(symbol)
 
@@ -538,23 +570,14 @@ def run_scan_cycle(
         if not direction_events:
             continue
 
-        # Filter each strategy independently by candle watermark
-        passing_events = []
-        for e in direction_events:
-            if not store.is_new_candle(symbol, tf, e.strategy, e.open_time):
-                continue
-            # Catch-up cold-start guard: with no prior watermark every candle in
-            # the window looks "new", which would replay the whole history as a
-            # burst on first contact. Seed on the latest candle only; later runs
-            # then catch up the genuinely-missed candles. No-op in the default
-            # path (catch_up=False).
-            if (
-                catch_up
-                and store.last_marked(symbol, tf, e.strategy) is None
-                and e.open_time != latest_ot_by_pair.get((symbol, tf))
-            ):
-                continue
-            passing_events.append(e)
+        # Filter each strategy independently by candle watermark. (The catch-up
+        # cold-start guard lives in the Phase 2b expansion above, next to the
+        # backfill split.)
+        passing_events = [
+            e
+            for e in direction_events
+            if store.is_new_candle(symbol, tf, e.strategy, e.open_time)
+        ]
         if not passing_events:
             continue
 
@@ -1127,6 +1150,18 @@ def run_scan_cycle(
                     _best_cofire.avg_r,
                     _best_cofire.candles_ago,
                 )
+
+            if is_backfill:
+                # Recovered candle: recorded above as ledger evidence (DB
+                # signals + outcome rows), never alerted — a signal this old is
+                # not tradeable, and a burst of stale alerts is noise. Consume
+                # the primary watermark so the next run does not replay it;
+                # this is the deliberate exception to the #68 "only mark on
+                # dispatch" rule. The wife watermark stays untouched — nothing
+                # was dispatched on that channel and nothing reads it for dedup.
+                for e in dir_events:
+                    store.mark_candle(symbol, tf, e.strategy, e.open_time)
+                continue
 
             # Stack all passing strategies into one confluence alert
             msg = format_confluence_alert(

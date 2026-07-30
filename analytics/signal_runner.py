@@ -130,8 +130,10 @@ def run_signal_watch(
 
     When ``catch_up`` is True, each cycle replays every un-alerted closed candle
     since the last run (not just the latest), so a skipped run-day's signals are
-    recovered instead of lost. Off by default to avoid an alert burst after an
-    outage. Pairs naturally with ``once`` for a once-a-day cron.
+    recovered instead of lost. Backfilled candles are recorded to the DB and
+    outcome ledger but never dispatched to Telegram — only the newest closed
+    candle can alert, so replay never floods the chat with stale setups. Off by
+    default. Pairs naturally with ``once`` for a once-a-day cron.
     """
     from analytics.strategies import KNOWN_STRATEGIES
 

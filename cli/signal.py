@@ -203,8 +203,13 @@ def add_signal_subparser(
         dest="catch_up",
         help=(
             "Replay every un-alerted closed candle since the last run, not just the "
-            "latest — recovers signals from skipped run-days. First run for a fresh "
-            "state file only seeds the latest candle (no burst). Off by default."
+            "latest — recovers ledger rows from skipped run-days. Backfilled candles "
+            "are recorded (DB + outcome ledger) but never sent to Telegram; only the "
+            "newest closed candle can alert. First run for a fresh state file only "
+            "seeds the latest candle (no burst). Depth is bounded by the 200-candle "
+            "scan window (4h ~33 days, 1d ~200 days, 1wk ~4 years); gating context "
+            "(regime/HTF-EMA/ADR/bias) is as-of-now, so a deep backfill is not clean "
+            "out-of-sample evidence. Off by default."
         ),
     )
     watch_parser.set_defaults(func=run_signal_watch)
