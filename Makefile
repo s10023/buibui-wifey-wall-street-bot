@@ -305,6 +305,8 @@ go-live-prep:
 # To run as a continuous daemon instead (self-syncs + sleeps to candle boundaries),
 # drop the once flag: make wifey-signal-watch CONFIG=... TELEGRAM=1
 # Pass CATCH_UP=1 to replay candles missed since the last run (skipped run-day recovery).
+# Recovered candles land in the DB/outcome ledger only — never Telegram — so it is
+# safe to pass CATCH_UP=1 on every run.
 go-live:
 	@echo "🚀 Go-live (single cycle): $(GO_LIVE_CONFIG) — Telegram ON"
 	$(MAKE) wifey-signal-watch CONFIG=$(GO_LIVE_CONFIG) TELEGRAM=1 ONCE=1 $(if $(CATCH_UP),CATCH_UP=1,)
