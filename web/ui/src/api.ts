@@ -529,8 +529,39 @@ export interface LiveOutcomeCell {
 export interface LiveOutcomeStrategyRow {
   strategy: string;
   n: number;
+  wins: number;
+  losses: number;
+  expired: number;
   win_rate: number | null;
   avg_r: number | null;
+}
+
+export interface LiveOutcomeSymbolRow {
+  symbol: string;
+  n: number;
+}
+
+export interface LiveOpenPosition {
+  signal_id: string;
+  symbol: string;
+  strategy: string;
+  tf: string;
+  direction: string;
+  fired_at_ms: number;
+  entry_price: number | null;
+  sl_price: number | null;
+  tp_price: number | null;
+  mark: number | null;
+  unrealized_r: number | null;
+  dist_sl_pct: number | null;
+  dist_tp_pct: number | null;
+}
+
+export interface LiveOpenPositionsResponse {
+  symbol: string | null;
+  marks_ok: boolean;
+  marked_at_ms: number;
+  positions: LiveOpenPosition[];
 }
 
 export interface LiveOutcomesResponse {
@@ -539,7 +570,21 @@ export interface LiveOutcomesResponse {
   rollup: LiveOutcomesRollup;
   cells: LiveOutcomeCell[];
   by_strategy: LiveOutcomeStrategyRow[];
+  symbols: LiveOutcomeSymbolRow[];
 }
 
-export const getLiveOutcomes = (days: number = 30, minN: number = 1) =>
-  apiFetch<LiveOutcomesResponse>(`/api/live-outcomes?days=${days}&min_n=${minN}`);
+export const getLiveOutcomes = (
+  days: number = 30,
+  minN: number = 1,
+  symbol: string | null = null,
+) =>
+  apiFetch<LiveOutcomesResponse>(
+    `/api/live-outcomes?days=${days}&min_n=${minN}` +
+      (symbol ? `&symbol=${encodeURIComponent(symbol)}` : ""),
+  );
+
+export const getLiveOutcomesOpen = (symbol: string | null = null) =>
+  apiFetch<LiveOpenPositionsResponse>(
+    `/api/live-outcomes/open` +
+      (symbol ? `?symbol=${encodeURIComponent(symbol)}` : ""),
+  );
