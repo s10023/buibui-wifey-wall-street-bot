@@ -7,7 +7,6 @@ import pytest
 
 from analytics.data_store import init_schema
 from analytics.stats_lib import (
-    DailyDistanceResult,
     StatsBundle,
     WeeklyCurrentState,
     WeeklyFlipRiskConditioned,
@@ -15,7 +14,6 @@ from analytics.stats_lib import (
     WeeklyWickPercentile,
     compute_adr,
     compute_all,
-    compute_daily_distance,
     compute_dow_patterns,
     compute_hourly_extremes,
     compute_p1p2_daily,
@@ -382,40 +380,6 @@ def test_compute_weekly_flip_risk_conditioned_basic(
 
 
 # ── F3a: compute_weekly_wick_warning tests ────────────────────────────────────
-
-
-# ── F3b: compute_daily_distance tests ────────────────────────────────────────
-
-
-def test_compute_daily_distance_basic(conn: duckdb.DuckDBPyConnection) -> None:
-    """daily_distance returns valid exceedance and p80 values."""
-    adr = compute_adr(conn, _SYMBOL)
-    result = compute_daily_distance(conn, _SYMBOL, adr.adr_14, days=30)
-    assert isinstance(result, DailyDistanceResult)
-    assert 0.0 <= result.exceedance_pct <= 1.0
-    assert result.p80_of_adr > 0.0
-    assert result.sample_count > 0
-    # gap_to_p80 is non-negative when present
-    if result.gap_to_p80 is not None:
-        assert result.gap_to_p80 > 0.0
-
-
-def test_compute_daily_distance_zero_adr(conn: duckdb.DuckDBPyConnection) -> None:
-    """Returns None when adr_14 is zero (avoids division by zero)."""
-    result = compute_daily_distance(conn, _SYMBOL, adr_14=0.0, days=30)
-    assert result is None
-
-
-def test_compute_daily_distance_exceedance_vs_p80(
-    conn: duckdb.DuckDBPyConnection,
-) -> None:
-    """When today's range exceeds p80, gap_to_p80 is None and exceedance_pct is low."""
-    adr = compute_adr(conn, _SYMBOL)
-    result = compute_daily_distance(conn, _SYMBOL, adr.adr_14, days=30)
-    assert result is not None
-    if result.gap_to_p80 is None:
-        # Already past p80 → exceedance should be ≤ 0.20 (top 20%)
-        assert result.exceedance_pct <= 0.20 + 1e-6
 
 
 # ── F3c: compute_weekly_wick_percentile tests ─────────────────────────────────

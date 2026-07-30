@@ -11,21 +11,23 @@ from analytics.stats_lib import (
     WeeklyCurrentState,
     WeeklyWickPercentile,
     compute_all,
-    compute_daily_distance,
+    compute_today_path,
     compute_weekly_current_state,
     compute_weekly_wick_percentile,
 )
 from web.api.deps import get_db, require_token
 from web.api.models.stats import (
     ADRResponse,
-    DailyDistanceResponse,
+    ConeComboResponse,
     DOWPatternRow,
     FlipRiskConditionedRow,
     HourlyExtremeRow,
     P1P2DOWRow,
     P1P2Response,
+    PathConeResponse,
     SessionRow,
     StatsResponse,
+    TodayPathResponse,
     WeeklyCurrentStateResponse,
     WeeklyFlipRiskConditionedResponse,
     WeeklyP1P2Response,
@@ -145,6 +147,26 @@ def _bundle_to_response(bundle: StatsBundle) -> StatsResponse:
         ]
     )
 
+    # Path cone — all 18 direction × weekday combos (cached with the bundle)
+    path_cone_resp = PathConeResponse(
+        combos={
+            key: ConeComboResponse(
+                direction=c.direction,
+                weekday=c.weekday,
+                n=c.n,
+                bands=c.bands,
+                low_in_by=c.low_in_by,
+                high_in_by=c.high_in_by,
+                mae_p=c.mae_p,
+                mfe_p=c.mfe_p,
+                high_piv=c.high_piv,
+                low_piv=c.low_piv,
+            )
+            for key, c in bundle.path_cone.combos.items()
+        },
+        total_days=bundle.path_cone.total_days,
+    )
+
     return StatsResponse(
         symbol=bundle.symbol,
         days=bundle.days,
@@ -157,6 +179,7 @@ def _bundle_to_response(bundle: StatsBundle) -> StatsResponse:
         weekly_p1p2=weekly_resp,
         weekly_p2_timing=p2_timing_resp,
         weekly_flip_risk_conditioned=flip_risk_resp,
+        path_cone=path_cone_resp,
     )
 
 
@@ -225,15 +248,15 @@ def _inject_live_fields(
     except Exception:
         pass
 
-    # Daily distance — empirical CDF for today's move vs history
+    # Today path overlay — today's normalized hourly closes (never cached)
     try:
-        dd = compute_daily_distance(db, symbol, adr_14, days)
-        if dd is not None:
-            response.daily_distance = DailyDistanceResponse(
-                exceedance_pct=dd.exceedance_pct,
-                p80_of_adr=dd.p80_of_adr,
-                gap_to_p80=dd.gap_to_p80,
-                sample_count=dd.sample_count,
+        tp = compute_today_path(db, symbol)
+        if tp is not None:
+            response.today_path = TodayPathResponse(
+                points=tp.points,
+                elapsed_h=tp.elapsed_h,
+                adr14_today=tp.adr14_today,
+                today_open=tp.today_open,
             )
     except Exception:
         pass

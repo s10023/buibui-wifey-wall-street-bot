@@ -2,7 +2,6 @@
 
 from analytics.stats.adr import ADRResult, compute_adr
 from analytics.stats.bundle import StatsBundle, compute_all
-from analytics.stats.daily_distance import DailyDistanceResult, compute_daily_distance
 from analytics.stats.dow import DOWResult, DOWRow, compute_dow_patterns
 from analytics.stats.hourly import (
     HourlyExtremeRow,
@@ -17,6 +16,13 @@ from analytics.stats.live_outcomes import (
     compute_live_outcomes,
 )
 from analytics.stats.p1p2 import P1P2Result, compute_p1p2_daily
+from analytics.stats.path_cone import (
+    ConeCombo,
+    PathConeBundle,
+    TodayPath,
+    compute_path_cone,
+    compute_today_path,
+)
 from analytics.stats.session import (
     SessionResult,
     SessionRow,
@@ -40,9 +46,9 @@ from analytics.stats.weekly_wick import (
 
 __all__ = [
     "ADRResult",
+    "ConeCombo",
     "DOWResult",
     "DOWRow",
-    "DailyDistanceResult",
     "HourlyExtremeRow",
     "HourlyResult",
     "LiveOutcomeCell",
@@ -50,9 +56,11 @@ __all__ = [
     "LiveOutcomesResult",
     "LiveOutcomesRollup",
     "P1P2Result",
+    "PathConeBundle",
     "SessionResult",
     "SessionRow",
     "StatsBundle",
+    "TodayPath",
     "WeeklyCurrentState",
     "WeeklyFlipRiskConditioned",
     "WeeklyFlipRiskConditionedRow",
@@ -61,12 +69,13 @@ __all__ = [
     "WeeklyWickPercentile",
     "compute_adr",
     "compute_all",
-    "compute_daily_distance",
     "compute_dow_patterns",
     "compute_hourly_extremes",
     "compute_live_outcomes",
     "compute_p1p2_daily",
+    "compute_path_cone",
     "compute_session_breakdown",
+    "compute_today_path",
     "compute_weekly_current_state",
     "compute_weekly_flip_risk_conditioned",
     "compute_weekly_p1p2",
