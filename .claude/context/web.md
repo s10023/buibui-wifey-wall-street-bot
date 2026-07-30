@@ -16,8 +16,9 @@ Detailed reference for `web/`. Load this when working on the FastAPI backend or 
 - `GET /api/strategies?config=<name>` — confidence values with per-config DB ratings override
 - `GET /api/active-config` — `config_name`, `symbols`, `timeframes`, `strategies`, `day_filter`, `tp_r`, `sl_pct`, `fee_pct`, `adr_suppress_threshold`, `strategy_params`, `min_trades`, `min_trades_per_tf`; empty defaults when no `--config`
 - `GET /api/universe-policy` — active `universe_policy` from stocks.json (`scope`, `as_of`, `survivorship_note`) + best-effort `n_symbols` (None when stocks.json unreadable); Phase 0.1 honesty surface, feeds the Backtest page caveat banner. `POST /api/backtest` stamps the policy JSON onto each saved run
-- `GET /api/stats/{symbol}?days=180` — cached daily in `stats_cache` table; `weekly_current_state`, `daily_distance`, `weekly_wick_percentile` always live (never cached), injected via `_inject_live_fields()`
-- `GET /api/live-outcomes?days&min_n` — cross-symbol roll-up of the live `signal_alert_outcomes` ledger (all-time integrity roll-up + per-(strategy, tf, direction) + per-strategy win-rate/avg-R); never cached, own router (not the per-symbol StatsBundle)
+- `GET /api/stats/{symbol}?days=180` — cached daily in `stats_cache` table; `path_cone` (required — pre-M5 cache rows fail validation and self-heal) + `weekly_cone` (Optional with an explicit None→recompute cache branch) cached with the bundle; `weekly_current_state`, `today_path`, `current_week_path`, `weekly_wick_percentile` always live (never cached), injected via `_inject_live_fields()`
+- `GET /api/live-outcomes?days&min_n[&symbol]` — cross-symbol roll-up of the live `signal_alert_outcomes` ledger (roll-up + per-(strategy, tf, direction) + per-strategy win-rate/avg-R/expired; `symbol=` scopes roll-up + tables, chip list always global); never cached, own router (not the per-symbol StatsBundle)
+- `GET /api/live-outcomes/open[?symbol]` — unresolved alerts marked to the newest stored OHLCV close per symbol (gross unrealized R + SL/TP distances; best-effort marks, never 5xx)
 - `GET /api/backtest/analysis?use_config=true` — 12 digest query cards; `use_config=true` scopes via `DigestScope`
 
 ## Frontend — `web/ui/` (Svelte 5 + Vite)

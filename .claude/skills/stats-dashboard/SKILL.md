@@ -21,16 +21,18 @@ Use when working on the Stats page or its backend — adding new stat cards, fix
 analytics/stats_lib.py          ← pure computation (DuckDB queries, returns StatsBundle)
 web/api/routers/stats.py        ← GET /api/stats/{symbol}?days=180 (cached in stats_cache table)
 web/api/models/                 ← Pydantic response models (if any)
-web/ui/src/pages/Stats.svelte   ← 10-card grid UI
+web/ui/src/pages/Stats.svelte   ← hero cones + card grid UI
 web/ui/src/api.ts               ← getStats(symbol, days) typed client
 ```
 
-## The 10 Cards
+## The 11 Cards
 
 ### Cached in StatsBundle (`compute_all` → `stats_cache` table)
 
 | Card | stats_lib fn | Data key | Notes |
 |------|-------------|----------|-------|
+| Daily Path Cone (hero) | `compute_path_cone` | `path_cone` | M5: ADR14-normalized hourly paths over complete 7-bar RTH sessions; 18 direction × Mon–Fri combos; all-history (ignores `days`); ET axis labels; `PathCone.svelte` over `lib/cone.ts` |
+| Weekly Path Cone (hero) | `compute_weekly_cone` | `weekly_cone` | M5: AWR14-normalized 35-bar Monday-anchored trading weeks (holiday weeks drop); all/bull/bear with "all" as gray reference band; `WeeklyCone.svelte` |
 | P1/P2 Daily | `compute_p1p2_daily` | `p1p2` | overall + per-DOW bars; `p1_strong_pct` = fraction where P1-direction wick < 20% range; Low First = green, High First = red |
 | Average Daily Range | `compute_adr` | `adr` | ADR(14), ADR(30), today_range_pct, today_consumed_pct (÷ ADR14), today_move_up |
 | Hourly Extreme Distribution | `compute_hourly_extremes` | `hourly_extremes` | 24 bars, MYT; `peak_high/low_hour_by_dow` per-DOW MODE |
@@ -43,7 +45,8 @@ web/ui/src/api.ts               ← getStats(symbol, days) typed client
 
 | Card | stats_lib fn | Notes |
 |------|-------------|-------|
-| Daily Distance | `compute_daily_distance(conn, symbol, adr_14, days)` | P(historical daily move > today's) + gap to p80; fresh every request |
+| Daily Path Cone overlay | `compute_today_path(conn, symbol)` | Today's ADR14-normalized partial path (dotted amber line on the cached cone); None on short history |
+| Weekly Path Cone overlay | `compute_current_week_path(conn, symbol)` | The forming week's AWR14-normalized partial path; None on short history |
 | P1 Wick Rank | `compute_weekly_wick_percentile(conn, symbol, adr_14, days)` | Current week's P1 wick exceedance vs historical P1 wicks; "P1 not yet set" when only one weekly extreme has formed; fresh every request |
 | Weekly Current State | `compute_weekly_current_state(conn, symbol, adr_14, days)` | Live banner: current DOW, move% from weekly open, distance bucket, conditioned low/high-still-ahead probabilities |
 

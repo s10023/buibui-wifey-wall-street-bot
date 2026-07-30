@@ -11,21 +11,27 @@ from analytics.stats_lib import (
     WeeklyCurrentState,
     WeeklyWickPercentile,
     compute_all,
-    compute_daily_distance,
+    compute_current_week_path,
+    compute_today_path,
     compute_weekly_current_state,
     compute_weekly_wick_percentile,
 )
 from web.api.deps import get_db, require_token
 from web.api.models.stats import (
     ADRResponse,
-    DailyDistanceResponse,
+    ConeComboResponse,
+    CurrentWeekPathResponse,
     DOWPatternRow,
     FlipRiskConditionedRow,
     HourlyExtremeRow,
     P1P2DOWRow,
     P1P2Response,
+    PathConeResponse,
     SessionRow,
     StatsResponse,
+    TodayPathResponse,
+    WeeklyConeComboResponse,
+    WeeklyConeResponse,
     WeeklyCurrentStateResponse,
     WeeklyFlipRiskConditionedResponse,
     WeeklyP1P2Response,
@@ -145,6 +151,45 @@ def _bundle_to_response(bundle: StatsBundle) -> StatsResponse:
         ]
     )
 
+    # Path cone — all 18 direction × weekday combos (cached with the bundle)
+    path_cone_resp = PathConeResponse(
+        combos={
+            key: ConeComboResponse(
+                direction=c.direction,
+                weekday=c.weekday,
+                n=c.n,
+                bands=c.bands,
+                low_in_by=c.low_in_by,
+                high_in_by=c.high_in_by,
+                mae_p=c.mae_p,
+                mfe_p=c.mfe_p,
+                high_piv=c.high_piv,
+                low_piv=c.low_piv,
+            )
+            for key, c in bundle.path_cone.combos.items()
+        },
+        total_days=bundle.path_cone.total_days,
+    )
+
+    # Weekly cone — all/bull/bear direction combos (cached with the bundle)
+    weekly_cone_resp = WeeklyConeResponse(
+        combos={
+            key: WeeklyConeComboResponse(
+                direction=c.direction,
+                n=c.n,
+                bands=c.bands,
+                low_in_by=c.low_in_by,
+                high_in_by=c.high_in_by,
+                mae_p=c.mae_p,
+                mfe_p=c.mfe_p,
+                high_piv=c.high_piv,
+                low_piv=c.low_piv,
+            )
+            for key, c in bundle.weekly_cone.combos.items()
+        },
+        total_weeks=bundle.weekly_cone.total_weeks,
+    )
+
     return StatsResponse(
         symbol=bundle.symbol,
         days=bundle.days,
@@ -157,6 +202,8 @@ def _bundle_to_response(bundle: StatsBundle) -> StatsResponse:
         weekly_p1p2=weekly_resp,
         weekly_p2_timing=p2_timing_resp,
         weekly_flip_risk_conditioned=flip_risk_resp,
+        path_cone=path_cone_resp,
+        weekly_cone=weekly_cone_resp,
     )
 
 
@@ -178,6 +225,12 @@ def get_stats(
     if cached is not None:
         try:
             response = StatsResponse.model_validate_json(cached)
+            if response.weekly_cone is None:
+                # weekly_cone/current_week_path are Optional, so a warm cache
+                # entry written before they existed validates cleanly with
+                # weekly_cone=None instead of failing validation — force the
+                # fall-through to recompute rather than serving a stale null.
+                raise ValueError("cached response missing weekly_cone")
             # Still inject live fields even on cache hit
             _inject_live_fields(db, symbol, days, response)
             return response
@@ -225,15 +278,15 @@ def _inject_live_fields(
     except Exception:
         pass
 
-    # Daily distance — empirical CDF for today's move vs history
+    # Today path overlay — today's normalized hourly closes (never cached)
     try:
-        dd = compute_daily_distance(db, symbol, adr_14, days)
-        if dd is not None:
-            response.daily_distance = DailyDistanceResponse(
-                exceedance_pct=dd.exceedance_pct,
-                p80_of_adr=dd.p80_of_adr,
-                gap_to_p80=dd.gap_to_p80,
-                sample_count=dd.sample_count,
+        tp = compute_today_path(db, symbol)
+        if tp is not None:
+            response.today_path = TodayPathResponse(
+                points=tp.points,
+                elapsed_h=tp.elapsed_h,
+                adr14_today=tp.adr14_today,
+                today_open=tp.today_open,
             )
     except Exception:
         pass
@@ -242,5 +295,18 @@ def _inject_live_fields(
     try:
         wwp = compute_weekly_wick_percentile(db, symbol, adr_14, days)
         response.weekly_wick_percentile = _wwp_to_response(wwp)
+    except Exception:
+        pass
+
+    # Current-week overlay — the forming week's normalized path (never cached)
+    try:
+        cw = compute_current_week_path(db, symbol)
+        if cw is not None:
+            response.current_week_path = CurrentWeekPathResponse(
+                points=cw.points,
+                elapsed_h=cw.elapsed_h,
+                awr14_current=cw.awr14_current,
+                week_open=cw.week_open,
+            )
     except Exception:
         pass

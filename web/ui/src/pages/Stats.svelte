@@ -1,15 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import {
-    getStats,
-    getLiveOutcomes,
-    type StatsResponse,
-    type LiveOutcomesResponse,
-  } from "../api";
+  import { getStats, type StatsResponse } from "../api";
   import { symbols } from "../stores/config";
   import { configDefaultSymbol } from "../stores/activeConfig";
   import LoadingSpinner from "../components/LoadingSpinner.svelte";
   import ErrorBanner from "../components/ErrorBanner.svelte";
+  import PathCone from "../components/PathCone.svelte";
+  import WeeklyCone from "../components/WeeklyCone.svelte";
+  import LiveOutcomes from "../components/LiveOutcomes.svelte";
 
   const TIMEFRAMES_DAYS = [30, 90, 180, 365];
   const DOW_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -31,16 +29,8 @@
   // Live MYT clock — ticks every minute
   let now = $state(Date.now());
 
-  // Live outcomes card (cross-symbol — independent of the symbol/days picker)
-  let liveOutcomes = $state<LiveOutcomesResponse | null>(null);
-  let loLoading = $state(false);
-  let loError = $state<string | null>(null);
-  let loDays = $state(30);   // 0 = all time
-  let loMinN = $state(1);
-
   onMount(() => {
     void loadStats();
-    void loadLiveOutcomes();
     const t = setInterval(() => { now = Date.now(); }, 60_000);
     return () => clearInterval(t);
   });
@@ -114,10 +104,15 @@
       value: "High % = that extreme likely hasn't formed yet. Low % = it's likely already in. Riskier for a long when 'Low still ahead' is HIGH (e.g. 70%) — the weekly low is probably still below, so entering long now risks catching the drop. Flip risk shows the chance the running extreme gets beaten later in the week. Use the Bullish P1 filter once a weekly low is confirmed forming: it shows whether the high (P2) is still statistically expected.",
       example: "Today Mon, Bullish P1 filter → 71% of bullish weeks still set the high after Mon → weekly high very likely still ahead → good timing window for longs targeting the weekly high.",
     },
-    dailyDistance: {
-      what: "Given today's current high-low range (as a fraction of ADR14), how does it rank against all historical days? Exceedance % = fraction of past days that moved MORE than today's current range. p80 = the 80th-percentile daily move; gap shows how much further price needs to move to reach that level.",
-      value: "High exceedance (e.g. 80%) means today's move is already in the top 20% of historical days — expect mean reversion, don't chase. Low exceedance (e.g. 20%) means 80% of days moved further than this — room to run. Gap to p80 tells you roughly how much additional range is typical before the day 'fills out'.",
-      example: "ADR14 2.5%, today consumed 1.8% → 72% of days had a bigger move. Gap to p80: 0.3× ADR → ~0.75% more move to reach the 80th percentile of daily range.",
+    pathCone: {
+      what: "Historical intraday paths — hourly closes as ×ADR14 from the session open — pooled into percentile bands: p10–p90 outer, p25–p75 inner, median line. Filter by session direction (bull/bear at close) and weekday; the dotted amber line is today so far on the same scale. 'By now' row: fraction of matching sessions whose eventual low/high was already set by the current bar. Pivots: typical (p50) and extended (p80) high/low excursions mapped to today's prices.",
+      value: "Read where today sits inside the historical envelope: hugging p90 = extended vs the template — chasing here is late; near the median = nothing unusual yet. The 'by now' row says whether the session extreme is statistically already in. Pivots give price targets/invalidation for the day. Thin-sample combos (n<30, amber ⚠) are directional hints, not statistics.",
+      example: "Bull + Tue at 14:30 ET: today riding p75, low-in-by 81% → the dip is likely in; H p80 pivot 1.6% above → remaining upside bounded. Fade extension, don't chase.",
+    },
+    weeklyCone: {
+      what: "The same chart one horizon up: hourly RTH closes as ×AWR14 from the Monday session open, pooled over the 35-bar trading week (5 sessions × 7 bars; holiday weeks drop out). The gray band is the unconditional reference — every complete historical week. The colored band is CONDITIONAL ON OUTCOME: a 'bull' week is defined by closing above its open, so that cone sits above the reference band by construction — that separation is not a forecast, it's what already-bullish weeks looked like along the way. The dotted amber line is this week so far.",
+      value: "Compare this week's amber line to the gray reference band — that is the only unconditional read. The bull/bear cones describe the shape of weeks that already finished that way; they cannot tell you which one this week is in. 'By now' and pivots read the same way as the daily cone, one week wide.",
+      example: "Bull weeks (closed above open) rode p75 by Wed 11:30 ET with low-in-by 60% — that's the shape of a finished bull week, in hindsight, not a preview of this one.",
     },
     wickPercentile: {
       what: "For this week's P1 candle (the 1h candle that first set the weekly extreme), how does its wick size compare to all historical P1 candles? Wick is measured in the P1 direction (lower wick for P1=low, upper wick for P1=high), normalised by the candle's open price and ADR14. Exceedance % = fraction of historical P1 weeks with a BIGGER wick than this week's.",
@@ -149,42 +144,6 @@
       loading = false;
     }
   }
-
-  async function loadLiveOutcomes(): Promise<void> {
-    loLoading = true;
-    loError = null;
-    try {
-      liveOutcomes = await getLiveOutcomes(loDays, loMinN);
-    } catch (e) {
-      loError = e instanceof Error ? e.message : String(e);
-    } finally {
-      loLoading = false;
-    }
-  }
-
-  function setLoDays(d: number): void {
-    if (loDays === d) return;
-    loDays = d;
-    void loadLiveOutcomes();
-  }
-
-  function setLoMinN(n: number): void {
-    if (loMinN === n) return;
-    loMinN = n;
-    void loadLiveOutcomes();
-  }
-
-  const fmtR = (v: number | null) => (v === null ? "—" : (v >= 0 ? "+" : "") + v.toFixed(3));
-  // Largest |avg_r| among visible cells — used to scale the diverging bars.
-  const loMaxAbsR = $derived(
-    liveOutcomes
-      ? Math.max(
-          0.01,
-          ...liveOutcomes.cells.map((c) => Math.abs(c.avg_r ?? 0)),
-          ...liveOutcomes.by_strategy.map((s) => Math.abs(s.avg_r ?? 0)),
-        )
-      : 1
-  );
 
   const hourlyRows = $derived(stats ? stats.hourly_extremes : []);
   const maxHighPct = $derived(hourlyRows.length ? Math.max(...hourlyRows.map((r) => r.high_pct)) : 1);
@@ -260,6 +219,38 @@
   {#if loading}
     <LoadingSpinner label="Computing statistics…" />
   {:else if stats}
+    <!-- Daily Path Cone — hero (M5) -->
+    <div class="card hero-card">
+      <div class="card-header">
+        <span class="card-title">Daily Path Cone</span>
+        <button class="help-btn" class:active={openHelp === "pathCone"} onclick={() => toggleHelp("pathCone")} aria-label="Help">?</button>
+      </div>
+      {#if openHelp === "pathCone"}
+        <div class="help-panel">
+          <div class="help-section"><span class="help-label">What</span>{CARD_HELP.pathCone.what}</div>
+          <div class="help-section"><span class="help-label">Use</span>{CARD_HELP.pathCone.value}</div>
+          <div class="help-section help-example"><span class="help-label">e.g.</span>{CARD_HELP.pathCone.example}</div>
+        </div>
+      {/if}
+      <PathCone pathCone={stats.path_cone} todayPath={stats.today_path} />
+    </div>
+
+    <!-- Weekly Path Cone — same chart, one horizon up -->
+    <div class="card hero-card">
+      <div class="card-header">
+        <span class="card-title">Weekly Path Cone</span>
+        <button class="help-btn" class:active={openHelp === "weeklyCone"} onclick={() => toggleHelp("weeklyCone")} aria-label="Help">?</button>
+      </div>
+      {#if openHelp === "weeklyCone"}
+        <div class="help-panel">
+          <div class="help-section"><span class="help-label">What</span>{CARD_HELP.weeklyCone.what}</div>
+          <div class="help-section"><span class="help-label">Use</span>{CARD_HELP.weeklyCone.value}</div>
+          <div class="help-section help-example"><span class="help-label">e.g.</span>{CARD_HELP.weeklyCone.example}</div>
+        </div>
+      {/if}
+      <WeeklyCone weeklyCone={stats.weekly_cone} currentWeekPath={stats.current_week_path} />
+    </div>
+
     <div class="grid">
 
       <!-- P1/P2 Daily -->
@@ -705,55 +696,6 @@
         </div>
       </div>
 
-      <!-- Daily Distance — empirical CDF for today's move vs history -->
-      {#if stats.daily_distance}
-        {@const dd = stats.daily_distance}
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">Daily Distance</span>
-            <button class="help-btn" class:active={openHelp === "dailyDistance"} onclick={() => toggleHelp("dailyDistance")} aria-label="Help">?</button>
-          </div>
-          {#if openHelp === "dailyDistance"}
-            <div class="help-panel">
-              <div class="help-section"><span class="help-label">What</span>{CARD_HELP.dailyDistance.what}</div>
-              <div class="help-section"><span class="help-label">Use</span>{CARD_HELP.dailyDistance.value}</div>
-              <div class="help-section help-example"><span class="help-label">e.g.</span>{CARD_HELP.dailyDistance.example}</div>
-            </div>
-          {/if}
-
-          <div class="dist-main-row">
-            <div class="dist-exceedance" class:val-green={dd.exceedance_pct >= 0.6} class:val-amber={dd.exceedance_pct >= 0.3 && dd.exceedance_pct < 0.6} class:val-red={dd.exceedance_pct < 0.3}>
-              {formatPct(dd.exceedance_pct)}
-            </div>
-            <div class="dist-exceedance-label muted">of historical days moved further</div>
-          </div>
-
-          <!-- Range bar: current position vs p80 marker -->
-          {#if stats.adr.today_consumed_pct !== null}
-            {@const currentPct = stats.adr.today_consumed_pct}
-            {@const p80Pct = dd.p80_of_adr}
-            {@const maxVal = Math.max(currentPct, p80Pct) * 1.1 || 1}
-            <div class="dist-bar-wrap">
-              <div class="dist-bar-track">
-                <div class="dist-bar-fill" style="width: {Math.min((currentPct / maxVal) * 100, 100).toFixed(1)}%"></div>
-                <div class="dist-bar-p80" style="left: {Math.min((p80Pct / maxVal) * 100, 99).toFixed(1)}%"></div>
-              </div>
-              <div class="dist-bar-labels">
-                <span class="dist-bar-label-now muted">now {currentPct.toFixed(2)}× ADR</span>
-                <span class="dist-bar-label-p80 muted">p80 {p80Pct.toFixed(2)}× ADR</span>
-              </div>
-            </div>
-          {/if}
-
-          {#if dd.gap_to_p80 !== null}
-            <div class="dist-gap muted">+{dd.gap_to_p80.toFixed(2)}× ADR to reach p80</div>
-          {:else}
-            <div class="dist-gap val-green">p80 reached — extended day</div>
-          {/if}
-          <div class="dist-note muted">{dd.sample_count} days sampled</div>
-        </div>
-      {/if}
-
       <!-- Weekly P1 Wick Rank — current week vs historical distribution -->
       {#if stats.weekly_wick_percentile}
         {@const wwp = stats.weekly_wick_percentile}
@@ -799,36 +741,12 @@
     </div>
   {/if}
 
-  {#snippet rbar(v: number | null)}
-    <span class="lo-bar">
-      <span class="lo-bar-mid"></span>
-      {#if v !== null && v !== 0}
-        {@const w = Math.min(Math.abs(v) / loMaxAbsR, 1) * 50}
-        <span
-          class="lo-bar-fill"
-          class:pos={v > 0}
-          class:neg={v < 0}
-          style="width:{w.toFixed(1)}%; {v > 0 ? 'left:50%' : 'right:50%'}"
-        ></span>
-      {/if}
-    </span>
-  {/snippet}
-
   <!-- Live Alert Outcomes — REAL fired-alert results (cross-symbol ledger) -->
   <div class="grid lo-grid">
     <div class="card card-wide lo-card">
       <div class="card-header">
         <span class="card-title">Live Alert Outcomes</span>
         <div class="header-actions">
-          <div class="pill-toggle">
-            <button class:active={loDays === 30} onclick={() => setLoDays(30)}>30D</button>
-            <button class:active={loDays === 90} onclick={() => setLoDays(90)}>90D</button>
-            <button class:active={loDays === 0} onclick={() => setLoDays(0)}>All</button>
-          </div>
-          <div class="pill-toggle">
-            <button class:active={loMinN === 1} onclick={() => setLoMinN(1)}>n≥1</button>
-            <button class:active={loMinN === 10} onclick={() => setLoMinN(10)}>n≥10</button>
-          </div>
           <button class="help-btn" class:active={openHelp === "liveOutcomes"} onclick={() => toggleHelp("liveOutcomes")} aria-label="Help">?</button>
         </div>
       </div>
@@ -840,87 +758,7 @@
         </div>
       {/if}
 
-      {#if loError}
-        <div class="lo-msg val-red">Failed to load outcomes: {loError}</div>
-      {:else if !liveOutcomes}
-        <div class="lo-msg muted">Loading live outcomes…</div>
-      {:else if liveOutcomes.rollup.total_rows === 0}
-        <div class="lo-msg muted">No alerts fired yet — the ledger is empty.</div>
-      {:else}
-        {@const rollup = liveOutcomes.rollup}
-        <div class="lo-rollup">
-          <div class="lo-stat">
-            <span class="lo-stat-val">{rollup.total_rows.toLocaleString()}</span>
-            <span class="lo-stat-label">fired</span>
-          </div>
-          <div class="lo-stat">
-            <span class="lo-stat-val">{rollup.resolved.toLocaleString()}</span>
-            <span class="lo-stat-label">resolved</span>
-          </div>
-          <div class="lo-stat">
-            <span class="lo-stat-val">{rollup.open.toLocaleString()}</span>
-            <span class="lo-stat-label">open</span>
-          </div>
-          <div class="lo-stat lo-stat-integrity" class:val-green={rollup.open_no_tp === 0} class:val-red={rollup.open_no_tp > 0}>
-            <span class="lo-stat-val">{rollup.open_no_tp === 0 ? "✓ 0" : rollup.open_no_tp.toLocaleString()}</span>
-            <span class="lo-stat-label">no-TP hole</span>
-          </div>
-          <div class="lo-wle">
-            <span class="val-green">{rollup.wins.toLocaleString()} W</span>
-            <span class="lo-sep">·</span>
-            <span class="val-red">{rollup.losses.toLocaleString()} L</span>
-            <span class="lo-sep">·</span>
-            <span class="muted">{rollup.expired.toLocaleString()} exp</span>
-          </div>
-        </div>
-        <div class="lo-scope muted">
-          all-time roll-up · tables show {loDays === 0 ? "all time" : `last ${loDays}d`}, min n {loMinN}
-        </div>
-
-        {#if liveOutcomes.by_strategy.length === 0}
-          <div class="lo-msg muted">No resolved trades in this window — widen the period or lower min n.</div>
-        {:else}
-          <div class="lo-cols">
-            <div class="lo-block">
-              <div class="lo-block-title">By strategy</div>
-              <div class="lo-table">
-                <div class="lo-row lo-head">
-                  <span>strategy</span><span class="num">n</span><span class="num">win</span><span class="num">avg R</span><span></span>
-                </div>
-                {#each liveOutcomes.by_strategy as s}
-                  <div class="lo-row">
-                    <span class="lo-strat">{s.strategy}</span>
-                    <span class="num muted">{s.n}</span>
-                    <span class="num">{s.win_rate === null ? "—" : formatPct(s.win_rate)}</span>
-                    <span class="num" class:val-green={(s.avg_r ?? 0) > 0} class:val-red={(s.avg_r ?? 0) < 0}>{fmtR(s.avg_r)}</span>
-                    <span class="lo-bar-cell">{@render rbar(s.avg_r)}</span>
-                  </div>
-                {/each}
-              </div>
-            </div>
-
-            <div class="lo-block">
-              <div class="lo-block-title">By strategy · tf · direction</div>
-              <div class="lo-table lo-scroll">
-                <div class="lo-row lo-cell-row lo-head">
-                  <span>strat</span><span>tf</span><span>dir</span><span class="num">n</span><span class="num">win</span><span class="num">avg R</span><span></span>
-                </div>
-                {#each liveOutcomes.cells as c}
-                  <div class="lo-row lo-cell-row">
-                    <span class="lo-strat">{c.strategy}</span>
-                    <span class="muted">{c.tf}</span>
-                    <span class:val-green={c.direction === "long"} class:val-red={c.direction === "short"}>{c.direction === "long" ? "▲ L" : "▼ S"}</span>
-                    <span class="num muted">{c.n}</span>
-                    <span class="num">{c.win_rate === null ? "—" : formatPct(c.win_rate)}</span>
-                    <span class="num" class:val-green={(c.avg_r ?? 0) > 0} class:val-red={(c.avg_r ?? 0) < 0}>{fmtR(c.avg_r)}</span>
-                    <span class="lo-bar-cell">{@render rbar(c.avg_r)}</span>
-                  </div>
-                {/each}
-              </div>
-            </div>
-          </div>
-        {/if}
-      {/if}
+      <LiveOutcomes />
     </div>
   </div>
 </div>
@@ -1575,7 +1413,12 @@
     align-items: center;
   }
 
-  /* Daily Distance + P1 Wick Rank cards */
+  /* Daily Path Cone hero (M5) */
+  .hero-card {
+    margin-bottom: 1rem;
+  }
+
+  /* P1 Wick Rank card */
   .dist-main-row {
     display: flex;
     align-items: baseline;
@@ -1611,38 +1454,6 @@
     background: var(--accent);
     border-radius: 2px;
     transition: width 0.4s ease;
-  }
-
-  /* p80 marker: vertical tick above/below the track */
-  .dist-bar-p80 {
-    position: absolute;
-    top: -3px;
-    width: 2px;
-    height: 10px;
-    background: var(--muted-text, #888);
-    border-radius: 1px;
-    transform: translateX(-50%);
-  }
-
-  .dist-bar-labels {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 4px;
-    font-size: 10px;
-  }
-
-  .dist-bar-label-now {
-    font-feature-settings: "tnum" 1;
-  }
-
-  .dist-bar-label-p80 {
-    font-feature-settings: "tnum" 1;
-  }
-
-  .dist-gap {
-    font-size: 11px;
-    margin: 4px 0 2px;
-    font-feature-settings: "tnum" 1;
   }
 
   .dist-note {
@@ -1710,165 +1521,4 @@
   /* ── Live Alert Outcomes ─────────────────────────────────────────── */
   .lo-grid { margin-top: 16px; }
 
-  .lo-msg {
-    font-size: 12px;
-    padding: 10px 2px;
-  }
-
-  /* Roll-up chips */
-  .lo-rollup {
-    display: flex;
-    align-items: stretch;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 6px;
-  }
-
-  .lo-stat {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    padding: 7px 14px;
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    background: color-mix(in srgb, var(--accent) 4%, transparent);
-    min-width: 72px;
-  }
-
-  .lo-stat-val {
-    font-size: 18px;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-    line-height: 1.1;
-  }
-
-  .lo-stat-label {
-    font-size: 9px;
-    font-weight: 600;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
-
-  .lo-stat-integrity {
-    background: color-mix(in srgb, currentColor 8%, transparent);
-    border-color: color-mix(in srgb, currentColor 30%, var(--border));
-  }
-
-  .lo-wle {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-left: auto;
-    padding: 7px 4px;
-    font-size: 13px;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .lo-wle .lo-sep { color: var(--muted); font-weight: 400; }
-
-  .lo-scope {
-    font-size: 10px;
-    margin-bottom: 12px;
-  }
-
-  /* Two-column block layout */
-  .lo-cols {
-    display: grid;
-    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-    gap: 18px;
-  }
-
-  @media (max-width: 760px) {
-    .lo-cols { grid-template-columns: 1fr; }
-  }
-
-  .lo-block-title {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 6px;
-  }
-
-  .lo-table { display: flex; flex-direction: column; }
-
-  .lo-scroll {
-    max-height: 360px;
-    overflow-y: auto;
-  }
-
-  .lo-row {
-    display: grid;
-    grid-template-columns: 1fr 34px 46px 56px 64px;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    font-variant-numeric: tabular-nums;
-    padding: 3px 4px;
-    border-radius: 3px;
-    margin: 0 -4px;
-  }
-
-  .lo-cell-row {
-    grid-template-columns: 1fr 34px 34px 30px 44px 56px 60px;
-  }
-
-  .lo-row:not(.lo-head):hover {
-    background: color-mix(in srgb, var(--accent) 6%, transparent);
-  }
-
-  .lo-head {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color: var(--muted);
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 5px;
-    margin-bottom: 2px;
-    position: sticky;
-    top: 0;
-    background: var(--bg-panel);
-    z-index: 1;
-  }
-
-  .lo-row .num { text-align: right; }
-  .lo-strat {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* Diverging avg-R bar (red left / green right of centre) */
-  .lo-bar-cell { display: flex; }
-  .lo-bar {
-    position: relative;
-    width: 100%;
-    height: 8px;
-    background: color-mix(in srgb, var(--border) 50%, transparent);
-    border-radius: 2px;
-  }
-
-  .lo-bar-mid {
-    position: absolute;
-    left: 50%;
-    top: -1px;
-    bottom: -1px;
-    width: 1px;
-    background: var(--muted);
-    opacity: 0.5;
-  }
-
-  .lo-bar-fill {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    border-radius: 2px;
-  }
-
-  .lo-bar-fill.pos { background: var(--green, #4caf81); }
-  .lo-bar-fill.neg { background: var(--red, #e05c5c); }
 </style>

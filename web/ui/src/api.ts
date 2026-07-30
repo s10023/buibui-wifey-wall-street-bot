@@ -449,11 +449,53 @@ export interface WeeklyFlipRiskConditionedResponse {
   rows: FlipRiskConditionedRow[];
 }
 
-export interface DailyDistanceResponse {
-  exceedance_pct: number;
-  p80_of_adr: number;
-  gap_to_p80: number | null;
-  sample_count: number;
+export interface ConeComboResponse {
+  direction: string;
+  weekday: string;
+  n: number;
+  bands: number[][];
+  low_in_by: number[];
+  high_in_by: number[];
+  mae_p: number[];
+  mfe_p: number[];
+  high_piv: number[];
+  low_piv: number[];
+}
+
+export interface PathConeResponse {
+  combos: Record<string, ConeComboResponse>;
+  total_days: number;
+}
+
+export interface TodayPathResponse {
+  points: number[];
+  elapsed_h: number;
+  adr14_today: number;
+  today_open: number;
+}
+
+export interface WeeklyConeComboResponse {
+  direction: string;
+  n: number;
+  bands: number[][];
+  low_in_by: number[];
+  high_in_by: number[];
+  mae_p: number[];
+  mfe_p: number[];
+  high_piv: number[];
+  low_piv: number[];
+}
+
+export interface WeeklyConeResponse {
+  combos: Record<string, WeeklyConeComboResponse>;
+  total_weeks: number;
+}
+
+export interface CurrentWeekPathResponse {
+  points: number[];
+  elapsed_h: number;
+  awr14_current: number;
+  week_open: number;
 }
 
 export interface WeeklyWickPercentileResponse {
@@ -476,8 +518,11 @@ export interface StatsResponse {
   weekly_p2_timing: WeeklyP2TimingResponse;
   weekly_current_state: WeeklyCurrentStateResponse | null;
   weekly_flip_risk_conditioned: WeeklyFlipRiskConditionedResponse | null;
-  daily_distance: DailyDistanceResponse | null;
+  path_cone: PathConeResponse;
+  today_path: TodayPathResponse | null;
   weekly_wick_percentile: WeeklyWickPercentileResponse | null;
+  weekly_cone: WeeklyConeResponse | null;
+  current_week_path: CurrentWeekPathResponse | null;
 }
 
 export const getStats = (symbol: string, days: number = 180) =>
@@ -510,8 +555,39 @@ export interface LiveOutcomeCell {
 export interface LiveOutcomeStrategyRow {
   strategy: string;
   n: number;
+  wins: number;
+  losses: number;
+  expired: number;
   win_rate: number | null;
   avg_r: number | null;
+}
+
+export interface LiveOutcomeSymbolRow {
+  symbol: string;
+  n: number;
+}
+
+export interface LiveOpenPosition {
+  signal_id: string;
+  symbol: string;
+  strategy: string;
+  tf: string;
+  direction: string;
+  fired_at_ms: number;
+  entry_price: number | null;
+  sl_price: number | null;
+  tp_price: number | null;
+  mark: number | null;
+  unrealized_r: number | null;
+  dist_sl_pct: number | null;
+  dist_tp_pct: number | null;
+}
+
+export interface LiveOpenPositionsResponse {
+  symbol: string | null;
+  marks_ok: boolean;
+  marked_at_ms: number;
+  positions: LiveOpenPosition[];
 }
 
 export interface LiveOutcomesResponse {
@@ -520,7 +596,21 @@ export interface LiveOutcomesResponse {
   rollup: LiveOutcomesRollup;
   cells: LiveOutcomeCell[];
   by_strategy: LiveOutcomeStrategyRow[];
+  symbols: LiveOutcomeSymbolRow[];
 }
 
-export const getLiveOutcomes = (days: number = 30, minN: number = 1) =>
-  apiFetch<LiveOutcomesResponse>(`/api/live-outcomes?days=${days}&min_n=${minN}`);
+export const getLiveOutcomes = (
+  days: number = 30,
+  minN: number = 1,
+  symbol: string | null = null,
+) =>
+  apiFetch<LiveOutcomesResponse>(
+    `/api/live-outcomes?days=${days}&min_n=${minN}` +
+      (symbol ? `&symbol=${encodeURIComponent(symbol)}` : ""),
+  );
+
+export const getLiveOutcomesOpen = (symbol: string | null = null) =>
+  apiFetch<LiveOpenPositionsResponse>(
+    `/api/live-outcomes/open` +
+      (symbol ? `?symbol=${encodeURIComponent(symbol)}` : ""),
+  );

@@ -9,7 +9,9 @@ from analytics.stats.adr import ADRResult, compute_adr
 from analytics.stats.dow import DOWResult, compute_dow_patterns
 from analytics.stats.hourly import HourlyResult, compute_hourly_extremes
 from analytics.stats.p1p2 import P1P2Result, compute_p1p2_daily
+from analytics.stats.path_cone import PathConeBundle, compute_path_cone
 from analytics.stats.session import SessionResult, compute_session_breakdown
+from analytics.stats.weekly_cone import WeeklyConeBundle, compute_weekly_cone
 from analytics.stats.weekly_flip_risk import (
     WeeklyFlipRiskConditioned,
     compute_weekly_flip_risk_conditioned,
@@ -33,6 +35,8 @@ class StatsBundle:
     weekly_p1p2: WeeklyP1P2Result
     weekly_p2_timing: WeeklyP2Timing
     weekly_flip_risk_conditioned: WeeklyFlipRiskConditioned
+    path_cone: PathConeBundle
+    weekly_cone: WeeklyConeBundle
 
 
 def compute_all(
@@ -54,6 +58,8 @@ def compute_all(
     weekly_flip_risk_conditioned = compute_weekly_flip_risk_conditioned(
         conn, symbol, days
     )
+    path_cone = compute_path_cone(conn, symbol)
+    weekly_cone = compute_weekly_cone(conn, symbol)
 
     return StatsBundle(
         symbol=symbol,
@@ -67,4 +73,6 @@ def compute_all(
         weekly_p1p2=weekly_p1p2,
         weekly_p2_timing=weekly_p2_timing,
         weekly_flip_risk_conditioned=weekly_flip_risk_conditioned,
+        path_cone=path_cone,
+        weekly_cone=weekly_cone,
     )

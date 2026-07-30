@@ -84,11 +84,53 @@ class WeeklyFlipRiskConditionedResponse(BaseModel):
     rows: list[FlipRiskConditionedRow]
 
 
-class DailyDistanceResponse(BaseModel):
-    exceedance_pct: float
-    p80_of_adr: float
-    gap_to_p80: float | None
-    sample_count: int
+class ConeComboResponse(BaseModel):
+    direction: str
+    weekday: str
+    n: int
+    bands: list[list[float]]
+    low_in_by: list[float]
+    high_in_by: list[float]
+    mae_p: list[float]
+    mfe_p: list[float]
+    high_piv: list[float]
+    low_piv: list[float]
+
+
+class PathConeResponse(BaseModel):
+    combos: dict[str, ConeComboResponse]
+    total_days: int
+
+
+class TodayPathResponse(BaseModel):
+    points: list[float]
+    elapsed_h: int
+    adr14_today: float
+    today_open: float
+
+
+class WeeklyConeComboResponse(BaseModel):
+    direction: str
+    n: int
+    bands: list[list[float]]
+    low_in_by: list[float]
+    high_in_by: list[float]
+    mae_p: list[float]
+    mfe_p: list[float]
+    high_piv: list[float]
+    low_piv: list[float]
+
+
+class WeeklyConeResponse(BaseModel):
+    combos: dict[str, WeeklyConeComboResponse]
+    total_weeks: int
+
+
+class CurrentWeekPathResponse(BaseModel):
+    points: list[float]
+    elapsed_h: int
+    awr14_current: float
+    week_open: float
 
 
 class WeeklyWickPercentileResponse(BaseModel):
@@ -111,5 +153,8 @@ class StatsResponse(BaseModel):
     weekly_p2_timing: WeeklyP2TimingResponse
     weekly_current_state: WeeklyCurrentStateResponse | None = None
     weekly_flip_risk_conditioned: WeeklyFlipRiskConditionedResponse | None = None
-    daily_distance: DailyDistanceResponse | None = None
+    path_cone: PathConeResponse
+    today_path: TodayPathResponse | None = None
     weekly_wick_percentile: WeeklyWickPercentileResponse | None = None
+    weekly_cone: WeeklyConeResponse | None = None
+    current_week_path: CurrentWeekPathResponse | None = None

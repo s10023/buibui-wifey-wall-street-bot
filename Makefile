@@ -307,8 +307,11 @@ go-live-prep:
 # Pass CATCH_UP=1 to replay candles missed since the last run (skipped run-day recovery).
 # Recovered candles land in the DB/outcome ledger only — never Telegram — so it is
 # safe to pass CATCH_UP=1 on every run.
+# Also refreshes watchlist 1h OHLCV first (non-fatal) — the Stats path cone's
+# substrate; the signal daemon itself only syncs its own signal TFs (4h/1d/1wk).
 go-live:
 	@echo "🚀 Go-live (single cycle): $(GO_LIVE_CONFIG) — Telegram ON"
+	-$(MAKE) wifey-analytics-sync TIMEFRAMES=1h
 	$(MAKE) wifey-signal-watch CONFIG=$(GO_LIVE_CONFIG) TELEGRAM=1 ONCE=1 $(if $(CATCH_UP),CATCH_UP=1,)
 
 docker-signal-watch:

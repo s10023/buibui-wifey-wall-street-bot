@@ -19,7 +19,11 @@ Forked from the parent `buibui-moon-trader-bot` (crypto / Binance Futures); the 
   P1/P2 daily (was low made before high? by day-of-week), hourly extreme distribution (empirical kill zones),
   average daily range + today's consumed %, day-of-week patterns, US equity session breakdown
   (Pre-Market / RTH / Power Hour / After Hours, America/New_York wall-clock), and
-  weekly P1/P2, avg return by day-of-week, and weekly P2 timing with P1 flip risk. Cached in DB, served via `GET /api/stats/{symbol}`, shown on the Stats web page.
+  weekly P1/P2, avg return by day-of-week, and weekly P2 timing with P1 flip risk — plus M5
+  daily + weekly **path-distribution cones** (percentile bands of ADR/AWR-normalized intraday
+  and intraweek paths, with a live today/this-week overlay) and the **Live Alert Outcomes**
+  card (real fired-alert results with symbol chips, sortable tables, and a marked open-alert
+  panel). Cached in DB, served via `GET /api/stats/{symbol}`, shown on the Stats web page.
 
 - **Backtest Engine**
   Sweep, combo, and cross-TF backtest modes against the same detectors that drive the live scanner. Walk-forward optimisation (`wifey param-sweep`) for per-strategy `tp_r` tuning, with each sweep reporting a Deflated Sharpe Ratio + Probability of Backtest Overfitting (Bailey & López de Prado) so the chosen `tp_r` is haircut for the number of grid trials. The sweep footer also prints a commit-gate verdict (`COMMIT` / `DO-NOT-COMMIT` / `INSUFFICIENT`; requires DSR ≥ 0.95, PBO ≤ 0.5, and enough observations) so a `tp_r` that fails the multiple-testing gate is flagged before it is committed to TOML. Sweeps can optionally run purged + embargoed K-fold CV (`--cv-mode purged`, López de Prado AFML ch. 7) instead of the single contiguous split, censoring trades that straddle fold boundaries and embargoing the bars after each test fold.
@@ -163,8 +167,10 @@ The Stats page (`#/stats`) shows BrighterData-style probability tables computed 
 | **Weekly P1/P2** | Which day of the week most commonly forms the weekly high vs low, shown as a per-DOW bar chart. | Toggle **Bear** (when does weekly HIGH form?) or **Bull** (when does weekly LOW form?). Defaults to Bear. Today's DOW highlighted. |
 | **Avg Return by Day** | Average `(close−open)/open` per weekday — shows which days are historically bullish or bearish. Bars grow from bottom; green = positive, red = negative. | Today's DOW highlighted. |
 | **Weekly P2 Timing** | 5-column per-DOW table: how often the weekly low/high is still ahead after each DOW (still-ahead %) and how often the running P1 gets undercut later in the week (flip risk %). Conditioned view shows P(P2 still ahead \| P1 direction, DOW). | Today's DOW highlighted; flip risk ≥ 30% shown in amber. Toggle **All / Bullish P1 / Bearish P1** to condition on which extreme was set first. |
-| **Daily Distance** | Given today's current high-low range (as × ADR14), P(historical daily move > today's). Gap to 80th-percentile daily move. High exceedance = today is already an extreme day, don't chase. Live — recomputed on every page load. | — |
+| **Daily Path Cone** (hero) | Historical intraday paths — hourly closes as × ADR14 from the session open — pooled into p10–p90 percentile bands over the 7-bar RTH session, with low/high timing ("by now" %), excursion stats, price-mapped pivots, and a dotted live today-overlay. | Direction chips (All/Bull/Bear) × weekday chips (Mon–Fri); n-badge with thin-sample ⚠ below n=30; hover for per-bar percentiles. |
+| **Weekly Path Cone** (hero) | The same chart one horizon up: × AWR14-normalized paths over the 35-bar Mon–Fri trading week. Gray band = unconditional reference (all weeks); colored cone = weeks that closed bull/bear (conditional on outcome, not a forecast). Dotted amber line = this week so far. | Bull/Bear chips; hover for per-bar percentiles. |
 | **P1 Wick Rank** | Current week's P1 wick (normalised by open × ADR14) ranked against all historical P1 wicks. Shows exceedance %, direction (Bullish/Bearish P1), and a rank bar. "P1 not yet set" shown if both weekly extremes haven't formed yet. Live — recomputed on every page load. | — |
+| **Live Alert Outcomes** | REAL outcomes of every fired Telegram alert from the `signal_alert_outcomes` ledger: roll-up (fired/resolved/open/no-TP integrity), per-strategy and per-(strategy, tf, direction) win-rate/avg-R tables with expired counts. | Period + min-n chips; symbol chips (global, all-time); sortable columns; expandable open panel marks unresolved alerts to the newest stored close (gross uR, →SL/→TP distances, 30s refresh). |
 
 A 2-line summary of the most actionable stats is injected into every Telegram signal alert:
 

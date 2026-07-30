@@ -234,9 +234,11 @@ The **only** module importing `exchange_calendars`. No DB; one process-lifetime 
 - `compute_dow_patterns` (incl. `avg_return_pct`, `strong_high/low_pct`)
 - `compute_session_breakdown`, `compute_weekly_p1p2`, `compute_weekly_p2_timing` → `WeeklyP2Timing`
 - `compute_weekly_flip_risk_conditioned` → `WeeklyFlipRiskConditioned`; p1_direction="low"=bullish, "high"=bearish
-- `compute_all` → `StatsBundle`
-- Live (never-cached) functions via `_inject_live_fields()`: `compute_weekly_current_state`, `compute_daily_distance`, `compute_weekly_wick_percentile`
-- All times MYT (UTC+8): `(epoch_ms + INTERVAL 8 HOUR)::TIMESTAMP`; raises `ValueError` on empty data
+- `compute_path_cone` → `PathConeBundle` (M5 daily cone: 18 direction × Mon–Fri combos over complete 7-bar RTH sessions, ADR14-normalized; all-history, ignores `days`)
+- `compute_weekly_cone` → `WeeklyConeBundle` (M5 weekly cone: all/bull/bear over 35-bar Monday-anchored trading weeks, AWR14-normalized; `week_records` exposes the population)
+- `compute_all` → `StatsBundle` (carries `path_cone` + `weekly_cone`)
+- Live (never-cached) functions via `_inject_live_fields()`: `compute_weekly_current_state`, `compute_today_path`, `compute_current_week_path`, `compute_weekly_wick_percentile`
+- All times MYT (UTC+8): `(epoch_ms + INTERVAL 8 HOUR)::TIMESTAMP`; raises `ValueError` on empty data (cone axes are ET display-side)
 
 ## signal_runner.py — thin daemon wrapper
 
