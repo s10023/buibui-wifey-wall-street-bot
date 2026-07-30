@@ -449,11 +449,29 @@ export interface WeeklyFlipRiskConditionedResponse {
   rows: FlipRiskConditionedRow[];
 }
 
-export interface DailyDistanceResponse {
-  exceedance_pct: number;
-  p80_of_adr: number;
-  gap_to_p80: number | null;
-  sample_count: number;
+export interface ConeComboResponse {
+  direction: string;
+  weekday: string;
+  n: number;
+  bands: number[][];
+  low_in_by: number[];
+  high_in_by: number[];
+  mae_p: number[];
+  mfe_p: number[];
+  high_piv: number[];
+  low_piv: number[];
+}
+
+export interface PathConeResponse {
+  combos: Record<string, ConeComboResponse>;
+  total_days: number;
+}
+
+export interface TodayPathResponse {
+  points: number[];
+  elapsed_h: number;
+  adr14_today: number;
+  today_open: number;
 }
 
 export interface WeeklyWickPercentileResponse {
@@ -476,7 +494,8 @@ export interface StatsResponse {
   weekly_p2_timing: WeeklyP2TimingResponse;
   weekly_current_state: WeeklyCurrentStateResponse | null;
   weekly_flip_risk_conditioned: WeeklyFlipRiskConditionedResponse | null;
-  daily_distance: DailyDistanceResponse | null;
+  path_cone: PathConeResponse;
+  today_path: TodayPathResponse | null;
   weekly_wick_percentile: WeeklyWickPercentileResponse | null;
 }
 

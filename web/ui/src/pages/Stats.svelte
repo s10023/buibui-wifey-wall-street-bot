@@ -10,6 +10,7 @@
   import { configDefaultSymbol } from "../stores/activeConfig";
   import LoadingSpinner from "../components/LoadingSpinner.svelte";
   import ErrorBanner from "../components/ErrorBanner.svelte";
+  import PathCone from "../components/PathCone.svelte";
 
   const TIMEFRAMES_DAYS = [30, 90, 180, 365];
   const DOW_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -114,10 +115,10 @@
       value: "High % = that extreme likely hasn't formed yet. Low % = it's likely already in. Riskier for a long when 'Low still ahead' is HIGH (e.g. 70%) — the weekly low is probably still below, so entering long now risks catching the drop. Flip risk shows the chance the running extreme gets beaten later in the week. Use the Bullish P1 filter once a weekly low is confirmed forming: it shows whether the high (P2) is still statistically expected.",
       example: "Today Mon, Bullish P1 filter → 71% of bullish weeks still set the high after Mon → weekly high very likely still ahead → good timing window for longs targeting the weekly high.",
     },
-    dailyDistance: {
-      what: "Given today's current high-low range (as a fraction of ADR14), how does it rank against all historical days? Exceedance % = fraction of past days that moved MORE than today's current range. p80 = the 80th-percentile daily move; gap shows how much further price needs to move to reach that level.",
-      value: "High exceedance (e.g. 80%) means today's move is already in the top 20% of historical days — expect mean reversion, don't chase. Low exceedance (e.g. 20%) means 80% of days moved further than this — room to run. Gap to p80 tells you roughly how much additional range is typical before the day 'fills out'.",
-      example: "ADR14 2.5%, today consumed 1.8% → 72% of days had a bigger move. Gap to p80: 0.3× ADR → ~0.75% more move to reach the 80th percentile of daily range.",
+    pathCone: {
+      what: "Historical intraday paths — hourly closes as ×ADR14 from the session open — pooled into percentile bands: p10–p90 outer, p25–p75 inner, median line. Filter by session direction (bull/bear at close) and weekday; the dotted amber line is today so far on the same scale. 'By now' row: fraction of matching sessions whose eventual low/high was already set by the current bar. Pivots: typical (p50) and extended (p80) high/low excursions mapped to today's prices.",
+      value: "Read where today sits inside the historical envelope: hugging p90 = extended vs the template — chasing here is late; near the median = nothing unusual yet. The 'by now' row says whether the session extreme is statistically already in. Pivots give price targets/invalidation for the day. Thin-sample combos (n<30, amber ⚠) are directional hints, not statistics.",
+      example: "Bull + Tue at 14:30 ET: today riding p75, low-in-by 81% → the dip is likely in; H p80 pivot 1.6% above → remaining upside bounded. Fade extension, don't chase.",
     },
     wickPercentile: {
       what: "For this week's P1 candle (the 1h candle that first set the weekly extreme), how does its wick size compare to all historical P1 candles? Wick is measured in the P1 direction (lower wick for P1=low, upper wick for P1=high), normalised by the candle's open price and ADR14. Exceedance % = fraction of historical P1 weeks with a BIGGER wick than this week's.",
@@ -260,6 +261,22 @@
   {#if loading}
     <LoadingSpinner label="Computing statistics…" />
   {:else if stats}
+    <!-- Daily Path Cone — hero (M5) -->
+    <div class="card hero-card">
+      <div class="card-header">
+        <span class="card-title">Daily Path Cone</span>
+        <button class="help-btn" class:active={openHelp === "pathCone"} onclick={() => toggleHelp("pathCone")} aria-label="Help">?</button>
+      </div>
+      {#if openHelp === "pathCone"}
+        <div class="help-panel">
+          <div class="help-section"><span class="help-label">What</span>{CARD_HELP.pathCone.what}</div>
+          <div class="help-section"><span class="help-label">Use</span>{CARD_HELP.pathCone.value}</div>
+          <div class="help-section help-example"><span class="help-label">e.g.</span>{CARD_HELP.pathCone.example}</div>
+        </div>
+      {/if}
+      <PathCone pathCone={stats.path_cone} todayPath={stats.today_path} />
+    </div>
+
     <div class="grid">
 
       <!-- P1/P2 Daily -->
@@ -704,55 +721,6 @@
           <span class="muted"> ({stats.weekly_p1p2.sample_weeks} wks)</span>
         </div>
       </div>
-
-      <!-- Daily Distance — empirical CDF for today's move vs history -->
-      {#if stats.daily_distance}
-        {@const dd = stats.daily_distance}
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">Daily Distance</span>
-            <button class="help-btn" class:active={openHelp === "dailyDistance"} onclick={() => toggleHelp("dailyDistance")} aria-label="Help">?</button>
-          </div>
-          {#if openHelp === "dailyDistance"}
-            <div class="help-panel">
-              <div class="help-section"><span class="help-label">What</span>{CARD_HELP.dailyDistance.what}</div>
-              <div class="help-section"><span class="help-label">Use</span>{CARD_HELP.dailyDistance.value}</div>
-              <div class="help-section help-example"><span class="help-label">e.g.</span>{CARD_HELP.dailyDistance.example}</div>
-            </div>
-          {/if}
-
-          <div class="dist-main-row">
-            <div class="dist-exceedance" class:val-green={dd.exceedance_pct >= 0.6} class:val-amber={dd.exceedance_pct >= 0.3 && dd.exceedance_pct < 0.6} class:val-red={dd.exceedance_pct < 0.3}>
-              {formatPct(dd.exceedance_pct)}
-            </div>
-            <div class="dist-exceedance-label muted">of historical days moved further</div>
-          </div>
-
-          <!-- Range bar: current position vs p80 marker -->
-          {#if stats.adr.today_consumed_pct !== null}
-            {@const currentPct = stats.adr.today_consumed_pct}
-            {@const p80Pct = dd.p80_of_adr}
-            {@const maxVal = Math.max(currentPct, p80Pct) * 1.1 || 1}
-            <div class="dist-bar-wrap">
-              <div class="dist-bar-track">
-                <div class="dist-bar-fill" style="width: {Math.min((currentPct / maxVal) * 100, 100).toFixed(1)}%"></div>
-                <div class="dist-bar-p80" style="left: {Math.min((p80Pct / maxVal) * 100, 99).toFixed(1)}%"></div>
-              </div>
-              <div class="dist-bar-labels">
-                <span class="dist-bar-label-now muted">now {currentPct.toFixed(2)}× ADR</span>
-                <span class="dist-bar-label-p80 muted">p80 {p80Pct.toFixed(2)}× ADR</span>
-              </div>
-            </div>
-          {/if}
-
-          {#if dd.gap_to_p80 !== null}
-            <div class="dist-gap muted">+{dd.gap_to_p80.toFixed(2)}× ADR to reach p80</div>
-          {:else}
-            <div class="dist-gap val-green">p80 reached — extended day</div>
-          {/if}
-          <div class="dist-note muted">{dd.sample_count} days sampled</div>
-        </div>
-      {/if}
 
       <!-- Weekly P1 Wick Rank — current week vs historical distribution -->
       {#if stats.weekly_wick_percentile}
@@ -1575,7 +1543,12 @@
     align-items: center;
   }
 
-  /* Daily Distance + P1 Wick Rank cards */
+  /* Daily Path Cone hero (M5) */
+  .hero-card {
+    margin-bottom: 1rem;
+  }
+
+  /* P1 Wick Rank card */
   .dist-main-row {
     display: flex;
     align-items: baseline;
@@ -1611,38 +1584,6 @@
     background: var(--accent);
     border-radius: 2px;
     transition: width 0.4s ease;
-  }
-
-  /* p80 marker: vertical tick above/below the track */
-  .dist-bar-p80 {
-    position: absolute;
-    top: -3px;
-    width: 2px;
-    height: 10px;
-    background: var(--muted-text, #888);
-    border-radius: 1px;
-    transform: translateX(-50%);
-  }
-
-  .dist-bar-labels {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 4px;
-    font-size: 10px;
-  }
-
-  .dist-bar-label-now {
-    font-feature-settings: "tnum" 1;
-  }
-
-  .dist-bar-label-p80 {
-    font-feature-settings: "tnum" 1;
-  }
-
-  .dist-gap {
-    font-size: 11px;
-    margin: 4px 0 2px;
-    font-feature-settings: "tnum" 1;
   }
 
   .dist-note {
