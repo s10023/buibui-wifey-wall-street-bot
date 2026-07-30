@@ -109,6 +109,30 @@ class TodayPathResponse(BaseModel):
     today_open: float
 
 
+class WeeklyConeComboResponse(BaseModel):
+    direction: str
+    n: int
+    bands: list[list[float]]
+    low_in_by: list[float]
+    high_in_by: list[float]
+    mae_p: list[float]
+    mfe_p: list[float]
+    high_piv: list[float]
+    low_piv: list[float]
+
+
+class WeeklyConeResponse(BaseModel):
+    combos: dict[str, WeeklyConeComboResponse]
+    total_weeks: int
+
+
+class CurrentWeekPathResponse(BaseModel):
+    points: list[float]
+    elapsed_h: int
+    awr14_current: float
+    week_open: float
+
+
 class WeeklyWickPercentileResponse(BaseModel):
     current_wick_of_adr: float | None
     exceedance_pct: float | None
@@ -132,3 +156,5 @@ class StatsResponse(BaseModel):
     path_cone: PathConeResponse
     today_path: TodayPathResponse | None = None
     weekly_wick_percentile: WeeklyWickPercentileResponse | None = None
+    weekly_cone: WeeklyConeResponse | None = None
+    current_week_path: CurrentWeekPathResponse | None = None
