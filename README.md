@@ -31,6 +31,30 @@ Forked from the parent `buibui-moon-trader-bot` (crypto / Binance Futures); the 
 - **Equity cost model (Phase 0.4, ON for live configs since step 2)**
   The `[backtest.cost_model]` TOML block replaces the flat `fee_pct` with half-spread by liquidity bucket + square-root market impact + short borrow + commission, charged per-trade in R. Enabled in `config/strategy_params.toml` (inherited by both `signal_watch` configs) since Phase 0.4 step 2 (#80) — the flip moved the regression goldens by design. The code default is still off (`cost_model=None` → byte-identical flat-fee path), so the single-combo backtest CLI and web `POST /api/backtest` stay flat-fee.
 
+- `/ingest-x` *(Claude Code skill)* — turn one or more pasted X/Twitter post URLs into
+  routed research items. Fetches each post's text + chart images with no login/scraping
+  via the public syndication endpoint (`tools/x_fetch.py`, randomized cooldown + per-id
+  dedup cache), vision-reads each chart in a sonnet subagent, classifies via a
+  content-type gate + 4-bucket verdict taxonomy (`tools/x_route.py`), then — after one
+  consolidated review digest and one approval — routes into three gitignored research
+  streams: hypotheses (`docs/plans/thesis-inbox.md`), mechanics
+  (`docs/plans/mechanics-backlog.md`), and pundit setups
+  (`docs/plans/pundit-calls.jsonl`). Ported from parent #466/#467.
+
+- `/ingest-video` *(Claude Code skill)* — turn a pasted YouTube or X video URL, including
+  Chinese-language video, into routed research items. Fetches metadata + transcript
+  (`tools/video_fetch.py`: yt-dlp captions, Groq `whisper-large-v3` fallback for
+  caption-less video, per-video dedup cache), then two sonnet subagent passes — text-only
+  segmenting/ranking, then vision over a small set of transcript-selected frames
+  (`tools/video_marks.py`; frames follow deictic phrases and spoken price levels, never
+  scene-change, so a 38-minute video costs 8–15 images instead of ~100). The in-video call
+  time is resolved deterministically in code (`tools/video_calltime.py`, never by model
+  date arithmetic) — a stated time is preferred but bounded below the video's publish
+  timestamp, so a backlog video can't be scored against price action the speaker had
+  already seen. One consolidated review digest, one approval, then routes into the same
+  three research streams as `/ingest-x` plus a durable per-video note under
+  `docs/plans/video-notes/`. Ported from parent #513.
+
 ---
 
 ## Risk Rules

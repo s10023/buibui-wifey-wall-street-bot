@@ -39,3 +39,6 @@ web/ui/.vite/
 # Skills system
 skills-lock.json
 .agents/
+
+# X-post ingest (and research-ingestion) caches
+.cache/
