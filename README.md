@@ -53,7 +53,12 @@ Forked from the parent `buibui-moon-trader-bot` (crypto / Binance Futures); the 
   timestamp, so a backlog video can't be scored against price action the speaker had
   already seen. One consolidated review digest, one approval, then routes into the same
   three research streams as `/ingest-x` plus a durable per-video note under
-  `docs/plans/video-notes/`. Ported from parent #513.
+  `docs/plans/video-notes/`. Ported from parent #513. Items are routed across the two
+  repos by **subject, never by repo priority** — equities/macro/gold/oil/DXY/bonds stay
+  here, crypto goes to the crypto parent (which has perp data and the pundit scorer), and
+  a video covering both legitimately yields rows in both. Note that
+  `docs/plans/pundit-calls.jsonl` has no reader in this repo yet
+  (`tools/pundit_score.py` is not ported), so routed setups accumulate unscored.
 
 ---
 
