@@ -71,6 +71,48 @@ transcript at all; without it, `unavailable` reports that explicitly (see shape 
 
 Only shape-3 videos continue through the rest of this flow.
 
+### 2b. Sibling-repo check — before spending any subagent tokens
+
+This repo and the crypto parent (`~/repo/buibui-moon-trader-bot/`) follow overlapping
+channels — Benjamin Cowen sits in both queues today, and 4 of his videos are already
+ingested here. **This repo has NO routing-dedup layer at all** (the parent's
+`tools/route_dedup.py` and its identity ledger were never ported, and the parent's own
+ledger is per-repo regardless), so this grep is the only thing standing between you and a
+double-ingest — of another repo's work *or*, until the port lands, of your own:
+
+```bash
+grep -rl -E 'video_id: *"?(<id1>|<id2>|…)"?' \
+  ~/repo/buibui-moon-trader-bot/docs/plans/video-notes/ \
+  docs/plans/video-notes/ 2>/dev/null
+```
+
+Both directories, deliberately. A hit in **this** repo's dir means you already ingested it
+here — skip it outright; the `.cache/video/<id>/` cache only spares you the re-download, it
+does not stop a re-ingest, so nothing else in this flow would catch it.
+
+Grep the **frontmatter**, never the filename: the parent now names notes
+`<date>-<author-slug>-<video_id>.md` (though its pre-#522 notes still carry title slugs)
+while this repo uses `<title-slug>` throughout, so filenames are not comparable across the
+two — nor even within the parent. `video_id:` in frontmatter is present in every note on
+both sides.
+
+**A hit is not automatically a skip — apply the subject rule:**
+
+- equities / macro / gold / oil / DXY / bonds → **here**
+- crypto instrument → **the parent** (it has perp data and the only working scorer)
+- one video covering both legitimately yields rows in **both** repos. Two different calls,
+  not a duplicate.
+
+Route by **subject, never by repo priority.** The parent's scorer assumes 24/7 perp bars,
+so a macro call scored there resolves against the wrong bars — and this repo holds ETF
+*proxies* (USO/GLD/UUP) while pundits quote the **underlying's** units, so gold and DXY
+fail loudly while **oil fails quietly** (USO sits in roughly the same $70-85 band as WTI
+without tracking it). Both directions have a wrong home; the subject decides.
+
+**Standing caveat:** this repo has no `tools/pundit_score.py`, so anything routed to
+`docs/plans/pundit-calls.jsonl` here is a silent accumulator until that port lands. Say so
+in the digest rather than implying a routed row will be scored.
+
 ### 3. Pass 1 — text-only subagent, one per video, pinned to sonnet
 
 For each shape-3 video, dispatch a `general-purpose` subagent via the Task tool with
@@ -311,7 +353,7 @@ import — do not fork it) and append per this table, identical to `/ingest-x`:
 | content_type | verdict | Append to |
 | --- | --- | --- |
 | setup | — | `docs/plans/pundit-calls.jsonl` (one JSON line, schema below) |
-| mechanic | — | `docs/plans/mechanics-backlog.md` (a `- ` bullet) |
+| mechanic | — | `docs/plans/mechanics-backlog.md` (a `-` list bullet) |
 | claim | NOVEL | `docs/plans/thesis-inbox.md` (a draft `H` row) |
 | claim | ALREADY-TESTED / FROZEN-CATEGORY / NOT-FALSIFIABLE | **drop** — state "seen, verdict X", write nothing |
 
