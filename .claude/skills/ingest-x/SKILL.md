@@ -87,7 +87,7 @@ pasted, then run the flow once over the whole set.
    | content_type | verdict | Append to |
    | --- | --- | --- |
    | setup | — | `docs/plans/pundit-calls.jsonl` (one JSON line, schema below) |
-   | mechanic | — | `docs/plans/mechanics-backlog.md` (a `- ` bullet) |
+   | mechanic | — | `docs/plans/mechanics-backlog.md` (a `-` list bullet) |
    | claim | NOVEL | `docs/plans/thesis-inbox.md` (a draft `H` row) |
    | claim | ALREADY-TESTED / FROZEN-CATEGORY / NOT-FALSIFIABLE | **drop** — state "seen, verdict X", write nothing |
 
