@@ -72,6 +72,24 @@ Direct: `PYTHONPATH=. poetry run python tools/sync_parent.py [flags]`.
 
 ## Notes
 
+- **Never hand-triage from `git log --oneline`. Re-run the tool when the range moves.**
+  On 2026-08-03 the parent was 21 commits past the last scan point; those commits were
+  eyeballed from a `git log` listing instead of re-running `make wifey-sync-parent`, and
+  #519 (a portable CLAUDE.md policy) was read past. The tool would have bucketed it
+  **PORT** — `CLAUDE.md` exists in wifey, so it resolves as a direct path, which is
+  neither `removed`/`skip` nor an EVALUATE path. Selective reading is exactly the
+  failure this skill exists to prevent.
+- **The parent's own "what's fork-ready" note is a hint, never the scope.** The parent's
+  memory sometimes names a payload it thinks is portable. That reflects *its* view of
+  its own work; it is not a substitute for this repo's classifier, and anything outside
+  that list silently drops. Same 2026-08-03 incident: the named payload was taken as the
+  scope, so five ingest PRs were only found by pulling an unrelated thread, and #519 was
+  never on any thread.
+- **Docs-only PRs are not automatically SKIP.** A parent PR touching only `CLAUDE.md` or
+  `.claude/skills/**` changes how every future session behaves, which is higher leverage
+  than most code. Beware subjects that sound repo-local but aren't: #519 reads as "cap
+  the memory index" and memory lives *outside* the repo — but the **policy** lives in
+  `CLAUDE.md`, which is in-repo and fully portable. Only the data is external.
 - The parent squash-merges every PR (one commit, `(#N)` suffix) — there are no
   merge commits, which is why the tool groups by subject, not `git log --merges`.
 - ALREADY-APPLIED is a confidence flag, never an auto-removal. Always verify.

@@ -163,6 +163,26 @@ Fields to keep current:
 - Last session summary (one line: what changed)
 - Open questions / pending decisions (or "none")
 
+Keep the index small — it is read into context every session, so its cost is paid
+on every conversation:
+
+- **Current State holds at most 6 bullets.** Adding a 7th means first rolling the
+  oldest, verbatim, into `memory/project_session_log_<month>.md`.
+- **"Last session" is at most 2 lines; every other bullet is exactly 1 line.** Detail
+  belongs in a topic file or the session log, never the index.
+- Session logs have no size limit — that is what they are for. Prune by MOVING,
+  never by deleting.
+- **Open questions live in `memory/project_open_questions.md`**, not inline. They are
+  live state, so they cannot be rolled into a dated session log — but left in the
+  index they grow without bound (they reached 2,858 characters, the single largest
+  item in the file, on 2026-08-03). The index carries a one-line pointer plus the
+  count; the topic file carries the questions.
+
+Why this is a hard rule and not a preference: the index is loaded on **every**
+session whether or not anything is trimmed, so its size is a per-conversation tax.
+Capping it makes each session's update O(1) — add one line, roll one out — instead
+of re-reading and re-compressing a growing blob.
+
 ## Agent Skills
 
 Skills live in `.claude/skills/<name>/SKILL.md` (project-specific, committed to repo) and are invoked with `/skill-name`. Each encapsulates a recurring workflow so you don't need to re-explain it. Use them proactively.

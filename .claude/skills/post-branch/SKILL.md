@@ -284,7 +284,22 @@ State"** at the end of every session. This is project policy (CLAUDE.md
 - Set "Last session" entry to today's date + branch name + one-line summary
 - Move the previous "Last session" entry to "Previous session"
 - Convert any relative dates ("Thursday") to absolute (`2026-05-01`)
-- Update / remove "Open questions / pending decisions" as appropriate
+- Update / remove open questions in `memory/project_open_questions.md`
+
+**Respect the index cap — this step is where it gets broken.** CLAUDE.md's
+Session Memory Protocol caps Current State at **6 bullets**, "Last session"
+at 2 lines and every other bullet at exactly 1. Adding a 7th bullet means
+first rolling the oldest, verbatim, into
+`memory/project_session_log_<month>.md`. Writing a rich multi-sentence entry
+here feels like diligence and is the exact mechanism by which the index grew
+to 57% Current State by 2026-08-03 — and the index is re-read on **every**
+session, so that bloat is billed per conversation, not per write.
+
+Check before you finish:
+
+```bash
+awk '/^## Current State/,0' <MEMORY.md> | grep -c '^- '   # must be <= 6
+```
 
 This step runs even when the behaviour gate skipped the user-facing doc
 walk, because MEMORY.md tracks **what changed in the session**, not just
