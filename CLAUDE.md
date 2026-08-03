@@ -23,7 +23,7 @@ After making **any** Python code change:
 ```bash
 make lint-py        # ruff format + lint
 make typecheck      # mypy strict
-make test           # full pytest suite
+make test           # full pytest suite (no coverage; use `make test-cov` for that)
 ```
 
 For Markdown changes: `make lint-md`.
@@ -140,7 +140,7 @@ Each Makefile `wifey-*` target wraps the equivalent CLI invocation.
 - Framework: pytest + unittest.mock
 - Tests must not make real network calls — lib functions accept a `client` parameter; tests pass a `MagicMock` directly
 - Analytics tests use `duckdb.connect(":memory:")` for full DB isolation — never touch the real `analytics.db`
-- Run: `make test` or `poetry run pytest tests/ -v`
+- Run: `make test` (= `pytest tests/ -q --durations=10`, no coverage — nothing gates on it). `make test-cov` when you actually want a coverage report.
 - **Regression tests**: `make test-regression` — compares backtest pipeline output to golden JSON files in `tests/fixtures/`; skips if fixture parquets are absent; run `make regression-update` to regenerate golden files after intentional changes
 
 ## Dependencies
