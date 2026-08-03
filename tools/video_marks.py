@@ -18,7 +18,16 @@ FRAME_CAP = 15
 DEDUP_WINDOW_S = 45.0
 SAFETY_SAMPLE_S = 300.0
 
-_WEIGHTS = {"item": 3, "deixis": 2, "level": 2, "sample": 1}
+# Seconds back from the end. The safety grid stops at floor(duration/sample_s)*sample_s
+# and so can never reach the tail; these two anchors do. Their spread MUST exceed
+# DEDUP_WINDOW_S or dedupe collapses the pair and keeps the earlier one, losing the very
+# last frame — which is the one a closing slide lives on.
+TAIL_OFFSETS_S: tuple[float, ...] = (2.0, 60.0)
+
+# "tail" sits at item tier deliberately. At sample tier the cap would trim it first, on
+# exactly the long dense videos where the blind tail is worst. ITEM_CAP + len(TAIL_OFFSETS_S)
+# = 7 <= FRAME_CAP, so protecting the tail can never crowd out a pass-1 item.
+_WEIGHTS = {"item": 3, "tail": 3, "deixis": 2, "level": 2, "sample": 1}
 
 _DEIXIS_PATTERNS: tuple[str, ...] = (
     r"\bright here\b",
@@ -97,6 +106,30 @@ def sample_marks(
     return [_mark(i * sample_s, "sample") for i in range(count)]
 
 
+def tail_marks(
+    duration_s: float, *, offsets: tuple[float, ...] = TAIL_OFFSETS_S
+) -> list[FrameMark]:
+    """Anchor the closing seconds, which the safety grid structurally cannot reach.
+
+    `sample_marks` emits at multiples of `sample_s`, so its last mark sits at
+    `floor(duration/sample_s)*sample_s` — up to a full interval short of the end.
+    Measured across /ingest-feed round 6, the last mark of *any* kind landed 133.8 /
+    61.7 / 0.0 / 79.0 / 152.1s before the end.
+
+    That is not cosmetic. A trader who closes on a summary card — 大漂亮的K线日记 posts
+    her setup as a text slide in the final seconds with no narration — produces no
+    transcript segment there, hence no deixis, level or item trigger, hence no frame.
+    Pass 2 never sees the payload and the note is simply missing it, silently.
+    """
+    if duration_s <= 0:
+        return []
+    return [
+        _mark(duration_s - off, "tail")
+        for off in sorted(offsets, reverse=True)
+        if duration_s - off >= 0
+    ]
+
+
 def dedupe(
     marks: list[FrameMark], *, window_s: float = DEDUP_WINDOW_S
 ) -> list[FrameMark]:
@@ -125,14 +158,16 @@ def select(
 ) -> list[FrameMark]:
     """Ranked, capped, deduplicated frame timestamps, ordered chronologically.
 
-    Ranking is by weight then earliness, so items beat deixis beats sampling and the
-    cap always keeps the most informative frames. Deterministic: no randomness.
+    Ranking is by weight then earliness, so items and tail anchors beat deixis beats
+    sampling and the cap always keeps the most informative frames. Deterministic: no
+    randomness.
     """
     candidates = (
         [_mark(ts, "item") for ts in item_ts]
         + deixis_marks(segments)
         + level_marks(segments)
         + sample_marks(duration_s, sample_s=sample_s)
+        + tail_marks(duration_s)
     )
     deduped = dedupe(candidates, window_s=window_s)
     ranked = sorted(deduped, key=lambda m: (-m.weight, m.ts_s))[:cap]

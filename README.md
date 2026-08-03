@@ -171,9 +171,12 @@ buibui-wifey-wall-street-bot/
 │   └── signal_watch.toml            # Default signal watch config (timeframes, telegram, min_sl_pct)
 ├── .env.example                     # Environment variable template
 ├── .github/
+│   ├── scripts/
+│   │   └── update-skills.sh         # SKILL.md frontmatter validator (run by lint.yaml)
 │   └── workflows/
-│       ├── lint.yaml                # CI: lint, format, typecheck
-│       └── docker-build.yaml        # CI: Docker image build
+│       ├── lint.yaml                # CI: markdown, lint, typecheck, tests, regression, frontend
+│       ├── docker-build.yaml        # CI: Docker image build (path-filtered)
+│       └── security-scan.yaml       # CI: Trivy filesystem scan (advisory)
 ├── Makefile                         # Dev & run commands
 ├── Dockerfile                       # Container setup
 ├── pyproject.toml                   # Poetry dependencies
@@ -1049,7 +1052,10 @@ running signal-watch or analytics services.
 
 ## GitHub Actions
 
-Three workflows run automatically on every push and pull request:
+Three workflows run automatically on every push and pull request. All three carry a
+`concurrency` group, so a superseded PR run is cancelled rather than burning to
+completion — scoped to `pull_request` only, because cancelling a `main` run would
+destroy the record of whether `main` is green. Every job has a `timeout-minutes`.
 
 ### `lint.yaml` — CI (always active)
 
@@ -1057,13 +1063,31 @@ Runs on every push to `main` and every PR. Uses path filters so only relevant jo
 
 | Job | Triggers on | Steps |
 | --- | --- | --- |
-| `markdownlint` | `*.md` changes | markdownlint-cli2 across all Markdown files |
-| `lint-typecheck-test` | `*.py` / `pyproject.toml` / `poetry.lock` changes | ruff check, ruff format, mypy, pytest (with coverage), uploads test XML + coverage XML as artifacts |
-| `regression` | `*.py` / TOML / fixture / golden JSON changes | runs `make test-regression` against committed golden files; fails with a diff report if metrics drift |
+| `markdownlint` | `*.md` changes; `.claude/skills/**` | markdownlint-cli2 across all Markdown files, plus `SKILL.md` frontmatter validation |
+| `lint-typecheck-test` | `*.py` / `pyproject.toml` / `poetry.lock` changes | ruff check, ruff format, mypy, pytest; uploads `test-results.xml` as an artifact |
+| `regression` | `analytics/**/*.py` / TOML / fixture / golden JSON changes | runs `make test-regression` against committed golden files; fails with a diff report if metrics drift |
+| `frontend-check` | `web/ui/**` changes | `npm ci`, production build, `svelte-check` |
 
-### `docker-build.yaml` — Docker build check (always active)
+**No coverage in CI.** Nothing consumes it — there is no codecov/coveralls step and no
+`fail_under` gate, so `coverage.xml` was an artifact nobody downloaded while
+`pytest-cov`'s tracer ran on every line of every test. Run `make test-cov` locally when
+you actually want to read it.
 
-Builds the Docker image on every push and PR to catch any `Dockerfile` or dependency issues early.
+The `regression` filter is deliberately narrower than `**/*.py`: `tests/test_regression.py`
+imports from `analytics.*` only, so a `tools/` or `web/` change cannot move the goldens.
+`pyproject.toml` and `poetry.lock` stay in on purpose — a pandas or numpy bump *does*
+move them, and finding that out silently is exactly what the suite exists to prevent.
+
+### `docker-build.yaml` — Docker build check
+
+Builds the Docker image when something that can affect it changes (`Dockerfile`,
+`.dockerignore`, `docker-compose.yml`, `pyproject.toml`, `poetry.lock`, or the workflow
+itself), so a docs-only PR no longer pays for a full image build.
+
+### `security-scan.yaml` — Trivy filesystem scan
+
+Runs a `CRITICAL,HIGH` Trivy scan on every push to `main` and every PR. Advisory:
+`exit-code: '0'`, so findings are reported without failing the build.
 
 ---
 
@@ -1082,8 +1106,11 @@ To check formatting and types locally:
 poetry run ruff check .
 poetry run ruff format --check .
 poetry run mypy .
-poetry run pytest tests/ -v
+poetry run pytest tests/ -q --durations=10
 ```
+
+Coverage is not part of the default run — see the CI notes above. `make test-cov`
+produces a report on demand.
 
 ---
 
