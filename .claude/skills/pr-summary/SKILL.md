@@ -53,6 +53,12 @@ Reviewers should understand the motivation before the mechanics.
 
 Items already verified by CI at commit time are pre-ticked. Manual items remain unchecked.
 
+**Only tick a command that has already returned.** "Verified at commit time" means the
+result is in hand — not that the command is running and expected to pass. A gate still
+in flight gets `[ ]` plus a note, and is ticked once it finishes. A PR body is durable
+and gets read as a claim about what was checked, so a hopeful tick is a false statement
+even when the run later goes green.
+
 - [x] `make test` — <N> passed
 - [x] `make lint-py` — ruff clean
 - [x] `make typecheck` — mypy clean
@@ -70,7 +76,24 @@ Items already verified by CI at commit time are pre-ticked. Manual items remain 
 
 ## Note on GitHub CLI
 
-`gh pr create` fails for this project (collaborator permission error). Provide the PR summary as a copyable file at `/tmp/pr-<branch>.md` — the user will paste it manually into GitHub.
+`gh` **works** for this project — verified 2026-08-03: `gh api user` resolves as
+`s10023`, and `gh pr list --repo s10023/buibui-wifey-wall-street-bot` returns the
+merged PRs 120 through 124. This repo is the user's own fork, so there is no
+collaborator permission to lack. This section used to claim `gh pr create` fails with a
+collaborator permission error; that was a port artifact from the crypto parent,
+stale in both repos, and it cost PRs a manual paste for no reason. Still write the file
+at `/tmp/pr-<branch>.md` (it is the deliverable of this skill, and useful as a
+`--body-file`), but do not tell the user the CLI is unavailable.
+
+Two repo-specific rules apply to every `gh` invocation here:
+
+- **Always pass `--repo s10023/buibui-wifey-wall-street-bot`.** The user's `gh`
+  default repo points at the crypto parent on purpose, so a bare `gh pr create`
+  targets the wrong repo. This is a preference, not a bug — never "fix" it with
+  `gh repo set-default`.
+- If `gh` fails with "Could not resolve to a Repository", that is the account,
+  not the permission: run `gh auth switch --user s10023`. Don't debug `gh`
+  config past that, and leave the active account on `s10023` afterwards.
 
 ## Conventional commit types for PR titles
 
