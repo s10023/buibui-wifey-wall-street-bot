@@ -44,6 +44,21 @@ def _subprocess_run(cmd: list[str]) -> Completedish:
     return subprocess.run(cmd, capture_output=True, text=True, timeout=600, check=False)
 
 
+# Every yt-dlp invocation starts here — never build a bare ["yt-dlp", ...].
+#
+# yt-dlp 2026.07.04 enables ONLY deno as a JavaScript runtime by default, and
+# deno is not installed on this box (node and bun are). Without an available
+# runtime yt-dlp cannot solve YouTube's signature challenge, so every path that
+# downloads MEDIA fails with `HTTP Error 403: Forbidden` — including
+# `_ensure_local_media`, which silently costs the entire vision pass. Captions
+# still resolve without a runtime, which is what makes the failure look like one
+# unlucky video rather than a broken box.
+#
+# `--js-runtimes` is ADDITIVE, so this only widens the accepted set: deno keeps
+# its higher priority and still wins wherever it is installed.
+_YT_DLP: tuple[str, ...] = ("yt-dlp", "--js-runtimes", "node")
+
+
 @dataclass(frozen=True)
 class VideoMeta:
     source: str
@@ -114,7 +129,7 @@ def _resolve_publish_ts(data: dict[str, object]) -> str | Unavailable:
 
 def fetch_meta(url: str, *, run: RunProc = _subprocess_run) -> VideoMeta | Unavailable:
     source, video_id = parse_video_url(url)
-    proc = run(["yt-dlp", "--dump-json", "--no-warnings", "--skip-download", url])
+    proc = run([*_YT_DLP, "--dump-json", "--no-warnings", "--skip-download", url])
     if proc.returncode != 0:
         return Unavailable(proc.stderr.strip() or f"yt-dlp exit {proc.returncode}")
     try:
@@ -271,7 +286,7 @@ def fetch_transcript(
     sub_langs = f"{meta.lang},{meta.lang}-orig,en" if meta.lang else "en"
     run(
         [
-            "yt-dlp",
+            *_YT_DLP,
             "--skip-download",
             "--write-subs",
             "--write-auto-subs",
@@ -351,7 +366,7 @@ def _transcribe_groq(
     audio = work_dir / f"{meta.video_id}.opus"
     proc = run(
         [
-            "yt-dlp",
+            *_YT_DLP,
             "-f",
             "bestaudio",
             "-x",
@@ -419,7 +434,7 @@ def _ensure_local_media(
         return existing[0]
     proc = run(
         [
-            "yt-dlp",
+            *_YT_DLP,
             "-f",
             "bv*[height<=1080]",
             "-o",
@@ -434,20 +449,9 @@ def _ensure_local_media(
     return produced[0] if produced else None
 
 
-def extract_frames(
-    meta: VideoMeta,
-    marks: list[FrameMark],
-    dest_dir: Path,
-    *,
-    run: RunProc = _subprocess_run,
+def _attempt_frames(
+    meta: VideoMeta, marks: list[FrameMark], dest_dir: Path, *, run: RunProc
 ) -> list[str]:
-    """One ffmpeg seek per mark, against a locally downloaded copy of the video —
-    never `meta.url` directly (see `_ensure_local_media`). Never speculative — marks
-    come from the transcript pass. The downloaded media is removed once every mark
-    has been attempted; frames are the artifact, the source file is not, and the
-    operator's backlog makes unbounded video files in `.cache/` a real cost.
-    """
-    dest_dir.mkdir(parents=True, exist_ok=True)
     local_media = _ensure_local_media(meta, dest_dir, run=run)
     if local_media is None:
         return []
@@ -474,6 +478,53 @@ def extract_frames(
                 paths.append(str(out))
     finally:
         local_media.unlink(missing_ok=True)
+    return paths
+
+
+# One pause per retry, so 3 attempts total. Round-4 (2026-08-01): two transient
+# `HTTP 403`s survived the previous single retry and BOTH cleared on a manual
+# re-run — one of them on the video carrying that batch's only complete
+# entry+stop+target row. The pause is what makes the extra attempt worth
+# anything: a 403 is server-side and returns instantly, so a zero-delay loop
+# spends every attempt inside the same bad second. Kept short because a whole
+# batch pays this serially, and the ceiling only binds on videos already lost.
+_FRAME_RETRY_BACKOFF_S: tuple[float, ...] = (2.0, 5.0)
+
+
+def extract_frames(
+    meta: VideoMeta,
+    marks: list[FrameMark],
+    dest_dir: Path,
+    *,
+    run: RunProc = _subprocess_run,
+    sleep: Callable[[float], None] = time.sleep,
+) -> list[str]:
+    """One ffmpeg seek per mark, against a locally downloaded copy of the video —
+    never `meta.url` directly (see `_ensure_local_media`). Never speculative — marks
+    come from the transcript pass. The downloaded media is removed once every mark
+    has been attempted; frames are the artifact, the source file is not, and the
+    operator's backlog makes unbounded video files in `.cache/` a real cost.
+
+    Retries the whole download-and-seek when asked for marks and given back
+    nothing, because that outcome is silently expensive: `/ingest-video` reads an
+    empty list as a media-download failure, skips the vision pass for that video
+    and records a health note, so one transient yt-dlp error costs the entire
+    chart read (observed 2026-07-31 — a bare re-run then returned 15/15 frames).
+    Total failure is the only retryable shape: a partial result means those marks
+    individually failed to seek, and re-downloading to re-fail them is pure cost.
+
+    Attempts are spaced by `_FRAME_RETRY_BACKOFF_S` — see there for why one retry
+    proved too few.
+    """
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    paths = _attempt_frames(meta, marks, dest_dir, run=run)
+    if not marks:
+        return paths
+    for backoff in _FRAME_RETRY_BACKOFF_S:
+        if paths:
+            break
+        sleep(backoff)
+        paths = _attempt_frames(meta, marks, dest_dir, run=run)
     return paths
 
 

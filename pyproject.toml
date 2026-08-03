@@ -49,7 +49,8 @@ dependencies = [
     "pyarrow (>=23.0.1,<24.0.0)",
     "yfinance (>=1.5.2,<2.0.0)",
     "exchange-calendars (>=4.13.2,<5.0.0)",
-    "yt-dlp (>=2026.7.4,<2027.0.0)"
+    "yt-dlp (>=2026.7.4,<2027.0.0)",
+    "yt-dlp-ejs (>=0.8.0,<0.9.0)"
 ]
 package-mode = false
 
@@ -83,6 +84,10 @@ disallow_untyped_defs = true
 disallow_incomplete_defs = true
 warn_unused_ignores = true
 warn_return_any = true
+# docs/plans/ is gitignored working material — one-off audit scripts, the journal,
+# the pundit ledger, video notes. Walking it means a throwaway script can turn
+# `make typecheck` red on main for everyone. Nothing here ships, so nothing here gates.
+exclude = "^docs/plans/"
 
 [[tool.mypy.overrides]]
 module = "duckdb.*"
