@@ -144,8 +144,8 @@ edits because they change paths users / docs reference:
 
 - A module listed in CLAUDE.md's "Project Structure" was renamed, moved, or
   reduced to a re-export shim (the path users `import` from is now stale)
-- The CLI subcommand surface changed (`buibui --help` differs)
-- A new `make buibui-*` target lands
+- The CLI subcommand surface changed (`wifey --help` differs)
+- A new `make wifey-*` target lands
 
 When in doubt, ask the user: *"This PR touches X. I see [signals]; want me
 to walk the docs, or is this internal-only?"*
@@ -405,7 +405,7 @@ Makefile           — no change needed: no new CLI commands
 docker-compose.yml — no change needed: no new processes
 .claude/context/*  — updated: analytics.md (store/ paths) | no change needed
 .claude/skills/*   — updated: <skill> | no change needed: <reason>
-PR summary         — written to /tmp/pr-<branch>.md
+PR summary         — written to docs/plans/pr-<branch>.md
 PR body            — appended "Documentation updates" section
 pre-merge          — clean | <blocker> (see Step 10a)
 handoff prompt     — written to docs/plans/next-conversation-prompt.md | declined
