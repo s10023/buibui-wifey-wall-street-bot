@@ -22,6 +22,26 @@ _SESSION_OPEN_H = 13.5
 _CURRENT_WEEK = date(2026, 3, 2)
 
 
+def _insert_ohlcv_rows(
+    conn: duckdb.DuckDBPyConnection, n_rows: int, params: list[object]
+) -> None:
+    """Insert n_rows OHLCV rows in ONE statement.
+
+    DuckDB pays a fixed per-statement cost that dwarfs the row itself, and its
+    executemany just loops, so a bar-at-a-time seed is far slower than folding
+    the same rows into a single multi-row VALUES clause. This fixture seeds 28
+    weeks of RTH hourly bars per test, which is why it showed up as pure setup
+    in --durations.
+    """
+    values = ",".join(["(?,?,?,?,?,?,?,?)"] * n_rows)
+    conn.execute(
+        "INSERT OR REPLACE INTO ohlcv "
+        f"(symbol, timeframe, open_time, open, high, low, close, volume) "
+        f"VALUES {values}",
+        params,
+    )
+
+
 def _insert_week(
     conn: duckdb.DuckDBPyConnection,
     monday: date,
@@ -30,6 +50,7 @@ def _insert_week(
     n_bars: int = WEEK_BARS,
 ) -> None:
     close = 100.0 + k
+    params: list[object] = []
     for i in range(n_bars):
         day = monday + timedelta(days=i // _SESSION_BARS)
         h = i % _SESSION_BARS
@@ -43,12 +64,8 @@ def _insert_week(
             high, low = 101.0, 99.5
         else:
             high, low = max(100.5, close), min(99.5, close)
-        conn.execute(
-            "INSERT OR REPLACE INTO ohlcv "
-            "(symbol, timeframe, open_time, open, high, low, close, volume) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [_SYMBOL, "1h", open_time, 100.0, high, low, close, 100.0],
-        )
+        params.extend((_SYMBOL, "1h", open_time, 100.0, high, low, close, 100.0))
+    _insert_ohlcv_rows(conn, n_bars, params)
 
 
 @pytest.fixture
@@ -58,16 +75,13 @@ def conn() -> duckdb.DuckDBPyConnection:
     for i in range(20):
         _insert_week(c, _CURRENT_WEEK - timedelta(weeks=20 - i), k=0.2)
     # 1d bars so compute_all's other stats have something to chew on.
+    day_params: list[object] = []
     for i in range(140):
         day_ms = (
             int(datetime(2025, 11, 1, tzinfo=UTC).timestamp() * 1000) + i * 86_400_000
         )
-        c.execute(
-            "INSERT OR REPLACE INTO ohlcv "
-            "(symbol, timeframe, open_time, open, high, low, close, volume) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [_SYMBOL, "1d", day_ms, 100.0, 101.0, 99.0, 100.2, 100.0],
-        )
+        day_params.extend((_SYMBOL, "1d", day_ms, 100.0, 101.0, 99.0, 100.2, 100.0))
+    _insert_ohlcv_rows(c, 140, day_params)
     # Extra 1h weeks anchored on the REAL wall-clock "now" (not the frozen
     # _CURRENT_WEEK above). compute_adr — and several sibling stats in
     # compute_all — window off datetime.now(tz=UTC) internally with no

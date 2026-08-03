@@ -40,6 +40,26 @@ _NOW_MS = int(_NOW.timestamp() * 1000)
 _CURRENT_WEEK = date(2026, 3, 2)  # the Monday of _NOW
 
 
+def _insert_ohlcv_rows(
+    conn: duckdb.DuckDBPyConnection, n_rows: int, params: list[object]
+) -> None:
+    """Insert n_rows OHLCV rows in ONE statement.
+
+    DuckDB pays a fixed per-statement cost that dwarfs the row itself, and its
+    executemany just loops, so a bar-at-a-time seed is far slower than folding
+    the same rows into a single multi-row VALUES clause. These fixtures seed 14+
+    weeks of RTH hourly bars per test, which is why they showed up as pure setup
+    in --durations.
+    """
+    values = ",".join(["(?,?,?,?,?,?,?,?)"] * n_rows)
+    conn.execute(
+        "INSERT OR REPLACE INTO ohlcv "
+        f"(symbol, timeframe, open_time, open, high, low, close, volume) "
+        f"VALUES {values}",
+        params,
+    )
+
+
 def _insert_week(
     conn: duckdb.DuckDBPyConnection,
     monday: date,
@@ -49,6 +69,7 @@ def _insert_week(
 ) -> None:
     """Insert one synthetic Monday-anchored trading week of RTH 1h bars."""
     close = 100.0 + k
+    params: list[object] = []
     for i in range(n_bars):
         day = monday + timedelta(days=i // _SESSION_BARS)
         h = i % _SESSION_BARS
@@ -62,12 +83,8 @@ def _insert_week(
             high, low = 101.0, 99.5
         else:
             high, low = max(100.5, close), min(99.5, close)
-        conn.execute(
-            "INSERT OR REPLACE INTO ohlcv "
-            "(symbol, timeframe, open_time, open, high, low, close, volume) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [_SYMBOL, "1h", open_time, 100.0, high, low, close, 100.0],
-        )
+        params.extend((_SYMBOL, "1h", open_time, 100.0, high, low, close, 100.0))
+    _insert_ohlcv_rows(conn, n_bars, params)
 
 
 def _seed_warmup(
