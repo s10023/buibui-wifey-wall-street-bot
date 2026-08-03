@@ -10,9 +10,16 @@ permissions:
   contents: read
   pull-requests: read
 
+# Supersede in-flight PR runs; never cancel on main — a cancelled main run
+# destroys the record of whether main is green.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   markdownlint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repo
@@ -27,6 +34,9 @@ jobs:
               - '**/*.md'
               - '.markdownlint.json'
               - '.markdownlint-cli2.jsonc'
+            skills:
+              - '.claude/skills/**'
+              - '.github/scripts/update-skills.sh'
 
       - name: markdownlint-cli2
         if: steps.changes.outputs.markdown == 'true'
@@ -37,8 +47,17 @@ jobs:
             **/*.md
             !venv
 
+      # Folded in from the deleted update-skills.yaml, which ran this same
+      # validator on a daily 03:00 cron. It writes nothing, so its "open a PR if
+      # anything changed" step could never fire — the check only ever has
+      # something to catch on the PR that edits a skill.
+      - name: Validate SKILL.md frontmatter
+        if: steps.changes.outputs.skills == 'true'
+        run: ./.github/scripts/update-skills.sh
+
   lint-typecheck-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repo
@@ -64,6 +83,16 @@ jobs:
       - name: Install Poetry
         if: steps.changes.outputs.python == 'true'
         run: curl -sSL https://install.python-poetry.org | python3 -
+
+      # Poetry's cache dir holds both the wheel artifacts and the virtualenv, so
+      # a hit skips the whole resolve+download+build. Same key in both jobs,
+      # deliberately — they share one cache.
+      - name: Cache Poetry download cache
+        if: steps.changes.outputs.python == 'true'
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
         if: steps.changes.outputs.python == 'true'
@@ -81,23 +110,31 @@ jobs:
         if: steps.changes.outputs.python == 'true'
         run: poetry run mypy .
 
+      # Deliberately no --cov. Nothing in this repo consumes coverage: there is
+      # no codecov/coveralls step, no fail_under gate, and coverage.xml was only
+      # ever uploaded as an artifact nobody downloads. pytest-cov's tracer runs
+      # on every line of every test, and this step is the bulk of the job, so
+      # that was the most expensive unread file in CI. `make test-cov` still
+      # produces it locally for anyone who actually wants to read it.
+      # -q not -v: 1900 verbose lines make a failure harder to find, not easier.
+      # --durations keeps the slowest tests visible so the next tuning round
+      # starts from data rather than a guess.
       - name: Run tests
         if: steps.changes.outputs.python == 'true'
-        run: poetry run pytest tests/ -v --cov --cov-report=term-missing --cov-report=xml --junitxml=test-results.xml --ignore=tests/test_regression.py
+        run: poetry run pytest tests/ -q --durations=25 --junitxml=test-results.xml --ignore=tests/test_regression.py
 
       - name: Upload test results
         if: steps.changes.outputs.python == 'true' && !cancelled()
         uses: actions/upload-artifact@v7
         with:
           name: test-results
-          path: |
-            test-results.xml
-            coverage.xml
+          path: test-results.xml
 
   regression:
     name: Regression tests
     runs-on: ubuntu-latest
     needs: lint-typecheck-test
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repo
@@ -107,14 +144,21 @@ jobs:
         id: changes
         uses: dorny/paths-filter@v4
         with:
+          # The backtest surface only — NOT '**/*.py', which fired the golden
+          # run on every tools/ or web/ change. tests/test_regression.py imports
+          # from analytics.* alone. pyproject/poetry.lock stay in on purpose: a
+          # pandas or numpy bump moves the goldens, and finding that out
+          # silently is exactly what the suite exists to prevent.
           filters: |
             python:
-              - '**/*.py'
+              - 'analytics/**/*.py'
               - 'pyproject.toml'
               - 'poetry.lock'
               - 'config/*.toml'
+              - 'tests/test_regression.py'
               - 'tests/fixtures/**.parquet'
               - 'tests/fixtures/golden_*.json'
+              - 'scripts/extract_regression_fixture.py'
               - '.github/workflows/lint.yaml'
 
       - name: Set up Python
@@ -127,6 +171,13 @@ jobs:
         if: steps.changes.outputs.python == 'true'
         run: curl -sSL https://install.python-poetry.org | python3 -
 
+      - name: Cache Poetry download cache
+        if: steps.changes.outputs.python == 'true'
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ hashFiles('poetry.lock') }}
+
       - name: Install dependencies
         if: steps.changes.outputs.python == 'true'
         run: make poetry-install
@@ -137,6 +188,7 @@ jobs:
 
   frontend-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repo
