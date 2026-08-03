@@ -144,8 +144,8 @@ edits because they change paths users / docs reference:
 
 - A module listed in CLAUDE.md's "Project Structure" was renamed, moved, or
   reduced to a re-export shim (the path users `import` from is now stale)
-- The CLI subcommand surface changed (`buibui --help` differs)
-- A new `make buibui-*` target lands
+- The CLI subcommand surface changed (`wifey --help` differs)
+- A new `make wifey-*` target lands
 
 When in doubt, ask the user: *"This PR touches X. I see [signals]; want me
 to walk the docs, or is this internal-only?"*
@@ -284,7 +284,22 @@ State"** at the end of every session. This is project policy (CLAUDE.md
 - Set "Last session" entry to today's date + branch name + one-line summary
 - Move the previous "Last session" entry to "Previous session"
 - Convert any relative dates ("Thursday") to absolute (`2026-05-01`)
-- Update / remove "Open questions / pending decisions" as appropriate
+- Update / remove open questions in `memory/project_open_questions.md`
+
+**Respect the index cap — this step is where it gets broken.** CLAUDE.md's
+Session Memory Protocol caps Current State at **6 bullets**, "Last session"
+at 2 lines and every other bullet at exactly 1. Adding a 7th bullet means
+first rolling the oldest, verbatim, into
+`memory/project_session_log_<month>.md`. Writing a rich multi-sentence entry
+here feels like diligence and is the exact mechanism by which the index grew
+to 57% Current State by 2026-08-03 — and the index is re-read on **every**
+session, so that bloat is billed per conversation, not per write.
+
+Check before you finish:
+
+```bash
+awk '/^## Current State/,0' <MEMORY.md> | grep -c '^- '   # must be <= 6
+```
 
 This step runs even when the behaviour gate skipped the user-facing doc
 walk, because MEMORY.md tracks **what changed in the session**, not just
@@ -390,7 +405,7 @@ Makefile           — no change needed: no new CLI commands
 docker-compose.yml — no change needed: no new processes
 .claude/context/*  — updated: analytics.md (store/ paths) | no change needed
 .claude/skills/*   — updated: <skill> | no change needed: <reason>
-PR summary         — written to /tmp/pr-<branch>.md
+PR summary         — written to docs/plans/pr-<branch>.md
 PR body            — appended "Documentation updates" section
 pre-merge          — clean | <blocker> (see Step 10a)
 handoff prompt     — written to docs/plans/next-conversation-prompt.md | declined

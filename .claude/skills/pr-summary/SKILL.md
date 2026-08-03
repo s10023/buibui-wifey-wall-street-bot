@@ -1,7 +1,7 @@
 ---
 name: pr-summary
 description: >
-  Write a PR title, summary, and test plan to `/tmp/pr-<branch>.md` after a
+  Write a PR title, summary, and test plan to `docs/plans/pr-<branch>.md` after a
   branch is complete (lint/typecheck/tests green, commit done). Never returns
   the content inline.
   Invoke automatically when a branch finishes — do not wait. Also triggers on
@@ -12,7 +12,7 @@ allowed-tools: Bash, Write, Read
 
 # PR Summary
 
-Write a PR title + summary + test plan after finishing a branch. Always write to `/tmp/pr-<branch>.md` — never return as inline text.
+Write a PR title + summary + test plan after finishing a branch. Always write to `docs/plans/pr-<branch>.md` — never return as inline text.
 
 ## When to use
 
@@ -20,7 +20,11 @@ After every branch is complete: lint/typecheck/tests pass, commit done. Do not w
 
 ## Output location
 
-Always write to `/tmp/pr-<branch-name>.md`. Return only the file path, not the content inline.
+Always write to `docs/plans/pr-<branch-name>.md` (gitignored via `docs/plans/`, but inside the
+repo and therefore durable). **Not `/tmp`:** the user deletes conversations and reboots
+clear `/tmp`, so a summary parked there evaporates exactly when a fresh session would
+want it. This mirrors the handoff, which moved to `docs/plans/` for the same reason.
+Return only the file path, not the content inline.
 
 ## Template
 
@@ -82,7 +86,7 @@ merged PRs 120 through 124. This repo is the user's own fork, so there is no
 collaborator permission to lack. This section used to claim `gh pr create` fails with a
 collaborator permission error; that was a port artifact from the crypto parent,
 stale in both repos, and it cost PRs a manual paste for no reason. Still write the file
-at `/tmp/pr-<branch>.md` (it is the deliverable of this skill, and useful as a
+at `docs/plans/pr-<branch>.md` (it is the deliverable of this skill, and useful as a
 `--body-file`), but do not tell the user the CLI is unavailable.
 
 Two repo-specific rules apply to every `gh` invocation here:
@@ -118,5 +122,5 @@ When the user asks to write a PR summary or after finishing a branch:
 7. Write "How it works" — implementation details for reviewers
 8. Fill in Params/Config section if any new TOML keys or CLI flags were added
 9. Fill in test plan — check CI items, list remaining manual verification steps
-10. Write to `/tmp/pr-<branch-name>.md`
+10. Write to `docs/plans/pr-<branch-name>.md`
 11. Return only the file path

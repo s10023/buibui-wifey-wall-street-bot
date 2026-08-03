@@ -163,6 +163,26 @@ Fields to keep current:
 - Last session summary (one line: what changed)
 - Open questions / pending decisions (or "none")
 
+Keep the index small — it is read into context every session, so its cost is paid
+on every conversation:
+
+- **Current State holds at most 6 bullets.** Adding a 7th means first rolling the
+  oldest, verbatim, into `memory/project_session_log_<month>.md`.
+- **"Last session" is at most 2 lines; every other bullet is exactly 1 line.** Detail
+  belongs in a topic file or the session log, never the index.
+- Session logs have no size limit — that is what they are for. Prune by MOVING,
+  never by deleting.
+- **Open questions live in `memory/project_open_questions.md`**, not inline. They are
+  live state, so they cannot be rolled into a dated session log — but left in the
+  index they grow without bound (they reached 2,858 characters, the single largest
+  item in the file, on 2026-08-03). The index carries a one-line pointer plus the
+  count; the topic file carries the questions.
+
+Why this is a hard rule and not a preference: the index is loaded on **every**
+session whether or not anything is trimmed, so its size is a per-conversation tax.
+Capping it makes each session's update O(1) — add one line, roll one out — instead
+of re-reading and re-compressing a growing blob.
+
 ## Agent Skills
 
 Skills live in `.claude/skills/<name>/SKILL.md` (project-specific, committed to repo) and are invoked with `/skill-name`. Each encapsulates a recurring workflow so you don't need to re-explain it. Use them proactively.
@@ -201,4 +221,5 @@ Skills live in `.claude/skills/<name>/SKILL.md` (project-specific, committed to 
 - Branch naming: `feat/`, `fix/`, `docs/`, `chore/`
 - Do not commit `.env`, `config/coins.json`, `config/stocks.json`, or IDE-specific files
 - **Per-repo git identity is mandatory** before any commit: this account uses `s10023 <ngkhaijian@gmail.com>` (global config inherits a work identity and will mis-attribute commits). Verify via `git config --local user.email` before committing. SSH alias `git@github.com-personal:...` is also required for s10023 remotes — see auto-memory `reference_ssh_host_aliases.md` for the full recipe.
+- **Immediately after `gh pr create` succeeds, invoke `/post-branch` — before reporting the PR URL to the user.** Its own Step 1 behaviour gate decides whether a docs sweep is warranted, so this is cheap even on a pure refactor. Prose in the Agent Skills table demonstrably is not enough: the skill fired zero times across PRs #123–#125 here, each time on the main thread, including the session that was repairing it. A local `PostToolUse` hook on `Bash` greps for `gh pr create` and emits an advisory reminder (never blocking). **It is not in git** — `.gitignore` excludes `.claude/*`, so `.claude/settings.json` is machine-local; **re-add it after a reclone**, mirroring the crypto parent's `.claude/settings.json`.
 - **`gh` commands in this repo must pass `--repo s10023/buibui-wifey-wall-street-bot` explicitly.** The user's `gh` default repo is intentionally set to the parent `s10023/buibui-moon-trader-bot` (primary project), so `gh pr view N` / `gh pr list` / `gh pr create` without `--repo` will resolve against the parent and either fail or target the wrong repo. This is a preference, not a fix-to-be-found — do not run `gh repo set-default` to "solve" it.
