@@ -11,9 +11,12 @@ must never pull a network dependency into the pure import chain.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
 
-ITEM_CAP = 5
+ITEM_CAP = 12
+MIN_ITEM_SPECIFICITY = 3
 FRAME_CAP = 15
 DEDUP_WINDOW_S = 45.0
 SAFETY_SAMPLE_S = 300.0
@@ -26,7 +29,9 @@ TAIL_OFFSETS_S: tuple[float, ...] = (2.0, 60.0)
 
 # "tail" sits at item tier deliberately. At sample tier the cap would trim it first, on
 # exactly the long dense videos where the blind tail is worst. ITEM_CAP + len(TAIL_OFFSETS_S)
-# = 7 <= FRAME_CAP, so protecting the tail can never crowd out a pass-1 item.
+# = 14 <= FRAME_CAP, so protecting the tail can never crowd out a pass-1 item. That
+# inequality is the hard ceiling on ITEM_CAP — past it, items silently lose their frame
+# and drop to vision_confidence "low". test_item_cap_leaves_room_for_tail_anchors pins it.
 _WEIGHTS = {"item": 3, "tail": 3, "deixis": 2, "level": 2, "sample": 1}
 
 _DEIXIS_PATTERNS: tuple[str, ...] = (
@@ -145,6 +150,48 @@ def dedupe(
             continue
         kept.append(mark)
     return kept
+
+
+def keep_items(
+    candidates: Sequence[Mapping[str, Any]],
+    *,
+    cap: int = ITEM_CAP,
+    min_specificity: int = MIN_ITEM_SPECIFICITY,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split pass-1 candidates into (kept, dropped), each dropped one carrying a reason.
+
+    Two independent controls, because one number cannot do both jobs. `min_specificity`
+    is the quality floor: it binds first and protects a *thin* video from padding
+    low-specificity vibes up to `cap` just because the slots exist. `cap` is the budget
+    ceiling: it binds on a *dense* video and is itself bounded by
+    ITEM_CAP + len(TAIL_OFFSETS_S) <= FRAME_CAP, past which kept items stop receiving
+    their own frame.
+
+    Ranking is by specificity descending then timestamp ascending — deterministic, so
+    two runs over the same pass-1 output keep the same items. Lives here rather than in
+    the skill's prose for the same reason `tools/video_calltime.py` does: a truncation
+    rule stated only in a prompt drifts, and silently losing a real call looks identical
+    to there having been no call.
+    """
+    ranked = sorted(
+        candidates,
+        key=lambda c: (-int(c.get("specificity", 0)), float(c.get("ts", 0.0))),
+    )
+    kept: list[dict[str, Any]] = []
+    dropped: list[dict[str, Any]] = []
+    for cand in ranked:
+        row = dict(cand)
+        if int(row.get("specificity", 0)) < min_specificity:
+            row["drop_reason"] = (
+                f"specificity {row.get('specificity')} below floor {min_specificity}"
+            )
+            dropped.append(row)
+        elif len(kept) >= cap:
+            row["drop_reason"] = f"below the top-{cap} cutoff"
+            dropped.append(row)
+        else:
+            kept.append(row)
+    return kept, dropped
 
 
 def select(

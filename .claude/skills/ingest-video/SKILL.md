@@ -185,10 +185,32 @@ emits `2026-07-14T08:00:00` with no offset gets the same downstream result as em
 nothing, just less honestly. Instruct the subagent: state the offset whenever the
 speaker's timezone is inferable from context, otherwise emit `null` — never guess UTC.
 
-Rank `candidates` by `specificity` descending. Keep the top `ITEM_CAP` (5 —
-`tools/video_marks.py::ITEM_CAP`) as this video's kept items; report the rest as dropped,
-with a one-line reason each (e.g. `specificity 2, below the top-5 cutoff`), for the
-digest and the note.
+Instruct the subagent to return **every** candidate it found, unranked-truncation-free —
+the cutoff is applied here, in code, not by the subagent. Then split them with
+`video_marks.keep_items`, which applies the quality floor (`MIN_ITEM_SPECIFICITY` = 3)
+and the budget cap (`ITEM_CAP` = 12) and stamps a `drop_reason` on every dropped row:
+
+```bash
+PYTHONPATH=. poetry run python - <<'PY'
+import json
+from pathlib import Path
+from tools.video_marks import keep_items
+
+CANDIDATES = json.loads(Path("<path to pass-1 candidates JSON>").read_text())
+kept, dropped = keep_items(CANDIDATES)
+print(json.dumps({"item_ts": [c["ts"] for c in kept], "kept": kept, "dropped": dropped},
+                 ensure_ascii=False, indent=2))
+PY
+```
+
+`item_ts` feeds step 5. Carry `dropped` (with its `drop_reason`) into the digest and the
+note verbatim — a dropped call must stay visible, because a silently lost call is
+indistinguishable from a video that never made one.
+
+**Do not hand-roll the cutoff.** The floor and the cap do different jobs and one number
+cannot do both: the floor stops a *thin* video padding vibes up to the cap just because
+slots exist, the cap bounds a *dense* one. Both live in code for the same reason
+`video_calltime.py` does — a truncation rule stated only in prose drifts.
 
 ### 4. Resolve the call time deterministically — never in the prompt
 
@@ -590,6 +612,9 @@ universe FAILED their gates; the free-data edge arc is CONCLUDED (honest exit,
 - Two subagent passes, both pinned to `model: "sonnet"` — never let either inherit Opus.
   Neither may read any repo, SoT, or memory file; the rubric above is the only context
   either needs beyond the video's own transcript/frames.
-- `FRAME_CAP` (15) and `ITEM_CAP` (5) are a-priori constants in
-  `tools/video_marks.py`. Raising either is a visible, deliberate change to the design
-  spec's constants table — not a silent tuning knob inside a subagent prompt.
+- `FRAME_CAP` (15), `ITEM_CAP` (12) and `MIN_ITEM_SPECIFICITY` (3) are a-priori constants
+  in `tools/video_marks.py`, applied by `keep_items` (step 3). Changing any of them is a
+  visible, deliberate edit to the design spec's constants table — not a silent tuning
+  knob inside a subagent prompt. `ITEM_CAP` is additionally bounded by
+  `ITEM_CAP + len(TAIL_OFFSETS_S) <= FRAME_CAP` (so 13 is the ceiling); past it, kept
+  items stop getting their own frame and silently degrade to `vision_confidence: "low"`.

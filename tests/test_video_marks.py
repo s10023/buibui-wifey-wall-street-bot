@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from tools.video_marks import (
     DEDUP_WINDOW_S,
     FRAME_CAP,
     ITEM_CAP,
+    MIN_ITEM_SPECIFICITY,
     TAIL_OFFSETS_S,
     FrameMark,
     TranscriptSegment,
     dedupe,
     deixis_marks,
+    keep_items,
     level_marks,
     sample_marks,
     select,
@@ -185,3 +189,53 @@ def test_select_tail_does_not_crowd_out_items() -> None:
     marks = select(segments, item_ts=item_ts, duration_s=2000.0)
     kept_items = {m.ts_s for m in marks if m.reason == "item"}
     assert kept_items == set(item_ts)
+
+
+def test_item_cap_leaves_room_for_tail_anchors() -> None:
+    """The hard ceiling on ITEM_CAP. Past it, kept items silently lose their frame and
+    drop to vision_confidence 'low' — a failure that looks like 'no chart', not a bug."""
+    assert ITEM_CAP + len(TAIL_OFFSETS_S) <= FRAME_CAP
+
+
+def cand(ts: float, specificity: int, gist: str = "g") -> dict[str, Any]:
+    return {"ts": ts, "content_type": "setup", "specificity": specificity, "gist": gist}
+
+
+def test_keep_items_floor_binds_before_cap_on_a_thin_video() -> None:
+    """A sparse video must NOT pad up to the cap just because the slots exist — that is
+    what routes vibes into Stream C as if they were calls."""
+    kept, dropped = keep_items(
+        [cand(10.0, 5), cand(20.0, 4), cand(30.0, 2), cand(40.0, 1)]
+    )
+    assert [c["ts"] for c in kept] == [10.0, 20.0]
+    assert [c["ts"] for c in dropped] == [30.0, 40.0]
+    assert all("below floor" in c["drop_reason"] for c in dropped)
+
+
+def test_keep_items_cap_binds_on_a_dense_video() -> None:
+    """Above the floor, the cap truncates and says so."""
+    candidates = [cand(float(i), 4) for i in range(ITEM_CAP + 3)]
+    kept, dropped = keep_items(candidates)
+    assert len(kept) == ITEM_CAP
+    assert len(dropped) == 3
+    assert all("cutoff" in c["drop_reason"] for c in dropped)
+
+
+def test_keep_items_ranks_by_specificity_then_timestamp() -> None:
+    """Deterministic: two runs over the same pass-1 output keep the same items."""
+    candidates = [cand(90.0, 3), cand(10.0, 5), cand(50.0, 5), cand(20.0, 4)]
+    kept, _ = keep_items(candidates, cap=3)
+    assert [c["ts"] for c in kept] == [10.0, 50.0, 20.0]
+
+
+def test_keep_items_is_total_and_lossless() -> None:
+    """Every candidate lands in exactly one bucket — nothing vanishes silently."""
+    candidates = [cand(float(i), i % 6) for i in range(20)]
+    kept, dropped = keep_items(candidates)
+    assert len(kept) + len(dropped) == len(candidates)
+    assert {c["ts"] for c in kept} & {c["ts"] for c in dropped} == set()
+    assert all(c["specificity"] >= MIN_ITEM_SPECIFICITY for c in kept)
+
+
+def test_keep_items_empty() -> None:
+    assert keep_items([]) == ([], [])
