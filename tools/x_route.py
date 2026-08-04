@@ -1,10 +1,33 @@
-"""Pure routing decision for ingested X posts (no I/O).
+"""Pure routing decision + level sign-check for ingested posts/videos (no I/O).
 
-content_type gate, then the parent pipeline's 4-bucket verdict taxonomy on the
-claim path. See docs/superpowers/specs/2026-06-30-x-post-ingest-design.md.
+``route_target`` is the content_type gate, then the parent pipeline's 4-bucket verdict
+taxonomy on the claim path. See docs/superpowers/specs/2026-06-30-x-post-ingest-design.md.
+
+This module also owns the **level sign-check** shared by ``/ingest-x`` and
+``/ingest-video`` step 8 (write path) and by ``tools/pundit_score.py`` (read path): a
+call's levels must be ordered ``stop < entry < target`` for a long and
+``target < entry < stop`` for a short. It lives in code rather than skill prose for the
+same reason call-time resolution moved into ``tools/video_calltime.py`` and the pass-1
+cutoff into ``tools/video_marks.keep_items`` — a rule stated only in a prompt drifts, and
+a mis-encoded row is indistinguishable from a real call once it is in the ledger.
+
+The rule warns; it never drops or rewrites a row. The failure mode being fixed is
+*silence*, and a guard that quietly discards rows reproduces it in the other direction.
+
+CLI (advisory; exit 1 iff any row warned, nothing is ever mutated)::
+
+    PYTHONPATH=. poetry run python tools/x_route.py --check-levels [FILE]
+    PYTHONPATH=. poetry run python tools/x_route.py --check-levels < candidate-rows.jsonl
 """
 
 from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from collections.abc import Mapping
+from pathlib import Path
 
 _DROP_VERDICTS = {"ALREADY-TESTED", "FROZEN-CATEGORY", "NOT-FALSIFIABLE"}
 
@@ -20,3 +43,151 @@ def route_target(content_type: str, verdict: str) -> str | None:
         if verdict in _DROP_VERDICTS:
             return None
     raise ValueError(f"unroutable: content_type={content_type!r} verdict={verdict!r}")
+
+
+_MONTHS = r"jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec"
+#: Month-anchored years, stripped before level extraction. US index and large-cap levels
+#: sit in the same 1,900-2,100+ band as a year string, so no ref-relative sanity gate can
+#: separate them: the ledger's first real scoring run read "10-20% drawdown ... starting
+#: Aug-Sep 2026" as a 2,026 target on a 7,436 index. Only a *month-anchored* year is
+#: removed — a bare "2026" with no date cue is indistinguishable from a real level.
+#: Single definition, shared with ``tools/pundit_score.py`` (its equity divergence 7).
+MONTH_YEAR_RE = re.compile(
+    rf"\b(?:{_MONTHS})[a-z]*\.?\s*(?:[-–—/]\s*(?:{_MONTHS})[a-z]*\.?\s*)?(?:19|20)\d{{2}}\b",
+    re.IGNORECASE,
+)
+
+#: Percentages are magnitudes, not levels ("10-20% drawdown" must not read as a 10 entry).
+#: The scorer suppresses these with its ref-relative sanity gate, which is unavailable at
+#: write time, so they are stripped outright here. The optional range prefix matters: the
+#: ``%`` binds to the *second* number, so matching only "20%" would leave a bare "10"
+#: behind and read it as the level.
+_PCT_RE = re.compile(r"\d[\d,]*(?:\.\d+)?\s*(?:[-–—]\s*\d[\d,]*(?:\.\d+)?\s*)?%")
+_NUM_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*([kK])?")
+
+#: Ascending order the legs must appear in, per direction.
+_LADDER: dict[str, tuple[str, str, str]] = {
+    "long": ("stop", "entry", "target"),
+    "short": ("target", "entry", "stop"),
+}
+
+
+def first_level(text: str | None) -> float | None:
+    """First price-like number in a free-text level field, else ``None``.
+
+    Deliberately cruder than ``pundit_score.parse_level_field``: at write time there is
+    no reference close, so there is no sanity gate to lean on. Ledger rows state the
+    level first and the context after ("Last week's high, roughly 1,038-1,040"), so the
+    first surviving number is the right one to judge ordering by.
+    """
+    if text is None:
+        return None
+    cleaned = _PCT_RE.sub(
+        " ", MONTH_YEAR_RE.sub(" ", text.replace("$", "").replace("~", ""))
+    )
+    match = _NUM_RE.search(cleaned)
+    if match is None:
+        return None
+    return float(match.group(1).replace(",", "")) * (1000.0 if match.group(2) else 1.0)
+
+
+def check_level_order(
+    direction: str,
+    *,
+    entry: float | None = None,
+    stop: float | None = None,
+    target: float | None = None,
+) -> str:
+    """Warning text when a call's levels are ordered impossibly, ``''`` when they are not.
+
+    A long must satisfy ``stop < entry < target``, a short ``target < entry < stop``.
+    Every *pair* whose legs are both present is judged independently, so a row stating
+    only ``entry`` + ``target`` is still checked and a missing leg simply drops its
+    pairs. Equality counts as a violation: a stop at the entry is zero risk and a target
+    at the entry is zero reward, both of which produce a garbage R rather than a trade.
+
+    Note the limit of the pairwise rule at write time: a row stating *one* level and
+    nothing else cannot be judged, because there is no second leg to contradict it. That
+    is the shape of the 2026-08-04 ``^NDX`` defect, and it is caught on the read side
+    instead, where ``pundit_score`` substitutes the market price for a missing entry.
+    """
+    ladder = _LADDER.get(direction.strip().lower())
+    if ladder is None:
+        return f"direction {direction!r} is neither long nor short — level order unverifiable"
+    levels = {"entry": entry, "stop": stop, "target": target}
+    problems = [
+        f"{lower} {levels[lower]:g} on the wrong side of {upper} {levels[upper]:g}"
+        for i, lower in enumerate(ladder)
+        for upper in ladder[i + 1 :]
+        if levels[lower] is not None
+        and levels[upper] is not None
+        and not levels[lower] < levels[upper]  # type: ignore[operator]
+    ]
+    if not problems:
+        return ""
+    return f"{'; '.join(problems)} for a {direction.strip().lower()}"
+
+
+def _row_level(row: Mapping[str, object], role: str) -> float | None:
+    """Numeric leg for ``role``, ledger ``<role>_px`` overriding the free text."""
+    px = row.get(f"{role}_px")
+    if isinstance(px, (int, float)) and not isinstance(px, bool):
+        return float(px)
+    text = row.get(role)
+    return first_level(text) if isinstance(text, str) else None
+
+
+def check_row_levels(row: Mapping[str, object]) -> str:
+    """``check_level_order`` over one ledger-shaped Stream C row."""
+    return check_level_order(
+        str(row.get("direction", "")),
+        entry=_row_level(row, "entry"),
+        stop=_row_level(row, "stop"),
+        target=_row_level(row, "target"),
+    )
+
+
+def _check_levels_cli(source: str | None) -> int:
+    lines = (
+        Path(source).read_text(encoding="utf-8") if source else sys.stdin.read()
+    ).splitlines()
+    warned = 0
+    for line_no, raw in enumerate(lines, start=1):
+        if not raw.strip():
+            continue
+        try:
+            row = json.loads(raw)
+        except ValueError as exc:
+            print(f"line {line_no}: WARN unparseable ({exc})")
+            warned += 1
+            continue
+        if not isinstance(row, dict):
+            print(f"line {line_no}: WARN not a JSON object")
+            warned += 1
+            continue
+        label = f"{row.get('symbol', '?')} {row.get('direction', '?')}"
+        note = check_row_levels(row)
+        print(
+            f"line {line_no}: {'WARN' if note else 'OK'} {label}{f' — {note}' if note else ''}"
+        )
+        warned += bool(note)
+    print(f"\n{len(lines)} line(s) read · {warned} warning(s) · nothing was modified")
+    return 1 if warned else 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check-levels",
+        action="store_true",
+        help="sign-check Stream C rows read as JSONL from FILE or stdin",
+    )
+    parser.add_argument("file", nargs="?", help="JSONL file (default: stdin)")
+    args = parser.parse_args()
+    if not args.check_levels:
+        parser.error("nothing to do — pass --check-levels")
+    return _check_levels_cli(args.file)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

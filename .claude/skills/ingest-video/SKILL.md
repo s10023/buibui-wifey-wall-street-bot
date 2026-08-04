@@ -460,6 +460,28 @@ URL).
 {"source":"youtube","author":"<handle>","url":"<url, with the deep link above for youtube>","ts":252.0,"call_ts_utc":"<resolved call time>","call_ts_source":"stated|publish","publish_ts_utc":"<publish time>","stated_ts_raw":"<verbatim quote or empty>","ingested_ts_utc":"<now>","backlog":false,"symbol":"...","direction":"...","entry":"...","stop":"...","target":"...","horizon":"...","confidence":"","vision_confidence":"high|medium|low","raw_quote":"<original language>","raw_quote_en":"<english>","corrected_from":"<transcript's original value, or empty>"}
 ```
 
+**Sign-check every Stream C row before you append it** — do not eyeball this:
+
+```bash
+PYTHONPATH=. poetry run python tools/x_route.py --check-levels <<'JSON'
+<the candidate Stream C lines, one JSON object per line>
+JSON
+```
+
+A long must satisfy `stop < entry < target`, a short `target < entry < stop`. A `WARN` row
+is mis-encoded, not a real call: fix the field assignment and re-run, or report it as a
+dropped candidate with the reason stated. The check **never rewrites or drops** anything —
+it prints and exits 1, and the decision stays yours.
+
+The trap it exists for: a level phrased as an invalidation ("**unless** it reclaims
+29,200", "跌破/站回 X 就反转", "invalidated above X") is a **stop**, never a `target`.
+Writing one into a short's `target` puts the row instantly in profit, and the scorer books
+a `WIN` at ~0.00 R — a fake statistic rather than a visible error. That is a real
+2026-08-04 defect from this pipeline's first run, and it reached the ledger with zero
+warnings. Note the guard's blind spot: a row stating that one level and *nothing else* has
+no second leg to contradict it, so read the invalidation phrasing yourself too — pass 2
+translating a CN hedge clause is exactly where this slips through.
+
 `source` is `youtube` or `x-video` (from `meta.source`, verbatim — `tools/video_fetch.py`
 already resolves this). **`confidence` is always written as an empty string for a video
 row.** It keeps its `/ingest-x` meaning (the pundit's verbatim hedging phrase) — this
