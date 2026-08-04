@@ -52,9 +52,25 @@ Three new units with independent responsibilities, plus reused routing.
 
 Fixed before any tuning, so a later change is a visible decision rather than a drift:
 
+> **Revised 2026-08-04** (`ITEM_CAP` 5 → 12, `MIN_ITEM_SPECIFICITY` added). The first
+> ingest of a call-dense channel (`@fenggemeigu`) surfaced **20 candidates, 13 of them
+> setups**; a cap of 5 discarded AAPL, MSFT, both gold calls and the S&P — three of the
+> five tickers in the video's own title. Raising the cap is close to free: vision cost is
+> bounded by `FRAME_CAP`, not `ITEM_CAP`, so pass 2 reads the same ≤15 frames either way
+> and extra items merely outrank deixis marks (weight 3 vs 2) for the same slots.
+> `ITEM_CAP + len(TAIL_OFFSETS_S) <= FRAME_CAP` is the hard ceiling (13), pinned by
+> `test_item_cap_leaves_room_for_tail_anchors`.
+>
+> The floor is not optional alongside the raise: a lone cap was doing double duty as a
+> quality filter, and at 12 a *thin* video would pad low-specificity vibes up to the cap
+> purely because slots existed, routing them into Stream C as if they were calls. Cap
+> bounds the dense case, floor bounds the thin one. Both are enforced by
+> `video_marks.keep_items`, not by prompt prose — same rationale as `video_calltime.py`.
+
 | Constant | Value | Meaning |
 | --- | --- | --- |
-| `ITEM_CAP` | 5 | Max routed items per video; the rest are shown as dropped candidates |
+| `ITEM_CAP` | 12 | Max routed items per video; the rest are shown as dropped candidates |
+| `MIN_ITEM_SPECIFICITY` | 3 | Quality floor — a candidate below this is dropped regardless of free slots |
 | `FRAME_CAP` | 15 | Hard ceiling on extracted frames per video |
 | `DEDUP_WINDOW_S` | 45 | Marks inside this window collapse to one |
 | `SAFETY_SAMPLE_S` | 300 | One frame per 5 minutes regardless of triggers |
