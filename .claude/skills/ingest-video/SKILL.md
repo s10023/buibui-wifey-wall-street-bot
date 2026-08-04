@@ -143,9 +143,10 @@ so a macro call scored there resolves against the wrong bars — and this repo h
 fail loudly while **oil fails quietly** (USO sits in roughly the same $70-85 band as WTI
 without tracking it). Both directions have a wrong home; the subject decides.
 
-**Standing caveat:** this repo has no `tools/pundit_score.py`, so anything routed to
-`docs/plans/pundit-calls.jsonl` here is a silent accumulator until that port lands. Say so
-in the digest rather than implying a routed row will be scored.
+**Scoring:** routed Stream-C rows are read by `tools/pundit_score.py`
+(`make wifey-pundit-score`). Rows resolve on the horizon frame (1h intraday, 1d swing)
+over NYSE-session windows, so a row is only scoreable once its symbol has OHLCV
+backfilled — check the scorer's warnings after a batch rather than assuming.
 
 ### 3. Pass 1 — text-only subagent, one per video, pinned to sonnet
 
@@ -404,9 +405,10 @@ Create the sink file with a one-line header if it does not exist. Report a one-l
 result per item (routed → which file, or dropped → verdict).
 
 **Stream C requires a real `symbol` — never route a `setup` item with `symbol: null` or
-`symbol: ""` to `pundit-calls.jsonl`.** The parent's pundit scorer (not yet ported to
-wifey) has no null check of its own; it would read the literal string `"None"` as a
-symbol and pollute the scored ledger. If pass 2 could not resolve a symbol for a
+`symbol: ""` to `pundit-calls.jsonl`.** The scorer now guards this (`_INVALID_SYMBOLS`)
+and skips such a row with a "no symbol resolved" warning — but a skipped row is still a
+wasted write, and the guard is a backstop, not a licence to route unresolved items. If
+pass 2 could not resolve a symbol for a
 `setup` item, treat it as a dropped candidate instead (reason: "no symbol resolved")
 in the digest and the per-video note, not a Stream C write.
 
