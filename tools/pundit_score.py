@@ -8,8 +8,9 @@ no ENABLE/BUILD verdicts (audit_guard gates come later, only if a cell earns n>=
 Never writes to the DB; no schema change.
 
 Parent spec: ``docs/superpowers/specs/2026-07-04-pundit-ledger-scorer-design.md``
-(in ``buibui-moon-trader-bot``). Six deliberate divergences, all forced by equities
-being a *sessioned* market rather than a 24/7 perp tape:
+(in ``buibui-moon-trader-bot``). Nine deliberate divergences. 1-8 are forced by equities
+being a *sessioned* market rather than a 24/7 perp tape; 9 is a correctness fix that is
+not equity-specific:
 
 1. **Scoring frame follows the horizon** (``1h`` intraday, ``1d`` swing/unspecified).
    The parent walks 1h for everything and uses 1d only for ATR. Here that would strand
@@ -42,6 +43,14 @@ being a *sessioned* market rather than a 24/7 perp tape:
 8. **Staleness is measured against the last closed session, not wall-clock now.**
    Otherwise every symbol reports STALE between the closing bell and the next open,
    which on a nightly cron is most of the time it runs.
+9. **The geometry guard covers the target leg, not just the stop** (2026-08-04, and the
+   one divergence here that is *not* equity-forced). The parent's ``_geometry_note``, from
+   which this was ported, rejects only a wrong-sided stop. A wrong-sided **target** is the
+   more dangerous of the two: it is already in profit at the fill, so the walk books an
+   instant WIN at ~0.00 R — a phantom statistic rather than a visible error. Both legs now
+   route through the shared ``tools.x_route.check_level_order``. Since the parent was
+   ported from the same code, it likely carries this latent defect too — worth raising on
+   the next ``/sync-parent`` rather than assuming it was fixed upstream.
 
 Usage::
 
