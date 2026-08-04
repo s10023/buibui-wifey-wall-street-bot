@@ -717,6 +717,33 @@ class TestScoreCall:
         sc = _score(call, df)
         assert sc.state == "UNSCORED" and "wrong side" in sc.note
 
+    def test_target_on_wrong_side_of_a_short_is_unscored_not_an_instant_win(
+        self,
+    ) -> None:
+        """The 2026-08-04 phantom-WIN defect, in its original one-legged shape.
+
+        A short quoting only "unless it reclaims 29,200" — a *stop* mis-written into
+        ``target`` — leaves entry to fall back to the market. The target then sits above
+        the fill, so the very first bar opens through it and books a WIN at ~0.00 R. The
+        write-side pairwise rule cannot see this (there is no stated entry to contradict);
+        it has to be caught here.
+        """
+        call = _call(
+            call_ts_utc=CALL_ISO, direction="short", target="120", horizon="swing"
+        )
+        df = _daily(WARMUP + [(100, 101, 99, 100), (100, 101, 99, 100)])
+        sc = _score(call, df)
+        assert sc.state == "UNSCORED", f"expected UNSCORED, got {sc.state} R={sc.r}"
+        assert "target" in sc.note and "wrong side" in sc.note
+
+    def test_target_on_wrong_side_of_a_long_is_unscored(self) -> None:
+        call = _call(
+            call_ts_utc=CALL_ISO, entry="100", stop="90", target="80", horizon="swing"
+        )
+        df = _daily(WARMUP + [(100, 101, 99, 100), (100, 125, 99, 120)])
+        sc = _score(call, df)
+        assert sc.state == "UNSCORED" and "target" in sc.note
+
 
 def _scored_fixture() -> list[ScoredCall]:
     win = _score(

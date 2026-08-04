@@ -100,6 +100,26 @@ pasted, then run the flow once over the whole set.
    {"source":"twitter","author":"<handle>","url":"<url>","call_ts_utc":"<post_ts_utc>","symbol":"<symbol>","direction":"<direction>","entry":"<entry>","stop":"<stop>","target":"<target>","horizon":"<horizon>","confidence":"<verbatim hedging or empty>","raw_quote":"<raw_quote>"}
    ```
 
+   **Sign-check every Stream C row before you append it** — do not eyeball this:
+
+   ```bash
+   PYTHONPATH=. poetry run python tools/x_route.py --check-levels <<'JSON'
+   <the candidate Stream C lines, one JSON object per line>
+   JSON
+   ```
+
+   A long must satisfy `stop < entry < target`, a short `target < entry < stop`. A `WARN`
+   row is mis-encoded, not a real call: fix the field assignment and re-run, or report it
+   as a dropped candidate with the reason stated. The check **never rewrites or drops**
+   anything — it prints and exits 1, and the decision stays yours.
+
+   The trap it exists for: a level phrased as an invalidation ("**unless** it reclaims
+   29,200", "invalidated above X") is a **stop**, never a `target`. Writing one into a
+   short's `target` puts the row instantly in profit, and the scorer books a `WIN` at
+   ~0.00 R — a fake statistic rather than a visible error (this happened on 2026-08-04).
+   Note the guard's blind spot: a row stating that one level and *nothing else* has no
+   second leg to contradict it, so read the invalidation phrasing yourself too.
+
 ## Inline classification rubric (self-contained — paste into the subagent prompt)
 
 > A distilled snapshot of the SoT's Frozen / Closed / Parked state so the subagent

@@ -8,8 +8,9 @@ no ENABLE/BUILD verdicts (audit_guard gates come later, only if a cell earns n>=
 Never writes to the DB; no schema change.
 
 Parent spec: ``docs/superpowers/specs/2026-07-04-pundit-ledger-scorer-design.md``
-(in ``buibui-moon-trader-bot``). Six deliberate divergences, all forced by equities
-being a *sessioned* market rather than a 24/7 perp tape:
+(in ``buibui-moon-trader-bot``). Nine deliberate divergences. 1-8 are forced by equities
+being a *sessioned* market rather than a 24/7 perp tape; 9 is a correctness fix that is
+not equity-specific:
 
 1. **Scoring frame follows the horizon** (``1h`` intraday, ``1d`` swing/unspecified).
    The parent walks 1h for everything and uses 1d only for ATR. Here that would strand
@@ -42,6 +43,14 @@ being a *sessioned* market rather than a 24/7 perp tape:
 8. **Staleness is measured against the last closed session, not wall-clock now.**
    Otherwise every symbol reports STALE between the closing bell and the next open,
    which on a nightly cron is most of the time it runs.
+9. **The geometry guard covers the target leg, not just the stop** (2026-08-04, and the
+   one divergence here that is *not* equity-forced). The parent's ``_geometry_note``, from
+   which this was ported, rejects only a wrong-sided stop. A wrong-sided **target** is the
+   more dangerous of the two: it is already in profit at the fill, so the walk books an
+   instant WIN at ~0.00 R — a phantom statistic rather than a visible error. Both legs now
+   route through the shared ``tools.x_route.check_level_order``. Since the parent was
+   ported from the same code, it likely carries this latent defect too — worth raising on
+   the next ``/sync-parent`` rather than assuming it was fixed upstream.
 
 Usage::
 
@@ -71,6 +80,7 @@ from analytics.backtest.engine import _compute_atr14
 from analytics.store import DEFAULT_DB_PATH
 from analytics.store.market_data import get_ohlcv
 from analytics.trading_calendar import nyse_sessions
+from tools.x_route import MONTH_YEAR_RE, check_level_order
 
 HOUR_MS = 3_600_000
 DAY_MS = 86_400_000
@@ -127,17 +137,14 @@ _ZONE_RE = re.compile(
 )
 _NUM_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*([kK])?")
 
-_MONTHS = r"jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec"
 #: Equity divergence 7 — month-anchored years are stripped before level extraction.
 #: US index and large-cap levels sit in the same 1,900-2,100+ band as a year string, so
 #: the parent's ref-relative sanity gate cannot separate them: scoring this ledger for
 #: the first time read "10-20% drawdown ... starting Aug-Sep 2026" as a 2,026 target on
 #: a 7,436 index. Only a *month-anchored* year is removed — a bare "2026" with no date
 #: cue is indistinguishable from a real level and is left for the sanity gate to judge.
-_MONTH_YEAR_RE = re.compile(
-    rf"\b(?:{_MONTHS})[a-z]*\.?\s*(?:[-–—/]\s*(?:{_MONTHS})[a-z]*\.?\s*)?(?:19|20)\d{{2}}\b",
-    re.IGNORECASE,
-)
+#: Defined in ``tools/x_route.py`` so the write-side sign-check shares one definition.
+_MONTH_YEAR_RE = MONTH_YEAR_RE
 
 _NY_TZ = "America/New_York"
 _NYSE_CLOSE_HOUR = 16
@@ -716,14 +723,25 @@ def atr14_before(df: pd.DataFrame, ts_ms: int, timeframe: str) -> float | None:
     )
 
 
-def _geometry_note(direction: str, fill_px: float, stop_px: float | None) -> str:
-    """Non-empty when the stop sits on the wrong side of the fill (R would be garbage)."""
-    if stop_px is None:
-        return ""
-    wrong = stop_px >= fill_px if direction == "long" else stop_px <= fill_px
-    return (
-        f"stop {stop_px:.2f} on the wrong side of entry {fill_px:.2f}" if wrong else ""
-    )
+def _geometry_note(
+    direction: str, fill_px: float, stop_px: float | None, target_px: float | None
+) -> str:
+    """Non-empty when a level sits on the wrong side of the fill (R would be garbage).
+
+    Delegates to the shared ``tools.x_route.check_level_order`` so the ledger's write
+    path (``/ingest-x`` and ``/ingest-video`` step 8) and this read path enforce one
+    definition of the rule rather than two that can drift apart.
+
+    The **target** leg is the load-bearing half. A stop on the wrong side merely yields a
+    nonsense R, but a target on the wrong side is already in profit at the fill, so the
+    walk books an instant WIN at ~0.00 R — a phantom statistic rather than a visible
+    error. That is exactly how an "unless it reclaims 29,200" *stop*, mis-written into a
+    short's ``target``, produced a 100% hit rate with zero warnings on 2026-08-04. It is
+    also why the check must live here and not only at write time: that row stated no
+    entry, so the write-side pairwise rule had nothing to compare against, whereas here
+    ``resolve_levels`` has already substituted the market price for the missing entry.
+    """
+    return check_level_order(direction, entry=fill_px, stop=stop_px, target=target_px)
 
 
 def score_call(
@@ -794,7 +812,7 @@ def score_call(
 
     fill_idx, fill_px = fill
     fill_ts = int(df["open_time"].iloc[fill_idx])
-    geometry = _geometry_note(call.direction, fill_px, levels.stop_px)
+    geometry = _geometry_note(call.direction, fill_px, levels.stop_px, levels.target_px)
     if geometry:
         return ScoredCall(
             call,
