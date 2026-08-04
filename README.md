@@ -56,9 +56,10 @@ Forked from the parent `buibui-moon-trader-bot` (crypto / Binance Futures); the 
   `docs/plans/video-notes/`. Ported from parent #513. Items are routed across the two
   repos by **subject, never by repo priority** — equities/macro/gold/oil/DXY/bonds stay
   here, crypto goes to the crypto parent (which has perp data and the pundit scorer), and
-  a video covering both legitimately yields rows in both. Note that
-  `docs/plans/pundit-calls.jsonl` has no reader in this repo yet
-  (`tools/pundit_score.py` is not ported), so routed setups accumulate unscored.
+  a video covering both legitimately yields rows in both. Routed setups are scored by
+  `tools/pundit_score.py` (`make wifey-pundit-score`) — an equity-native port that counts
+  horizons in NYSE sessions and resolves overnight gaps, not a copy of the parent's
+  24/7-tape scorer.
 
 ---
 
