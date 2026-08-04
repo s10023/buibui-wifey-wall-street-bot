@@ -184,10 +184,15 @@ For each surface in the config, do the following:
    - Stale defaults
    - Stale module-purpose descriptions ("module X holds Y" when Y has moved
      to the package next door)
+   - **Negative claims** — sentences asserting the thing the PR just built
+     does *not* exist ("not ported", "no reader", "until that port lands").
+     These are the most dangerous class and the easiest to miss; see Step 3b.
 
 3. **Decide if an edit is warranted.** Bias toward minimal, targeted edits.
    Don't rewrite docs that aren't affected. If a `README.md` doesn't mention
-   the changed artifact at all and never did, leave it alone.
+   the changed artifact at all and never did, leave it alone — **but "doesn't
+   mention it" has to survive Step 3b first.** A doc can be entirely about the
+   artifact while never naming it, by describing its absence.
 
 4. **Propose the edit.** Show the user a unified-diff-style proposal:
 
@@ -203,6 +208,64 @@ For each surface in the config, do the following:
 
 5. **Apply via the `Edit` tool.** Never use `Write` to overwrite a doc —
    always targeted edits.
+
+---
+
+## Step 3b — Negative-claim sweep (run whenever the PR ADDS something)
+
+Steps 2–3 search the docs for the changed artifact's **name**. That finds every
+doc that already talks about the thing. It structurally cannot find the docs
+that talk about the thing's **absence** — and a PR that adds a capability turns
+every such sentence into a false statement in one commit.
+
+This is not hypothetical. PR #127 added `tools/pundit_score.py` and three
+surfaces asserted the repo had no scorer. Two named the file, so the name grep
+caught them. The third did not have to: had it read *"routed rows accumulate
+unscored"* with no filename, the sweep would have passed clean while leaving an
+instruction telling the next session to **tell the user something false**.
+
+So run a second grep keyed on absence-language, not on the artifact. Note the
+`-o`: it prints the **matched phrase** rather than the line, which matters here
+because CLAUDE.md's Project Structure entries run to several thousand characters
+each and printing whole matching lines buries the signal (the first draft of this
+step did exactly that — 49 hits, most of them unreadable walls).
+
+```bash
+git grep -nEio \
+  "(never|not) (yet )?ported|no (reader|host|consumer)\b|this repo has no|\
+until (that|the) port lands|silent accumulator|accumulates? unscored|\
+is not (yet )?(available|implemented|wired)" \
+  -- CLAUDE.md README.md Makefile docker-compose.yml .claude
+```
+
+Output is `path:line:phrase`, one short line per hit — measured at **14 hits on
+this repo, 2026-08-04**. Open only the ones whose surrounding topic overlaps this
+PR; most are true statements about unrelated gaps and must be left alone. Judge
+by topic, not by keyword.
+
+Scope notes, all deliberate:
+
+- `docs/audits/` and `docs/redesign/` are **excluded**. They are dated historical
+  records, and a past-tense negative claim in them is correct by construction —
+  including them added ~35 hits, none actionable.
+- Keep the pattern list *narrow*. Generic phrases (`for now`, `unwired`,
+  `stop-gap`, bare `does not have`) each pulled in double-digit false positives
+  for no additional catch.
+- This file matches itself. Expected — skip `post-branch/SKILL.md` hits.
+
+Three properties make this worth doing on every additive PR:
+
+- One command, bounded output, no judgement needed to *run* it.
+- Its false-positive mode is harmless (read a line, move on); its false-negative
+  mode ships a doc that actively misleads the next session.
+- **In a fork it doubles as a port check.** A doc copied from the parent can
+  carry the parent's negative claim about *this* repo — true when written, in the
+  other repo's context, and quietly wrong here.
+
+Anything this turns up is proposed through the normal Step 3 flow. Prefer
+replacing the negative claim with the positive fact plus how to use it, rather
+than merely deleting the sentence — the sentence existed because a reader needed
+to know the answer, and they still do.
 
 ---
 
