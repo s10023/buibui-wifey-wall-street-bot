@@ -26,7 +26,7 @@ make typecheck      # mypy strict
 make test           # full pytest suite (no coverage; use `make test-cov` for that)
 ```
 
-For Markdown changes: `make lint-md`.
+For Markdown changes: `make lint-md` — this covers `.claude/` (skills and context) as of 2026-08-05, so a skill edit lints like any other file and CI fails on a violation. No special invocation is needed; do not re-add a `!.claude` exclusion to `.markdownlint-cli2.jsonc` (the tree accumulated 245 issues while it was excluded, and the excluded-tree failure mode is silent — see `/post-branch` step 4).
 
 For UI / API changes: `make web-build` (production bundle) or `make web-dev` (Vite dev server).
 
