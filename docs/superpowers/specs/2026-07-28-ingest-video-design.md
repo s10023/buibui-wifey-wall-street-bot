@@ -294,6 +294,15 @@ claim passes the human digest. Three cheap layers instead of one expensive one:
 makes it bite harder, because a pundit repeats the same thesis across a week of uploads. The MVP
 **inherits this gap** rather than fixing it. Recorded here so it is not rediscovered as a surprise.
 
+> **Closed 2026-08-05 by PR #130** — `tools/route_dedup.py` (ported from parent #518/#521) now
+> supplies both layers: an identity ledger that blocks an exact re-route, and an advisory
+> near-duplicate pass surfaced in the review digest. `/ingest-video` calls `check` + `pairs` at
+> step 7 and `mark` at step 8. **One part of the gap survives by design**: Stream C's semantic
+> pass is scoped to a single `source_id`, so *one author restating a call across uploads* — the
+> very case this section names — is still invisible to it. That is deliberate, not an oversight:
+> two calls a week apart are two genuine observations `tools/pundit_score.py` resolves against
+> different bars, so collapsing them would delete data. Read a familiar-sounding claim yourself.
+
 ## Deferred, and cheap when wanted
 
 Channel tracking does not need YouTube auth. Every channel exposes a public RSS feed at
