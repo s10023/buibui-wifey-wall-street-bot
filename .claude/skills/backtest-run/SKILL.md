@@ -15,6 +15,7 @@ Common `buibui backtest` invocations and `make buibui-backtest` targets.
 ## Most common invocations
 
 ### Full sweep (all symbols × strategies × TFs from config)
+
 ```bash
 make buibui-backtest CONFIG=config/signal_watch.toml
 
@@ -23,6 +24,7 @@ make buibui-backtest CONFIG=config/signal_watch_weekdays.toml
 ```
 
 ### Full sweep + save results to DB
+
 ```bash
 make buibui-backtest CONFIG=config/signal_watch.toml SAVE=1
 ```
@@ -30,6 +32,7 @@ make buibui-backtest CONFIG=config/signal_watch.toml SAVE=1
 Saves to `backtest_runs` and `backtest_trades` tables in `analytics.db`. Required before `buibui recalibrate` can update star ratings.
 
 ### Single symbol + strategy + TF
+
 ```bash
 buibui backtest --symbol BTCUSDT --strategy engulfing --interval 1h
 buibui backtest --symbol ETHUSDT --strategy pin_bar --interval 4h --tp-r 3.0
@@ -37,11 +40,13 @@ buibui backtest --symbol BTCUSDT --strategy bos --interval 15m --atr-sl-multipli
 ```
 
 ### Single strategy, all symbols
+
 ```bash
 buibui backtest --config config/signal_watch.toml --strategy engulfing
 ```
 
 ### Day filter (suppress Mon + Fri signals)
+
 ```bash
 buibui backtest --config config/signal_watch.toml --day-filter tue_thu
 
@@ -49,15 +54,18 @@ buibui backtest --config config/signal_watch.toml --day-filter tue_thu
 ```
 
 ### TP sweep (TOML only — no CLI flag for multi-value sweep)
+
 ```toml
 # config/signal_watch.toml
 tp_r_values = [1.0, 1.5, 2.0, 2.5, 3.0]
 ```
+
 ```bash
 make buibui-backtest CONFIG=config/signal_watch.toml
 ```
 
 ### ATR SL sweep
+
 ```bash
 # Via TOML — needs both keys (floor is required; without it the sweep is a no-op for structural strategies)
 # atr_sl_multiplier_values = [0.5, 1.0, 1.5, 2.0, 2.5]
@@ -69,11 +77,13 @@ buibui backtest --config config/signal_watch.toml --atr-sl-floor --atr-sl-values
 ```
 
 ### Stable anchored window (recommended for saved runs)
+
 ```bash
 buibui backtest --config config/signal_watch.toml --since 2025-09-12 --save
 ```
 
 ### Custom lookback window
+
 ```bash
 buibui backtest --symbol BTCUSDT --strategy fib_golden_zone --interval 4h --days 365
 # Or anchored:
@@ -82,7 +92,7 @@ buibui backtest --symbol BTCUSDT --strategy fib_golden_zone --interval 4h --sinc
 
 ## All CLI flags
 
-```
+```text
 buibui backtest
   --config FILE            TOML config file; CLI flags override TOML values
   --symbol SYMBOL          Single symbol (e.g. BTCUSDT)
@@ -105,7 +115,7 @@ buibui backtest
 ## Config files
 
 | File | Description |
-|------|-------------|
+| --- | --- |
 | `config/signal_watch.toml` | Default: tue_thu day filter, equity timeframes (4h/1d/1wk) |
 | `config/signal_watch_weekdays.toml` | Weekdays (Mon–Fri), same equity TF surface |
 

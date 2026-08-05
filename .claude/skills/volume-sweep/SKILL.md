@@ -29,7 +29,8 @@ make buibui-backtest CONFIG=config/signal_watch.toml
 ```
 
 The split table shows aggregated results across all symbols × TFs:
-```
+
+```text
   Strategy               Low-vol  Avg R    Normal  Avg R    Delta
   bos                        736 -0.32R      1104 -0.20R   +0.11R   ← suppress
   pin_bar                   1950 +0.22R       512 -0.00R   -0.22R   ← do NOT suppress
@@ -37,6 +38,7 @@ The split table shows aggregated results across all symbols × TFs:
 ```
 
 Decision threshold:
+
 - Delta > +0.05R → `volume_suppress = true` (normal-vol signals win)
 - Delta < -0.05R → `volume_suppress = false` (explicitly keep low-vol signals)
 - |Delta| ≤ 0.05R → neutral (omit the flag entirely — inherits global default)
@@ -44,6 +46,7 @@ Decision threshold:
 ## Where to set volume_suppress
 
 ### Per-strategy (A14b — implemented)
+
 ```toml
 [strategy_params.bos]
 tp_r = 3.0
@@ -57,6 +60,7 @@ volume_suppress = false       # A14b: low-vol edge Δ=-0.22R — never suppress
 Resolution order: per-strategy → global `[backtest].volume_suppress` (default false).
 
 ### Global fallback
+
 ```toml
 [backtest]
 volume_suppress = true   # applies to all strategies with no per-strategy override
@@ -67,7 +71,7 @@ volume_suppress = true   # applies to all strategies with no per-strategy overri
 ### signal_watch.toml (tue_thu day filter)
 
 | Strategy | Low-vol | Normal | Delta | Decision |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | smt_divergence | +0.63R | +1.41R | +0.78R | **true** |
 | orb | -0.16R | +0.18R | +0.33R | **true** |
 | doji | +0.26R | +0.50R | +0.24R | **true** |
@@ -87,6 +91,7 @@ volume_suppress = true   # applies to all strategies with no per-strategy overri
 | trend_day | -0.07R | -0.02R | +0.05R | neutral (borderline) |
 
 Key reversals vs A13 (old tp_r=2.0):
+
 - **liquidity_sweep**: A13 said don't suppress (-0.11R delta); at current tp_r now +0.17R → **suppress**
 - **morning_evening_star**: A13 said suppress (+0.10R delta); at current tp_r now -0.14R → **don't suppress**
 
@@ -113,7 +118,7 @@ make lint-py && make typecheck && make test
 ## Implementation files
 
 | File | Role |
-|------|------|
+| ------ | ------ |
 | `analytics/backtest_lib.py` | `format_volume_split()` — volume split table; `run_backtest(volume_suppress=bool)` — skips low-vol signals when True |
 | `analytics/backtest_config.py` | `StrategyOverride.volume_suppress: bool \| None`; `BacktestSweepConfig.volume_suppress: bool`; `effective_volume_suppress(strategy)` |
 | `analytics/signal_config.py` | `StrategyOverride.volume_suppress: bool \| None`; `BacktestFilterConfig.volume_suppress: bool`; `SignalWatchConfig.effective_volume_suppress(strategy)` |

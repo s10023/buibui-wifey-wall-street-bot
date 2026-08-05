@@ -27,6 +27,7 @@ the live signal filter's quality gate.
 **Prefer `--config` path** — it keeps ratings per-config and doesn't touch source code.
 
 Stars flow through to:
+
 - Backtest UI tab → `stars`, `long_stars`, `short_stars` columns (JOINed from `confidence_ratings` at query time)
 - `GET /api/strategies?config=<name>` → per-config star overrides served to the UI
 - Telegram alerts → star display in signal alerts
@@ -34,7 +35,7 @@ Stars flow through to:
 
 ## Star rating thresholds
 
-```
+```text
 avg_r < 0          → 1★
 0   ≤ avg_r < 0.2  → 2★
 0.2 ≤ avg_r < 0.5  → 3★
@@ -87,7 +88,7 @@ git diff tests/fixtures/golden_*.json
 
 ## What the output looks like
 
-```
+```text
 Strategy Recalibration Report
 ══════════════════════════════════════════════════════════
   Strategy              TF    Trades  Win%  Avg R   Old★  New★  L★  S★
@@ -104,7 +105,7 @@ Strategy Recalibration Report
 ## Implementation files
 
 | File | Role |
-|------|------|
+| ------ | ------ |
 | `analytics/recalibrate_lib.py` | `compute_recalibrated_ratings()`, `compute_directional_ratings()`, `write_confidence_to_db()`, `write_confidence_to_source()` (legacy) |
 | `analytics/recalibrate_runner.py` | Thin wrapper: opens DB, calls lib, prints report; `--config` derives `config_name`, `day_filter`, `adr_suppress_threshold` |
 | `analytics/data_store.py` | `confidence_ratings` table: PK `(config_name, strategy, tf, direction)` |

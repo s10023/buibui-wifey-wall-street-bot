@@ -22,7 +22,7 @@ The signal test is **read-only and offline**: no DB writes, no cooldown, no late
 All `--at` timestamps are **interpreted as UTC**. The output displays in **MYT (UTC+8)**. Convert before passing:
 
 | Event time (MYT) | Pass as `--at` (UTC) |
-|---|---|
+| --- | --- |
 | 7am MYT Apr 8 | `"2026-04-08 23:00:00"` ← (Apr 7 23:00 UTC) |
 | 9pm MYT Apr 8 | `"2026-04-08 13:00:00"` |
 | midnight MYT Apr 8 | `"2026-04-07 16:00:00"` |
@@ -89,7 +89,7 @@ make buibui-signal-test SYMBOL=BTCUSDT TIMEFRAME=1h STRATEGY=ote_entry AT=174411
 ## All Makefile variables
 
 | Variable | CLI flag | Description |
-|---|---|---|
+| --- | --- | --- |
 | `SYMBOL` | `--symbol` | One or more symbols (space-separated) |
 | `TIMEFRAME` | `--timeframe` | One or more TFs: `15m 1h 4h 1d` |
 | `STRATEGY` | `--strategy` | One or more strategy names |
@@ -101,7 +101,7 @@ make buibui-signal-test SYMBOL=BTCUSDT TIMEFRAME=1h STRATEGY=ote_entry AT=174411
 
 ## All strategy names (for --strategy)
 
-```
+```text
 seasonality  wick_fill  marubozu  orb  liquidity_sweep  fvg  bos
 funding_reversion  smt_divergence  eqh_eql  order_block  cvd_divergence
 trend_day  engulfing  pin_bar  inside_bar  hammer_hanging_man  doji
@@ -137,7 +137,7 @@ When asked why a strategy did or didn't fire:
 ## Common "why didn't it fire" root causes
 
 | Strategy | Most common miss reason |
-|---|---|
+| --- | --- |
 | `liquidity_sweep` | Wick exceeded pivot high but didn't reach 1.13 fib extension (large prior range → high fib threshold) |
 | `smt_divergence` | Fires 5 candles after pivot (delay), OR trend_filter blocked (wrong side of EMA50), OR signal test unsupported |
 | `bos` | Price wicked above swing high but closed BELOW (wick, not close = no BOS) |

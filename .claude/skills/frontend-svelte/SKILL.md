@@ -21,7 +21,7 @@ covers wiring and conventions, not aesthetics.
 ## Stack
 
 | Piece | Version / role |
-|-------|----------------|
+| ------- | ---------------- |
 | Svelte | 5 (uses runes — `$state`, `$derived`, `$effect`) |
 | Vite | 8 |
 | TypeScript | 5 |
@@ -32,7 +32,7 @@ No CSS framework — plain CSS in `app.css` + per-component `<style>` blocks.
 
 ## Directory layout
 
-```
+```text
 web/ui/src/
 ├── api.ts              fetch helpers; one function per endpoint
 ├── app.css             global styles, CSS variables, theme tokens
@@ -119,6 +119,7 @@ missing event types).
    `web/api/main.py`.
 2. Add a Pydantic model under `web/api/models/` (or inline if trivial).
 3. Add the typed fetcher in `web/ui/src/api.ts`:
+
    ```ts
    export type FooResponse = { ... };
    export async function fetchFoo(symbol: string): Promise<FooResponse> {
@@ -127,6 +128,7 @@ missing event types).
      return r.json();
    }
    ```
+
 4. Call from page/component `onMount` or via a store.
 
 ## Charts (lightweight-charts)
@@ -161,7 +163,7 @@ missing event types).
 ## Implementation files
 
 | File | Role |
-|------|------|
+| ------ | ------ |
 | `web/ui/package.json` | deps, scripts |
 | `web/ui/vite.config.ts` | dev server proxy to FastAPI; build output dir |
 | `web/ui/src/api.ts` | typed fetch helpers — single source of truth for endpoints |

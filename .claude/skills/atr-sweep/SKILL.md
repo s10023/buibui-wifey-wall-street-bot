@@ -76,6 +76,7 @@ atr_sl_multiplier_values = [0.5, 1.0, 1.5, 2.0, 2.5]
 ```
 
 Per-strategy override (goes inside `[strategy_params.STRATEGY]`):
+
 ```toml
 [strategy_params.liquidity_sweep]
 atr_sl_multiplier = 1.2        # strategy-wide
@@ -100,7 +101,7 @@ buibui backtest --symbol BTCUSDT --strategy bos --interval 1h --atr-sl-floor --a
 
 ## Output format
 
-```
+```text
 ATR SL Multiplier Comparison (aggregated across symbols)
 ══════════════════════════════════════════════════════════
   Strategy              TF      0.5×    1.0×    1.5×    2.0×    2.5×
@@ -120,6 +121,7 @@ ATR SL Multiplier Comparison (aggregated across symbols)
 3. With the floor on, expect best multipliers to cluster at the high end (2.0–2.5×) — structural SLs are usually too tight to begin with.
 4. Note: TP scales with SL distance. A wider ATR-floored SL also widens the `tp_r × dist` target, so win-rate gains net out against harder TP. Any `atr_sl_multiplier` TOML commit should be paired with a `tp_r` re-sweep at the chosen multiplier per cell.
 5. After finding winners, set `atr_sl_multiplier` + `atr_sl_floor` (or per-strategy override) in TOML and re-run with `SAVE=1`:
+
    ```bash
    make buibui-backtest CONFIG=config/signal_watch.toml SAVE=1
    ```
@@ -127,7 +129,7 @@ ATR SL Multiplier Comparison (aggregated across symbols)
 ## Implementation files
 
 | File | What's there |
-|------|-------------|
+| ------ | ------------- |
 | `analytics/backtest/engine.py` | `_compute_atr14()`, `run_backtest(atr_sl_multiplier, atr_sl_floor)` — ATR SL path (structural → ATR → sl_pct); `atr_sl_floor=True` widens structural SLs via `max(structural_dist, atr_mult × ATR14)` |
 | `analytics/backtest/formatters.py` | `format_atr_sl_sweep_table()` — comparison table formatter |
 | `analytics/backtest_runner.py` | `atr_sweep_mode` branch in `run_backtest_sweep()`; threads `atr_sl_floor` through all 3 call sites |
@@ -140,6 +142,7 @@ ATR SL Multiplier Comparison (aggregated across symbols)
 ## Which config to sweep?
 
 Two production signal_watch configs exist:
+
 - `config/signal_watch.toml` — `day_filter = "tue_thu"` (Tue–Thu only)
 - `config/signal_watch_weekdays.toml` — `day_filter = "weekdays"` (Mon–Fri)
 

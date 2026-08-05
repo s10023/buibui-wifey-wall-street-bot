@@ -41,6 +41,7 @@ make buibui-combo-backtest CONFIG=config/signal_watch.toml WINDOW=2 SAVE=1
 ```
 
 Direct CLI:
+
 ```bash
 buibui backtest --combo --config config/signal_watch.toml --save
 buibui backtest --combo --symbols BTCUSDT --timeframes 15m --window 2
@@ -68,6 +69,7 @@ make buibui-cross-tf-backtest CONFIG=config/signal_watch.toml WINDOW_HOURS=8.0 S
 ```
 
 Direct CLI:
+
 ```bash
 buibui backtest --cross-tf --config config/signal_watch.toml --save
 buibui backtest --cross-tf --htf-ltf 4h:15m 1h:15m --window-hours 4.0
@@ -154,7 +156,7 @@ After updating the config, `/db-update` (or at minimum
 ## Implementation files
 
 | File | Role |
-|------|------|
+| ------ | ------ |
 | `analytics/backtest_lib.py` | `run_combo_backtest()`, cross-TF combo runner, D10 result types |
 | `analytics/backtest_runner.py` | `run_combo_backtest_cmd()`, `run_cross_tf_combo_backtest_cmd()` |
 | `analytics/signal_config.py` | `ComboConfig` (`[combo]` section parser) |

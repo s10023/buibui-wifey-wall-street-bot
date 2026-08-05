@@ -26,7 +26,7 @@ allowed-tools: "*"
 
 ## Signal flow
 
-```
+```text
 candle close
   → data_sync.py (incremental OHLCV fetch)
   → signal_lib.scan_symbol() (run detectors per strategy)
@@ -155,14 +155,14 @@ duckdb analytics.db "SELECT * FROM signals ORDER BY ts DESC LIMIT 20"
 ## Config files
 
 | File | Description |
-|------|-------------|
+| --- | --- |
 | `config/signal_watch.toml` | Default: tue_thu filter, curated strategy list |
 | `config/signal_watch_weekdays.toml` | Weekdays (Mon–Fri) |
 
 ## Key implementation files
 
 | File | Role |
-|------|------|
+| ------ | ------ |
 | `analytics/signal_lib.py` | `scan_symbol()`, `run_scan_cycle()` — core detection loop |
 | `analytics/signal_runner.py` | Thin wrapper: creates client, opens DB, poll loop |
 | `analytics/signal_config.py` | `SignalWatchConfig`, `BacktestFilterConfig`, `load_signal_config()` |
