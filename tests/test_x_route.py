@@ -60,6 +60,43 @@ class TestFirstLevel:
         """'10-20% drawdown' must not read as a level of 10."""
         assert first_level("10-20% drawdown toward 5,900") == 5900.0
 
+    @pytest.mark.parametrize(
+        "text, expected",
+        [
+            # The 2026-08-05 gold row: entry read as 4, sign-checked against stop 4000.
+            ("break above the 4h descending trendline", None),
+            ("break above the 4h trendline, then 4,180", 4180.0),
+            ("the 1d chart support at 190", 190.0),
+            ("wait for the 15m close above 6,800", 6800.0),
+            ("1wk structure, target 235", 235.0),
+            # A CJK channel names the frame on nearly every setup.
+            ("4小时级别的下降趋势线", None),
+            ("日线级别回踩 4,000", 4000.0),
+            ("30分钟结构确认后 210", 210.0),
+        ],
+    )
+    def test_strips_chart_timeframes(self, text: str, expected: float | None) -> None:
+        """'the 4h trendline' must not read as a level of 4."""
+        assert first_level(text) == expected
+
+    def test_timeframe_stripping_leaves_real_levels_alone(self) -> None:
+        """Bare numbers and decimal magnitudes must survive the timeframe pass."""
+        assert first_level("190") == 190.0
+        assert first_level("3800-3900") == 3800.0
+        assert first_level("60.5k") == 60500.0
+        # A decimal magnitude is not an integer+unit token, so it is untouched.
+        assert first_level("4.5m") == 4.5
+
+    def test_timeframe_in_entry_no_longer_fakes_an_ordering_pass(self) -> None:
+        """The silent half of the bug: a stripped '4h' must not out-rank a real stop.
+
+        Before the fix ``entry`` parsed as 4, so a long with a stop of 3 read as
+        correctly ordered (4 > 3) and passed — a wrong-sided leg waved through.
+        """
+        entry = first_level("break above the 4h trendline")
+        assert entry is None
+        assert check_level_order("long", entry=entry, stop=3.0, target=None) == ""
+
 
 class TestCheckLevelOrder:
     def test_well_formed_long_and_short_pass(self) -> None:
