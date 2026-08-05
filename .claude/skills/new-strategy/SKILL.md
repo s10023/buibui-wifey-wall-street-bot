@@ -12,9 +12,9 @@ allowed-tools: "*"
 
 # New Strategy Wiring Checklist
 
-Guided workflow for adding a new trading strategy to buibui. All 4 locations must be updated together or the web UI will 500 on the strategy.
+Guided workflow for adding a new trading strategy to wifey. All 4 locations must be updated together or the web UI will 500 on the strategy.
 
-After strat-2 (PR #338) the detection layer is one file per detector under `analytics/strategies/`. There is no monolithic `indicators_lib.py` to edit any more — that file is a 41-line re-export shim.
+After strat-2 (PR #338) the detection layer is one file per detector under `analytics/strategies/`. There is no `analytics/indicators_lib.py` at all any more — it was removed in strat-3, so `analytics/strategies/` is the only import surface.
 
 ## The 4 mandatory edits
 
@@ -51,7 +51,7 @@ def detect_my_strategy(
 
 Rules:
 
-- File name = function suffix without `detect_` (so `detect_wick_fills` → `wick_fills.py`).
+- File name = function suffix without `detect_` (so `detect_wick_fills` → `wick_fills.py`; the *registry key* is `wick_fill`, which need not match the filename).
 - One detector function per file. Do not stack helpers; put shared helpers into `analytics/strategies/_shared.py`.
 - Always end with `return _signals_to_df(signals)` — that handles the empty case + column normalisation.
 - No module-level side effects. No DB / network calls.
@@ -74,7 +74,7 @@ STRATEGY_REGISTRY: dict[str, StrategySpec] = {
         params=[
             ParamSpec("threshold", "float", 0.5, 0.0, 1.0, "Param description for TOML tuning."),
         ],
-        confidence={"15m": 1, "1h": 2, "4h": 3},   # per-TF stars; recalibrate updates this
+        confidence={"1h": 1, "4h": 2, "1d": 3},   # per-TF stars; recalibrate updates this
     ),
 }
 
@@ -87,14 +87,12 @@ DETECTOR_REGISTRY: dict[str, Callable[[pd.DataFrame], pd.DataFrame]] = {
 
 `KNOWN_STRATEGIES`, `KNOWN_STRATEGY_TYPES`, and `STRATEGY_TYPE_GROUPS` are auto-built from `STRATEGY_REGISTRY` — no manual update needed.
 
-Also re-export from the package by adding the import + `__all__` entry to `analytics/strategies/__init__.py`, and the PEP 484 re-export line to `analytics/indicators_lib.py` (preserves the legacy `from analytics.indicators_lib import detect_my_strategy` path).
+Also re-export from the package by adding the import + `__all__` entry to `analytics/strategies/__init__.py`.
 
 ### 3. `signals/registry.py` — live signal daemon
 
 ```python
-from analytics.indicators_lib import STRATEGY_REGISTRY, detect_my_strategy
-# or, equivalently:
-# from analytics.strategies import STRATEGY_REGISTRY, detect_my_strategy
+from analytics.strategies import STRATEGY_REGISTRY, detect_my_strategy
 
 SIGNAL_REGISTRY: dict[str, SignalPlugin] = {
     ...,
@@ -107,13 +105,11 @@ SIGNAL_REGISTRY: dict[str, SignalPlugin] = {
 }
 ```
 
-### 4. `tests/test_indicators_lib.py` (or new `tests/test_my_strategy.py`)
+### 4. `tests/test_my_strategy.py`
 
 ```python
 import pandas as pd
-from analytics.indicators_lib import detect_my_strategy   # via shim
-# or:
-# from analytics.strategies.my_strategy import detect_my_strategy   # direct
+from analytics.strategies.my_strategy import detect_my_strategy
 
 
 def test_my_strategy_long() -> None:
@@ -131,7 +127,7 @@ def test_my_strategy_no_signal() -> None:
 Rules:
 
 - `duckdb.connect(":memory:")` for any DB-touching tests — never touch `analytics.db`.
-- Pass `MagicMock` for the binance client where applicable.
+- Pass `MagicMock` for the yfinance client where applicable.
 - No real network calls.
 
 ## Strategy function signature
@@ -161,8 +157,7 @@ Detectors that need a second positional arg (funding rates, secondary OHLCV) can
 
 Examples in the current codebase:
 
-- `smt_divergence` — needs `df_secondary` from `get_ohlcv(conn, secondary_symbol, ...)`
-- `funding_extreme` — needs `funding_df` from `get_funding_rates(conn, ...)` (lives in `analytics/strategies/funding_extreme.py` but is **not registered in STRATEGY_REGISTRY** — called directly by tests / future runners)
+- `funding_extreme` — crypto-era leftover: the module still exists at `analytics/strategies/funding_extreme.py` but is **not registered**, and its `get_funding_rates` source was dropped at the fork. Equities have no funding rate; treat it as dead code, not a template
 - `seasonality` — returns stats DataFrame, not signals; uses `seasonality_stats` from `analytics/strategies/_seasonality.py`
 
 For these, also update `backtest_runner.detect_signals_for_strategy()` with a new branch.
@@ -180,13 +175,13 @@ make typecheck
 make lint-py
 
 # Run a quick single-symbol backtest to confirm signals fire
-buibui backtest --symbol BTCUSDT --strategy my_strategy --interval 1h
+wifey backtest --symbol AAPL --strategy my_strategy --interval 1h
 
 # Run full sweep and save to DB
-make buibui-backtest CONFIG=config/signal_watch.toml SAVE=1
+make wifey-backtest CONFIG=config/signal_watch.toml SAVE=1
 
 # Recalibrate star ratings in confidence_ratings DB table
-buibui recalibrate --apply
+wifey recalibrate --apply --config config/signal_watch.toml
 ```
 
 ## Adding to active signal watch config
@@ -216,9 +211,8 @@ tp_r = 3.0
 | `analytics/strategies/<name>.py` | Create new file with the `detect_X()` function (one detector per file) |
 | `analytics/strategies/_registry.py` | Add the import, the `STRATEGY_REGISTRY` entry, and the `DETECTOR_REGISTRY` entry |
 | `analytics/strategies/__init__.py` | Add the import + `__all__` entry for eager re-export |
-| `analytics/indicators_lib.py` | Add the PEP 484 `from analytics.strategies import detect_X as detect_X` shim line |
 | `signals/registry.py` | `SignalPlugin` entry (only if the strategy is actionable for live alerts — `seasonality` and `fibonacci_retracement` excluded) |
-| `tests/test_indicators_lib.py` | Unit tests for the new detector (or create `tests/test_<name>.py`) |
+| `tests/test_<name>.py` | Unit tests for the new detector |
 | `analytics/backtest_runner.py` | Only for strategies needing funding / secondary OHLCV data |
 
 ## Task: add a new strategy
@@ -230,9 +224,8 @@ When the user asks to add a new strategy:
 3. Add the import + `StrategySpec` entry to `STRATEGY_REGISTRY` in `analytics/strategies/_registry.py`.
 4. Add the `DETECTOR_REGISTRY` entry (or skip + add explicit branch in `backtest_runner.py` if needs extra data).
 5. Add the eager import + `__all__` entry to `analytics/strategies/__init__.py`.
-6. Add the PEP 484 re-export line to `analytics/indicators_lib.py` (keeps legacy import paths working).
-7. Add `SignalPlugin` entry to `signals/registry.py` (skip for non-actionable strategies).
-8. Write at least 2 tests: one that fires a signal, one edge case that produces no signal.
-9. Run `make lint-py && make typecheck && make test` (must end clean).
-10. Run quick backtest: `buibui backtest --symbol BTCUSDT --strategy <name> --interval 1h`.
-11. If positive results, add to `config/signal_watch.toml` strategies list.
+6. Add `SignalPlugin` entry to `signals/registry.py` (skip for non-actionable strategies).
+7. Write at least 2 tests: one that fires a signal, one edge case that produces no signal.
+8. Run `make lint-py && make typecheck && make test` (must end clean).
+9. Run quick backtest: `wifey backtest --symbol AAPL --strategy <name> --interval 1h`.
+10. If positive results, add to `config/signal_watch.toml` strategies list.

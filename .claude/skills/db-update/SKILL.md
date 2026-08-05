@@ -27,11 +27,11 @@ three signal_watch configs. Use it whenever:
 ```text
 make db-update
   ├─ db-update-backtest      backtest both signal_watch configs with SAVE=1
-  │    ├─ buibui-backtest CONFIG=config/signal_watch.toml          SAVE=1
-  │    └─ buibui-backtest CONFIG=config/signal_watch_weekdays.toml SAVE=1
+  │    ├─ wifey-backtest CONFIG=config/signal_watch.toml          SAVE=1
+  │    └─ wifey-backtest CONFIG=config/signal_watch_weekdays.toml SAVE=1
   ├─ db-update-recalibrate   recalibrate both configs with APPLY=1
-  │    ├─ buibui-recalibrate CONFIG=config/signal_watch.toml          APPLY=1
-  │    └─ buibui-recalibrate CONFIG=config/signal_watch_weekdays.toml APPLY=1
+  │    ├─ wifey-recalibrate CONFIG=config/signal_watch.toml          APPLY=1
+  │    └─ wifey-recalibrate CONFIG=config/signal_watch_weekdays.toml APPLY=1
   └─ regression-update       refresh tests/fixtures/golden_*.json
 ```
 
@@ -72,7 +72,7 @@ make regression-update       # golden fixtures only — for tests/test_regressio
 ## When NOT to use
 
 - For a single-combo or one-off backtest, use `/backtest-run` or
-  `make buibui-backtest` directly. `db-update` always touches all 3 configs and
+  `make wifey-backtest` directly. `db-update` always touches all 3 configs and
   rewrites every golden file — overkill for a single-strategy investigation.
 - For a tp_r refresh on one config, use `/wfo-sweep` (per-config WFO chain) —
   it's the trusted production path for tp_r tuning.

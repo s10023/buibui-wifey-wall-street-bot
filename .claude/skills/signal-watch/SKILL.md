@@ -15,8 +15,8 @@ allowed-tools: "*"
 
 ## What it does
 
-1. **Sync candles**: fetches latest OHLCV from Binance Futures, stores in `analytics.db`
-2. **Detect signals**: runs all configured strategies via `indicators_lib` detectors
+1. **Sync candles**: fetches latest OHLCV from yfinance, stores in `analytics.db`
+2. **Detect signals**: runs all configured strategies via `analytics/strategies/` detectors
 3. **Dedup**: two-layer cooldown in `signals/cooldown_store.py`:
    - Candle watermark per `(symbol, tf, strategy)` — never re-alerts same candle
    - Cooldown timer per `(symbol, strategy, direction)` — default 1h between alerts
@@ -41,16 +41,16 @@ candle close
 
 ```bash
 # With config file (recommended)
-buibui signal watch --config config/signal_watch.toml
+wifey signal watch --config config/signal_watch.toml
 
 # With Telegram alerts (or set telegram = true in TOML)
-buibui signal watch --config config/signal_watch.toml --telegram
+wifey signal watch --config config/signal_watch.toml --telegram
 
 # Make alias
-make buibui-signal-watch CONFIG=config/signal_watch.toml
+make wifey-signal-watch CONFIG=config/signal_watch.toml
 
 # Override specific params via CLI (CLI takes precedence over TOML)
-buibui signal watch --config config/signal_watch.toml --timeframes 1h 4h --strategies bos engulfing
+wifey signal watch --config config/signal_watch.toml --timeframes 1h 4h --strategies bos engulfing
 ```
 
 Note: the subcommand is `signal watch` (two words), not `signal-watch`.
@@ -60,17 +60,17 @@ Note: the subcommand is `signal watch` (two words), not `signal-watch`.
 Full example at `config/signal_watch.toml`. Key fields:
 
 ```toml
-# Symbols (omit = all from config/coins.json)
-# symbols = ["BTCUSDT", "ETHUSDT"]
+# Symbols (omit = all from config/stocks.json)
+# symbols = ["AAPL", "MSFT"]
 
-timeframes = ["15m", "1h", "4h", "1d"]
+timeframes = ["1h", "4h", "1d", "1wk"]
 telegram = true
 min_sl_pct = 0.005
 
 # Day filter: "off" | "weekdays" | "tue_thu"
 day_filter = "tue_thu"
 
-# EMA-50 trend gate for smt_divergence
+# EMA-50 trend gate for bos
 smt_trend_filter = 1
 
 # Active strategies list
@@ -88,7 +88,7 @@ strategies = ['bos', 'engulfing', 'pin_bar', ...]
 # Per-strategy TF restrictions
 [strategy_timeframes]
 trend_day = ["4h", "1d"]
-fib_golden_zone = ["4h", "1d"]
+ote_entry = ["4h", "1d"]
 
 # Per-strategy tp_r / sl_pct / volume overrides
 [strategy_params.engulfing]
@@ -96,14 +96,13 @@ tp_r = 3.0
 # volume_suppress = true     # per-strategy override (None = inherit global)
 # volume_spike_boost = true  # spike candles (>3× mean) bypass suppress gate
 
-# SMT pairs resolved automatically from coins.json smt_secondary — no need for [smt_pairs]
 
 # Backtest filter config (hard mode = suppress signal if directional avg_r below min_avg_r)
 [backtest]
 mode = "hard"
 days = 200
 min_trades = 12
-min_trades_15m = 20
+min_trades_1h = 20
 min_trades_1h = 12
 min_trades_4h = 5
 min_trades_1d = 2
@@ -124,7 +123,7 @@ Run a single scan cycle manually:
 
 ```bash
 # Backtest a strategy (validates detection logic)
-buibui backtest --symbol BTCUSDT --strategy engulfing --interval 1h
+wifey backtest --symbol AAPL --strategy engulfing --interval 1h
 
 # Force a scan cycle (via Python — no CLI yet)
 python -c "
@@ -135,8 +134,8 @@ conn = duckdb.connect(str(DEFAULT_DB_PATH))
 from analytics.signal_config import SignalWatchConfig
 from analytics.data_store import get_ohlcv
 import time
-ohlcv = get_ohlcv(conn, 'BTCUSDT', '1h', 0, int(time.time() * 1000))
-result = scan_symbol(conn, 'BTCUSDT', '1h', ['engulfing'], ohlcv)
+ohlcv = get_ohlcv(conn, 'AAPL', '1h', 0, int(time.time() * 1000))
+result = scan_symbol(conn, 'AAPL', '1h', ['engulfing'], ohlcv)
 print(result)
 "
 ```
@@ -179,6 +178,6 @@ When the user asks to set up, change, or debug the signal watch daemon:
 3. For TF changes: edit `timeframes` and/or `[strategy_timeframes]`
 4. For TP changes: edit `[strategy_params.X].tp_r`
 5. For backtest filter changes: edit `[backtest]` sub-table
-6. Test changes: run a quick backtest first (`buibui backtest --strategy X --interval Y`)
-7. Start daemon: `make buibui-signal-watch CONFIG=config/signal_watch.toml`
+6. Test changes: run a quick backtest first (`wifey backtest --strategy X --interval Y`)
+7. Start daemon: `make wifey-signal-watch CONFIG=config/signal_watch.toml`
 8. Monitor logs for signal detections and filter decisions

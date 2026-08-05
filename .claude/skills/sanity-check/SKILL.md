@@ -159,6 +159,73 @@ session's `Current State` update into the wrong repo, silently.)
 
 Each skill in `.claude/skills/` (project-local, committed) documents a workflow. Skills can go stale when the codebase evolves. Check:
 
+### 4a. Fork-drift sweep (mechanical — run this FIRST)
+
+This tree was forked from the crypto parent, so a skill can be internally consistent
+and still name artifacts that exist only upstream. **Every instance found so far was a
+command that fails outright on invocation, and none were found by reading — only by
+running a check.** On 2026-08-05 this sweep found 16 skill files instructing
+`make buibui-*` (0 such targets exist), `--interval 15m` (rejected by `_INTERVAL_CONFIG`),
+`BTCUSDT` symbols, four removed strategies, and `config/coins.json`.
+
+```bash
+# `poetry run` is required — data_fetcher imports yfinance.
+poetry run python3 - <<'PY'
+import re, json, pathlib
+from analytics.strategies._registry import STRATEGY_REGISTRY
+from analytics.data_fetcher import _INTERVAL_CONFIG
+targets = set(re.findall(r'^([a-zA-Z][\w-]*):', pathlib.Path('Makefile').read_text(), re.M))
+strats, tfs = set(STRATEGY_REGISTRY), set(_INTERVAL_CONFIG)
+syms = set(json.load(open('config/stocks.json')))
+PROSE = {'sense', 'this', 'network'}          # "make sense", "make this ..." etc.
+# These two files quote the anti-patterns in order to hunt for them.
+SELF = {'sanity-check/SKILL.md', 'post-branch/SKILL.md'}
+bad = []
+for f in sorted(pathlib.Path('.claude').rglob('*.md')):
+    if any(str(f).endswith(s) for s in SELF):
+        continue
+    t = f.read_text()
+    for m in re.finditer(r'make ([a-z][a-z0-9-]+)', t):
+        # a trailing '-' means a glob/placeholder ("make wifey-*", "make wifey-<name>")
+        if m.group(1).endswith('-') or m.group(1) in PROSE or m.group(1) in targets:
+            continue
+        bad.append((f, 'make-target', m.group(1)))
+    for pat in (r'--(?:interval|timeframe)s? ([0-9]+[a-z]+)', r'TIMEFRAMES?="?([0-9]+[a-z]+)'):
+        bad += [(f, 'timeframe', m.group(1)) for m in re.finditer(pat, t) if m.group(1) not in tfs]
+    for m in re.finditer(r'(?:--strategy |STRATEGY=)([a-z_]+)', t):
+        if m.group(1) not in strats and not m.group(1).startswith(('my_', '<')):
+            bad.append((f, 'strategy', m.group(1)))
+    for m in re.finditer(r'(?:--symbols? |SYMBOL="?)([A-Z]{2,6})', t):
+        if m.group(1) not in syms and m.group(1) not in {'SYMBOL', 'TF'}:
+            bad.append((f, 'symbol', m.group(1)))
+for f, k, v in bad:
+    print(f'{f}: {k}={v}')
+print(f'{len(bad)} bad refs')
+PY
+
+# Parent-repo artifact leakage. Exclusions are all BY DESIGN: /sync-parent and
+# /ingest-video address the parent directly; /post-branch and this file quote the
+# pattern in order to hunt for it; context/ documents real legacy code paths.
+git grep -nE 'buibui-moon-trader-bot|`buibui |make buibui-|coins\.json|~/\.claude/skills' -- .claude \
+  | grep -vE 'sync-parent/SKILL\.md|ingest-video/SKILL\.md|post-branch/SKILL\.md|sanity-check/SKILL\.md|context/'
+
+# Referenced repo paths that no longer exist
+git grep -ohE '`(analytics|signals|utils|web|tools|tests|cli|config|migrations)/[A-Za-z0-9_/.]+`' -- .claude \
+  | tr -d '`' | sort -u | while read -r p; do [ -e "$p" ] || echo "MISSING $p"; done
+```
+
+Expected: `0 bad refs`, no leakage hits, and the only `MISSING` paths are deliberate —
+template placeholders (`tests/test_my_strategy.py`, `web/ui/src/pages/Foo.svelte`) and
+files named *because* they are gone or were never ported (`analytics/indicators_lib.py`,
+`utils/binance_client.py`, `config/coins.json`, the parent's `tools/gate_audit.py`).
+Anything else is drift.
+
+Keep the exclusion lists tight. They exist so the sweep stays silent when clean — a
+check that reports known-good noise gets skimmed, which is how the drift it looks for
+accumulated in the first place.
+
+### 4b. Per-skill claim checks
+
 For each skill, verify the **key claims** are still true:
 
 | Skill | What to verify |

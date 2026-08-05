@@ -18,8 +18,8 @@ Runs the complete Walk-Forward Optimization chain on a TOML config without any m
 ## What it does
 
 1. Reads the target config TOML → extracts symbols, TFs, fee_pct, day_filter, current tp_r values
-2. **Phase 1 (Audit)**: runs `buibui param-audit` per TF on BTC — fast pass to identify which strategies have OOS edge
-3. **Phase 2 (Sweep)**: for strategies with edge, runs `buibui param-sweep` per strategy × symbol
+2. **Phase 1 (Audit)**: runs `wifey param-audit` per TF on a single liquid symbol — fast pass to identify which strategies have OOS edge
+3. **Phase 2 (Sweep)**: for strategies with edge, runs `wifey param-sweep` per strategy × symbol
 4. **Phase 3 (Apply)**: applies decision rules → updates TOML with new tp_r values
 5. **Phase 4 (Validate)**: runs backtest + recalibrate, shows diff, asks to apply stars
 
@@ -43,19 +43,19 @@ cat config/signal_watch.toml
 
 Extract:
 
-- `timeframes` — list of TFs to sweep (e.g. `["15m", "1h", "4h", "1d"]`)
-- `symbols` — if set; otherwise default to `["BTCUSDT", "ETHUSDT", "SOLUSDT"]`
+- `timeframes` — list of TFs to sweep (e.g. `["1h", "4h", "1d", "1wk"]`)
+- `symbols` — if set; otherwise default to `["AAPL", "MSFT", "NVDA"]`
 - `fee_pct` — from `[backtest].fee_pct` or top-level, default `0.0005`
 - `day_filter` — passed as `--day-filter` to every `param-audit` and `param-sweep` call so WFO runs on the correct trade population for this config
 - Current tp_r per strategy — read from `[strategy_params.<name>]` blocks
 
-### Step 2: Phase 1 — Audit (all TFs, BTC only)
+### Step 2: Phase 1 — Audit (all TFs, single symbol)
 
 For each TF in config's `timeframes`:
 
 ```bash
 poetry run python wifey.py param-audit \
-  --symbol BTCUSDT \
+  --symbol AAPL \
   --timeframe <TF> \
   --since 2025-09-12 \
   --fee-pct <fee_pct> \
@@ -81,7 +81,7 @@ Strategies to skip (never sweep):
 
 Build a **candidate list**: strategies where OOS avg_r > 0 and OOS n ≥ min_trades threshold.
 
-Min trades by TF: `15m→20, 1h→12, 4h→5, 1d→2`
+Min trades by TF: `1h→20, 4h→12, 1d→5, 1wk→2`
 
 ### Step 3: Phase 2 — Deep sweep (candidates only)
 
@@ -160,11 +160,11 @@ Show a summary table before writing:
 Changes to apply:
   strategy            TF    old tp_r → new tp_r   OOS avg_r  OOS n
   ─────────────────────────────────────────────────────────────────
-  liq_sweep           1h    2.0 → 2.5             +0.31R     47
-  morning_evening_star 15m  3.0 → 3.5             +0.34R     162
+  eqh_eql              1h    2.0 → 2.5             +0.31R     47
+  morning_evening_star 1h    3.0 → 3.5             +0.34R     162
 
 Skipped:
-  pin_bar   15m — fully overfit
+  pin_bar   1h — fully overfit
   doji      1h  — marginal (+0.02R, 38 trades)
 ```
 
@@ -175,7 +175,7 @@ Ask: "Apply these changes? (y/n)"
 After applying TOML changes, run backtest + recalibrate:
 
 ```bash
-make buibui-backtest CONFIG=config/signal_watch.toml SAVE=1
+make wifey-backtest CONFIG=config/signal_watch.toml SAVE=1
 ```
 
 Then dry-run recalibrate to see star changes:
@@ -230,7 +230,7 @@ WFO sweep complete — config/signal_watch.toml
 
 - `param-audit` is cheap (all strategies, one symbol, per TF) — always run this first as a filter
 - `param-sweep` is expensive (full grid per strategy × symbol × TF) — only run for candidates
-- If config has no symbols set, default to BTC/ETH/SOL (the 3 most-backtested)
+- If config has no symbols set, default to AAPL/MSFT/NVDA (the 3 most-backtested)
 - WFO split default: 70% IS / 30% OOS — do not change unless history < 90d
 - Never commit a config where any strategy has OOS avg_r < 0 after the update
 - Always pass `--day-filter <day_filter>` to both `param-audit` and `param-sweep` — the WFO must run on the same trade population the config will see in production (tue_thu for signal_watch.toml, weekdays for weekdays, off for all)

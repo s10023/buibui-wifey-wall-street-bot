@@ -1,7 +1,7 @@
 ---
 name: backtest-run
 description: >
-  Quick reference for every `buibui backtest` CLI flag and `make buibui-backtest`
+  Quick reference for every `wifey backtest` CLI flag and `make wifey-backtest`
   invocation — sweep, combo, cross-TF, save, since, day-filter, ATR, fees.
   Invoke when the user says "/backtest-run", asks to "run a backtest",
   "what's the flag for X", or wants to plan a sweep / combo / cross-TF run.
@@ -10,45 +10,45 @@ allowed-tools: Bash, Read
 
 # Backtest Run — Quick Reference
 
-Common `buibui backtest` invocations and `make buibui-backtest` targets.
+Common `wifey backtest` invocations and `make wifey-backtest` targets.
 
 ## Most common invocations
 
 ### Full sweep (all symbols × strategies × TFs from config)
 
 ```bash
-make buibui-backtest CONFIG=config/signal_watch.toml
+make wifey-backtest CONFIG=config/signal_watch.toml
 
 # With the weekdays day_filter variant
-make buibui-backtest CONFIG=config/signal_watch_weekdays.toml
+make wifey-backtest CONFIG=config/signal_watch_weekdays.toml
 ```
 
 ### Full sweep + save results to DB
 
 ```bash
-make buibui-backtest CONFIG=config/signal_watch.toml SAVE=1
+make wifey-backtest CONFIG=config/signal_watch.toml SAVE=1
 ```
 
-Saves to `backtest_runs` and `backtest_trades` tables in `analytics.db`. Required before `buibui recalibrate` can update star ratings.
+Saves to `backtest_runs` and `backtest_trades` tables in `analytics.db`. Required before `wifey recalibrate` can update star ratings.
 
 ### Single symbol + strategy + TF
 
 ```bash
-buibui backtest --symbol BTCUSDT --strategy engulfing --interval 1h
-buibui backtest --symbol ETHUSDT --strategy pin_bar --interval 4h --tp-r 3.0
-buibui backtest --symbol BTCUSDT --strategy bos --interval 15m --atr-sl-multiplier 1.5
+wifey backtest --symbol AAPL --strategy engulfing --interval 1h
+wifey backtest --symbol MSFT --strategy pin_bar --interval 4h --tp-r 3.0
+wifey backtest --symbol AAPL --strategy bos --interval 1h --atr-sl-multiplier 1.5
 ```
 
 ### Single strategy, all symbols
 
 ```bash
-buibui backtest --config config/signal_watch.toml --strategy engulfing
+wifey backtest --config config/signal_watch.toml --strategy engulfing
 ```
 
 ### Day filter (suppress Mon + Fri signals)
 
 ```bash
-buibui backtest --config config/signal_watch.toml --day-filter tue_thu
+wifey backtest --config config/signal_watch.toml --day-filter tue_thu
 
 # Options: off | weekdays | tue_thu (default from TOML: tue_thu)
 ```
@@ -61,7 +61,7 @@ tp_r_values = [1.0, 1.5, 2.0, 2.5, 3.0]
 ```
 
 ```bash
-make buibui-backtest CONFIG=config/signal_watch.toml
+make wifey-backtest CONFIG=config/signal_watch.toml
 ```
 
 ### ATR SL sweep
@@ -70,34 +70,34 @@ make buibui-backtest CONFIG=config/signal_watch.toml
 # Via TOML — needs both keys (floor is required; without it the sweep is a no-op for structural strategies)
 # atr_sl_multiplier_values = [0.5, 1.0, 1.5, 2.0, 2.5]
 # atr_sl_floor = true
-make buibui-backtest CONFIG=config/signal_watch.toml
+make wifey-backtest CONFIG=config/signal_watch.toml
 
 # Via CLI — always pass --atr-sl-floor
-buibui backtest --config config/signal_watch.toml --atr-sl-floor --atr-sl-values 0.5 1.0 1.5 2.0 2.5
+wifey backtest --config config/signal_watch.toml --atr-sl-floor --atr-sl-values 0.5 1.0 1.5 2.0 2.5
 ```
 
 ### Stable anchored window (recommended for saved runs)
 
 ```bash
-buibui backtest --config config/signal_watch.toml --since 2025-09-12 --save
+wifey backtest --config config/signal_watch.toml --since 2025-09-12 --save
 ```
 
 ### Custom lookback window
 
 ```bash
-buibui backtest --symbol BTCUSDT --strategy fib_golden_zone --interval 4h --days 365
+wifey backtest --symbol AAPL --strategy ote_entry --interval 4h --days 365
 # Or anchored:
-buibui backtest --symbol BTCUSDT --strategy fib_golden_zone --interval 4h --since 2025-09-12
+wifey backtest --symbol AAPL --strategy ote_entry --interval 4h --since 2025-09-12
 ```
 
 ## All CLI flags
 
 ```text
-buibui backtest
+wifey backtest
   --config FILE            TOML config file; CLI flags override TOML values
-  --symbol SYMBOL          Single symbol (e.g. BTCUSDT)
+  --symbol SYMBOL          Single symbol (e.g. AAPL)
   --strategy STRATEGY      Single strategy name
-  --interval TF            Timeframe: 15m | 1h | 4h | 1d
+  --interval TF            Timeframe: 1h | 4h | 1d | 1wk
   --days N                 Lookback in days (default: 200; floating window)
   --since YYYY-MM-DD       Anchor start date — use for saved/comparable runs (e.g. 2025-09-12)
   --tp-r FLOAT             Take-profit ratio (e.g. 2.0)
@@ -109,7 +109,7 @@ buibui backtest
   --day-filter MODE        off | weekdays | tue_thu
   --save                   Persist results to DB (same as SAVE=1)
   --min-trades N           Hide combos below N trades
-  --secondary-symbol SYM   Secondary symbol for smt_divergence
+  --secondary-symbol SYM   Secondary symbol for bos
 ```
 
 ## Config files
@@ -135,8 +135,8 @@ duckdb analytics.db "SELECT strategy, timeframe, symbol, avg_r, closed_trades FR
 
 ```bash
 # Update star ratings from saved DB results
-buibui recalibrate          # dry-run
-buibui recalibrate --apply  # apply to indicators_lib.py
+wifey recalibrate          # dry-run
+wifey recalibrate --apply --config config/signal_watch.toml  # writes confidence_ratings
 ```
 
 ## Task: run a backtest
@@ -148,4 +148,4 @@ When the user asks to run a backtest:
 3. Confirm whether to save results: add `SAVE=1` if persisting to DB
 4. Run the appropriate command above
 5. If sweep output has TP/ATR tables, use `/backtest-findings` workflow to interpret
-6. If saving: consider running `buibui recalibrate` after
+6. If saving: consider running `wifey recalibrate` after
