@@ -69,6 +69,33 @@ MONTH_YEAR_RE = re.compile(
 #: Single definition, shared with ``tools/route_dedup.py``'s ``normalize_levels`` — which
 #: has no sanity gate either, and would otherwise read "up 150%" as a shared price level.
 PCT_RE = re.compile(r"\d[\d,]*(?:\.\d+)?\s*(?:[-–—]\s*\d[\d,]*(?:\.\d+)?\s*)?%")
+
+#: Chart timeframes are not price levels ("break above the 4h descending trendline" must
+#: not read as a 4 entry). Third artifact of the same class as ``MONTH_YEAR_RE`` and
+#: ``PCT_RE``, and the one a TA-narrating pundit emits most often — a Chinese-language
+#: channel names the frame on nearly every setup ("4小时级别的下降趋势线"). Found
+#: 2026-08-05 when a gold long whose entry read "break above the 4h descending trendline"
+#: sign-checked as ``stop 4000 on the wrong side of entry 4``.
+#: That instance failed *loudly*, but the same artifact fails silently in the other
+#: direction: a long with entry "the 4h trendline" and a stop of 3 computes 4 > 3 and
+#: passes as OK, and a short whose target reads "the 1d level" yields 1 — below any real
+#: entry — and likewise passes. A wrong-sided leg that passes is the fake-``WIN`` class
+#: this guard exists to catch.
+#: Integers only, so a decimal magnitude ("4.5m" = 4.5 million) is left alone; the
+#: accepted cost is a bare integer magnitude written with a unit suffix ("5m" meaning
+#: 5 million) being read as a 5-minute frame and dropped. Ledger level fields quote
+#: prices plainly, so that shape has not appeared; timeframes appear constantly.
+_TF_LATIN = (
+    r"m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|wk|wks|week|weeks"
+)
+_TF_CJK = r"分钟|分鐘|小时|小時|日线|日線|周线|週線|月线|月線|日|天|周|週"
+#: The ``(?<![\d.])`` guard is what makes "integers only" true: without it ``\b`` matches
+#: at the decimal point, so "4.5m" matches its own "5m" tail and leaves a bare "4." behind
+#: — turning a magnitude into a level, the very failure being fixed.
+TIMEFRAME_RE = re.compile(
+    rf"(?<![\d.])\d{{1,4}}\s*(?:{_TF_LATIN})\b|(?<![\d.])\d{{1,4}}\s*(?:{_TF_CJK})",
+    re.IGNORECASE,
+)
 _NUM_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*([kK])?")
 
 #: Ascending order the legs must appear in, per direction.
@@ -85,11 +112,15 @@ def first_level(text: str | None) -> float | None:
     no reference close, so there is no sanity gate to lean on. Ledger rows state the
     level first and the context after ("Last week's high, roughly 1,038-1,040"), so the
     first surviving number is the right one to judge ordering by.
+
+    Years, percentages and chart timeframes are stripped first — each is a number that
+    reads as a level but is not one. See ``MONTH_YEAR_RE`` / ``PCT_RE`` / ``TIMEFRAME_RE``.
     """
     if text is None:
         return None
-    cleaned = PCT_RE.sub(
-        " ", MONTH_YEAR_RE.sub(" ", text.replace("$", "").replace("~", ""))
+    cleaned = TIMEFRAME_RE.sub(
+        " ",
+        PCT_RE.sub(" ", MONTH_YEAR_RE.sub(" ", text.replace("$", "").replace("~", ""))),
     )
     match = _NUM_RE.search(cleaned)
     if match is None:
