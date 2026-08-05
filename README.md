@@ -46,6 +46,18 @@ Forked from the parent `buibui-moon-trader-bot` (crypto / Binance Futures); the 
   invalidation level ("**unless** it reclaims X") mis-filed as a `target` puts the row
   instantly in profit and scores a phantom win, silently.
 
+- **Routing dedup** (`tools/route_dedup.py`, ported from parent #518/#521) — the fetch
+  caches dedup *fetches*; nothing dedupped *routing*, so a re-ingested post could append
+  a second copy of a row that was already in a sink. Two layers, deliberately different:
+  an **identity ledger** (`docs/plans/routed-ledger.json`, keyed on source id + item
+  offset + sink) blocks an exact re-route, and a **semantic pass** scores a pending claim
+  against the sink's existing entries on shared price levels and term overlap. Only the
+  identity layer blocks; the semantic one surfaces candidates in the review digest and
+  never drops a row, because a false positive costs a glance and a false negative costs a
+  corrupted sink. Both ingest skills call it — `check` before the digest, `mark` strictly
+  *after* a successful append. Seed it from the existing ledger with
+  `make wifey-route-dedup-seed` (read-only; `APPLY=1` to write).
+
 - `/ingest-video` *(Claude Code skill)* — turn a pasted YouTube or X video URL, including
   Chinese-language video, into routed research items. Fetches metadata + transcript
   (`tools/video_fetch.py`: yt-dlp captions, Groq `whisper-large-v3` fallback for
