@@ -20,10 +20,45 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: aquasecurity/trivy-action@master
+
+      # The two scanners are split on purpose: they answer different questions
+      # and so earn different exit codes. A single `scan-type: fs` step runs
+      # both under one code, which forced the whole scan to be decorative
+      # (`exit-code: '0'`) to avoid the CVE failure mode described below.
+
+      # A committed secret is a property of THIS diff, is always the author's to
+      # fix, and is fixable in the same PR -- so it gates. That failure mode is
+      # live here: `.env`, `config/stocks.json` and the whole of `docs/plans/`
+      # (the ingest sinks -- pundit ledger, thesis inbox, routed ledger) are
+      # gitignored, so a `git add -f` under `docs/plans/` is the realistic way a
+      # credential or a private note reaches the remote.
+      # Pinned to a release tag, not @master: this is the workflow whose whole
+      # job is to catch a supply-chain problem, and a mutable ref means the
+      # scanner itself is unreviewed code that can change under us between two
+      # runs of the same commit. A tag matches the convention every other action
+      # here uses (checkout@v7, markdownlint-cli2-action@v24); a full SHA would
+      # be stricter still if this repo ever standardises on that.
+      - name: Trivy secret scan (gates)
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
+          scanners: secret
+          exit-code: '1'
+
+      # A dependency CVE is a property of the OUTSIDE WORLD -- it appears
+      # without anyone touching this repo, so gating on it turns whichever
+      # unrelated PR happens to be open red and forces a poetry bump at an
+      # arbitrary moment. Advisory: it reports, you fix on your own schedule.
+      # `if: always()` so the report still appears when the gate above has
+      # failed.
+      - name: Trivy vulnerability scan (advisory)
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
           severity: CRITICAL,HIGH
-          exit-code: '0'
           ignore-unfixed: true
+          exit-code: '0'

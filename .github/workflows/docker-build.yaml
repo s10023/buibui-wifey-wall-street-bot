@@ -1,14 +1,40 @@
 name: Docker Build
 
+# The path filter lives at the TRIGGER level, not inside a step. A step-level
+# filter still spins up a runner (checkout + the filter action) for every
+# docs-only PR and only then decides to skip. At the trigger level the workflow
+# does not start at all -- and this repo's traffic is overwhelmingly markdown
+# (skills, context, audits), so almost every PR was paying for a runner that
+# had already decided to do nothing.
+#
+# Safe here because `main` carries no required status checks (verified: the
+# branch-protection API returns `403 -- Upgrade to GitHub Pro`), so a check
+# that never reports cannot leave a PR stuck as "expected". Re-check this if
+# branch protection is ever enabled.
 on:
   push:
     branches:
       - main
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'docker-compose.yml'
+      - 'pyproject.toml'
+      - 'poetry.lock'
+      - '.github/workflows/docker-build.yaml'
   pull_request:
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'docker-compose.yml'
+      - 'pyproject.toml'
+      - 'poetry.lock'
+      - '.github/workflows/docker-build.yaml'
 
+# `pull-requests: read` was only ever needed by the paths-filter action, which
+# the trigger-level filter replaces.
 permissions:
   contents: read
-  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -21,24 +47,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Had no filter at all, so a docs-only PR paid for a full image build.
-      - name: Check for image-affecting changes
-        id: changes
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            docker:
-              - 'Dockerfile'
-              - '.dockerignore'
-              - 'docker-compose.yml'
-              - 'pyproject.toml'
-              - 'poetry.lock'
-              - '.github/workflows/docker-build.yaml'
-
       - name: Set up Docker Buildx
-        if: steps.changes.outputs.docker == 'true'
         uses: docker/setup-buildx-action@v4
 
       - name: Build Docker image
-        if: steps.changes.outputs.docker == 'true'
         run: docker build -t wifey-bot .
