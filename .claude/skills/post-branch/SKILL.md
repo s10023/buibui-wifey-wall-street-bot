@@ -134,10 +134,21 @@ Skip signals — **stop here** (after MEMORY.md update) if the PR is purely:
   re-export shim, registry/key order preserved, etc.)
 - Bug fix with a regression test added and no behaviour change
 - Dependency version bump with no API change
-- Lint/format-only commit
+- Lint/format-only commit — **the formatting itself, not the linter's
+  configuration.** Editing `.markdownlint*`, `pyproject.toml`'s ruff/mypy
+  blocks, or a CI job's globs/path filters changes what the build *enforces*,
+  which is operator-facing however mechanical the accompanying diff looks.
+  Walk the docs for those.
 - Test-only changes
 - Comment/docstring edits inside source files (not in the doc surfaces)
 - Regression-fixture refresh (`make regression-update`) with goldens unchanged
+
+That carve-out is not hypothetical: PR #133 was a `chore(lint)` whose diff was
+245 whitespace and fence-tag fixes plus one deleted glob line. Read as
+"lint-only" it would have skipped the walk — and missed both that it had
+falsified this file's own step 4 and that the CI job silently skipped the very
+tree it was triggered by. **Judge the gate on what the change enforces, not on
+what the diff looks like.**
 
 **Strong refactor signals** — these almost always trigger user-facing doc
 edits because they change paths users / docs reference:
