@@ -29,7 +29,11 @@ import sys
 from collections.abc import Mapping
 from pathlib import Path
 
-_DROP_VERDICTS = {"ALREADY-TESTED", "FROZEN-CATEGORY", "NOT-FALSIFIABLE"}
+#: Claim verdicts that route nowhere. Also the single definition of the pipeline's own
+#: vocabulary, which ``tools/route_dedup.py`` excludes from term matching — a verdict is
+#: stamped on every routed entry, so it says nothing about what any one of them claims.
+DROP_VERDICTS = frozenset({"ALREADY-TESTED", "FROZEN-CATEGORY", "NOT-FALSIFIABLE"})
+VERDICTS = DROP_VERDICTS | {"NOVEL"}
 
 
 def route_target(content_type: str, verdict: str) -> str | None:
@@ -40,7 +44,7 @@ def route_target(content_type: str, verdict: str) -> str | None:
     if content_type == "claim":
         if verdict == "NOVEL":
             return "docs/plans/thesis-inbox.md"
-        if verdict in _DROP_VERDICTS:
+        if verdict in DROP_VERDICTS:
             return None
     raise ValueError(f"unroutable: content_type={content_type!r} verdict={verdict!r}")
 
@@ -62,7 +66,9 @@ MONTH_YEAR_RE = re.compile(
 #: write time, so they are stripped outright here. The optional range prefix matters: the
 #: ``%`` binds to the *second* number, so matching only "20%" would leave a bare "10"
 #: behind and read it as the level.
-_PCT_RE = re.compile(r"\d[\d,]*(?:\.\d+)?\s*(?:[-–—]\s*\d[\d,]*(?:\.\d+)?\s*)?%")
+#: Single definition, shared with ``tools/route_dedup.py``'s ``normalize_levels`` — which
+#: has no sanity gate either, and would otherwise read "up 150%" as a shared price level.
+PCT_RE = re.compile(r"\d[\d,]*(?:\.\d+)?\s*(?:[-–—]\s*\d[\d,]*(?:\.\d+)?\s*)?%")
 _NUM_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*([kK])?")
 
 #: Ascending order the legs must appear in, per direction.
@@ -82,7 +88,7 @@ def first_level(text: str | None) -> float | None:
     """
     if text is None:
         return None
-    cleaned = _PCT_RE.sub(
+    cleaned = PCT_RE.sub(
         " ", MONTH_YEAR_RE.sub(" ", text.replace("$", "").replace("~", ""))
     )
     match = _NUM_RE.search(cleaned)

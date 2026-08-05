@@ -79,6 +79,30 @@ pasted, then run the flow once over the whole set.
    `is_thread` / `cached` where set. Show each `chart_read` and the full extraction
    JSON below the table. Write NOTHING yet.
 
+   **Run the dedup check before printing the digest**, once per non-dropped post, so
+   its result appears *in* the digest rather than after approval:
+
+   ```bash
+   PYTHONPATH=. poetry run python tools/route_dedup.py check \
+     --source-id <status id> --item-ts 0 --sink <route_target output> \
+     --text "<the gist being routed>"
+   ```
+
+   - `already_routed: true` → **do not append.** Show the row as "already routed",
+     and route nothing for it in step 4. This is exact and needs no judgement.
+   - `candidates` non-empty → **not a block.** Print each candidate's `excerpt` and
+     `shared_levels` under that post's row and let the user decide: new row,
+     corroboration line on the existing entry, or drop.
+   - `semantic_scope` says what the near-duplicate pass compared against:
+     `all-entries` (Streams A and B) or `same-source` (Stream C — only rows from this
+     same status id, never another author's). Report it; never let an empty
+     `candidates` list read as "checked against everything and clean". On Stream C the
+     same-source scope is near-inert here, since one X post routes one item — the
+     identity layer is what protects this sink.
+   - Discount a hit whose `shared_levels` are all round 4-digit numbers that could be
+     years: `normalize_levels` drops *bare* ones, but a level written `2,050` is kept
+     by design and two entries can share it coincidentally.
+
 4. **Route on a single approval.** After the user approves the batch, for each post
    compute the destination with `tools/x_route.py::route_target(content_type, verdict)`
    (returns the sink path or `None` for a drop) and append per this table. Report a
@@ -119,6 +143,22 @@ pasted, then run the flow once over the whole set.
    ~0.00 R — a fake statistic rather than a visible error (this happened on 2026-08-04).
    Note the guard's blind spot: a row stating that one level and *nothing else* has no
    second leg to contradict it, so read the invalidation phrasing yourself too.
+
+   **After each successful append, record it:**
+
+   ```bash
+   PYTHONPATH=. poetry run python tools/route_dedup.py mark \
+     --source-id <status id> --item-ts 0 --sink <sink path>
+   ```
+
+   `mark` runs **after** the write, never before. Marking at check time would let an
+   abandoned review consume the id and dedup away the real append later — the #68
+   watermark-on-send defect class. Never mark a dropped post.
+
+   Stream C's near-duplicate exemption is **across sources only**: two pundits making
+   the same call are two real observations and `tools/pundit_score.py` scores both
+   authors, so collapsing those would delete signal. Stream C still gets the exact
+   `already_routed` block.
 
 ## Inline classification rubric (self-contained — paste into the subagent prompt)
 

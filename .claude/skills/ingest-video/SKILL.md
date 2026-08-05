@@ -110,10 +110,10 @@ Only shape-3 videos continue through the rest of this flow.
 
 This repo and the crypto parent (`~/repo/buibui-moon-trader-bot/`) follow overlapping
 channels — Benjamin Cowen sits in both queues today, and 4 of his videos are already
-ingested here. **This repo has NO routing-dedup layer at all** (the parent's
-`tools/route_dedup.py` and its identity ledger were never ported, and the parent's own
-ledger is per-repo regardless), so this grep is the only thing standing between you and a
-double-ingest — of another repo's work *or*, until the port lands, of your own:
+ingested here. `tools/route_dedup.py`'s identity ledger is **per-repo**, so it cannot see
+the parent's work at all, and its `check` runs later in this flow (step 7) — after the
+subagent spend this step exists to protect. The `.cache/video/<id>/` cache only spares the
+re-download, never the re-ingest. So this grep stays the first line of defence:
 
 ```bash
 grep -rl -E 'video_id: *"?(<id1>|<id2>|…)"?' \
@@ -122,8 +122,7 @@ grep -rl -E 'video_id: *"?(<id1>|<id2>|…)"?' \
 ```
 
 Both directories, deliberately. A hit in **this** repo's dir means you already ingested it
-here — skip it outright; the `.cache/video/<id>/` cache only spares you the re-download, it
-does not stop a re-ingest, so nothing else in this flow would catch it.
+here — skip it outright, before any subagent runs.
 
 Grep the **frontmatter**, never the filename. Both repos now name notes
 `<date>-<author-slug>-<video_id>.md` (step 9), but each still holds pre-existing notes
@@ -410,6 +409,51 @@ justified the shift, so they cannot judge it. Showing the raw quote and the gap 
 lets the approver reject a fabricated or implausible timestamp before it reaches the
 ledger.
 
+**Run the dedup check before printing the digest**, once per non-dropped item, so its
+result appears *in* the digest rather than after approval. `--item-ts` is the item's own
+`ts` — never omit it, and never key on the video id alone: one video legitimately yields
+several items (the first 美股峰哥 upload produced four calls), and collapsing them would
+delete real rows.
+
+```bash
+PYTHONPATH=. poetry run python tools/route_dedup.py check \
+  --source-id <meta.video_id> --item-ts <item ts> --sink <route_target output> \
+  --text "<the gist being routed>"
+```
+
+- `already_routed: true` → **do not append.** Show the item as "already routed" and route
+  nothing for it in step 8. Exact match, no judgement needed.
+- `candidates` non-empty → **not a block.** Print each candidate's `excerpt` and
+  `shared_levels` under that item and let the user decide: new row, corroboration line on
+  the existing entry, or drop. Bulk video ingest makes this the common case — a pundit
+  routinely repeats one thesis across a week of uploads.
+- `semantic_scope` says what the near-duplicate pass actually compared against:
+  `all-entries` (Streams A and B), `same-source` (Stream C — only this video's own
+  earlier rows, never another author's), or `none`. Report it; never let an empty
+  `candidates` list read as "checked against everything and clean".
+- Discount a hit whose `shared_levels` are all round 4-digit numbers that could be years.
+  Bare ones are dropped by `normalize_levels`, but a level written `2,050` is kept by
+  design and two entries can share it coincidentally.
+
+**Then run the intra-video pass, once per video that has two or more Stream-C-bound
+items.** `check` cannot catch these: every check runs *before* the approval that writes
+anything, so when a video's items are checked none of them are on disk yet — two legs of
+one position are only findable item-vs-item. Write the video's pending Stream C items
+(the pass-2 item dicts are enough — it reads `symbol`/`direction`/`entry`/`stop`/
+`target`/`raw_quote*`/`ts`) to a scratch file, then:
+
+```bash
+PYTHONPATH=. poetry run python tools/route_dedup.py pairs \
+  --items .cache/video/<video_id>/pending_calls.json
+```
+
+Print every returned pair under that video: both `ts` values, `score`, `shared_levels`,
+and both excerpts. **Advisory, never a block** — two legs of one position and two
+genuinely distinct calls on one symbol look alike by construction, and only the operator
+knows which they are watching. Calibration on this fork's live sinks at port time: 0 of 28
+Stream A pairs and 0 of 7 same-source Stream C pairs flagged, i.e. no false positives on
+real data — so treat a hit as worth reading rather than as routine noise.
+
 ### 8. Route on a single approval
 
 After the user approves the batch, for each item compute the destination with
@@ -434,8 +478,23 @@ pass 2 could not resolve a symbol for a
 `setup` item, treat it as a dropped candidate instead (reason: "no symbol resolved")
 in the digest and the per-video note, not a Stream C write.
 
-**Before appending a `claim`, grep the target sink for the gist first** — see Guardrails
-on the inherited dedup gap.
+**After each successful append, record it:**
+
+```bash
+PYTHONPATH=. poetry run python tools/route_dedup.py mark \
+  --source-id <meta.video_id> --item-ts <item ts> --sink <sink path>
+```
+
+`mark` runs **after** the write, never before. Marking at check time would let an
+abandoned review consume the id and dedup away the real append later — the #68
+watermark-on-send defect class. Never mark a dropped item.
+
+Stream C's near-duplicate exemption is **across sources only**: two pundits making the
+same call are two real observations and `tools/pundit_score.py` scores both authors, so
+collapsing those would delete signal. It never justified one video restating its own
+call, which is how an entry leg and a target leg of a single position become two rows —
+so within one `source_id` the pass does run (step 7's `same-source` scope plus the
+`pairs` call). Stream C also still gets the exact `already_routed` block.
 
 **Deep-link rule — separator-aware, do not reintroduce the bug.** A YouTube timestamp
 deep link must respect whatever the URL already has:
@@ -625,12 +684,15 @@ universe FAILED their gates; the free-data edge arc is CONCLUDED (honest exit,
   `thesis-inbox.md` is *capture*, not a commitment to test — never start a new
   edge-hunt from an ingested claim without an explicit user go (same as
   `/ingest-x`).
-- The inherited sink-grep dedup gap (`/ingest-x` iteration-2 backlog item #7, never
-  built): nothing here checks whether a claim already exists in the target sink before
-  appending. Bulk video ingest makes this bite harder than single X posts, because a
-  pundit routinely repeats the same thesis across a week of uploads. Before appending a
-  `claim` that reads familiar, grep `docs/plans/thesis-inbox.md` yourself; there is no
-  automated guard against a duplicate H-row.
+- Routing dedup is `tools/route_dedup.py` — `check` in step 7, `mark` in step 8, and it
+  is **advisory except for `already_routed`**. Its semantic pass surfaces candidates for
+  the digest and never drops anything: a false positive costs a glance, a false negative
+  costs a corrupted sink, and your review gate stays the decision point. Bulk video
+  ingest is what makes this bite harder than single X posts, because a pundit repeats
+  one thesis across a week of uploads — and note the limit that follows from Stream C's
+  `same-source` scope: **restatement by one author across two uploads is invisible to
+  it**, deliberately, since two calls a week apart are two genuine observations the
+  scorer resolves against different bars. Read a familiar-sounding `claim` yourself.
 - Two subagent passes, both pinned to `model: "sonnet"` — never let either inherit Opus.
   Neither may read any repo, SoT, or memory file; the rubric above is the only context
   either needs beyond the video's own transcript/frames.
