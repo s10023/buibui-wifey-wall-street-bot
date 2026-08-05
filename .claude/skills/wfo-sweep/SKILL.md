@@ -26,6 +26,7 @@ Runs the complete Walk-Forward Optimization chain on a TOML config without any m
 ## Input
 
 User invokes `/wfo-sweep` with an optional config argument:
+
 - `/wfo-sweep` — defaults to `config/signal_watch.toml`
 - `/wfo-sweep config/signal_watch_weekdays.toml`
 - `/wfo-sweep all` — runs on all 3 active TOMLs sequentially
@@ -35,11 +36,13 @@ User invokes `/wfo-sweep` with an optional config argument:
 ### Step 1: Parse config
 
 Read the target TOML:
+
 ```bash
 cat config/signal_watch.toml
 ```
 
 Extract:
+
 - `timeframes` — list of TFs to sweep (e.g. `["15m", "1h", "4h", "1d"]`)
 - `symbols` — if set; otherwise default to `["BTCUSDT", "ETHUSDT", "SOLUSDT"]`
 - `fee_pct` — from `[backtest].fee_pct` or top-level, default `0.0005`
@@ -49,6 +52,7 @@ Extract:
 ### Step 2: Phase 1 — Audit (all TFs, BTC only)
 
 For each TF in config's `timeframes`:
+
 ```bash
 poetry run python wifey.py param-audit \
   --symbol BTCUSDT \
@@ -65,11 +69,13 @@ branch is dead for every active strategy — leave it off for a vanilla
 audit.
 
 Parse the audit table output. For each strategy × TF, note:
+
 - `Best OOS avg_r` — positive = edge exists
 - `OOS n` — trade count on OOS portion
 - Whether OOS avg_r > current tp_r-implied edge
 
 Strategies to skip (never sweep):
+
 - `seasonality` — not in SIGNAL_REGISTRY
 - Strategies where OOS avg_r < 0 AND current TOML already has a reasonable tp_r
 
@@ -80,6 +86,7 @@ Min trades by TF: `15m→20, 1h→12, 4h→5, 1d→2`
 ### Step 3: Phase 2 — Deep sweep (candidates only)
 
 For each (strategy, TF) in candidate list, run on each symbol in config:
+
 ```bash
 poetry run python wifey.py param-sweep \
   --strategy <strategy> \
@@ -105,6 +112,7 @@ Collect results per (strategy, TF, symbol): best tp_r, OOS avg_r, OOS n, flag.
 For each strategy × TF:
 
 **Picking best tp_r:**
+
 1. Filter: keep only rows with `flag = ok` (drop `⚠ OVERFIT`)
 2. Filter: OOS n ≥ min_trades threshold for that TF
 3. Filter: OOS avg_r > 0
@@ -122,28 +130,33 @@ both must hold. Before applying a winner in Step 5:
 - `⚠ COMMIT-GATE: INSUFFICIENT` → skip the cell; note "insufficient — gate".
 
 **Global vs per-symbol:**
+
 - If all symbols agree within 0.5 step → use global strategy-level `tp_r`
 - If any symbol diverges by > 0.5 → use TF-specific key (e.g. `tp_r_1h`) or per-symbol override in `[strategy_params.<name>.per_symbol.<SYMBOL>]`
 
 **When to update TOML:**
+
 - Update if new tp_r differs from current by ≥ 0.5
 - Update if OOS avg_r improvement > +0.05R vs current
 - Leave unchanged if marginal (< 0.5 step AND < 0.05R improvement)
 - Never add a strategy to `strategy_timeframes` based on sweep alone — only update existing entries
 
 **Cross-config sync:**
+
 - If sweeping `signal_watch.toml` AND `signal_watch_weekdays.toml` exists:
   - For TFs active in weekdays config, apply the same tp_r changes (they share the same market)
 
 ### Step 5: Apply changes to TOML
 
 Edit the config file(s) with new tp_r values. Add inline comment with WFO evidence:
+
 ```toml
 tp_r = 2.5  # WFO OOS: +0.31R, n=47 (2026-04-05)
 ```
 
 Show a summary table before writing:
-```
+
+```text
 Changes to apply:
   strategy            TF    old tp_r → new tp_r   OOS avg_r  OOS n
   ─────────────────────────────────────────────────────────────────
@@ -160,11 +173,13 @@ Ask: "Apply these changes? (y/n)"
 ### Step 6: Phase 4 — Validate
 
 After applying TOML changes, run backtest + recalibrate:
+
 ```bash
 make buibui-backtest CONFIG=config/signal_watch.toml SAVE=1
 ```
 
 Then dry-run recalibrate to see star changes:
+
 ```bash
 poetry run python wifey.py recalibrate --config config/signal_watch.toml
 ```
@@ -172,6 +187,7 @@ poetry run python wifey.py recalibrate --config config/signal_watch.toml
 Show diff. Ask: "Apply star ratings? (y/n)"
 
 If yes:
+
 ```bash
 poetry run python wifey.py recalibrate --config config/signal_watch.toml --apply
 ```
@@ -179,11 +195,13 @@ poetry run python wifey.py recalibrate --config config/signal_watch.toml --apply
 ### Step 7: Update golden files
 
 After recalibration, regenerate the regression golden files to capture the new metrics:
+
 ```bash
 make regression-update
 ```
 
 Review what changed:
+
 ```bash
 git diff tests/fixtures/golden_*.json
 ```
@@ -191,6 +209,7 @@ git diff tests/fixtures/golden_*.json
 ### Step 8: Commit
 
 Stage and commit:
+
 ```bash
 git add config/signal_watch.toml config/signal_watch_weekdays.toml tests/fixtures/golden_*.json
 git commit -m "chore(config): WFO sweep — update tp_r per strategy × TF (2026-04-XX)"
@@ -199,7 +218,8 @@ git commit -m "chore(config): WFO sweep — update tp_r per strategy × TF (2026
 ## Output format
 
 Final summary:
-```
+
+```text
 WFO sweep complete — config/signal_watch.toml
   Updated: N strategies across M TFs
   Backtest saved. Stars: K changed, L unchanged.

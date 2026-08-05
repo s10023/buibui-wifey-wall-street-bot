@@ -18,6 +18,7 @@ automatically determine the best tp_r per strategy × TF and apply to all releva
 ## Inputs expected from user
 
 Either:
+
 - One or more `param-sweep` tables (strategy × tp_r grid with IS/OOS avg_r, decay, flag)
 - One or more `param-audit` tables (strategy × TF with Best IS / Best OOS / verdict)
 - Or a mix of both
@@ -61,6 +62,7 @@ filters above lack). It is **additive** to filters 1–3 (both must hold):
 ### Day-filter caveat
 
 WFO sweeps are run against a specific config (usually `signal_watch.toml` with `day_filter = tue_thu`).
+
 - Apply findings to `signal_watch.toml` (tue_thu) freely
 - Apply to `signal_watch_weekdays.toml` only for TFs that were already active there
 
@@ -81,7 +83,7 @@ WFO sweeps are run against a specific config (usually `signal_watch.toml` with `
 
 After completing all steps, print:
 
-```
+```text
 Changes applied:
   strategy          TF    old tp_r → new tp_r   OOS avg_r  OOS n
   ──────────────────────────────────────────────────────────────
@@ -98,6 +100,7 @@ Backtest saved. Recalibration: N changed / M unchanged.
 ## Task: apply sweep findings
 
 When the user pastes sweep or audit results:
+
 1. Follow the decision rules above
 2. Apply changes to TOML files
 3. Run backtest + recalibrate

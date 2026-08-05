@@ -118,14 +118,14 @@ For tp_r refresh, follow up with `/wfo-sweep config/signal_watch_weekdays.toml`.
 ## Key behavioural differences between configs
 
 | Config | Day filter | Notable differences vs reference |
-|--------|-----------|----------------------------------|
+| -------- | ----------- | ---------------------------------- |
 | `signal_watch.toml` | tue_thu | Reference config; most swept |
 | `signal_watch_weekdays.toml` | weekdays | Mon/Fri included; broader equity coverage |
 
 ## Files
 
 | File | Role |
-|------|------|
+| ------ | ------ |
 | `config/signal_watch_weekdays.toml` | Primary target for this skill |
 | `config/signal_watch.toml` | Reference config (tue_thu) |
 | `analytics/signal_config.py` | `SignalWatchConfig`, `BacktestFilterConfig` |

@@ -20,7 +20,7 @@ first.
 ## Two modes
 
 | Command | When to use |
-|---------|-------------|
+| --- | --- |
 | `analytics backfill` | First-time setup, wiped DB, new symbol, new timeframe, filling a known gap |
 | `analytics sync` | Routine top-up (already wired into the live signal daemon) |
 
@@ -31,6 +31,7 @@ what's missing.
 ## Most common invocations
 
 ### Full backfill — all symbols from `coins.json`, default 1h + 4h
+
 ```bash
 make buibui-analytics-backfill SINCE=2023-01-01
 
@@ -39,30 +40,36 @@ buibui analytics backfill --since 2023-01-01
 ```
 
 ### Backfill specific symbols / timeframes
+
 ```bash
 buibui analytics backfill --symbols BTCUSDT ETHUSDT --timeframes 15m 1h 4h --since 2025-01-01
 make buibui-analytics-backfill SYMBOLS="BTCUSDT ETHUSDT" TIMEFRAMES="15m 1h" SINCE=2025-01-01
 ```
 
 ### Fill a known gap
+
 The MEMORY note "Data gap RESOLVED" lists the canonical re-fill date when the
 DB is wiped. Currently:
+
 ```bash
 make buibui-analytics-backfill SINCE=2025-09-12
 ```
+
 Use this exact anchor date for any saved backtest so results stay comparable.
 
 ### Incremental sync (one-shot)
+
 ```bash
 make buibui-analytics-sync
 buibui analytics sync --symbols BTCUSDT --timeframes 1h
 ```
+
 The signal daemon (`buibui signal watch`) calls sync internally each cycle, so
 manual sync is only needed for ad-hoc top-ups before a backtest.
 
 ## CLI flags
 
-```
+```text
 buibui analytics backfill
   --symbols SYMBOL [SYMBOL ...]    default: all from config/coins.json
   --timeframes TF [TF ...]         default: 1h 4h
@@ -93,6 +100,7 @@ SQL
 ```
 
 Look for:
+
 - A `last` timestamp within the current candle window (otherwise sync first)
 - A `first` at or before your intended `--since` for any saved backtest
 - Roughly equal candle counts across same-TF symbols (a short symbol means
@@ -112,7 +120,7 @@ Look for:
 ## Implementation files
 
 | File | Role |
-|------|------|
+| ------ | ------ |
 | `analytics/data_fetcher.py` | Binance REST paginator; `fetch_klines()` |
 | `analytics/data_sync.py` | `backfill_symbol()`, `sync_symbol()` orchestration; upserts to `ohlcv` |
 | `analytics/data_store.py` | `ohlcv` table schema; `upsert_ohlcv()` |
