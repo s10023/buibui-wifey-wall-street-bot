@@ -1100,12 +1100,23 @@ move them, and finding that out silently is exactly what the suite exists to pre
 
 Builds the Docker image when something that can affect it changes (`Dockerfile`,
 `.dockerignore`, `docker-compose.yml`, `pyproject.toml`, `poetry.lock`, or the workflow
-itself), so a docs-only PR no longer pays for a full image build.
+itself). The path filter sits on the `on:` **trigger**, not inside a step, so an
+unaffected PR does not start the workflow at all — a step-level filter still spins up a
+runner to check out the repo and evaluate the filter before deciding to skip.
 
 ### `security-scan.yaml` — Trivy filesystem scan
 
-Runs a `CRITICAL,HIGH` Trivy scan on every push to `main` and every PR. Advisory:
-`exit-code: '0'`, so findings are reported without failing the build.
+Two Trivy steps that answer different questions and so carry different exit codes:
+
+| Scanner | Exit code | Why |
+| --- | --- | --- |
+| `secret` | `'1'` — **gates** | A committed credential is a property of *this diff*, always the author's to fix, and fixable in the same PR. `.env`, `config/stocks.json` and all of `docs/plans/` are gitignored, so a `git add -f` under `docs/plans/` is the realistic path to leaking one |
+| `vuln` | `'0'` — advisory | A `CRITICAL,HIGH` CVE appears because the outside world changed, not the repo. Gating on it reddens whichever unrelated PR happens to be open and forces a dependency bump at an arbitrary moment |
+
+The advisory step carries `if: always()` so its report still appears when the secret gate
+has failed. The action is pinned to a release tag (`@v0.36.0`) rather than `@master`:
+this is the workflow whose job is to catch supply-chain problems, and a mutable ref means
+the scanner itself is unreviewed code that can change between two runs of the same commit.
 
 ---
 
