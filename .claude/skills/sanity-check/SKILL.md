@@ -11,7 +11,7 @@ allowed-tools: Bash, Read, Edit
 
 # Sanity Check Skill
 
-Run a full periodic health check of the buibui-moon-trader-bot codebase. **Run weekly, or after any large refactor/merge.**
+Run a full periodic health check of the buibui-wifey-wall-street-bot codebase. **Run weekly, or after any large refactor/merge.**
 
 This check covers five dimensions: CI hygiene, wiring audit, documentation sync, skills freshness, and architecture review.
 
@@ -41,19 +41,37 @@ Check all of the following:
 
 Every strategy must appear in ALL of these locations or it silently breaks:
 
-- `analytics/indicators_lib.py` — `STRATEGY_REGISTRY` dict entry
-- `analytics/indicators_lib.py` — `DETECTOR_REGISTRY` dict entry (except `funding_reversion`, `smt_divergence` — they have explicit branches in `backtest_runner.py`)
-- `signals/registry.py` — `SIGNAL_REGISTRY` entry (all except `seasonality` and legacy `fibonacci_retracement`)
+- `analytics/strategies/<name>.py` — the `detect_*` module itself
+- `analytics/strategies/_registry.py` — `STRATEGY_REGISTRY` entry
+- `analytics/strategies/_registry.py` — `DETECTOR_REGISTRY` entry
+- `signals/registry.py` — `SIGNAL_REGISTRY` entry
 - `tests/` — at least one test for the detector function
 
-Run this to get a cross-reference:
+**`analytics/indicators_lib.py` no longer exists** — it was removed in strat-3
+and the registries live in `analytics/strategies/_registry.py`. This section
+grepped the dead path until 2026-08-05, which does not error visibly enough:
+the grep simply matches nothing, and an empty result reads exactly like "no
+problems found" in the repo's most important wiring check.
+
+Cross-reference by importing the registries rather than grepping for them —
+a grep silently returns nothing when a path or a literal changes shape:
 
 ```bash
-grep -n '"[a-z_]*":' analytics/indicators_lib.py | grep -E "(STRATEGY|DETECTOR)_REGISTRY"
-grep -n 'name=' signals/registry.py
+poetry run python -c "
+from analytics.strategies._registry import STRATEGY_REGISTRY, DETECTOR_REGISTRY
+from signals.registry import SIGNAL_REGISTRY
+print('STRATEGY', len(STRATEGY_REGISTRY), '| DETECTOR', len(DETECTOR_REGISTRY), '| SIGNAL', len(SIGNAL_REGISTRY))
+print('STRATEGY - DETECTOR:', set(STRATEGY_REGISTRY) - set(DETECTOR_REGISTRY))
+print('DETECTOR - SIGNAL  :', set(DETECTOR_REGISTRY) - set(SIGNAL_REGISTRY))
+"
 ```
 
-Compare the two lists. Flag any strategy in STRATEGY_REGISTRY but not DETECTOR_REGISTRY (or vice versa), and any in DETECTOR_REGISTRY but not SIGNAL_REGISTRY.
+Expected as of 2026-08-05: `STRATEGY 17 | DETECTOR 16 | SIGNAL 16`, with
+`STRATEGY - DETECTOR == {'seasonality'}` (a stats helper, not a dispatchable
+alert) and `DETECTOR - SIGNAL == set()`. Any other difference is a real wiring
+bug. Note `funding_reversion` and `smt_divergence` are **gone** (stripped at the
+fork / T5b) — they survive only in comments explaining their removal, so do not
+treat them as registry exceptions.
 
 ### Config wiring
 
@@ -75,7 +93,7 @@ Compare the two lists. Flag any strategy in STRATEGY_REGISTRY but not DETECTOR_R
 ### Thin wrapper / pure lib boundary
 
 - `*_runner.py` files must NOT contain business logic — only: create client, open DB, call lib, close
-- `*_lib.py` files must NOT import `binance_client`, make network calls, or open DB connections at module level
+- `*_lib.py` files must NOT make network calls or open DB connections at module level. (The fork's `utils/binance_client.py` is gone; the equivalent live clients are `utils/yfinance_client.py` and `utils/edgar_client.py`, both of which must stay side-effect-free at import time.)
 
 ---
 
@@ -85,17 +103,36 @@ Check these in parallel:
 
 ### README.md
 
-- Does `## Usage` reflect all current `buibui` subcommands? Verified set:
-  `monitor`, `signal`, `analytics`, `backtest`, `digest`, `param-sweep`,
-  `param-audit`, `recalibrate`, `web`. Note `signal` and `monitor` are
-  parent groups (`buibui signal watch`, `buibui signal test`,
-  `buibui monitor price`, `buibui monitor position`).
+- Does `## Usage` reflect all current `wifey` subcommands? Verified set
+  (checked against `wifey.py --help`, 2026-08-05): `signal`, `analytics`,
+  `backtest`, `digest`, `param-sweep`, `param-audit`, `recalibrate`, `web`.
+  `signal` and `analytics` are groups (`wifey signal watch`,
+  `wifey signal test`, `wifey analytics backfill`, `wifey analytics sync`).
+  **There is no `monitor` subcommand** — it and the entire `monitor/` package
+  were removed in T16-partial (2026-05-15); equity price/position monitoring
+  lives in the web UI. Re-derive this set from `--help` rather than trusting
+  the list above.
 - Does `## Directory Structure` list all current top-level modules?
 - Are any sections referencing removed features?
 
 ### CLAUDE.md
 
-- Does `## Project Structure` match actual files on disk?
+- Does `## Project Structure` match the packages on disk? **Since the
+  2026-08-05 split it is a package *index* plus a verdict/footgun block, not a
+  file listing** — so check that every row's package still exists and that its
+  `Deep reference` pointer resolves to a real `.claude/context/*.md`, NOT that
+  every file appears here. Detail belongs in the context docs; if you find
+  module-level detail creeping back into CLAUDE.md, move it out.
+- Do the context docs cover every package? `any_referencing_changed_artifact`
+  greps cannot detect a package the docs have never heard of, so run a presence
+  check:
+
+  ```bash
+  for d in */; do d=${d%/}
+    case $d in tests|docs|config|scripts|__pycache__|.*) continue;; esac
+    grep -rqs "$d" .claude/context/ || echo "UNDOCUMENTED: $d"; done
+  ```
+
 - Does `## Agent Skills` table list all skills currently in `.claude/skills/`?
 
 Check with:
@@ -108,7 +145,9 @@ Compare against the table in `CLAUDE.md` — flag any skill directory with no en
 
 ### MEMORY.md
 
-Path: `~/.claude-personal/projects/-home-kng-repo-buibui-moon-trader-bot/memory/MEMORY.md`
+Path: `~/.claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot/memory/MEMORY.md`
+(**this** repo's memory — NOT the crypto parent's. A ported path here sends the
+session's `Current State` update into the wrong repo, silently.)
 
 - Is **Current State** up to date with recent changes?
 - Are completed items marked ✅ in the To-Do List?
@@ -118,7 +157,7 @@ Path: `~/.claude-personal/projects/-home-kng-repo-buibui-moon-trader-bot/memory/
 
 ## 4. Skills freshness audit
 
-Each skill in `~/.claude/skills/` documents a workflow. Skills can go stale when the codebase evolves. Check:
+Each skill in `.claude/skills/` (project-local, committed) documents a workflow. Skills can go stale when the codebase evolves. Check:
 
 For each skill, verify the **key claims** are still true:
 
@@ -127,13 +166,13 @@ For each skill, verify the **key claims** are still true:
 | `atr-sweep` | `--atr-sl-values` CLI flag exists in `wifey.py`; `format_atr_sl_sweep_table` exists in `backtest_lib.py` |
 | `volume-sweep` | `volume_suppress` field in `BacktestSweepConfig`; `effective_volume_suppress(strategy)` on `BacktestSweepConfig` |
 | `backtest-findings` | Min-trades thresholds still match `recalibrate_lib.py` defaults |
-| `recalibrate` | `buibui recalibrate` subcommand wired in `wifey.py`; `--config` + `--apply` flags present; `confidence_ratings` DB table exists |
+| `recalibrate` | `wifey recalibrate` subcommand wired in `wifey.py`; `--config` + `--apply` flags present; `confidence_ratings` DB table exists |
 | `new-strategy` | 4-file checklist still accurate; `DETECTOR_REGISTRY` is still the single source of truth |
-| `signal-watch` | `buibui signal watch` subcommand exists; TOML field names match `signal_config.py`; `min_avg_r` (not `filter_threshold`) in `[backtest]` section |
+| `signal-watch` | `wifey signal watch` subcommand exists; TOML field names match `signal_config.py`; `min_avg_r` (not `filter_threshold`) in `[backtest]` section |
 | `pr-summary` | Template sections match what's in the skill body |
-| `backtest-run` | All CLI flags listed match what `buibui backtest --help` outputs |
+| `backtest-run` | All CLI flags listed match what `wifey backtest --help` outputs |
 | `stats-dashboard` | Card count matches actual Stats.svelte; live vs cached split still accurate |
-| `investigate-strategy` | `make buibui-signal-test` Makefile target exists; `--at` UTC interpretation still correct |
+| `investigate-strategy` | `make wifey-signal-test` Makefile target exists; `--at` UTC interpretation still correct |
 
 Flag any stale claims and update the skill file.
 
