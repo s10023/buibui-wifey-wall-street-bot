@@ -144,6 +144,14 @@ pasted, then run the flow once over the whole set.
    Note the guard's blind spot: a row stating that one level and *nothing else* has no
    second leg to contradict it, so read the invalidation phrasing yourself too.
 
+   **Encode a one-legged row by rule, not by judgement** — the shape is common, not
+   exotic (7 of 11 candidate rows in one video batch). A level serving as **both** entry
+   and stop is zero risk: encode it as **entry + target with the stop left unstated**,
+   never as an invented gap the pundit did not give. A row with no numeric level at all
+   is a dropped candidate ("nothing scoreable"), not a Stream C write. A fabricated stop
+   is unfalsifiable once it is in the ledger — unlike the fake-`WIN` above, no guard can
+   ever see it.
+
    **After each successful append, record it:**
 
    ```bash

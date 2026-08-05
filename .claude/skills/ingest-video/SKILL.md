@@ -149,6 +149,11 @@ backfilled — check the scorer's warnings after a batch rather than assuming.
 
 ### 3. Pass 1 — text-only subagent, one per video, pinned to sonnet
 
+**Only 2 subagents run at once — a 3rd launch is blocked outright.** On a batch of 3+
+videos, pipeline steps 3 → 6 by hand in pairs rather than fanning the whole batch out at
+once, and budget the wall-clock for it. This is a harness limit, not a preference: a
+batch dispatched optimistically stalls on the blocked launch.
+
 For each shape-3 video, dispatch a `general-purpose` subagent via the Task tool with
 **`model: "sonnet"`** (do not inherit Opus) and `subagent_type: "general-purpose"`. Give
 it:
@@ -205,6 +210,15 @@ PY
 `item_ts` feeds step 5. Carry `dropped` (with its `drop_reason`) into the digest and the
 note verbatim — a dropped call must stay visible, because a silently lost call is
 indistinguishable from a video that never made one.
+
+**Know which way the tie-break leans before you read a thin result.** `keep_items` ranks
+by specificity desc, then **`ts` asc** — so a tie at `ITEM_CAP` resolves in favour of
+*earlier* material, and a pundit who opens with macro and closes with single names loses
+the single names first. Measured 2026-08-05: the cap bound on all four videos of a
+@fenggemeigu batch (26/15/39/36 candidates), and on one it dropped the NVDA setup **and
+both GOOGL items** — the two names in that video's own title. That is the cap doing its
+specified job, so read a thin yield as a cap artifact rather than as a video that made no
+calls, and check `dropped` before concluding otherwise.
 
 **Do not hand-roll the cutoff.** The floor and the cap do different jobs and one number
 cannot do both: the floor stops a *thin* video padding vibes up to the cap just because
@@ -330,9 +344,11 @@ you write depends on step 5's `marks` distinction:
 No subagent dispatch in either case.
 
 Otherwise, dispatch a `general-purpose` subagent, **`model: "sonnet"`**,
-`subagent_type: "general-purpose"`. Give it: the `frame_paths` list (it Reads each one —
-vision), the `transcript_path` from step 1 (**the path** — it Reads that file for context
-on what was said; do not paste `segments`), the kept items from step 3
+`subagent_type: "general-purpose"` (step 3's 2-at-once dispatch cap applies here too —
+these pass-2 agents share it with any pass-1 agent still running). Give it: the
+`frame_paths` list (it Reads each one — vision), the `transcript_path` from step 1
+(**the path** — it Reads that file for context on what was said; do not paste
+`segments`), the kept items from step 3
 (`ts`, `content_type`, `gist`), and the item schema below. It must NOT read any repo,
 SoT, or memory file. Instruct it to return ONLY this JSON:
 
@@ -540,6 +556,21 @@ a `WIN` at ~0.00 R — a fake statistic rather than a visible error. That is a r
 warnings. Note the guard's blind spot: a row stating that one level and *nothing else* has
 no second leg to contradict it, so read the invalidation phrasing yourself too — pass 2
 translating a CN hedge clause is exactly where this slips through.
+
+**That blind spot is this pipeline's common case, not an edge case, so encode it by rule
+rather than re-deriving one per run.** A TA-narrating pundit says "防势点 at X" and stops:
+in the 2026-08-05 @fenggemeigu batch **7 of 11** candidate Stream C rows stated one level
+and nothing else, 1 had none at all, and the only full entry/stop/target triple was
+degenerate.
+
+- A level serving as **both** entry and stop is zero risk, and the check flags it
+  correctly. Encode it as **entry + target with the stop left unstated** — never invent a
+  gap the pundit did not give.
+- A row with **no numeric level at all** is a dropped candidate ("nothing scoreable"), not
+  a Stream C write.
+
+Inventing a plausible stop is worse than leaving the leg empty: it is unfalsifiable once
+it is in the ledger, and unlike the fake-`WIN` above no guard can ever see it.
 
 `source` is `youtube` or `x-video` (from `meta.source`, verbatim — `tools/video_fetch.py`
 already resolves this). **`confidence` is always written as an empty string for a video
