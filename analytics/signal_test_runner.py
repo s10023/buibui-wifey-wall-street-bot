@@ -114,7 +114,7 @@ def run_signal_test(
     Parameters
     ----------
     symbols:
-        Trading pairs, e.g. ``["BTCUSDT"]``.
+        Symbols, e.g. ``["AAPL"]``.
     timeframes:
         Candle timeframes, e.g. ``["1h", "4h"]``.
     strategies:

@@ -278,7 +278,7 @@ def _is_number(value: Any) -> bool:
 
 
 def validate_coins_config(config_dict: dict[str, Any]) -> bool:
-    """Validate the coins.json config dict. Raises ValueError if invalid."""
+    """Validate the stocks.json config dict. Raises ValueError if invalid."""
     if not isinstance(config_dict, dict):
         raise ValueError("Config must be a dict of symbol: {leverage, sl_percent}")
 

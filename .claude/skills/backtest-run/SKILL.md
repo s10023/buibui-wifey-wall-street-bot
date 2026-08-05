@@ -109,7 +109,6 @@ wifey backtest
   --day-filter MODE        off | weekdays | tue_thu
   --save                   Persist results to DB (same as SAVE=1)
   --min-trades N           Hide combos below N trades
-  --secondary-symbol SYM   Secondary symbol for bos
 ```
 
 ## Config files

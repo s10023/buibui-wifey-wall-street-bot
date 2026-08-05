@@ -52,7 +52,7 @@ def parse_timeframe_secs(tf: str) -> int:
 def secs_until_next_boundary(timeframes: list[str]) -> tuple[float, float]:
     """Return (sleep_seconds, wakeup_unix_timestamp) for the next candle close.
 
-    Wakes at the earliest upcoming boundary + a small buffer so Binance has
+    Wakes at the earliest upcoming boundary + a small buffer so the provider has
     time to finalise the candle (e.g. 04:00:10, not 04:00:00).
     """
     now = time.time()

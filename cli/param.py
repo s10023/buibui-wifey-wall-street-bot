@@ -49,7 +49,9 @@ def run_param_sweep(args: argparse.Namespace) -> None:
 
         param_ranges = _default_param_ranges(args.strategy)
 
-    _tf_defaults = {"15m": 20, "1h": 12, "4h": 5, "1d": 2}
+    # Per-TF min_trades floors. Keys must be supported intervals: a "15m" key
+    # was dead fork inheritance, and 1wk previously fell through to the generic 8.
+    _tf_defaults = {"1h": 12, "4h": 5, "1d": 2, "1wk": 1}
     min_trades = (
         args.min_trades if args.min_trades else _tf_defaults.get(args.timeframe, 8)
     )
@@ -124,7 +126,9 @@ def run_param_audit(args: argparse.Namespace) -> None:
         if args.strategies
         else [s for s in KNOWN_STRATEGIES if s != "seasonality"]
     )
-    _tf_defaults = {"15m": 20, "1h": 12, "4h": 5, "1d": 2}
+    # Per-TF min_trades floors. Keys must be supported intervals: a "15m" key
+    # was dead fork inheritance, and 1wk previously fell through to the generic 8.
+    _tf_defaults = {"1h": 12, "4h": 5, "1d": 2, "1wk": 1}
     min_trades = (
         args.min_trades if args.min_trades else _tf_defaults.get(args.timeframe, 8)
     )
@@ -180,7 +184,7 @@ def add_param_sweep_subparser(
     param_sweep_parser.add_argument(
         "--symbol",
         required=True,
-        help="Symbol (e.g. BTCUSDT)",
+        help="Symbol (e.g. AAPL)",
     )
     param_sweep_parser.add_argument(
         "--timeframe",
@@ -314,7 +318,7 @@ def add_param_audit_subparser(
         help="Quick tp_r sweep across all strategies — verdict table showing which have edge",
     )
     param_audit_parser.add_argument(
-        "--symbol", required=True, help="Symbol (e.g. BTCUSDT)"
+        "--symbol", required=True, help="Symbol (e.g. AAPL)"
     )
     param_audit_parser.add_argument(
         "--timeframe", required=True, help="Timeframe (e.g. 1h)"

@@ -35,13 +35,13 @@ def add_analytics_subparser(
 
     # 'backfill' subcommand
     backfill_parser = analytics_subparsers.add_parser(
-        "backfill", help="Full history backfill from Binance"
+        "backfill", help="Full history backfill from yfinance"
     )
     backfill_parser.add_argument(
         "--symbols",
         nargs="+",
         default=None,
-        help="Symbols to backfill (default: all from coins.json)",
+        help="Symbols to backfill (default: all from stocks.json)",
     )
     backfill_parser.add_argument(
         "--timeframes",
@@ -70,7 +70,7 @@ def add_analytics_subparser(
         "--symbols",
         nargs="+",
         default=None,
-        help="Symbols to sync (default: all from coins.json)",
+        help="Symbols to sync (default: all from stocks.json)",
     )
     sync_parser.add_argument(
         "--timeframes",

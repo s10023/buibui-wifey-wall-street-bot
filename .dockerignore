@@ -7,4 +7,4 @@ tests/
 Dockerfile
 README.md
 .env
-config/coins.json
+config/stocks.json

@@ -11,7 +11,7 @@ Forked from the parent `buibui-moon-trader-bot` (crypto / Binance Futures); the 
 ### Core Tools
 
 - **24/7 Signal Detection Daemon**
-  Polls closed candles, runs 19 actionable equity strategies (FVG, BOS, ORB, liquidity sweep, EQH/EQL, order block, FVG, OTE, marubozu, wick fill, trend day, engulfing, pin bar, inside bar, hammer/hanging man, doji, morning/evening star, fib golden zone, EMA pullback — plus `seasonality` stats), and sends Telegram alerts with computed SL/TP levels. Two-layer dedup prevents spam.
+  Polls closed candles, runs the 16 actionable equity strategies in `SIGNAL_REGISTRY` (`bos`, `doji`, `ema`, `engulfing`, `eqh_eql`, `fvg`, `hammer_hanging_man`, `inside_bar`, `marubozu`, `morning_evening_star`, `orb`, `order_block`, `ote_entry`, `pin_bar`, `trend_day`, `wick_fill` — `seasonality` is detectable but not alertable, so `STRATEGY_REGISTRY` holds 17), and sends Telegram alerts with computed SL/TP levels. Two-layer dedup prevents spam.
   Alerts include a session-tagged header (Pre-Market / RTH / Power Hour / After Hours), `$CASHTAG` symbol, and a 2-line statistical context: direction-aware P1/P2 day bias, ADR consumed %, per-DOW empirical peak hour, and weekly P2 timing probability.
 
 - **Statistical Context Engine**
@@ -104,9 +104,9 @@ the policy bounds the bias, it does not remove it.
 `config/stocks.json` is the **live-alert watchlist** (13 symbols the daemon
 scans). For backtest / cross-sectional research there is a separate, larger
 **research breadth universe** in `config/universe.json` (committed/tracked, not
-gitignored — it is a reproducible research artifact): ~100 liquid US large-caps
-tracking the S&P 100 (OEX) constituents plus 4 index/sector ETFs (105 members),
-each tagged with `sector`, `kind` (`stock`|`etf`), a `delisted` lifecycle flag
+gitignored — it is a reproducible research artifact): **508 members** (504 liquid
+US large-caps plus 4 index/sector ETFs), seeded from the S&P 100 (OEX) and
+widened since, each tagged with `sector`, `kind` (`stock`|`etf`), a `delisted` lifecycle flag
 and an optional `listed` first-trading date (on names that list after the
 backfill start), under its own `universe_policy` + a `membership_as_of` snapshot
 date. Membership is **point-in-time-bounded, not scraped**: for mega-caps
@@ -130,76 +130,25 @@ The live signal scanner is unaffected — it still resolves symbols from
 
 ## Directory Structure
 
-```text
-buibui-wifey-wall-street-bot/
-├── wifey.py                        # CLI entry point (argparse)
-├── analytics/
-│   ├── analytics_runner.py          # Analytics thin wrapper (opens DB, resolves symbols via load_stocks_config, calls data_sync)
-│   ├── backtest_runner.py           # Backtest thin wrapper (opens DB, loads data, calls libs)
-│   ├── backtest_lib.py              # Pure backtest engine: Trade, BacktestResult, run_backtest
-│   ├── data_fetcher.py              # Pure yfinance → canonical OHLCV DataFrames (fetch_bars; 4h synthesised from 1h @ 13:30 UTC)
-│   ├── data_store.py                # Pure DuckDB read/write (schema, upsert, query helpers); tables: ohlcv, signals, signal_alert_outcomes, backtest_runs, backtest_trades, backtest_cache, stats_cache
-│   ├── data_sync.py                 # Backfill + incremental sync orchestration (single fetch_bars call; gated on data_quality between fetch and upsert)
-│   ├── data_quality.py              # Phase 0.5 OHLCV integrity monitor: check_ohlcv → DataQualityReport + quarantine; N3 PR2 adds pure detect_session_gaps (calendar-aware missing-session detection)
-│   ├── trading_calendar.py          # N3 PR2 NYSE (XNYS) calendar wrapper (only exchange_calendars importer): nyse_sessions + check_session_gaps bridge; backfill flags missing trading sessions warn-only
-│   ├── strategies/                  # Per-detector strategy package (22 active strategies + STRATEGY_REGISTRY + DETECTOR_REGISTRY)
-│   ├── signal_config.py             # Pure config loader: SignalWatchConfig, BacktestFilterConfig, BiasConfig, ComboConfig; TOML extends support
-│   ├── signal_lib.py                # Pure scan lib: scan_symbol(), run_scan_cycle(); injects StatsContext into alerts
-│   ├── signal_runner.py             # Signal daemon thin wrapper (creates client, opens DB, polls)
-│   ├── signal_test_runner.py        # Historical replay: no DB writes, no cooldown; --at / --lookback
-│   ├── stats_lib.py                 # Pure stats lib: compute_p1p2_daily, compute_hourly_extremes, compute_adr, compute_dow_patterns, compute_session_breakdown, compute_weekly_p1p2, compute_all → StatsBundle
-│   ├── backtest_config.py           # BacktestSweepConfig + load_backtest_config() for TOML sweep mode
-│   ├── param_sweep.py               # WFO sweep lib: run_param_sweep / run_strategy_audit; optional purged+embargoed K-fold CV (--cv-mode purged)
-│   ├── digest_lib.py                # 12 pre-canned SQL queries; run_digest; DigestScope; powers wifey digest
-│   ├── cme_gap_lib.py               # CME gap detection + alert warning helper
-│   ├── zones_lib.py                 # Structural zone extraction (geometry only): FVG, OB, EQH/EQL, BOS, Fib, OTE, swing points
-│   ├── recalibrate_lib.py           # Compute + write star ratings to DB or source
-│   ├── recalibrate_runner.py        # Recalibrate thin wrapper
-│   ├── perf_timer.py                # timed(label) context manager
-│   └── regime.py                    # Regime classifier (trend/range/high_vol/unknown); §6 of v2 redesign; Phase 2 live gate (soft mode)
-├── signals/
-│   ├── registry.py                  # SignalPlugin TypedDict + SIGNAL_REGISTRY (20 actionable strategies; seasonality/funding_reversion/fibonacci_retracement excluded)
-│   ├── cooldown_store.py            # Two-layer dedup: candle watermark + cooldown timer; per-channel keys (primary | wife)
-│   └── alert_formatter.py           # SignalEvent, StatsContext, ConfluenceData; 6-section alert layout (primary); minimal BUY/HOLD wife variant
-├── web/
-│   ├── api/
-│   │   ├── main.py                  # FastAPI app: lifespan, CORS, health, router mounts, StaticFiles
-│   │   ├── deps.py                  # Dependency factories: get_db, require_token
-│   │   ├── models/                  # Pydantic request/response models
-│   │   └── routers/                 # Route handlers: config, ohlcv, fib, signals, backtest, stats, zones
-│   └── ui/                          # Svelte 5 + Vite frontend (Phase 5)
-│       ├── package.json
-│       ├── vite.config.ts           # Vite config — proxies /api to :8000 in dev
-│       ├── tsconfig.json
-│       ├── index.html
-│       └── src/
-│           ├── api.ts               # Typed API client
-│           ├── stores/              # Svelte stores: config, strategies, activeConfig, watchlist
-│           ├── pages/               # Chart, Backtest, SignalFeed, Stats
-│           └── components/          # Nav, CandleChart, BacktestResult, …
-├── utils/
-│   ├── yfinance_client.py           # Equity OHLCV via yfinance (Phase A)
-│   ├── config_validation.py         # Validates + loads coins.json/stocks.json (load_stocks_config since T5)
-│   ├── telegram.py                  # Low-level Telegram send (single channel, retry)
-│   ├── telegram_router.py           # Dual-channel dispatcher (primary | wife); reads TELEGRAM_BOT_TOKEN_2/_CHAT_ID_2; TELEGRAM_WIFE_DRY_RUN=1 logs instead of sending
-│   ├── live_store.py                # Shared in-memory store for live WebSocket data
-│   └── live_loop.py                 # Shared Rich live display loop logic
-├── config/
-│   ├── coins.json.example           # Coin list, SL%, leverage per symbol
-│   └── signal_watch.toml            # Default signal watch config (timeframes, telegram, min_sl_pct)
-├── .env.example                     # Environment variable template
-├── .github/
-│   ├── scripts/
-│   │   └── update-skills.sh         # SKILL.md frontmatter validator (run by lint.yaml)
-│   └── workflows/
-│       ├── lint.yaml                # CI: markdown, lint, typecheck, tests, regression, frontend
-│       ├── docker-build.yaml        # CI: Docker image build (path-filtered)
-│       └── security-scan.yaml       # CI: Trivy filesystem scan (advisory)
-├── Makefile                         # Dev & run commands
-├── Dockerfile                       # Container setup
-├── pyproject.toml                   # Poetry dependencies
-└── README.md
-```
+Package-level map. **Module-level detail lives in `.claude/context/*.md`** — that is the
+single reference. This table is orientation only; it deliberately does not restate what
+each module does, because a second copy of the module map is what rotted the first one.
+
+| Path | What it is | Deep reference |
+| --- | --- | --- |
+| `wifey.py` · `cli/` | Thin CLI entry shim + argparse subcommand package (`signal` / `analytics` / `backtest` / `digest` / `param` / `recalibrate` / `web`) | — |
+| `analytics/` | DuckDB analytics layer: `store/`, `strategies/` (18 detector modules, 17 in `STRATEGY_REGISTRY`), `backtest/`, `signal/`, `stats/`, `research_guards/`, plus data ingest / quality / NYSE-calendar | `.claude/context/analytics.md` |
+| `signals/` · `utils/` | Alerting + two-layer dedup daemon (detection itself lives in `analytics/`); shared Telegram / yfinance / EDGAR clients and the config-universe loaders | `.claude/context/signals.md` |
+| `web/` | FastAPI backend (`web/api/`) + Svelte 5 / Vite UI (`web/ui/`) | `.claude/context/web.md` |
+| `tools/` | One-shot analysis, audit, and research-ingest scripts; not part of the daemon or CLI surface | `.claude/context/tools.md` |
+| `config/` | `stocks.json` (gitignored 13-symbol live watchlist), `universe.json` (committed 508-member research breadth universe), `strategy_params.toml`, `signal_watch*.toml` | `.claude/context/config.md` |
+| `tests/` | pytest suite; tests import from lib modules and pass mock dependencies directly | — |
+| `migrations/` | One-shot DB migration scripts, run by hand — routine schema changes go through `analytics/store/schema.py` instead | — |
+| `trade/` | Empty placeholder package marking the Phase B seam (both files are 0 bytes) — the fork's Binance order opener was stripped. Phase B fills it with an equities broker adapter | — |
+
+Repo-root files: `Makefile` (dev & run commands), `Dockerfile` / `docker-compose.yml`,
+`pyproject.toml` (Poetry), `.env.example`, and `.github/workflows/` (`lint.yaml` CI,
+`docker-build.yaml`, `security-scan.yaml`).
 
 ---
 
@@ -236,7 +185,7 @@ A 2-line summary of the most actionable stats is injected into every Telegram si
 ### 1. Clone this repo
 
 ```bash
-git clone https://github.com/kng-software/buibui-wifey-wall-street-bot.git
+git clone git@github.com-personal:s10023/buibui-wifey-wall-street-bot.git
 cd buibui-wifey-wall-street-bot
 ```
 
@@ -256,37 +205,54 @@ poetry update
 
 ### 3. Add your API keys
 
-Create a `.env` file with the following variables (see `.env.example` for a template):
+Create a `.env` file (see `.env.example` for the full template). Phase A needs **no
+market-data key** — yfinance is unauthenticated.
 
 ```bash
-BINANCE_API_KEY=your_binance_api_key_here
-BINANCE_API_SECRET=your_binance_api_secret_here
+# Protects all /api/* endpoints
+# generate: python3 -c "import secrets; print(secrets.token_hex(32))"
+API_TOKEN=your_web_api_token_here
 
+# Primary Telegram channel — full trader-facing alert
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
 TELEGRAM_CHAT_ID=your_telegram_chat_id_here
 
-# Short-term wallet target for progress bar
-WALLET_TARGET=1000
+# Wife Telegram channel — minimal BUY/HOLD alert
+TELEGRAM_BOT_TOKEN_2=your_wife_telegram_bot_token_here
+TELEGRAM_CHAT_ID_2=your_wife_telegram_chat_id_here
+TELEGRAM_WIFE_DRY_RUN=1   # 1 = log instead of send (rollout safety)
+
+# Optional — only for /ingest-video on caption-less video
+GROQ_API_KEY=
 ```
 
-### 4. Configure your coins
+### 4. Configure your watchlist
 
-Copy `config/coins.json.example` to `config/coins.json` and edit to define each symbol's leverage and stop-loss percent.
+Copy `config/stocks.json.example` to `config/stocks.json` and edit it to define the
+symbols the daemon scans and each symbol's stop-loss percent. `config/stocks.json` is
+gitignored (personal watchlist); only the `.example` ships.
 
 ```sh
-cp config/coins.json.example config/coins.json
+cp config/stocks.json.example config/stocks.json
 ```
 
 ```json
 {
-  "BTCUSDT": { "leverage": 25, "sl_percent": 2.0, "smt_secondary": "ETHUSDT" },
-  "ETHUSDT": { "leverage": 20, "sl_percent": 2.5, "smt_secondary": "BTCUSDT" },
-  "SOLUSDT": { "leverage": 20, "sl_percent": 3.5, "smt_secondary": "ETHUSDT" }
+  "universe_policy": {
+    "scope": "liquid_large_cap",
+    "as_of": "today",
+    "survivorship_note": "Watchlist hand-picked at fork time from today's mega-caps — a forward-looking selection over the backtested history."
+  },
+  "AAPL": { "sl_pct": 0.05 },
+  "MSFT": { "sl_pct": 0.05 },
+  "NVDA": { "sl_pct": 0.05 }
 }
 ```
 
-`smt_secondary` is optional. When set, the signal daemon uses it as the correlated
-symbol for `smt_divergence` detection on that symbol.
+The reserved `universe_policy` block is not a symbol — it declares how the watchlist was
+selected and is stamped onto every saved `backtest_runs` row (see
+[Universe policy](#universe-policy-phase-01) above). Live SL flows from the active
+signal-watch TOML; a per-symbol `sl_pct` here takes precedence.
 
 ---
 
@@ -306,8 +272,9 @@ poetry run python wifey.py analytics backfill --since 2023-01-01
 Options:
 
 - `--since YYYY-MM-DD` — start date for backfill (default: `2023-01-01`)
-- `--symbols BTCUSDT ETHUSDT` — symbols to fetch (default: all coins in `config/coins.json`)
-- `--timeframes 1h 4h 1d` — timeframes to fetch (default: `1h 4h 1d`)
+- `--symbols AAPL MSFT` — symbols to fetch (default: all symbols in `config/stocks.json`)
+- `--timeframes 4h 1d 1wk` — timeframes to fetch (default: `1h 4h`). Supported: `1h`, `4h`, `1d`, `1wk`
+- `--universe` — resolve symbols from `config/universe.json` (508-member research breadth universe) instead of the watchlist
 
 **Incremental sync — fetch new candles since last stored:**
 
@@ -329,7 +296,7 @@ Backtest runs in two modes: **single-combo** (one symbol + strategy) or **sweep*
 **Single-combo mode:**
 
 ```bash
-poetry run python wifey.py backtest --symbol BTCUSDT --strategy fvg --interval 4h --days 90
+poetry run python wifey.py backtest --symbol AAPL --strategy fvg --interval 4h --days 90
 ```
 
 **Sweep mode — TOML config:**
@@ -341,45 +308,49 @@ poetry run python wifey.py backtest --config config/signal_watch.toml
 **Sweep mode — CLI flags:**
 
 ```bash
-poetry run python wifey.py backtest --symbols BTCUSDT ETHUSDT --timeframes 1h 4h --strategies fvg bos --days 90
+poetry run python wifey.py backtest --symbols AAPL MSFT --timeframes 4h 1d --strategies fvg bos --days 90
 ```
 
 **Available strategies:**
 
-| Strategy | Description | Confidence |
-| --- | --- | --- |
-| `smt_divergence` | Two correlated assets diverge at a confirmed pivot swing high/low (centred 11-candle window) | ★★★★☆ |
-| `fvg` | Fair Value Gap — 3-candle imbalance zone fill with EMA-50 trend filter | ★☆☆☆☆ |
-| `eqh_eql` | Equal Highs/Lows: liquidity sweep of a double-top or double-bottom; both pivots must be intact (price must not have breached the level between their formations) | ★☆☆☆☆ |
-| `funding_reversion` | Extreme positive/negative funding rate → contrarian signal | ★☆☆☆☆ |
-| `cvd_divergence` | CVD Divergence — price and buying pressure disagree at a swing extreme | ★☆☆☆☆ |
-| `order_block` | ICT Order Block — last up/down candle before displacement; entry on retest | ★☆☆☆☆ |
-| `orb` | Opening Range Breakout — first N candles of US RTH session (13:30 UTC anchor) form the range; breakout enters | ★☆☆☆☆ |
-| `bos` | Break of Structure / Change of Character (BOS/CHoCH) | ★☆☆☆☆ |
-| `wick_fill` | Price revisits a significant wick zone | ★☆☆☆☆ |
-| `marubozu` | Retest of a wickless candle's open price (order block) | ★☆☆☆☆ |
-| `trend_day` | Trend Day: candle opens near one extreme, closes near the other (large body, tiny leading wick) — **4h/1d only** | ★☆☆☆☆ |
-| `engulfing` | Bullish/Bearish Engulfing: current candle body fully engulfs the prior candle body | ★★☆☆☆ |
-| `pin_bar` | Pin Bar: small body with a long rejection wick (≥2× body) | ★★☆☆☆ |
-| `inside_bar` | Inside Bar breakout: body contained within prior candle, signal on breakout close | ★★☆☆☆ |
-| `hammer_hanging_man` | Hammer (bullish reversal) / Hanging Man (bearish): pin-bar shape with trend context | ★☆☆☆☆ |
-| `doji` | Doji (open ≈ close) followed by a strongly directional confirmation candle | ★★☆☆☆ |
-| `morning_evening_star` | Morning Star (3-candle bullish reversal) / Evening Star (3-candle bearish reversal) | ★★☆☆☆ |
-| `ote_entry` | Optimal Trade Entry (0.618–0.786) after confirmed BOS — deeper, more selective retracement | ★☆☆☆☆ |
-| `seasonality` | Average return by day-of-week, hour, and week-of-month | ★★☆☆☆ |
-| `ema` | EMA pullback continuation (Variant A): trend (slow EMA + slope) + regime gate, pullback wick into fast EMA, body-fraction trigger | ★★★☆☆ |
+The 17 keys in `STRATEGY_REGISTRY`. All but `seasonality` are alertable (`SIGNAL_REGISTRY`
+= 16). **Star ratings are deliberately not listed here** — they are per-strategy × per-TF ×
+per-config, live in the `confidence_ratings` DB table, and are rewritten by
+`make wifey-recalibrate`. Read them from the Backtest web page or `wifey digest`.
+
+| Strategy | Description |
+| --- | --- |
+| `bos` | Break of Structure / Change of Character (BOS/CHoCH); signal stamped at the confirmation bar |
+| `doji` | Doji (open ≈ close) followed by a strongly directional confirmation candle |
+| `ema` | EMA pullback continuation (Variant A): trend (slow EMA + slope) + regime gate, pullback wick into fast EMA, body-fraction trigger |
+| `engulfing` | Bullish/Bearish Engulfing: current candle body fully engulfs the prior candle body |
+| `eqh_eql` | Equal Highs/Lows: sweep of a double-top or double-bottom; both pivots must be intact (price must not have breached the level between their formations) |
+| `fvg` | Fair Value Gap — 3-candle imbalance zone fill with EMA-50 trend filter |
+| `hammer_hanging_man` | Hammer (bullish reversal) / Hanging Man (bearish): pin-bar shape with trend context |
+| `inside_bar` | Inside Bar breakout: body contained within prior candle, signal on breakout close |
+| `marubozu` | Retest of a wickless candle's open price (order block) |
+| `morning_evening_star` | Morning Star (3-candle bullish reversal) / Evening Star (3-candle bearish reversal) |
+| `orb` | Opening Range Breakout — first N candles of US RTH session (13:30 UTC anchor) form the range; breakout enters |
+| `order_block` | ICT Order Block — last up/down candle before displacement; entry on retest |
+| `ote_entry` | Optimal Trade Entry (0.618–0.786) after confirmed BOS — deeper, more selective retracement |
+| `pin_bar` | Pin Bar: small body with a long rejection wick (≥2× body) |
+| `seasonality` | Average return by day-of-week, hour, and week-of-month. **Detect-only — not dispatched to alerts** |
+| `trend_day` | Trend Day: candle opens near one extreme, closes near the other (large body, tiny leading wick) — **4h/1d only** |
+| `wick_fill` | Price revisits a significant wick zone |
+
+Two modules under `analytics/strategies/` are present but unregistered and therefore never
+run: `fibonacci_retracement.py` and `funding_extreme.py` (the latter is crypto-only).
 
 **Single-combo options:**
 
-- `--symbol BTCUSDT` — primary symbol
+- `--symbol AAPL` — symbol to backtest
 - `--strategy fvg` — strategy name from table above
-- `--interval 4h` — candle timeframe (default: `4h`)
-- `--secondary-symbol ETHUSDT` — required for `smt_divergence`
+- `--interval 4h` — candle timeframe (default: `4h`); one of `1h`, `4h`, `1d`, `1wk`
 
 **Sweep options (TOML or CLI):**
 
 - `--config FILE` — TOML preset file (see `config/signal_watch.toml`)
-- `--symbols BTCUSDT ETHUSDT` — symbols to sweep
+- `--symbols AAPL MSFT` — symbols to sweep
 - `--strategies fvg bos` — strategies to sweep
 - `--timeframes 1h 4h` — timeframes to sweep
 - `--min-trades 20` — hide combos below this trade count (default: `20`)
@@ -390,13 +361,13 @@ poetry run python wifey.py backtest --symbols BTCUSDT ETHUSDT --timeframes 1h 4h
 - `--since YYYY-MM-DD` — anchor start date for stable, comparable runs (e.g. `--since 2025-09-12`). Overrides `--days` when set — use this for saved runs so results don't drift day-to-day.
 - `--sl-pct 0.02` — stop loss as decimal fraction (default: `0.02` = 2%)
 - `--tp-r 2.0` — take profit in R multiples (default: `2.0`)
-- `--fee-pct 0.0005` — taker fee per leg (default: `0.0`; use `0.0005` for 0.05% Binance taker)
+- `--fee-pct 0.0005` — flat fee per leg (default: `0.0`). Live configs use the richer `[backtest.cost_model]` block instead — see **Equity cost model** above
 - `--day-filter` — suppress Monday and Friday signals before backtesting (ICT weekly cycle)
 - `--save` — persist results to `backtest_runs` and `backtest_trades` tables in `analytics.db`
 - `--combo` — run co-firing confluence backtests across all strategy pairs; detects pairs within `--window` candles
 - `--window N` — co-firing window: ±N candles for strategy pair detection (default: `5`)
 - `--cross-tf` — run cross-TF co-firing backtests (HTF sets context, LTF is entry); sweeps all symbol × HTF/LTF-pair × strategy pairs
-- `--htf-ltf 4h:15m 4h:1h` — HTF:LTF pairs to sweep (default: all 5 canonical pairs)
+- `--htf-ltf 1d:4h 4h:1h` — HTF:LTF pairs to sweep (default: the 5 canonical pairs `4h:1h`, `1d:4h`, `1d:1h`, `1wk:1d`, `1wk:4h`)
 - `--window-hours N` — cross-TF lookback in hours: HTF signal must have fired within N hours of the LTF signal (default: `4.0`)
 - `--workers N` — parallel workers for combo backtest, one per symbol×TF chunk (default: `min(4, cpu_count-1)`); pass `1` for serial mode
 
@@ -414,7 +385,7 @@ poetry run python wifey.py backtest --symbols BTCUSDT ETHUSDT --timeframes 1h 4h
 **Single-combo example output:**
 
 ```text
-Backtest: BTCUSDT 4h — fvg
+Backtest: AAPL 4h — fvg
 ────────────────────────────────────────────────────
 Signals:     42 total, 39 closed
 Win rate:    61.5%  (24W / 15L)
@@ -430,9 +401,9 @@ Backtest Sweep — 3 symbol(s) × 2 timeframe(s) × 4 strategy/ies (90d)
 ══════════════════════════════════════════════════════════════════
 Symbol          TF    Strategy            Win%  Trades   Avg R
 ──────────────────────────────────────────────────────────────────
-BTCUSDT       4h    fvg                  62.5%      48  +1.84R
-ETHUSDT       1d    order_block          58.3%      24  +1.61R
-SOLUSDT       1h    bos                  54.1%      85  +1.42R
+AAPL          4h    fvg                  62.5%      48  +1.84R
+MSFT          1d    order_block          58.3%      24  +1.61R
+NVDA          1wk   bos                  54.1%      85  +1.42R
 ──────────────────────────────────────────────────────────────────
   Hidden: 3 combo(s) with < 20 trades
 ```
@@ -495,17 +466,15 @@ poetry run python wifey.py signal watch
 **Options:**
 
 - `--config config/signal_watch.toml` — load all options from a TOML file; CLI flags override file values
-- `--symbols BTCUSDT ETHUSDT` — symbols to scan (default: all from `coins.json`)
-- `--timeframes 4h` — candle timeframes (default: `4h`)
-- `--strategies fvg bos` — strategies to run (default: all 20 actionable from `SIGNAL_REGISTRY`)
+- `--symbols AAPL MSFT` — symbols to scan (default: all from `config/stocks.json`)
+- `--timeframes 4h 1d 1wk` — candle timeframes (default: `4h`)
+- `--strategies fvg bos` — strategies to run (default: all 16 actionable from `SIGNAL_REGISTRY`)
 - `--tp-r 2.0` — R multiplier for TP level in alert messages (default: `2.0`)
 - `--telegram` — send alerts via Telegram
 - `--once` — run a single scan cycle and exit (for cron / once-a-day use) instead of looping as a daemon
 - `--catch-up` — replay every un-alerted closed candle since the last run, not just the latest, so ledger rows from skipped run-days are recovered instead of lost (off by default). Backfilled candles are **recorded but never sent to Telegram** — only the newest closed candle can alert, so replay never floods the chat with stale, already-played-out setups. The first run for a fresh `signal_state.json` only seeds the latest candle. Depth is bounded by the 200-candle scan window (4h ~33 days, 1d ~200 days, 1wk ~4 years); gating context (regime/HTF-EMA/ADR/bias) is evaluated as-of-now, so a deep backfill is not clean out-of-sample evidence. Pairs naturally with `--once` for a once-a-day cron.
 - `--state-file signal_state.json` — path to cooldown/watermark state file
 - `--min-sl-pct 0.003` — minimum SL distance as a fraction of price (e.g. `0.003` = 0.3%); overrides structural SL if too tight (default: disabled)
-- `--smt-pairs BTCUSDT:ETHUSDT,ETHUSDT:BTCUSDT` — per-symbol SMT secondary mappings (overrides `smt_secondary` in `coins.json`)
-- `--secondary-symbol ETHUSDT` — *(deprecated, use `--smt-pairs`)* applies one secondary to all scanned symbols
 
 **`day_filter`** suppresses signals on Monday and Friday (ICT weekly cycle — manipulation/distribution days). Off by default; enable in TOML:
 
@@ -513,33 +482,14 @@ poetry run python wifey.py signal watch
 day_filter = true
 ```
 
-Backtest findings (160d, 3 symbols × 4 TFs × 11 strategies, −29% trade volume):
+> The fork inherited this section's measured win-rate / avg-R tables from the crypto
+> parent (BTC/ETH/SOL). They were **never re-measured on equities** and have been removed
+> rather than left to read as this repo's findings. Current equity numbers come from
+> `wifey digest`, the Backtest web page, or a fresh `make db-update`.
 
-| Strategy          | Avg ΔWin% | Avg ΔR  | Verdict      |
-|-------------------|-----------|---------|--------------|
-| `orb`             | +1.9pp    | +0.063R | ✅ benefits  |
-| `bos`             | +1.3pp    | +0.039R | ✅ benefits  |
-| `wick_fill`       | +0.8pp    | +0.027R | ✅ benefits  |
-| `fvg`             | +0.1pp    | +0.004R | ➖ neutral   |
-| `smt_divergence`  | −0.3pp    | −0.003R | ➖ neutral   |
-| `marubozu`        | −1.2pp    | −0.037R | ❌ hurts     |
-
-Notable: ETHUSDT 4h `bos` is the main cost (−5pp/−0.14R) — Mon/Fri 4h ETH BOS signals were genuinely profitable (likely London Monday expansion). All other `bos` and all `orb` combos improve.
-
-**`smt_trend_filter`** gates `smt_divergence` signals against EMA-50: LONG only above EMA, SHORT only below. On by default (`1`). Backtesting shows counter-trend SMT signals underperform. Post-A18 pivot fix, all TF combos are positive except BTCUSDT 4h (suppressed by hard-mode backtest filter at runtime). Disable with `smt_trend_filter = 0` in TOML.
-
-**`trend_day`** detects candles where price opens near one extreme and closes near the other — a large body (≥65% of range) with a tiny leading wick (≤15%). Configurable via `body_pct_min` and `wick_max` params in the Backtest UI. Backtest findings (160d, `day_filter = true`):
-
-| Combo | Win% | Trades | Avg R |
-| --- | --- | --- | --- |
-| BTCUSDT 4h | 41.5% | 106 | +0.20R |
-| SOLUSDT 4h | 37.4% | 123 | +0.07R |
-| ETHUSDT 4h | 35.5% | 110 | +0.03R |
-| ETHUSDT 1h | 35.1% | 439 | +0.01R |
-| BTCUSDT/SOLUSDT 1h | ~34% | 478–487 | −0.01 to −0.06R |
-| 15m (all) | 33–34% | 2000–2400 | −0.01 to −0.04R |
-
-4h is the best timeframe — BTCUSDT 4h is consistently the strongest combo (+0.20R). 15m signal volume is high but R is flat-to-negative. 1d combos show strong R (+0.15–0.23R) without `day_filter` but sample sizes fall below `min_trades` when Mon/Fri are excluded.
+**`trend_day`** detects candles where price opens near one extreme and closes near the
+other — a large body (≥65% of range) with a tiny leading wick (≤15%). Configurable via
+`body_pct_min` and `wick_max` params in the Backtest UI.
 
 The `[backtest]` table in `config/signal_watch.toml` controls a per-alert expected-value filter:
 
@@ -548,17 +498,11 @@ The `[backtest]` table in `config/signal_watch.toml` controls a per-alert expect
 mode = "hard"           # "soft": append win rate | "hard": suppress low performers | "off"
 days = 200              # lookback window
 min_trades = 12         # global fallback — applied to directional trade count (longs for LONG alerts, shorts for SHORT)
-min_trades_15m = 20     # per-TF overrides; calibrated from DB p25 directional counts
-min_trades_1h  = 12
-min_trades_4h  = 5
+min_trades_4h  = 5      # per-TF overrides; calibrated from DB p25 directional counts
 min_trades_1d  = 2
+min_trades_1wk = 1
 min_avg_r = 0.0         # hard mode: suppress alert if directional avg_r < this (positive EV gate)
-fee_pct = 0.0005        # taker fee applied to inline backtest (falls back to top-level fee_pct)
-
-[smt_pairs]
-BTCUSDT = "ETHUSDT"     # primary → secondary for smt_divergence strategy
-ETHUSDT = "BTCUSDT"
-SOLUSDT = "ETHUSDT"
+fee_pct = 0.0005        # flat fee applied to inline backtest (falls back to top-level fee_pct)
 ```
 
 **`[strategy_params]`** overrides `tp_r`, `sl_pct`, and volume/ADR gates per strategy, per TF, and per symbol.
@@ -568,17 +512,17 @@ Resolution order: **symbol+TF → symbol → TF → strategy → global**.
 [strategy_params.engulfing]
 tp_r = 3.0          # all symbols, all TFs
 
-[strategy_params.engulfing.SOLUSDT]
-tp_r_4h = 4.0       # SOL 4h only; other SOL TFs fall back to strategy-wide 3.0
+[strategy_params.engulfing.NVDA]
+tp_r_4h = 4.0       # NVDA 4h only; other NVDA TFs fall back to strategy-wide 3.0
 
 [strategy_params.doji]
 tp_r = 3.0          # all symbols fallback
 
-[strategy_params.doji.BTCUSDT]
-tp_r_15m = 3.5      # BTC 15m only
+[strategy_params.doji.AAPL]
+tp_r_1d = 3.5       # AAPL 1d only
 
-[strategy_params.doji.ETHUSDT]
-tp_r_15m = 4.5      # ETH 15m only — diverges from BTC
+[strategy_params.doji.MSFT]
+tp_r_1d = 4.5       # MSFT 1d only — diverges from AAPL
 ```
 
 Per-symbol blocks use `[strategy_params.STRATEGY.SYMBOL]` sub-table syntax, placed after their
@@ -660,11 +604,11 @@ skipped (fall-open).
 **Example alert (Telegram, soft mode):**
 
 ```text
-SIGNAL — BTCUSDT 4h
+SIGNAL — AAPL 4h
 Direction: LONG 🟢  Strategy: `fvg`  ★★★★☆
-Reason: `fvg_long@43200.00-43350.00`
-Price: 43,260.00  |  01-Apr 21:00 SGT
-SL: 42,394.80 (2.0%)  TP: 44,985.60 (4.0% | 2.0x R)
+Reason: `fvg_long@212.00-213.50`
+Price: 212.60  |  01-Apr 21:00 SGT
+SL: 208.35 (2.0%)  TP: 221.10 (4.0% | 2.0x R)
 📊 Backtest 90d [↑]: 62% win · avg +1.4R (18 longs)
 ```
 
@@ -732,38 +676,38 @@ Useful for testing alert formatting changes without waiting for a live signal.
 No DB writes, no cooldown state, no latest-candle-only restriction.
 
 ```bash
-# Most recent BOS signal for BTCUSDT 1h — print only
-poetry run python wifey.py signal test --strategy bos --symbol BTCUSDT --timeframe 1h
+# Most recent BOS signal for AAPL 4h — print only
+poetry run python wifey.py signal test --strategy bos --symbol AAPL --timeframe 4h
 
 # Pin to a specific candle (UTC)
-poetry run python wifey.py signal test --strategy bos --symbol BTCUSDT --timeframe 1h \
+poetry run python wifey.py signal test --strategy bos --symbol AAPL --timeframe 4h \
   --at 2026-04-07T02:00:00
 
 # Use MYT offset (+08:00)
-poetry run python wifey.py signal test --strategy bos --symbol BTCUSDT --timeframe 1h \
+poetry run python wifey.py signal test --strategy bos --symbol AAPL --timeframe 4h \
   --at 2026-04-07T10:00:00+08:00
 
 # Inherit symbol/TF/tp_r from TOML and send to Telegram
 poetry run python wifey.py signal test --config config/signal_watch.toml \
-  --strategy marubozu --timeframe 15m --telegram
+  --strategy marubozu --timeframe 4h --telegram
 
 # Filter to shorts only, wider lookback
-poetry run python wifey.py signal test --strategy fvg --symbol ETHUSDT --timeframe 4h \
+poetry run python wifey.py signal test --strategy fvg --symbol MSFT --timeframe 1d \
   --direction short --lookback 500
 ```
 
 Or via Makefile:
 
 ```bash
-make wifey-signal-test STRATEGY=bos SYMBOL=BTCUSDT TIMEFRAME=1h
-make wifey-signal-test STRATEGY=bos SYMBOL=BTCUSDT TIMEFRAME=1h AT=2026-04-07T02:00:00
-make wifey-signal-test CONFIG=config/signal_watch.toml STRATEGY=marubozu TIMEFRAME=15m TELEGRAM=1
+make wifey-signal-test STRATEGY=bos SYMBOL=AAPL TIMEFRAME=4h
+make wifey-signal-test STRATEGY=bos SYMBOL=AAPL TIMEFRAME=4h AT=2026-04-07T02:00:00
+make wifey-signal-test CONFIG=config/signal_watch.toml STRATEGY=marubozu TIMEFRAME=4h TELEGRAM=1
 ```
 
 **Options:**
 
 - `--strategy` *(required)* — strategy to test (e.g. `bos`, `fvg`, `marubozu`)
-- `--symbol` — trading pair (required unless `--config` provides one)
+- `--symbol` — symbol (required unless `--config` provides one)
 - `--timeframe` — candle timeframe (required unless `--config` provides one)
 - `--at` — pin to a specific candle; ISO datetime (naive = UTC, or with `+08:00` for MYT) or Unix ms integer; defaults to latest available candle
 - `--lookback` — number of candles to load ending at `--at` (default: `200`)
@@ -828,7 +772,7 @@ Phase A (signals-only) does not ship `/api/positions`, `/api/prices`, or `/api/s
 A single-page trading terminal UI. Dark theme, no component library, no SSR.
 Pages: Chart (candlesticks + signal markers + structural zone overlays), Backtest (DB-backed sortable/filterable results table + collapsible run form), Signal Feed (poll + filters), Stats.
 
-Chart overlays include EMA 20/50/200, RSI sub-panel, Range Levels (MO/DO/WO + PDH/PDL/PWH/PWL/Mon H·L), CME Gap (15m/1h only), Fibonacci retracement, and **Structural Zones** (7 toggles: FVG boxes, Order Block boxes, EQH·EQL lines, BOS levels, Fib Golden Zone box, OTE box, swing pivot dots — powered by `GET /api/zones`).
+Chart overlays include EMA 20/50/200, RSI sub-panel, Range Levels (MO/DO/WO + PDH/PDL/PWH/PWL/Mon H·L), overnight/CME Gap (1h only), Fibonacci retracement, and **Structural Zones** (7 toggles: FVG boxes, Order Block boxes, EQH·EQL lines, BOS levels, Fib Golden Zone box, OTE box, swing pivot dots — powered by `GET /api/zones`).
 
 ```bash
 # Install frontend dependencies (first time)
@@ -891,12 +835,11 @@ make wifey-exit-audit                      # Exit MFE/MAE diagnostic — live le
 **Backtest:**
 
 ```bash
-make wifey-backtest                                          # BTCUSDT fvg 4h 90d (defaults)
-make wifey-backtest SYMBOL=ETHUSDT STRATEGY=bos             # Override symbol and strategy
-make wifey-backtest SYMBOL=BTCUSDT STRATEGY=smt_divergence SECONDARY=ETHUSDT
-make wifey-backtest SYMBOL=BTCUSDT STRATEGY=fvg INTERVAL=1h DAYS=30 SL_PCT=0.015 TP_R=3.0
+make wifey-backtest                                          # SPY fvg 4h 90d (defaults)
+make wifey-backtest SYMBOL=MSFT STRATEGY=bos                 # Override symbol and strategy
+make wifey-backtest SYMBOL=AAPL STRATEGY=fvg INTERVAL=1d DAYS=30 SL_PCT=0.015 TP_R=3.0
 make wifey-backtest CONFIG=config/signal_watch.toml SAVE=1  # Full sweep + persist to DB
-make wifey-backtest SYMBOL=BTCUSDT STRATEGY=bos SAVE=1      # Single-combo + persist to DB
+make wifey-backtest SYMBOL=AAPL STRATEGY=bos SAVE=1         # Single-combo + persist to DB
 
 # Co-firing confluence backtest (D10)
 make wifey-combo-backtest CONFIG=config/signal_watch.toml SINCE=2025-09-12 SAVE=1
@@ -924,8 +867,8 @@ make wifey-digest QUERY=cross_tf_combos   # cross-TF co-firing pair leaderboard 
 make wifey-digest MIN_TRADES=10            # raise min-trades threshold
 ```
 
-Defaults: `SYMBOL=BTCUSDT`, `STRATEGY=fvg`, `INTERVAL=4h`, `DAYS=90`.
-Optional overrides: `SL_PCT`, `TP_R`, `FEE_PCT`, `SECONDARY` (required for `smt_divergence`), `SAVE=1` (persist to DB).
+Defaults: `SYMBOL=SPY`, `STRATEGY=fvg`, `INTERVAL=4h`, `DAYS=90`.
+Optional overrides: `SL_PCT`, `TP_R`, `FEE_PCT`, `SAVE=1` (persist to DB).
 
 To populate both `day_filter` variants for complete coverage:
 
@@ -993,21 +936,17 @@ make wifey-web PORT=8080           # FastAPI on a custom port
 make wifey-signal-watch                                              # All symbols, 4h, all strategies
 make wifey-signal-watch CONFIG=config/signal_watch.toml             # Load from config file
 make wifey-signal-watch CONFIG=config/signal_watch.toml TELEGRAM=1  # Config file + override flag
-make wifey-signal-watch SYMBOLS="BTCUSDT ETHUSDT"                   # Specific symbols
+make wifey-signal-watch SYMBOLS="AAPL MSFT"                         # Specific symbols
 make wifey-signal-watch STRATEGIES="fvg bos" TELEGRAM=1             # Specific strategies + Telegram
-make wifey-signal-watch TIMEFRAMES="15m 1h 4h" MIN_SL_PCT=0.003 TELEGRAM=1  # SL floor
-make wifey-signal-watch STRATEGIES="smt_divergence" SECONDARY=ETHUSDT  # deprecated
-make wifey-signal-test STRATEGY=bos SYMBOL=BTCUSDT TIMEFRAME=1h       # test alert, print only
-make wifey-signal-test STRATEGY=bos SYMBOL=BTCUSDT TIMEFRAME=1h AT=2026-04-07T02:00:00  # pin candle
-make wifey-signal-test CONFIG=config/signal_watch.toml STRATEGY=marubozu TIMEFRAME=15m TELEGRAM=1
+make wifey-signal-watch TIMEFRAMES="4h 1d 1wk" MIN_SL_PCT=0.003 TELEGRAM=1  # SL floor
+make wifey-signal-test STRATEGY=bos SYMBOL=AAPL TIMEFRAME=4h          # test alert, print only
+make wifey-signal-test STRATEGY=bos SYMBOL=AAPL TIMEFRAME=4h AT=2026-04-07T02:00:00  # pin candle
+make wifey-signal-test CONFIG=config/signal_watch.toml STRATEGY=marubozu TIMEFRAME=4h TELEGRAM=1
 ```
 
 The daemon wakes at clock-aligned candle boundaries (e.g. 04:00:10, 08:00:10 for `4h`),
 so alerts arrive within seconds of the candle close. Optional overrides: `SYMBOLS`,
-`TIMEFRAMES`, `STRATEGIES`, `MIN_SL_PCT`, `SECONDARY` (deprecated — set `smt_secondary` in `coins.json` instead), `TELEGRAM=1` (flag).
-
-`smt_divergence` secondaries are configured per-symbol in `coins.json` via the optional
-`smt_secondary` field. The `--smt-pairs` CLI flag overrides the config-file values.
+`TIMEFRAMES`, `STRATEGIES`, `MIN_SL_PCT`, `TELEGRAM=1` (flag).
 
 All commands use your `.env` file for secrets and config.
 
@@ -1016,7 +955,7 @@ All commands use your `.env` file for secrets and config.
 ## Docker
 
 You can use Docker to run the bot and analytics tools in a consistent environment.
-`config/coins.json` and `.env` are excluded from the image via `.dockerignore` and
+`config/stocks.json` and `.env` are excluded from the image via `.dockerignore` and
 bind-mounted at runtime.
 
 ### Makefile targets
@@ -1030,9 +969,9 @@ make docker-analytics-backfill SINCE=2024-01-01      # Backfill from custom date
 make docker-analytics-sync                           # Incremental sync
 
 # Backtest
-make docker-backtest                                          # BTCUSDT fvg 4h 90d (defaults)
-make docker-backtest SYMBOL=ETHUSDT STRATEGY=bos
-make docker-backtest SYMBOL=BTCUSDT STRATEGY=smt_divergence SECONDARY=ETHUSDT
+make docker-backtest                                          # SPY fvg 4h 90d (defaults)
+make docker-backtest SYMBOL=MSFT STRATEGY=bos
+make docker-backtest SYMBOL=AAPL STRATEGY=fvg INTERVAL=1d
 
 # Signal watch daemon (interactive, Ctrl+C to stop)
 make docker-signal-watch                                      # All symbols, 4h, no Telegram
@@ -1063,7 +1002,7 @@ SINCE=2024-01-01 docker-compose run --rm analytics-backfill
 docker-compose run --rm analytics-sync
 ```
 
-Make sure `config/coins.json`, `.env`, `analytics.db`, and `signal_state.json` exist before
+Make sure `config/stocks.json`, `.env`, `analytics.db`, and `signal_state.json` exist before
 running signal-watch or analytics services.
 
 ---

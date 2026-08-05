@@ -111,8 +111,8 @@ def _make_cross_tf_lookup(
 
 
 def test_parse_htf_ltf_pairs_valid() -> None:
-    result = _parse_htf_ltf_pairs(["4h:15m", "4h:1h", "1d:4h"])
-    assert result == [("4h", "15m"), ("4h", "1h"), ("1d", "4h")]
+    result = _parse_htf_ltf_pairs(["1wk:1d", "4h:1h", "1d:4h"])
+    assert result == [("1wk", "1d"), ("4h", "1h"), ("1d", "4h")]
 
 
 def test_parse_htf_ltf_pairs_empty() -> None:
@@ -120,8 +120,29 @@ def test_parse_htf_ltf_pairs_empty() -> None:
 
 
 def test_parse_htf_ltf_pairs_skips_malformed() -> None:
-    result = _parse_htf_ltf_pairs(["4h:15m", "bad", "1h:15m"])
-    assert result == [("4h", "15m"), ("1h", "15m")]
+    result = _parse_htf_ltf_pairs(["1d:4h", "bad", "4h:1h"])
+    assert result == [("1d", "4h"), ("4h", "1h")]
+
+
+# ---------------------------------------------------------------------------
+# _DEFAULT_HTF_LTF_PAIRS — fork-drift guard
+# ---------------------------------------------------------------------------
+
+
+def test_default_htf_ltf_pairs_use_supported_intervals() -> None:
+    """Every default cross-TF pair must name a fetchable interval.
+
+    An unsupported timeframe here does NOT raise — the cross-TF worker reads
+    from DuckDB, so the chunk silently returns "no data" for every symbol and
+    the pair contributes nothing. The fork inherited `15m` pairs this way and
+    3 of 5 defaults were dead with no error surfaced.
+    """
+    from analytics.backtest_runner import _DEFAULT_HTF_LTF_PAIRS
+    from analytics.data_fetcher import _INTERVAL_CONFIG
+
+    for htf, ltf in _DEFAULT_HTF_LTF_PAIRS:
+        assert htf in _INTERVAL_CONFIG, f"unsupported HTF {htf!r} in defaults"
+        assert ltf in _INTERVAL_CONFIG, f"unsupported LTF {ltf!r} in defaults"
 
 
 # ---------------------------------------------------------------------------

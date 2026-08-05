@@ -1258,12 +1258,15 @@ def _cross_tf_combo_worker(
 
 
 # Default HTF/LTF pairs for cross-TF sweep.
+# Every timeframe here must be a key of data_fetcher._INTERVAL_CONFIG — a pair
+# naming an unsupported interval is not an error, it silently yields "no data"
+# skips for every symbol. tests/test_cross_tf_cofire.py pins this.
 _DEFAULT_HTF_LTF_PAIRS = [
-    ("4h", "15m"),
     ("4h", "1h"),
-    ("1h", "15m"),
     ("1d", "4h"),
     ("1d", "1h"),
+    ("1wk", "1d"),
+    ("1wk", "4h"),
 ]
 
 
