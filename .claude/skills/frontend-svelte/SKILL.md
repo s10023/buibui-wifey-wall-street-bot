@@ -80,10 +80,10 @@ make web-build              # cd web/ui && vite build
 make web-check              # cd web/ui && svelte-check
 
 # Build + start backend serving the bundle
-make web-full               # web-build + buibui-web
+make web-full               # web-build + wifey-web
 
 # Backend only (use with web-dev for split-port development)
-make buibui-web PORT=8000
+make wifey-web PORT=8000
 ```
 
 For CI / commit, the relevant gate is `make web-build` — it must succeed before
@@ -171,7 +171,7 @@ missing event types).
 | `web/api/main.py` | FastAPI app; serves `web/ui/dist/` at `/` |
 | `web/api/routers/` | one router per resource group |
 | `web/api/models/` | Pydantic response models |
-| `Makefile` | `web-install`, `web-dev`, `web-build`, `web-check`, `web-preview`, `web-full`, `buibui-web` |
+| `Makefile` | `web-install`, `web-dev`, `web-build`, `web-check`, `web-preview`, `web-full`, `wifey-web` |
 
 ## Related
 

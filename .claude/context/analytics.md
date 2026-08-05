@@ -209,7 +209,7 @@ The **only** module importing `exchange_calendars`. No DB; one process-lifetime 
 - `DigestScope(day_filter, fee_pct, symbols, min_trades, min_trades_per_tf)` — `_scope_clauses()` + `_min_trades_expr()` (per-TF CASE)
 - `query_co_firing` deduplicates via `QUALIFY ROW_NUMBER() OVER (PARTITION BY symbol, timeframe, strategy_a, strategy_b, window_candles, day_filter ORDER BY run_at_ms DESC) = 1`
 - `query_cross_tf_combos` deduplicates by `(symbol, tf_htf, tf_ltf, strategy_htf, strategy_ltf, window_hours, day_filter)`
-- Powers `GET /api/backtest/analysis?use_config=true` and `buibui digest` CLI (invoked as `wifey digest` post-rename)
+- Powers `GET /api/backtest/analysis?use_config=true` and the `wifey digest` CLI
 
 ## overnight_gap_lib.py — equity session-gap features
 

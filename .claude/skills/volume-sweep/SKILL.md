@@ -25,7 +25,7 @@ The "Volume Impact" split table is **always printed** in backtest output regardl
 Run any backtest and look for the "Volume Impact" section in the output:
 
 ```bash
-make buibui-backtest CONFIG=config/signal_watch.toml
+make wifey-backtest CONFIG=config/signal_watch.toml
 ```
 
 The split table shows aggregated results across all symbols × TFs:
@@ -72,15 +72,15 @@ volume_suppress = true   # applies to all strategies with no per-strategy overri
 
 | Strategy | Low-vol | Normal | Delta | Decision |
 | --- | --- | --- | --- | --- |
-| smt_divergence | +0.63R | +1.41R | +0.78R | **true** |
+| bos | +0.63R | +1.41R | +0.78R | **true** |
 | orb | -0.16R | +0.18R | +0.33R | **true** |
 | doji | +0.26R | +0.50R | +0.24R | **true** |
-| liquidity_sweep | -0.47R | -0.30R | +0.17R | **true** (reversal from A13) |
+| eqh_eql | -0.47R | -0.30R | +0.17R | **true** (reversal from A13) |
 | bos | -0.32R | -0.20R | +0.11R | **true** |
-| fib_golden_zone | -0.22R | -0.11R | +0.11R | **true** |
+| ote_entry | -0.22R | -0.11R | +0.11R | **true** |
 | marubozu | -0.07R | -0.50R | -0.43R | **false** |
 | hammer_hanging_man | +0.17R | -0.18R | -0.35R | **false** |
-| cvd_divergence | +0.09R | -0.15R | -0.24R | **false** |
+| fvg | +0.09R | -0.15R | -0.24R | **false** |
 | pin_bar | +0.22R | -0.00R | -0.22R | **false** |
 | morning_evening_star | +0.26R | +0.12R | -0.14R | **false** (reversal from A13) |
 | engulfing | +0.33R | +0.30R | -0.03R | neutral |
@@ -92,7 +92,7 @@ volume_suppress = true   # applies to all strategies with no per-strategy overri
 
 Key reversals vs A13 (old tp_r=2.0):
 
-- **liquidity_sweep**: A13 said don't suppress (-0.11R delta); at current tp_r now +0.17R → **suppress**
+- **eqh_eql**: A13 said don't suppress (-0.11R delta); at current tp_r now +0.17R → **suppress**
 - **morning_evening_star**: A13 said suppress (+0.10R delta); at current tp_r now -0.14R → **don't suppress**
 
 Configs use config-specific sweeps — weekdays/all configs have slightly different decisions. See inline comments in each TOML.
@@ -101,7 +101,7 @@ Configs use config-specific sweeps — weekdays/all configs have slightly differ
 
 ```bash
 # 1. Run sweep to see volume split table
-make buibui-backtest CONFIG=config/signal_watch.toml
+make wifey-backtest CONFIG=config/signal_watch.toml
 
 # 2. For each strategy compute Delta = normal_avg_r - low_vol_avg_r
 #    > +0.05R → volume_suppress = true

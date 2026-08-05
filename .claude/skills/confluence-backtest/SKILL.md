@@ -31,20 +31,20 @@ web UI Backtest tab and the digest queries.
 
 ```bash
 # Full co-firing sweep across all (strategy_a, strategy_b, symbol, tf) pairs
-make buibui-combo-backtest CONFIG=config/signal_watch.toml SAVE=1
+make wifey-combo-backtest CONFIG=config/signal_watch.toml SAVE=1
 
 # With anchored window for comparable runs:
-make buibui-combo-backtest CONFIG=config/signal_watch.toml SINCE=2025-09-12 SAVE=1
+make wifey-combo-backtest CONFIG=config/signal_watch.toml SINCE=2025-09-12 SAVE=1
 
 # Tighter / wider co-firing window (in candles)
-make buibui-combo-backtest CONFIG=config/signal_watch.toml WINDOW=2 SAVE=1
+make wifey-combo-backtest CONFIG=config/signal_watch.toml WINDOW=2 SAVE=1
 ```
 
 Direct CLI:
 
 ```bash
-buibui backtest --combo --config config/signal_watch.toml --save
-buibui backtest --combo --symbols BTCUSDT --timeframes 15m --window 2
+wifey backtest --combo --config config/signal_watch.toml --save
+wifey backtest --combo --symbols AAPL --timeframes 1h --window 2
 ```
 
 Key flags: `--window N` (candles between co-firing signals; default tuned per
@@ -55,24 +55,24 @@ config), `--workers N` (parallel pairs), `--day-filter`, `--min-trades N`,
 
 ```bash
 # All 5 canonical HTF:LTF pairs
-make buibui-cross-tf-backtest CONFIG=config/signal_watch.toml SAVE=1
+make wifey-cross-tf-backtest CONFIG=config/signal_watch.toml SAVE=1
 
 # Specific pairs only
-make buibui-cross-tf-backtest \
+make wifey-cross-tf-backtest \
   CONFIG=config/signal_watch.toml \
-  HTF_LTF="4h:15m 4h:1h 1h:15m" \
+  HTF_LTF="1d:1h 1d:4h 4h:1h" \
   SAVE=1
 
 # Sweep window_hours (the LTF lookback for HTF context)
-make buibui-cross-tf-backtest CONFIG=config/signal_watch.toml WINDOW_HOURS=2.0 SAVE=1
-make buibui-cross-tf-backtest CONFIG=config/signal_watch.toml WINDOW_HOURS=8.0 SAVE=1
+make wifey-cross-tf-backtest CONFIG=config/signal_watch.toml WINDOW_HOURS=2.0 SAVE=1
+make wifey-cross-tf-backtest CONFIG=config/signal_watch.toml WINDOW_HOURS=8.0 SAVE=1
 ```
 
 Direct CLI:
 
 ```bash
-buibui backtest --cross-tf --config config/signal_watch.toml --save
-buibui backtest --cross-tf --htf-ltf 4h:15m 1h:15m --window-hours 4.0
+wifey backtest --cross-tf --config config/signal_watch.toml --save
+wifey backtest --cross-tf --htf-ltf 1d:1h 4h:1h --window-hours 4.0
 ```
 
 Key flags: `--htf-ltf "HTF:LTF ..."` (default: 5 canonical pairs),
@@ -141,7 +141,7 @@ roadmap and Card 12 in the digest UI. When wiring lands, it will live in
 2026-04-22 fix in MEMORY).
 
 After updating the config, `/db-update` (or at minimum
-`make buibui-recalibrate`) so star ratings reflect the new gate.
+`make wifey-recalibrate`) so star ratings reflect the new gate.
 
 ## When to run
 
@@ -164,7 +164,7 @@ After updating the config, `/db-update` (or at minimum
 | `analytics/digest_lib.py` | Card 12 `query_cross_tf_combos` |
 | `analytics/data_store.py` | Combo result tables; `confluence_ratings` join |
 | `wifey.py` | `--combo`, `--cross-tf`, `--htf-ltf`, `--window`, `--window-hours` flags |
-| `Makefile` | `buibui-combo-backtest`, `buibui-cross-tf-backtest` targets |
+| `Makefile` | `wifey-combo-backtest`, `wifey-cross-tf-backtest` targets |
 | `tools/combo_health.py` | Post-run spot-check: totals, freshness, live-gate viable counts, top combos |
 
 ## Related

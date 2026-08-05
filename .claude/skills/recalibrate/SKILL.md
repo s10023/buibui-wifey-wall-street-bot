@@ -4,7 +4,7 @@ description: >
   Update strategy star ratings in the `confidence_ratings` DB table from
   accumulated backtest_runs. Ratings feed Backtest UI stars, Telegram alerts,
   and the live signal-watch quality gate.
-  Invoke automatically after any `make buibui-backtest SAVE=1`. Also triggers on
+  Invoke automatically after any `make wifey-backtest SAVE=1`. Also triggers on
   the user saying "/recalibrate", asking about "star ratings", "confidence
   score", or "strategy quality".
 allowed-tools: Bash
@@ -22,7 +22,7 @@ the live signal filter's quality gate.
 2. Maps avg_r → 1–5 stars (see thresholds below) — combined, long, and short directions
 3. Dry-run (default): prints a diff of old vs new ratings
 4. `--apply` with `--config`: writes combined + directional (long/short) stars to `confidence_ratings` DB table, keyed by `(config_name, strategy, tf, direction)`
-5. `--apply` without `--config`: legacy fallback — patches `confidence=N` directly in `indicators_lib.py`
+5. `--apply` without `--config`: legacy fallback that patched `confidence=N` into `indicators_lib.py` — **dead in this fork**, that file was removed in strat-3. Always pass `--config`
 
 **Prefer `--config` path** — it keeps ratings per-config and doesn't touch source code.
 
@@ -50,32 +50,32 @@ Default `--min-trades`: 10 combined; 5 directional (splits have fewer trades per
 
 ```bash
 # Dry-run (default) — shows diff, no changes
-buibui recalibrate --config config/signal_watch.toml
+wifey recalibrate --config config/signal_watch.toml
 
 # Apply — writes to confidence_ratings DB table keyed by config_name
-buibui recalibrate --config config/signal_watch.toml --apply
+wifey recalibrate --config config/signal_watch.toml --apply
 
-# Legacy apply (no --config) — patches confidence=N in indicators_lib.py source
-buibui recalibrate --apply
+# Legacy apply (no --config) — DEAD in this fork (indicators_lib.py was removed); always pass --config
+# wifey recalibrate --apply
 
 # Adjust minimum trade threshold
-buibui recalibrate --config config/signal_watch.toml --min-trades 20 --apply
+wifey recalibrate --config config/signal_watch.toml --min-trades 20 --apply
 
 # Make alias (dry-run, no --config)
-make buibui-recalibrate
+make wifey-recalibrate
 ```
 
 ## Standard workflow
 
 ```bash
 # 1. Run backtest and save
-make buibui-backtest CONFIG=config/signal_watch.toml SAVE=1
+make wifey-backtest CONFIG=config/signal_watch.toml SAVE=1
 
 # 2. Dry-run to preview changes
-buibui recalibrate --config config/signal_watch.toml
+wifey recalibrate --config config/signal_watch.toml
 
 # 3. Apply if the diff looks correct
-buibui recalibrate --config config/signal_watch.toml --apply
+wifey recalibrate --config config/signal_watch.toml --apply
 
 # 4. Update regression golden files to capture new metrics
 make regression-update
@@ -94,8 +94,8 @@ Strategy Recalibration Report
   Strategy              TF    Trades  Win%  Avg R   Old★  New★  L★  S★
   ──────────────────────────────────────────────────────────────────────
   engulfing             1h       328   58%  +0.42R   3★  → 3★    3   3  (unchanged)
-  fib_golden_zone       4h        34   62%  +1.42R   3★  → 5★    5   4  ★ CHANGED
-  liquidity_sweep       1h       201   44%  -0.08R   3★  → 1★    1   2  ★ CHANGED
+  ote_entry             4h        34   62%  +1.42R   3★  → 5★    5   4  ★ CHANGED
+  eqh_eql               1h       201   44%  -0.08R   3★  → 1★    1   2  ★ CHANGED
   pin_bar               1h       175   61%  +0.51R   4★  → 4★    4   3  (unchanged)
   ...
 
@@ -109,4 +109,4 @@ Strategy Recalibration Report
 | `analytics/recalibrate_lib.py` | `compute_recalibrated_ratings()`, `compute_directional_ratings()`, `write_confidence_to_db()`, `write_confidence_to_source()` (legacy) |
 | `analytics/recalibrate_runner.py` | Thin wrapper: opens DB, calls lib, prints report; `--config` derives `config_name`, `day_filter`, `adr_suppress_threshold` |
 | `analytics/data_store.py` | `confidence_ratings` table: PK `(config_name, strategy, tf, direction)` |
-| `wifey.py` | `buibui recalibrate [--config FILE] [--apply] [--min-trades N]` |
+| `wifey.py` | `wifey recalibrate [--config FILE] [--apply] [--min-trades N]` |

@@ -19,7 +19,7 @@ Prints a comparison table (like `tp_r_values`) showing avg R at each multiplier 
 - **Signal detection runs once** — the ATR multiplier only affects SL placement, not which signals fire.
 - For each multiplier value, every signal's SL = `N × ATR14` at the signal candle.
 - `min_sl_pct` still applies — widens any ATR-derived SL that lands too close to entry.
-- SL priority per trade: structural SL (e.g. pivot low from `liquidity_sweep`) → ATR-based → fixed `sl_pct`.
+- SL priority per trade: structural SL (e.g. pivot low from `eqh_eql`) → ATR-based → fixed `sl_pct`.
 - Per-strategy `tp_r` overrides from `[strategy_params]` still apply during the sweep.
 
 ### Critical: `atr_sl_floor` is required for structural strategies
@@ -30,18 +30,18 @@ multiplier column in the sweep is identical** — the ATR sweep is a no-op.
 Always run the sweep with the floor on:
 
 ```bash
-buibui backtest --config <toml> --atr-sl-floor --atr-sl-values 0.5 1.0 1.5 2.0 2.5
+wifey backtest --config <toml> --atr-sl-floor --atr-sl-values 0.5 1.0 1.5 2.0 2.5
 ```
 
 ### Joint tp_r × ATR sweeps
 
 Once this skill surfaces a winning multiplier, the natural follow-up is
 to re-sweep `tp_r` at that multiplier (TP scales with SL distance). Use
-`buibui param-sweep` with the same floor flags for IS/OOS-validated
+`wifey param-sweep` with the same floor flags for IS/OOS-validated
 joint sweeps:
 
 ```bash
-buibui param-sweep --strategy <s> --symbol <sym> --timeframe <tf> \
+wifey param-sweep --strategy <s> --symbol <sym> --timeframe <tf> \
   --param tp_r=1.0:5.0:0.5 --since 2025-09-12 --day-filter tue_thu \
   --atr-sl-floor --atr-sl-multiplier <winning_mult>
 ```
@@ -78,7 +78,7 @@ atr_sl_multiplier_values = [0.5, 1.0, 1.5, 2.0, 2.5]
 Per-strategy override (goes inside `[strategy_params.STRATEGY]`):
 
 ```toml
-[strategy_params.liquidity_sweep]
+[strategy_params.eqh_eql]
 atr_sl_multiplier = 1.2        # strategy-wide
 atr_sl_multiplier_1h = 0.8     # 1h-specific override
 ```
@@ -87,16 +87,16 @@ atr_sl_multiplier_1h = 0.8     # 1h-specific override
 
 ```bash
 # Sweep via config
-make buibui-backtest CONFIG=config/signal_watch.toml
+make wifey-backtest CONFIG=config/signal_watch.toml
 
 # Sweep via CLI flags (no TOML needed) — floor on
-buibui backtest --config config/signal_watch.toml --atr-sl-floor --atr-sl-values 0.5 1.0 1.5 2.0 2.5
+wifey backtest --config config/signal_watch.toml --atr-sl-floor --atr-sl-values 0.5 1.0 1.5 2.0 2.5
 
 # Single fixed multiplier (floor on)
-buibui backtest --config config/signal_watch.toml --atr-sl-floor --atr-sl-multiplier 2.0
+wifey backtest --config config/signal_watch.toml --atr-sl-floor --atr-sl-multiplier 2.0
 
 # Single-combo mode (floor on)
-buibui backtest --symbol BTCUSDT --strategy bos --interval 1h --atr-sl-floor --atr-sl-multiplier 1.5
+wifey backtest --symbol AAPL --strategy bos --interval 1h --atr-sl-floor --atr-sl-multiplier 1.5
 ```
 
 ## Output format
@@ -106,9 +106,9 @@ ATR SL Multiplier Comparison (aggregated across symbols)
 ══════════════════════════════════════════════════════════
   Strategy              TF      0.5×    1.0×    1.5×    2.0×    2.5×
   ──────────────────────────────────────────────────────────────────
-  bos                   15m   -0.05R  +0.12R  +0.18R  +0.14R  +0.09R
-                        1h    +0.08R  +0.22R  +0.31R  +0.28R  +0.19R
-  liquidity_sweep       1h    +0.15R  +0.38R  +0.45R  +0.41R  +0.33R
+  bos                   1h    -0.05R  +0.12R  +0.18R  +0.14R  +0.09R
+  bos                   4h    +0.08R  +0.22R  +0.31R  +0.28R  +0.19R
+  eqh_eql               1h    +0.15R  +0.38R  +0.45R  +0.41R  +0.33R
   ...
   ──────────────────────────────────────────────────────────────────
   Pick the multiplier column where avg R peaks per strategy × TF row.
@@ -123,7 +123,7 @@ ATR SL Multiplier Comparison (aggregated across symbols)
 5. After finding winners, set `atr_sl_multiplier` + `atr_sl_floor` (or per-strategy override) in TOML and re-run with `SAVE=1`:
 
    ```bash
-   make buibui-backtest CONFIG=config/signal_watch.toml SAVE=1
+   make wifey-backtest CONFIG=config/signal_watch.toml SAVE=1
    ```
 
 ## Implementation files
@@ -159,7 +159,7 @@ When the user asks to run an ATR sweep or find optimal ATR multipliers:
 1. Ask: "Which config — `signal_watch.toml` (tue_thu), `signal_watch_weekdays.toml`, or both?" Default to `signal_watch.toml` if not specified.
 2. Suggest range: `[0.5, 1.0, 1.5, 2.0, 2.5]` for swing/1h+; `[0.3, 0.5, 0.8, 1.0, 1.5]` for scalping
 3. Add `atr_sl_multiplier_values = [...]` to the chosen TOML (or use `--atr-sl-values` CLI flag to avoid editing the file)
-4. Run with the floor on: `buibui backtest --config <file> --atr-sl-floor --atr-sl-values <vals>` (skipping the floor is the #1 way to get a useless sweep)
+4. Run with the floor on: `wifey backtest --config <file> --atr-sl-floor --atr-sl-values <vals>` (skipping the floor is the #1 way to get a useless sweep)
 5. Read the output table — identify peak column per strategy × TF. If rows are flat across all columns, the floor was off — re-run.
 6. Translate findings into `atr_sl_multiplier` values in `[strategy_params.X]` of the same TOML, set `atr_sl_floor = true` once at the top level, and **re-sweep `tp_r` at the chosen multiplier** per cell before committing — TP scales with SL distance.
 7. Re-run with `SAVE=1` to persist the winning config to DB

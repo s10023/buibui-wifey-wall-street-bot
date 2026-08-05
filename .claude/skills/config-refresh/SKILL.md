@@ -43,7 +43,7 @@ Before running the sweep, check `[strategy_timeframes]` for missing entries vs t
 Every strategy in the `strategies = [...]` list should have an entry in `[strategy_timeframes]`
 unless it genuinely runs well on ALL timeframes (rare).
 
-**Missing entry = strategy runs on every TF in `timeframes = [...]` → typically fires on 15m noise.**
+**Missing entry = strategy runs on every TF in `timeframes = [...]` → typically fires on 1h noise.**
 
 Cross-reference with the reference config's `[strategy_timeframes]`. If the reference suppresses a TF,
 the target should too (unless the day filter changes the distribution enough to unlock it — the sweep will show).
@@ -63,9 +63,9 @@ Based on the gap analysis from Step 0, add or remove TFs:
 
 ```toml
 [strategy_timeframes]
-morning_evening_star = ["15m", "1h", "4h"]  # 1d suppressed (no edge)
-order_block          = ["4h", "1d"]          # 15m/1h suppressed (negative)
-smt_divergence       = ["15m", "1h", "4h"]  # 1d excluded: 0% wins
+morning_evening_star = ["1h", "4h", "1d"]   # 1wk suppressed (no edge)
+order_block          = ["1d", "1wk"]        # 1h/4h suppressed (negative)
+bos                  = ["1h", "4h", "1d"]   # 1wk excluded: 0% wins
 ```
 
 ## Step 2 — Review `volume_suppress` flags per strategy
@@ -92,7 +92,7 @@ Run a backtest without `tp_r_values` to confirm the config parses and produces
 the expected trade population:
 
 ```bash
-make buibui-backtest CONFIG=config/signal_watch_weekdays.toml
+make wifey-backtest CONFIG=config/signal_watch_weekdays.toml
 ```
 
 If trade counts changed materially, run `/wfo-sweep` next to refresh `tp_r`
@@ -112,7 +112,7 @@ For tp_r refresh, follow up with `/wfo-sweep config/signal_watch_weekdays.toml`.
 - **`tp_r`** — use `/wfo-sweep` (param-audit + param-sweep with IS/OOS gating).
   Full-dataset sweeps overfit.
 - **ADR gate** (`[bias]` section, `adr_exempt` flags) — validate separately; skip unless explicitly asked
-- **Per-symbol overrides** (`[strategy_params.X.BTCUSDT]`) — require per-symbol backtest runs
+- **Per-symbol overrides** (`[strategy_params.X.AAPL]`) — require per-symbol backtest runs
 - **`min_trades` thresholds** — only change if backtest window changes significantly
 
 ## Key behavioural differences between configs

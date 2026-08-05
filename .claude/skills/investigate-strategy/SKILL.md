@@ -2,7 +2,7 @@
 name: investigate-strategy
 description: >
   Debug why a strategy did or didn't fire on a specific candle by replaying
-  detectors against historical DB data via `buibui signal test`.
+  detectors against historical DB data via `wifey signal test`.
   Invoke when the user says "/investigate-strategy", asks why a signal
   "fired", "missed", or "didn't fire", or mentions "signal test", "replay",
   "investigate", "diagnose", or "debug strategy".
@@ -11,7 +11,7 @@ allowed-tools: "*"
 
 # Investigate Strategy — Signal Test Reference
 
-Use `buibui signal test` (or `make buibui-signal-test`) to replay a detector against historical candles and see exactly what would have fired, with full alert formatting.
+Use `wifey signal test` (or `make wifey-signal-test`) to replay a detector against historical candles and see exactly what would have fired, with full alert formatting.
 
 ## Key concept
 
@@ -32,19 +32,19 @@ All `--at` timestamps are **interpreted as UTC**. The output displays in **MYT (
 ### Single strategy, single symbol + TF, pinned to a candle
 
 ```bash
-make buibui-signal-test SYMBOL=BTCUSDT TIMEFRAME=1h STRATEGY=order_block AT="2026-04-08 13:00:00"
+make wifey-signal-test SYMBOL=AAPL TIMEFRAME=1h STRATEGY=order_block AT="2026-04-08 13:00:00"
 
 # Equivalent direct call
 poetry run python wifey.py signal test \
-  --symbol BTCUSDT --timeframe 1h --strategy order_block \
+  --symbol AAPL --timeframe 1h --strategy order_block \
   --at "2026-04-08 13:00:00"
 ```
 
 ### Multiple strategies, multiple symbols
 
 ```bash
-make buibui-signal-test \
-  SYMBOL="BTCUSDT ETHUSDT" \
+make wifey-signal-test \
+  SYMBOL="AAPL MSFT" \
   TIMEFRAME="1h 4h" \
   STRATEGY="order_block bos fvg" \
   AT="2026-04-08 13:00:00"
@@ -53,37 +53,37 @@ make buibui-signal-test \
 ### Without `--at` — finds latest signal in lookback
 
 ```bash
-make buibui-signal-test SYMBOL=BTCUSDT TIMEFRAME=1h STRATEGY=engulfing
+make wifey-signal-test SYMBOL=AAPL TIMEFRAME=1h STRATEGY=engulfing
 ```
 
 ### Filter by direction
 
 ```bash
-make buibui-signal-test SYMBOL=BTCUSDT TIMEFRAME=1h STRATEGY=bos DIRECTION=short AT="2026-04-08 13:00:00"
+make wifey-signal-test SYMBOL=AAPL TIMEFRAME=1h STRATEGY=bos DIRECTION=short AT="2026-04-08 13:00:00"
 ```
 
 ### Send to Telegram as well
 
 ```bash
-make buibui-signal-test SYMBOL=BTCUSDT TIMEFRAME=1h STRATEGY=fvg TELEGRAM=1
+make wifey-signal-test SYMBOL=AAPL TIMEFRAME=1h STRATEGY=fvg TELEGRAM=1
 ```
 
 ### Load TP/SL from config
 
 ```bash
-make buibui-signal-test CONFIG=config/signal_watch.toml SYMBOL=BTCUSDT TIMEFRAME=1h STRATEGY=bos
+make wifey-signal-test CONFIG=config/signal_watch.toml SYMBOL=AAPL TIMEFRAME=1h STRATEGY=bos
 ```
 
 ### Extend lookback window (default 200 candles)
 
 ```bash
-make buibui-signal-test SYMBOL=BTCUSDT TIMEFRAME=1h STRATEGY=fib_golden_zone LOOKBACK=400 AT="2026-04-08 13:00:00"
+make wifey-signal-test SYMBOL=AAPL TIMEFRAME=1h STRATEGY=ote_entry LOOKBACK=400 AT="2026-04-08 13:00:00"
 ```
 
 ### Use `--at` with Unix ms timestamp
 
 ```bash
-make buibui-signal-test SYMBOL=BTCUSDT TIMEFRAME=1h STRATEGY=ote_entry AT=1744117200000
+make wifey-signal-test SYMBOL=AAPL TIMEFRAME=1h STRATEGY=ote_entry AT=1744117200000
 ```
 
 ## All Makefile variables
@@ -91,7 +91,7 @@ make buibui-signal-test SYMBOL=BTCUSDT TIMEFRAME=1h STRATEGY=ote_entry AT=174411
 | Variable | CLI flag | Description |
 | --- | --- | --- |
 | `SYMBOL` | `--symbol` | One or more symbols (space-separated) |
-| `TIMEFRAME` | `--timeframe` | One or more TFs: `15m 1h 4h 1d` |
+| `TIMEFRAME` | `--timeframe` | One or more TFs: `1h 4h 1d 1wk` |
 | `STRATEGY` | `--strategy` | One or more strategy names |
 | `AT` | `--at` | Pin to this UTC candle (ISO or Unix ms) |
 | `LOOKBACK` | `--lookback` | Number of candles to load (default 200) |
@@ -102,21 +102,20 @@ make buibui-signal-test SYMBOL=BTCUSDT TIMEFRAME=1h STRATEGY=ote_entry AT=174411
 ## All strategy names (for --strategy)
 
 ```text
-seasonality  wick_fill  marubozu  orb  liquidity_sweep  fvg  bos
-funding_reversion  smt_divergence  eqh_eql  order_block  cvd_divergence
-trend_day  engulfing  pin_bar  inside_bar  hammer_hanging_man  doji
-morning_evening_star  fib_golden_zone  ote_entry
+seasonality  wick_fill  marubozu  orb  fvg  bos  eqh_eql
+order_block  trend_day  engulfing  pin_bar  inside_bar
+hammer_hanging_man  doji  morning_evening_star  ote_entry  ema
 ```
 
-## SMT divergence note
+## Rare-signal note
 
-`smt_divergence` is supported. The secondary is resolved automatically from `coins.json smt_secondary`.
-
-Because SMT fires rarely (~2 signals per 200 days on 1h), the default `LOOKBACK=200` (~8 days) will often return 0. Use `LOOKBACK=400` or pin with `--at`:
+Structural detectors (`eqh_eql`, `order_block`, `ote_entry`) fire far less often than
+candlestick ones, so the default `LOOKBACK=200` will often return 0 on a higher timeframe.
+Widen the window or pin the candle with `--at`:
 
 ```bash
-make buibui-signal-test SYMBOL=BTCUSDT TIMEFRAME=1h STRATEGY=smt_divergence LOOKBACK=400
-make buibui-signal-test SYMBOL=BTCUSDT TIMEFRAME=1h STRATEGY=smt_divergence AT="2026-03-29 20:00:00"
+make wifey-signal-test SYMBOL=AAPL TIMEFRAME=4h STRATEGY=eqh_eql LOOKBACK=400
+make wifey-signal-test SYMBOL=AAPL TIMEFRAME=4h STRATEGY=eqh_eql AT="2026-03-29 20:00:00"
 ```
 
 ## Investigation workflow
@@ -124,23 +123,21 @@ make buibui-signal-test SYMBOL=BTCUSDT TIMEFRAME=1h STRATEGY=smt_divergence AT="
 When asked why a strategy did or didn't fire:
 
 1. **Identify the candle**: convert event time to UTC for `--at`
-2. **Run signal test**: `make buibui-signal-test SYMBOL=... TIMEFRAME=... STRATEGY=... AT=...`
+2. **Run signal test**: `make wifey-signal-test SYMBOL=... TIMEFRAME=... STRATEGY=... AT=...`
 3. **If signal found** but at unexpected time: note the `open_time` in the output — that's when it ACTUALLY fired
 4. **If no signal found**: check detector logic for the likely gate:
-   - `liquidity_sweep`: fib extension 1.13/1.27 required above pivot (the wick must go deep into the extension zone, not just barely past the prior high)
+   - `eqh_eql`: needs TWO swing highs (or lows) within `tolerance_pct` (default 0.003) to form the pool, then a candle that wicks past it AND closes back inside
    - `bos`: requires close above prior swing high, not just a wick
-   - `smt_divergence`: fires 5 candles AFTER the pivot is confirmed, AND requires close below EMA50 (bearish) or above EMA50 (bullish)
    - `fvg`: gap must exist in the right direction between candle[i-2] and candle[i]
    - `order_block`: requires a specific candle sequence near the OB
-5. **Compare with pivot-sweep mode** for `liquidity_sweep`: add `MIN_SL_PCT=0` to test without sweep mode but check if `use_fib_extension=False` version fires
+5. **Widen the pivot window** for `eqh_eql`: `swing_n` (default 5 → 11-candle centred window) sets how structurally significant a pivot must be; a smaller `swing_n` yields more candidate pools
 
 ## Common "why didn't it fire" root causes
 
 | Strategy | Most common miss reason |
 | --- | --- |
-| `liquidity_sweep` | Wick exceeded pivot high but didn't reach 1.13 fib extension (large prior range → high fib threshold) |
-| `smt_divergence` | Fires 5 candles after pivot (delay), OR trend_filter blocked (wrong side of EMA50), OR signal test unsupported |
+| `eqh_eql` | No two swing pivots landed within `tolerance_pct` (0.003), so no liquidity pool formed — or the candle wicked past but also *closed* past (a break, not a raid) |
 | `bos` | Price wicked above swing high but closed BELOW (wick, not close = no BOS) |
-| `fib_golden_zone` | Price didn't retrace to 61.8–78.6% fib zone |
+| `ote_entry` | Price didn't retrace to 61.8–78.6% fib zone |
 | `engulfing` | Body didn't fully engulf prior candle body, OR `min_range_pct` gate filtered it |
 | `order_block` | OB candle not found in lookback, OR mitigation not detected |

@@ -20,7 +20,7 @@ These are the calibrated minimums per TF (from TOML comments, derived from DB p2
 
 | TF | Sweep table (`min_trades_*`) | Signal watch daemon (`[backtest].min_trades_*`) |
 | ---- | ------------------------------ | ------------------------------------------------ |
-| 15m | 30 | 20 |
+| 1h | 30 | 20 |
 | 1h | 20 | 12 |
 | 4h | 10 | 5 |
 | 1d | 5 | 2 |
@@ -34,7 +34,7 @@ Rows below threshold are hidden or should be ignored. Higher thresholds for the 
   engulfing             1h    +0.08R  +0.12R  +0.16R  +0.18R  +0.19R
   engulfing             4h    +0.10R  +0.18R  +0.22R  +0.24R  +0.25R
   pin_bar               1h    +0.09R  +0.14R  +0.19R  +0.23R  +0.26R
-  liquidity_sweep       1h    -0.10R  -0.08R  -0.05R  -0.03R  -0.04R
+  eqh_eql               1h    -0.10R  -0.08R  -0.05R  -0.03R  -0.04R
 ```
 
 1. **Peak column** per row = optimal tp_r for that strategy × TF
@@ -70,27 +70,27 @@ Always printed alongside main results (regardless of `volume_suppress` setting):
 
 **A14b findings (current per-strategy tp_r — see `volume-sweep` skill for full table):**
 
-- Suppress: `bos`, `orb`, `fib_golden_zone`, `doji`, `smt_divergence`, `liquidity_sweep`
-- Do NOT suppress: `pin_bar`, `hammer_hanging_man`, `marubozu`, `cvd_divergence`, `morning_evening_star`
+- Suppress: `bos`, `orb`, `ote_entry`, `doji`, `bos`, `eqh_eql`
+- Do NOT suppress: `pin_bar`, `hammer_hanging_man`, `marubozu`, `fvg`, `morning_evening_star`
 - Neutral: `engulfing`, `eqh_eql`, `fvg`, `inside_bar`, `order_block`, `trend_day`
 
-Note: A13 findings (at tp_r=2.0) are superseded by A14b. `liquidity_sweep` and `morning_evening_star` reversed direction after per-strategy tp_r was applied. Always re-run the volume split after any tp_r change.
+Note: A13 findings (at tp_r=2.0) are superseded by A14b. `eqh_eql` and `morning_evening_star` reversed direction after per-strategy tp_r was applied. Always re-run the volume split after any tp_r change.
 
 ## Reading the duration table
 
 ```text
   Strategy    TF    Trades   Avg Hold   Median Hold   Max Hold
-  engulfing   1h    328      1.2d       16.0h         10.1d
-  bos         15m   4356     1.4d       13.0h         39.8d
+  engulfing   1h     328     1.2d       16.0h         10.1d
+  bos         1h    4356     1.4d       13.0h         39.8d
 ```
 
 Speed tiers:
 
-- **Fast < 4h median**: marubozu, liq_sweep, smt_div, trend_day (15m) — hits SL/TP quickly
+- **Fast < 1d median**: marubozu, eqh_eql, trend_day (1h) — hits SL/TP quickly
 - **Overnight 13–16h**: all candlestick patterns regardless of TF — NOT scalping strategies
-- **Multi-day**: bos 1h (2.2d), bos 4h (6.3d) — need patient management
+- **Multi-day**: bos 4h (2.2d), order_block 1d (6.3d) — need patient management
 
-Warning: 15m candlestick patterns have the same hold time as 1h — more signals, same duration = more noise.
+Warning: 1h candlestick patterns have the same hold time as 4h — more signals, same duration = more noise.
 
 ## Committing TOML config
 
@@ -104,7 +104,7 @@ tp_r = 3.0              # applies to all TFs
 ### TF-specific override
 
 ```toml
-[strategy_params.fib_golden_zone]
+[strategy_params.ote_entry]
 tp_r_4h = 3.0           # 4h only
 tp_r_1h = 2.0           # 1h only
 # other TFs fall back to global tp_r
@@ -126,7 +126,7 @@ atr_sl_multiplier_1h = 2.0    # TF-specific
 
 ```toml
 [strategy_timeframes]
-engulfing = ["1h", "4h", "1d"]   # removes 15m — high noise, low edge
+engulfing = ["4h", "1d", "1wk"]   # removes 1h — high noise, low edge
 ```
 
 ### When to use strategy-wide vs TF-specific
@@ -139,11 +139,11 @@ engulfing = ["1h", "4h", "1d"]   # removes 15m — high noise, low edge
 
 ```bash
 # Persist winning config to DB
-make buibui-backtest CONFIG=config/signal_watch.toml SAVE=1
+make wifey-backtest CONFIG=config/signal_watch.toml SAVE=1
 
 # Optionally recalibrate star ratings from DB
-buibui recalibrate          # dry-run — shows diff
-buibui recalibrate --apply  # writes to indicators_lib.py
+wifey recalibrate          # dry-run — shows diff
+wifey recalibrate --apply --config config/signal_watch.toml  # writes confidence_ratings
 ```
 
 ## Where findings are stored
@@ -162,6 +162,6 @@ When the user pastes a sweep table or asks to translate findings:
 3. Check duration table: categorise strategies into speed tiers
 4. Open `config/signal_watch.toml` (or target config) and update `[strategy_params.*]` entries
 5. Commit the changes
-6. Run `make buibui-backtest CONFIG=<file> SAVE=1`
+6. Run `make wifey-backtest CONFIG=<file> SAVE=1`
 7. Update `project_f6_tp_sweep_findings.md` (or create new findings file) with key observations
 8. Update MEMORY.md with session summary
