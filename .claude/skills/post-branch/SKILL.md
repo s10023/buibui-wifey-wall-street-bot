@@ -62,8 +62,8 @@ surfaces:
 
   - id: context_docs
     path_glob: ".claude/context/*.md"
-    purpose: Long-form module API references (analytics.md, signals.md, web.md)
-    scope: any_referencing_changed_artifact
+    purpose: Long-form module references (analytics, tools, signals, web, config)
+    scope: any_referencing_changed_artifact + new_module_presence   # see below
 
   - id: skill_docs
     path_glob: ".claude/skills/*/SKILL.md"
@@ -307,8 +307,39 @@ to know the answer, and they still do.
 
 ### `.claude/context/*.md`
 
-- Module API references (analytics.md, signals.md, web.md) match the
-  current package layout. These are the most refactor-sensitive docs.
+- Module references match the current package layout. These are the most
+  refactor-sensitive docs.
+
+- **`any_referencing_changed_artifact` is BLIND TO OMISSION — this is how
+  `analytics.md` and `signals.md` rotted.** That scope greps the doc tree for
+  the changed artifact's name. When a PR *adds* a package, grepping for `pead`
+  finds zero hits, so the sweep concludes "no change needed" — when the correct
+  conclusion is the exact opposite: the doc is missing a module. A scope that
+  can only detect drift in things the doc already mentions can never detect the
+  module it has never heard of. Same defect shape as markdownlint's `!.claude`
+  glob: the check reported green because it could not see the files.
+
+  **So for context docs, run a presence check, not only a mention grep.** For
+  every package directory added or renamed in this PR, confirm the matching
+  context doc gained an entry. Cheap version:
+
+  ```bash
+  # every top-level package vs. what the context docs actually document
+  for d in */; do d=${d%/}
+    case $d in tests|docs|config|scripts|__pycache__|.*) continue;; esac
+    grep -rqs "$d" .claude/context/ || echo "UNDOCUMENTED: $d"; done
+  ```
+
+- **CLAUDE.md must not re-absorb this content.** The 2026-08-05 split left
+  CLAUDE.md holding a package index plus verdicts and footguns, and the context
+  docs holding the detail. Measured at the time of that split: CLAUDE.md's
+  `analytics/` bullet held 155 tokens that `context/analytics.md` did not, and
+  `context/signals.md` still claimed 20 strategies (naming the long-deleted
+  `funding_reversion`) where CLAUDE.md correctly said 18. Both files described
+  the same packages; the auto-loaded one was visibly wrong so it got maintained,
+  and the on-demand one silently diverged. **Two sources of truth, one of them
+  invisible, always rots the invisible one.** If a PR adds module detail to
+  CLAUDE.md's Project Structure, move it.
 
 ### `.claude/skills/*/SKILL.md`
 

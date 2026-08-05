@@ -1,12 +1,25 @@
-# Signals Package Reference
+# Signals & Shared Utilities Reference
 
-Detailed reference for `signals/`. Load this when working on alert formatting, cooldown, or the signal registry.
+Detailed reference for `signals/` (the alerting + dedup daemon — detection itself lives in
+`analytics/`) and for `utils/` (shared clients and config loaders). Load this when working on
+alert formatting, cooldown, the signal registry, Telegram dispatch, or config/universe loading.
 
 ## registry.py
 
-- `SignalPlugin` TypedDict + `SIGNAL_REGISTRY` — 20 actionable strategies
-- Excluded: `seasonality` (inactive by design), `funding_reversion` (no live feed, partial DB), `fibonacci_retracement` (legacy)
+- `SignalPlugin` TypedDict + `SIGNAL_REGISTRY` — **16** actionable strategies, verified against the
+  code 2026-08-05: `bos`, `doji`, `ema`, `engulfing`, `eqh_eql`, `fvg`, `hammer_hanging_man`,
+  `inside_bar`, `marubozu`, `morning_evening_star`, `orb`, `order_block`, `ote_entry`, `pin_bar`,
+  `trend_day`, `wick_fill`.
+- The three registry counts differ and are easy to conflate: `SIGNAL_REGISTRY` = 16 =
+  `DETECTOR_REGISTRY`; `STRATEGY_REGISTRY` = 17 (the extra entry is `seasonality`, which is a stats
+  helper, not a dispatchable alert); `analytics/strategies/` holds 18 non-private detector modules
+  (the two unregistered ones include the legacy `fibonacci_retracement`).
+- Excluded from dispatch: `seasonality` (inactive by design), `fibonacci_retracement` (legacy),
+  `fib_golden_zone` (removed — no_edge across 3 sweeps).
 - `confidence` field removed — resolved per-TF at dispatch via `STRATEGY_REGISTRY[name].get_confidence(tf)`
+
+`DEFAULT_DB_PATH` lives in `analytics/store/_common.py` (re-exported via `analytics.store` and
+`analytics.data_store`) — import from either re-export, never redefine it in a runner.
 
 ## cooldown_store.py
 
@@ -67,3 +80,65 @@ Detailed reference for `signals/`. Load this when working on alert formatting, c
 - LONG → header `BUY — $SYM TF` + entry price + time + SL/TP block (same widest-structural-SL / floor / structural-TP-or-tp_r logic as the primary formatter).
 - SHORT → header `HOLD — $SYM TF` + price + time + `(regime caution — sit tight)`. No SL/TP — wife is not expected to action shorts; HOLD is regime context only.
 - Dispatched via `utils.telegram_router.dispatch_to_channel(msg, "wife")`; `TELEGRAM_WIFE_DRY_RUN=1` logs the first line at INFO instead of sending.
+
+## utils/ — shared utilities
+
+### config_validation.py
+
+Config schema validation and the two universe loaders.
+
+- `validate_coins_config` (legacy) + `validate_stocks_config` (Phase A equities, since T6) +
+  `load_stocks_config(path=Path("config/stocks.json"))` (T5; loads + validates, replaces the deleted
+  `load_coins_config` from `utils/binance_client`).
+- **Universe policy (Phase 0.1)** — the `UniversePolicy` frozen dataclass
+  (`scope` / `as_of` / `survivorship_note`; `summary()` / `to_json()` / `describe()`),
+  `validate_universe_policy`, `DEFAULT_UNIVERSE_POLICY`, and `load_universe_policy()`. Reads the
+  reserved top-level `universe_policy` key in stocks.json (stripped by `load_stocks_config` so
+  symbol-iterating call sites are untouched); missing file/block → default policy, invalid block →
+  `ValueError`. Every saved backtest run is stamped with the policy JSON (nullable `universe_policy`
+  column on `backtest_runs` — **migration-list-only, never in CREATE TABLE**, because
+  `upsert_backtest_run`'s INSERT…SELECT is positional; deliberately excluded from the
+  `_backtest_run_id` hash). The CLI runners print `describe()`, and the web UI surfaces it via
+  `GET /api/universe-policy` + a caveat banner on the Backtest page.
+- **Research breadth universe (N3)** — `UniverseMember`
+  (`symbol` / `sector` / `kind` (`stock` | `etf`) / `delisted` / `listed`) + `ResearchUniverse`
+  (`policy` / `membership_as_of` / `members`; helpers `symbols()` / `active_symbols()` /
+  `stocks()` (active single-names only) / `n_active` / `describe()` / `with_min_history(days)`)
+  frozen dataclasses, plus `validate_research_universe` and
+  `load_research_universe(path=Path("config/universe.json"), *, min_history_days=None)`.
+  **Distinct from the live-alert watchlist.** `delisted` is a lifecycle seam — all current members
+  are survivors (PIT membership deliberately not scraped per gap-map decision #6).
+- The optional `listed` per-member date (first available 1d bar; `None` ⇒ full-history survivor
+  listed on/before the backfill start) is the **history seam**: `with_min_history(days)` — also
+  surfaced as the `load_research_universe(min_history_days=…)` kwarg — drops members with fewer than
+  `days` of history as of the fixed `membership_as_of` snapshot. Pure (no DB), reproducible,
+  identity for `days ≤ 0`, untagged members always kept; default-off (`None`) keeps every member
+  byte-identically. Forward-prep for the G1-gated XS-momentum sleeve's uniform lookback.
+
+### telegram.py / telegram_router.py
+
+- `telegram.py` — low-level Telegram message sending (single channel, with retry); takes explicit
+  `bot_token` / `chat_id` or falls back to `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` env.
+- `telegram_router.py` — dual-channel dispatcher (Task D, 2026-05-20).
+  `Channel = Literal["primary","wife"]`; `dispatch_to_channel(text, channel)` resolves env creds
+  (`TELEGRAM_BOT_TOKEN_2` / `TELEGRAM_CHAT_ID_2` for wife), honours `TELEGRAM_WIFE_DRY_RUN=1`
+  (log-instead-of-send rollout safety), and isolates send failures so a wife outage can't block
+  primary.
+
+### Data clients
+
+- `yfinance_client.py` — yfinance helper (`fetch_history`, `YF_INTERVALS`); no auth, no
+  module-level side effects; normalises Yahoo's tz-aware America/New_York DataFrame to canonical
+  lowercase OHLCV + UTC-naive DatetimeIndex (T2, since 2026-05-14). **4h is not native** — callers
+  resample 1h→4h (T4).
+- `edgar_client.py` — free EDGAR earnings client (edge-hunt #4, PR #104; stdlib `urllib`, no key,
+  ≤10 req/s throttle). Network shims `fetch_company_tickers` / `fetch_company_facts` /
+  `fetch_submissions` (integration-only) + pure fixture-tested parsers `ticker_to_cik`,
+  `parse_eps_facts` (quarterly diluted EPS, originally-filed-only dedup, Q4 = FY−ΣQ1..Q3, YTD spans
+  excluded), `parse_announce_dates` (8-K item-2.02 dates). No new poetry dep. Mirrors
+  `yfinance_client.py` (no module-level side effects).
+
+### Live display
+
+- `live_store.py` — shared in-memory store for live WebSocket data.
+- `live_loop.py` — shared Rich live display loop logic.
