@@ -24,7 +24,8 @@ def _compute_stats_context(
 
         bundle = compute_all(conn, symbol, days=90)
         wcs = compute_weekly_current_state(conn, symbol, bundle.adr.adr_14, days=90)
-        # DOW must match the UTC-date grouping used in stats_lib (Binance daily = UTC day)
+        # DOW must match the UTC-date grouping compute_dow_patterns uses
+        # (it buckets 1h bars by epoch_ms(open_time)::DATE, i.e. the UTC day).
         dow_full = datetime.datetime.now(tz=datetime.UTC).strftime("%A")
         dow_short = dow_full[:3]  # e.g. "Thu"
 

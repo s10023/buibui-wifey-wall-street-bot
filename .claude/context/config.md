@@ -10,10 +10,6 @@ Two universes exist and they are **not** the same thing:
 | `config/stocks.json` | gitignored | the 13-symbol **live-alert watchlist** the daemon scans |
 | `config/universe.json` | committed | the 508-member **research breadth universe** the sleeves study |
 
-## config/coins.json
-
-Legacy per-symbol crypto config (gitignored; see `coins.json.example`).
-
 ## config/stocks.json
 
 Phase A US-equities watchlist (gitignored; see `stocks.json.example`). 13 symbols:

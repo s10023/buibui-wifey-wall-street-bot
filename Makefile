@@ -1,5 +1,5 @@
 SORT ?= default
-SYMBOL ?= BTCUSDT
+SYMBOL ?= SPY
 STRATEGY ?= fvg
 INTERVAL ?= 4h
 DAYS ?= 90
@@ -77,7 +77,7 @@ docker-analytics-backfill:
 	@touch analytics.db
 	docker run --rm --env-file .env \
 		-v $(PWD)/analytics.db:/app/analytics.db \
-		-v $(PWD)/config/coins.json:/app/config/coins.json:ro \
+		-v $(PWD)/config/stocks.json:/app/config/stocks.json:ro \
 		$(DOCKER_IMAGE) poetry run python wifey.py analytics backfill --since $(or $(SINCE),2023-01-01) \
 		$(if $(SYMBOLS),--symbols $(SYMBOLS),) \
 		$(if $(TIMEFRAMES),--timeframes $(TIMEFRAMES),)
@@ -87,7 +87,7 @@ docker-analytics-sync:
 	@touch analytics.db
 	docker run --rm --env-file .env \
 		-v $(PWD)/analytics.db:/app/analytics.db \
-		-v $(PWD)/config/coins.json:/app/config/coins.json:ro \
+		-v $(PWD)/config/stocks.json:/app/config/stocks.json:ro \
 		$(DOCKER_IMAGE) poetry run python wifey.py analytics sync \
 		$(if $(SYMBOLS),--symbols $(SYMBOLS),) \
 		$(if $(TIMEFRAMES),--timeframes $(TIMEFRAMES),)
@@ -97,7 +97,7 @@ docker-backtest:
 	@touch analytics.db
 	docker run --rm --env-file .env \
 		-v $(PWD)/analytics.db:/app/analytics.db \
-		-v $(PWD)/config/coins.json:/app/config/coins.json:ro \
+		-v $(PWD)/config/stocks.json:/app/config/stocks.json:ro \
 		$(DOCKER_IMAGE) poetry run python wifey.py backtest \
 		--symbol $(SYMBOL) \
 		--strategy $(STRATEGY) \
@@ -105,7 +105,6 @@ docker-backtest:
 		--days $(DAYS) \
 		$(if $(SL_PCT),--sl-pct $(SL_PCT),) \
 		$(if $(TP_R),--tp-r $(TP_R),) \
-		$(if $(SECONDARY),--secondary-symbol $(SECONDARY),) \
 		$(if $(SAVE),--save,)
 
 wifey-analytics-backfill:
@@ -194,7 +193,6 @@ wifey-backtest:
 		$(if $(SL_PCT),--sl-pct $(SL_PCT),) \
 		$(if $(TP_R),--tp-r $(TP_R),) \
 		$(if $(MIN_TRADES),--min-trades $(MIN_TRADES),) \
-		$(if $(SECONDARY),--secondary-symbol $(SECONDARY),) \
 		$(if $(COMBO),--combo,) \
 		$(if $(WINDOW),--window $(WINDOW),) \
 		$(if $(SAVE),--save,)
@@ -303,7 +301,6 @@ wifey-signal-watch:
 		$(if $(TIMEFRAMES),--timeframes $(TIMEFRAMES),) \
 		$(if $(STRATEGIES),--strategies $(STRATEGIES),) \
 		$(if $(TELEGRAM),--telegram,) \
-		$(if $(SECONDARY),--secondary-symbol $(SECONDARY),) \
 		$(if $(MIN_SL_PCT),--min-sl-pct $(MIN_SL_PCT),) \
 		$(if $(ONCE),--once,) \
 		$(if $(CATCH_UP),--catch-up,)
@@ -338,7 +335,7 @@ docker-signal-watch:
 	@touch analytics.db signal_state.json
 	docker run -it --env-file .env \
 		-v $(PWD)/analytics.db:/app/analytics.db \
-		-v $(PWD)/config/coins.json:/app/config/coins.json:ro \
+		-v $(PWD)/config/stocks.json:/app/config/stocks.json:ro \
 		-v $(PWD)/signal_state.json:/app/signal_state.json \
 		$(DOCKER_IMAGE) poetry run python wifey.py signal watch \
 		$(if $(CONFIG),--config $(CONFIG),) \
@@ -346,7 +343,6 @@ docker-signal-watch:
 		$(if $(TIMEFRAMES),--timeframes $(TIMEFRAMES),) \
 		$(if $(STRATEGIES),--strategies $(STRATEGIES),) \
 		$(if $(TELEGRAM),--telegram,) \
-		$(if $(SECONDARY),--secondary-symbol $(SECONDARY),) \
 		$(if $(MIN_SL_PCT),--min-sl-pct $(MIN_SL_PCT),)
 
 wifey-signal-test:

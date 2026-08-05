@@ -172,7 +172,7 @@ def add_backtest_subparser(
     backtest_parser.add_argument(
         "--symbol",
         default=None,
-        help="Primary symbol for single-combo mode (e.g., BTCUSDT)",
+        help="Primary symbol for single-combo mode (e.g., AAPL)",
     )
     backtest_parser.add_argument(
         "--strategy",
@@ -327,7 +327,7 @@ def add_backtest_subparser(
         default=None,
         dest="htf_ltf",
         help=(
-            "HTF:LTF pairs for cross-TF sweep, e.g. '4h:15m 4h:1h 1h:15m'. "
+            "HTF:LTF pairs for cross-TF sweep, e.g. '1d:4h 4h:1h 1wk:1d'. "
             "Defaults to all 5 canonical pairs when omitted."
         ),
     )

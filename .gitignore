@@ -4,9 +4,6 @@ __pycache__/
 .env
 .coverage
 
-# Ignore only config/coins.json
-config/coins.json
-
 # Ignore config/stocks.json (Phase A personal watchlist — ship .example instead)
 config/stocks.json
 

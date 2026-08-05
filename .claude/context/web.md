@@ -51,7 +51,7 @@ Build: `make web-build` → `web/ui/dist/` served by FastAPI StaticFiles.
   - Active zones extend to right edge; inactive end at `close_ms` (dimmed)
   - Colors: bull=`#56d364`, bear=`#f85149`, fib=`#e3b341`, ote=`#f0883e`
 - **Range Levels** — MO, DO, PDH/PDL, WO, PWH/PWL, Mon H/L; solid lines from origin to right edge; HTML labels
-- **CME Gap** — semi-transparent box for most recent Fri 21:00–Sun 22:00 UTC window; **15m and 1h only** (pill hidden on 4h/1d — `timeToCoordinate` returns null for inter-candle timestamps on coarser TFs)
+- **CME Gap** — semi-transparent box for most recent Fri 21:00–Sun 22:00 UTC window; **1h only** (pill hidden on 4h/1d/1wk — `timeToCoordinate` returns null for inter-candle timestamps on coarser TFs). Was `15m and 1h` until 2026-08-05; `15m` is not a fetchable interval
 - Time axis + crosshair: **MYT (UTC+8)** via `localization.timeFormatter`
 - Signal markers + Fib overlay. (T16-full removed funding/OI sub-panels + the SSE / `/api/ohlcv/live` live-candle seed — yfinance has no realtime equivalent; the UI now seeds the current candle from the last DB row.)
 
@@ -66,4 +66,4 @@ Build: `make web-build` → `web/ui/dist/` served by FastAPI StaticFiles.
 ### Nav
 
 - Shows active config name chip when server has a config loaded
-- Chart + Stats default symbol: first config symbol → coins.json fallback
+- Chart + Stats default symbol: first config symbol → `stocks.json` fallback

@@ -14,7 +14,7 @@
   import ErrorBanner from "../components/ErrorBanner.svelte";
   import LoadingSpinner from "../components/LoadingSpinner.svelte";
 
-  const TIMEFRAMES = ["15m", "1h", "4h", "1d"];
+  const TIMEFRAMES = ["1h", "4h", "1d", "1wk"];
   const POLL_MS = 60_000;
   const LS_KEY = "signal_trade_state";
 

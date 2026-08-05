@@ -58,9 +58,9 @@ class SymbolOverride:
     """Per-symbol parameter overrides within a strategy block.
 
     TOML example (sub-table under strategy_params):
-        [strategy_params.doji.ETHUSDT]
-        tp_r_15m = 4.5     # ETH 15m only
-        tp_r_1h = 4.0      # ETH 1h only
+        [strategy_params.doji.MSFT]
+        tp_r_1d = 4.5      # MSFT 1d only
+        tp_r_4h = 4.0      # MSFT 4h only
 
     Lookup order within a symbol block: TF-specific → symbol-wide.
     """
@@ -88,11 +88,11 @@ class StrategyOverride:
         [strategy_params.doji]
         tp_r = 4.0           # all symbols fallback
 
-        [strategy_params.doji.BTCUSDT]
-        tp_r_15m = 3.5
+        [strategy_params.doji.AAPL]
+        tp_r_1d = 3.5
 
-        [strategy_params.doji.ETHUSDT]
-        tp_r_15m = 4.5
+        [strategy_params.doji.MSFT]
+        tp_r_1d = 4.5
     """
 
     tp_r: float | None = None
@@ -126,7 +126,7 @@ class StrategyOverride:
 class BacktestSweepConfig:
     """All configurable options for a backtest sweep."""
 
-    symbols: list[str] | None = None  # None = all from coins.json
+    symbols: list[str] | None = None  # None = all from stocks.json
     timeframes: list[str] = field(default_factory=lambda: ["4h"])
     strategies: list[str] | None = None  # None = all non-seasonality strategies
     days: int = 90

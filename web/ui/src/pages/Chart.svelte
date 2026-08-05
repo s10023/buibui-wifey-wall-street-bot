@@ -8,7 +8,7 @@
   import ErrorBanner from "../components/ErrorBanner.svelte";
   import LoadingSpinner from "../components/LoadingSpinner.svelte";
 
-  const TIMEFRAMES = ["15m", "1h", "4h", "1d"];
+  const TIMEFRAMES = ["1h", "4h", "1d", "1wk"];
 
   // B6: Short display labels for strategy pills
   const STRATEGY_LABELS: Record<string, string> = {
@@ -161,7 +161,7 @@
     <div class="controls">
       <div class="form-row">
         <label>Timeframe
-          <select bind:value={timeframe} onchange={() => { if (timeframe !== "15m" && timeframe !== "1h") showCMEGaps = false; void load(); }}>
+          <select bind:value={timeframe} onchange={() => { if (timeframe !== "1h") showCMEGaps = false; void load(); }}>
             {#each TIMEFRAMES as tf}<option>{tf}</option>{/each}
           </select>
         </label>
@@ -178,7 +178,7 @@
         <button class="pill" class:active={showEMA200} onclick={() => showEMA200 = !showEMA200}>EMA 200</button>
         <button class="pill" class:active={showRSI} onclick={() => showRSI = !showRSI}>RSI 14</button>
         <button class="pill" class:active={showRangeLevels} onclick={() => showRangeLevels = !showRangeLevels}>Range Levels</button>
-        {#if timeframe === "15m" || timeframe === "1h"}
+        {#if timeframe === "1h"}
           <button class="pill" class:active={showCMEGaps} onclick={() => showCMEGaps = !showCMEGaps}>CME Gap</button>
         {/if}
       </div>

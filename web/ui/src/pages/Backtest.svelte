@@ -15,7 +15,7 @@
   import ErrorBanner from "../components/ErrorBanner.svelte";
   import AnalysisCard from "../components/AnalysisCard.svelte";
 
-  const TIMEFRAMES = ["15m", "1h", "4h", "1d"];
+  const TIMEFRAMES = ["1h", "4h", "1d", "1wk"];
 
   let activeTab = $state<"runs" | "analysis">("runs");
   let analysisMinTrades = $state(5);
