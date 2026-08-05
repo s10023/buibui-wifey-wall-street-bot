@@ -312,41 +312,29 @@ to know the answer, and they still do.
   against this repo's equivalents. Four such artifacts survived in this file
   alone until 2026-08-03, including a memory path that would have sent a
   session's `Current State` update into the parent repo.
-- **markdownlint cannot see these files, and the naive invocation reports
-  false success.** `.claude` is in the ignore globs of
-  `.markdownlint-cli2.jsonc` in both this repo and the crypto parent, so
-  `make lint-md` skips the whole tree — and the exclusion still wins when you
-  pass an explicit path from the repo root. **It does not error.**
-  `npx markdownlint-cli2 .claude/skills/<name>/SKILL.md` drops your file,
-  lints the other 57 tracked files instead, and prints
-  `Summary: 0 issues in 0 files` — indistinguishable from a clean pass on the
-  file you meant (measured 2026-08-05, PR #132). Two ways to actually lint it:
+- **`.claude/` is covered by `make lint-md`** as of 2026-08-05 (a dedicated
+  `chore(lint)` pass cleared a 245-issue backlog, then dropped `!.claude` from
+  the globs — 83 files, 0 issues). A skill edit therefore lints like any other
+  file and reddens CI on a violation, with no special invocation to remember.
+  Keep it that way: the backlog reached 245 precisely because nothing enforced
+  it, and re-adding the exclusion would restart that clock.
+
+  **Historical note — still true of the crypto parent, which keeps the
+  exclusion.** When a tree *is* excluded, passing an explicit path does not
+  override the glob, and it **does not error**: it silently lints the other
+  files and prints `Summary: 0 issues in 0 files`, indistinguishable from a
+  clean pass on the file you meant. `--no-globs` is the override, and the
+  falsifier is the file count — the output must name as many files as you
+  passed:
 
   ```bash
-  # simplest — stays in the repo, so .markdownlint.json is still auto-discovered
-  npx markdownlint-cli2 --no-globs ".claude/skills/<name>/SKILL.md"
-
-  # equivalent, from outside the repo — there --config becomes mandatory
-  cd /tmp && npx markdownlint-cli2 --fix \
-    --config "$HOME/repo/<repo>/.markdownlint.json" \
-    "$HOME/repo/<repo>/.claude/skills/<name>/SKILL.md"
+  npx markdownlint-cli2 --no-globs "<path>/SKILL.md"   # -> "Linting: 1 file"
   ```
 
-  `--no-globs` overrides the ignore list while leaving config discovery
-  alone, which is why it needs no `--config`. If you leave the repo instead,
-  pass `--config` explicitly or you silently lint against markdownlint's
-  *defaults* rather than the repo's rules — `MD013` (line length) then fires
-  on every prose line while a real violation hides in the noise. Dropping
-  `--fix` is fine for a check-only pass.
-
-  **Check the run did what you think:** the output must say `Linting: 1 file`.
-  Any other count means the globs won and your file was never checked.
-
-  This tree has never been linted: a full pass over `.claude/**/*.md` reported
-  **249 issues across 18 of 26 files** on 2026-08-03 (120 MD060, 49 MD031,
-  32 MD032, 28 MD022, 20 MD040). Clearing that backlog is a dedicated
-  `chore(lint)` pass and a hard prerequisite for dropping `!.claude` from the
-  ignore globs — the other order turns CI red on the spot.
+  Running from outside the repo works too, but then `--config` is mandatory or
+  you lint against markdownlint's *defaults* rather than the repo's rules —
+  `MD013` (line length) fires on every prose line while a real violation hides
+  in the noise.
 
 ---
 
