@@ -312,23 +312,35 @@ to know the answer, and they still do.
   against this repo's equivalents. Four such artifacts survived in this file
   alone until 2026-08-03, including a memory path that would have sent a
   session's `Current State` update into the parent repo.
-- **markdownlint cannot see these files.** `.claude` is in the ignore globs
-  of `.markdownlint-cli2.jsonc` in both this repo and the crypto parent, so
-  `make lint-md` skips the whole tree — and the exclusion still wins even if
-  you pass an explicit path from the repo root. Run it from *outside* the
-  repo, and **pass `--config` explicitly**:
+- **markdownlint cannot see these files, and the naive invocation reports
+  false success.** `.claude` is in the ignore globs of
+  `.markdownlint-cli2.jsonc` in both this repo and the crypto parent, so
+  `make lint-md` skips the whole tree — and the exclusion still wins when you
+  pass an explicit path from the repo root. **It does not error.**
+  `npx markdownlint-cli2 .claude/skills/<name>/SKILL.md` drops your file,
+  lints the other 57 tracked files instead, and prints
+  `Summary: 0 issues in 0 files` — indistinguishable from a clean pass on the
+  file you meant (measured 2026-08-05, PR #132). Two ways to actually lint it:
 
   ```bash
+  # simplest — stays in the repo, so .markdownlint.json is still auto-discovered
+  npx markdownlint-cli2 --no-globs ".claude/skills/<name>/SKILL.md"
+
+  # equivalent, from outside the repo — there --config becomes mandatory
   cd /tmp && npx markdownlint-cli2 --fix \
     --config "$HOME/repo/<repo>/.markdownlint.json" \
     "$HOME/repo/<repo>/.claude/skills/<name>/SKILL.md"
   ```
 
-  Both halves matter. Without leaving the repo the ignore glob drops the
-  file; without `--config` you silently lint against markdownlint's
-  *defaults* rather than the repo's rules, so `MD013` (line length) fires on
-  every prose line while a real violation hides in the noise. Dropping
+  `--no-globs` overrides the ignore list while leaving config discovery
+  alone, which is why it needs no `--config`. If you leave the repo instead,
+  pass `--config` explicitly or you silently lint against markdownlint's
+  *defaults* rather than the repo's rules — `MD013` (line length) then fires
+  on every prose line while a real violation hides in the noise. Dropping
   `--fix` is fine for a check-only pass.
+
+  **Check the run did what you think:** the output must say `Linting: 1 file`.
+  Any other count means the globs won and your file was never checked.
 
   This tree has never been linted: a full pass over `.claude/**/*.md` reported
   **249 issues across 18 of 26 files** on 2026-08-03 (120 MD060, 49 MD031,
