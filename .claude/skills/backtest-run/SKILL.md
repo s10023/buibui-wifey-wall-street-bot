@@ -115,8 +115,8 @@ wifey backtest
 
 | File | Description |
 | --- | --- |
-| `config/signal_watch.toml` | Default: tue_thu day filter, equity timeframes (4h/1d/1wk) |
-| `config/signal_watch_weekdays.toml` | Weekdays (Mon–Fri), same equity TF surface |
+| `config/signal_watch.toml` | Default: tue_thu day filter, timeframes 4h/1d (1wk dropped 2026-08-06 — tue_thu discards every weekly bar) |
+| `config/signal_watch_weekdays.toml` | Weekdays (Mon–Fri); adds 1wk, which only survives because weekdays includes Monday |
 
 ## Viewing saved runs
 

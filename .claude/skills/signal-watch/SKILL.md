@@ -63,11 +63,15 @@ Full example at `config/signal_watch.toml`. Key fields:
 # Symbols (omit = all from config/stocks.json)
 # symbols = ["AAPL", "MSFT"]
 
-timeframes = ["1h", "4h", "1d", "1wk"]
+timeframes = ["4h", "1d"]
 telegram = true
 min_sl_pct = 0.005
 
 # Day filter: "off" | "weekdays" | "tue_thu"
+# Filters on each bar's OPEN weekday. Weekly bars are stamped Monday, so pairing
+# "tue_thu" or "no_monfi" with "1wk" discards 100% of its signals —
+# load_signal_config now REFUSES that combination (here and in
+# strategy_timeframes) rather than letting it scan and dispatch nothing.
 day_filter = "tue_thu"
 
 # EMA-50 trend gate for bos
