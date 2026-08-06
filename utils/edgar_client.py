@@ -14,13 +14,21 @@ filing date; the 8-K item-2.02 filing date supplies the announcement anchor.
 from __future__ import annotations
 
 import json
+import os
 import time
 import urllib.request
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
 
-_UA = "buibui-wifey research (khaijian.ng@frgrisk.com)"
+# SEC fair-access requires a User-Agent that identifies the client and gives a
+# reachable contact, so *some* address has to reach the wire. It must not reach
+# SOURCE: this address was a literal here from PR #104 (2026-06-23), which was
+# fine while the repo was private and became a public PII disclosure the moment
+# it flipped on 2026-08-06. Contact now comes from the environment — set
+# EDGAR_CONTACT_EMAIL in `.env` (gitignored). Unset still identifies the client
+# by repo URL; SEC may throttle an address-less UA harder, so set it for real runs.
+_DEFAULT_CONTACT = "https://github.com/s10023/buibui-wifey-wall-street-bot"
 _MIN_INTERVAL = 0.12  # ~8 req/s, comfortably under the SEC's 10 req/s ceiling
 _last_call = 0.0
 
@@ -44,13 +52,23 @@ def _iso(s: str) -> date:
     return datetime.strptime(s, "%Y-%m-%d").date()
 
 
+def _user_agent() -> str:
+    """SEC fair-access User-Agent, with the contact read from the environment.
+
+    Resolved per call rather than at import so the value is never frozen into a
+    module-level constant that could be committed, and so tests can vary it.
+    """
+    contact = os.environ.get("EDGAR_CONTACT_EMAIL", "").strip() or _DEFAULT_CONTACT
+    return f"buibui-wifey research ({contact})"
+
+
 # ---- network shims (integration-only; never unit-tested) -----------------
 def _get_json(url: str) -> dict[str, Any]:
     global _last_call
     wait = _MIN_INTERVAL - (time.monotonic() - _last_call)
     if wait > 0:
         time.sleep(wait)
-    req = urllib.request.Request(url, headers={"User-Agent": _UA})
+    req = urllib.request.Request(url, headers={"User-Agent": _user_agent()})
     with urllib.request.urlopen(req, timeout=30) as r:  # noqa: S310 (trusted SEC host)
         data: dict[str, Any] = json.load(r)
     _last_call = time.monotonic()
