@@ -70,6 +70,23 @@ Shared base config inherited via `extends = "strategy_params.toml"` by `signal_w
 `signal_watch_weekdays.toml`. Contains `[bias]`, `[backtest]` defaults and per-strategy
 `volume_suppress` / `volume_spike_boost` flags.
 
+**GATE CONJUNCTION — `volume_suppress*` requires `adr_exempt = true`.** The `[bias]` ADR gate keeps
+only bars that have consumed little of their typical daily range; `volume_suppress` keeps only bars
+with ≥1.5× mean volume. Range and volume correlate at **+0.61 (1d) / +0.67 (4h)**, so the two select
+for opposite bars and their conjunction is nearly empty: measured `P(pass both) = 0.0046` against
+`0.036` under independence, an **8× shortfall**. `load_signal_config` now raises on the pairing
+(`voided_volume_gates`, the sibling of #139's `dead_timeframes`); `load_backtest_config` inherits it.
+Before the 2026-08-06 fix this left `doji × 1d` at **0** signals against 1,247 raw detector fires,
+`orb × 4h` at n=1, and **inverted the measured sign** on `engulfing × 1d` and `bos × 1d`.
+Full write-up: `docs/audits/2026-08-06-adr-volume-gate-conjunction.md`.
+
+- `adr_exempt` belongs in **this shared base**, never in one day-filter config. `bos` carried it in
+  `signal_watch.toml` only, so `signal_watch_weekdays.toml` never inherited it and ran `bos` voided.
+  A flag whose correctness depends on a second flag must live beside it.
+- Every `tp_r` / `atr_sl_multiplier` for `doji`, `orb`, `engulfing`, `bos` was calibrated **under**
+  the conjunction, on the surviving 2–8% subsample — flagged as debt in both configs and
+  deliberately **not** re-derived (frozen TA-sweep work).
+
 - As of 2026-05-19 the per-strategy `tp_r_long` / `tp_r_short` directional overrides have been
   **retired** (the pin_bar audit closed the last one); directional overrides now live in the
   per-day-filter configs as `tp_r_long_<tf>` / `tp_r_short_<tf>` (the per-TF directional

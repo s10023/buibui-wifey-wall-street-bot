@@ -328,6 +328,18 @@ Retired parent API this replaced (`cme_gap_lib.py`, kept here for historical ref
 - `BiasConfig` from `[bias]`: `adr_suppress_threshold`, `dow_soft_suppress`, `dow_suppress_min_abs_return`; F8 fields `htf_ema_enabled/mode/default_tf/default_period/default_slope_lookback/deadband_pct/per_strategy` (+ `htf_ema_anchor(strategy)` resolver); regime fields `regime_enabled/mode/htf_tf/enabled_regimes/per_strategy` (+ `regime_allowed(strategy, strategy_type, regime)` resolver — `unknown` regime + unmapped types fall open)
 - `ComboConfig`: same-TF `window=5`, `min_avg_r=1.0`; cross-TF `cross_tf_pairs`, `cross_tf_window_hours=4.0`, `cross_tf_min_avg_r=1.0`
 - `_deep_merge` + `_load_toml_with_extends` — config may declare `extends = "strategy_params.toml"`
+- **Two load-time guards, both for the same defect class — a declared surface that silently produces
+  nothing. Each raises `ValueError` in `load_signal_config`, before any consumer sees the config, and
+  `load_backtest_config` inherits both because it calls `load_signal_config` internally.**
+  - `dead_timeframes(day_filter, timeframes)` (#139) — a `day_filter` × fixed-open-weekday timeframe
+    pairing is a blackout, not a filter. `_FIXED_OPEN_WEEKDAY = {"1wk": 0}`: weekly bars are stamped
+    Monday, so `tue_thu` discarded 100% of them. Covers `strategy_timeframes` too, via `chain()`.
+  - `voided_volume_gates(strategy_params, adr_suppress_threshold)` (2026-08-06) — `volume_suppress*`
+    without `adr_exempt` while the ADR gate is live. The two gates select for **opposite** bars
+    (range/volume correlate +0.61 on 1d, +0.67 on 4h): `P(pass both) = 0.0046` vs `0.036` under
+    independence. Returns `[]` when the ADR gate is off (`adr_suppress_threshold is None`) or the
+    strategy is `adr_exempt`. Only an explicit `True` counts — `None` means "inherit global".
+    Falsified against the real pre-fix configs. See `docs/audits/2026-08-06-adr-volume-gate-conjunction.md`.
 
 ## backtest_config.py — backtest sweep TOML loader
 

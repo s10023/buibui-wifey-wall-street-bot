@@ -535,7 +535,11 @@ strategy-wide.
 Two boolean flags are also supported per strategy block:
 
 - **`adr_exempt = true`** — skip the ADR bias gate for this strategy (use for breakout/continuation strategies that need range momentum)
-- **`volume_suppress = true/false`** — override the global `[backtest].volume_suppress` for this strategy. `true` drops signals on candles with volume < 1.5× the 20-candle rolling mean; `false` explicitly keeps them even when the global flag is on. Omit to inherit the global default (off). Decision is data-driven: run `make wifey-backtest` and check the "Volume Impact" table for each strategy — suppress when normal-vol avg R clearly exceeds low-vol avg R (Δ > 0.05R).
+- **`volume_suppress = true/false`** — override the global `[backtest].volume_suppress` for this strategy. `true` drops signals on candles with volume < 1.5× the 20-candle rolling mean; `false` explicitly keeps them even when the global flag is on. Omit to inherit the global default (off). Decision is data-driven: run `make wifey-backtest` and check the "Volume Impact" table for each strategy — suppress when normal-vol avg R clearly exceeds low-vol avg R (Δ > 0.05R). **Two preconditions, both added 2026-08-06 after all four shipped flags turned out to be wrong:**
+  - **`true` requires `adr_exempt = true` on the same strategy** — `load_signal_config` raises otherwise. The ADR gate keeps quiet, small-range bars while this flag keeps high-volume bars, and range/volume correlate at +0.61 (1d) / +0.67 (4h), so the conjunction discards ~99% of signals *silently*. It left `doji × 1d` at zero signals from 1,247 raw detector fires and inverted the measured sign on two other strategies.
+  - **A raw Δ is a point estimate on a noisy sample — test it.** Split the unsuppressed trades on `Trade.low_volume` and run a significance test. A Δ of +0.11R justified discarding 94% of `bos`'s signals for months; retested, every cell came back p ≥ 0.113 with the 95% CI straddling zero. Never compare flag-ON against flag-OFF — ON is a strict subset of OFF, so the arms are dependent and no test applies.
+
+  As of 2026-08-06 **no strategy in either shipped config sets `volume_suppress`.** Full analysis: `docs/audits/2026-08-06-adr-volume-gate-conjunction.md`.
 
 The inline backtest (computed each scan cycle per firing signal) respects all config values:
 `fee_pct`, `day_filter`, `sl_pct`, and `cooldown_seconds` are now all read from TOML and
