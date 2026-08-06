@@ -21,14 +21,28 @@ table, `read_only=True`); `build_coverage_rows`/`summarize` are the testable uni
 **Run:** `make universe-coverage` or
 `PYTHONPATH=. poetry run python tools/universe_coverage.py [--db PATH] [--timeframes 4h 1d 1wk]`
 
-## dead_surface_check.py — declared-but-dead (strategy × timeframe) cells
+## dead_surface_check.py — cells where declaration and output disagree
 
-Reports config-declared cells whose detector has **never fired** across the whole history
-and universe — the data-driven half of the silent-surface enforcement (the static half is
-`tests/test_makefile_invocations.py`). Walks each config's declared set
-(`declared_cells`: every strategy × its `strategy_timeframes` override, else the config's
-`timeframes`), joins it against `backtest_runs` scoped by `day_filter`, and flags any cell
-with **no runs** or **runs but zero `total_signals`**.
+Reports `(strategy × timeframe)` cells in **both** directions of the mismatch — the
+data-driven half of the silent-surface enforcement (the static half is
+`tests/test_makefile_invocations.py`). Both halves key off the same declared set,
+`analytics.signal_config.declared_cells` (every strategy × its `strategy_timeframes`
+override, else the config's `timeframes`), which lives in `signal_config` precisely so
+the two questions cannot drift apart.
+
+**Declared but dead** (`find_dead_cells`) — joins the declared set against `backtest_runs`
+scoped by `day_filter` and flags any cell with **no runs** or **runs but zero
+`total_signals`**.
+
+**Rated but undeclared** (`find_orphan_ratings`) — the inverse. Scans
+`confidence_ratings` for the config's TOML stem and flags any row whose `(strategy, tf)`
+the config no longer declares, in every direction, worst-stars-first. `recalibrate` had no
+notion of the current config and `upsert_confidence_ratings` never deletes, so a dropped
+cell kept its stars and took a **fresh timestamp on a stale value** on every refresh: on
+2026-08-06, `fib_golden_zone × 4h` sat at 3★ +0.4688 — second-highest-rated cell in the
+whole `signal_watch` table — 2.5 months after the strategy left the config. Note the
+asymmetry that let it survive: a dead cell surfaces as a zero and reads as *absence*, an
+orphan surfaces as a number and reads as *evidence*.
 
 The second case is the one that matters and the reason a plain "did it run?" check is not
 enough: `signal_watch.toml` held **338** `1wk`/`tue_thu` rows with zero closed trades for
@@ -36,16 +50,17 @@ three months, so the surface *looked* covered (#139). Emptiness is indistinguish
 coverage unless something explicitly asks.
 
 `_KNOWN_DEAD_CELLS` is a `(day_filter, strategy, timeframe)` allowlist mirroring
-`tests/test_lookahead.py::_KNOWN_LOOKAHEAD_DETECTORS` — **it should only ever shrink.**
-Five entries as of 2026-08-06: `doji × 1d` (both filters), `doji`/`eqh_eql`/`ema × 1wk`
-(weekdays). `doji` is near-inert *everywhere* — its entire output in the DB is 3 signals
-(tue_thu/4h) and 9 (weekdays/4h), so it wants a detector review rather than a permanent
-allowlist entry. The `1wk` entries fire zero under **both** day filters, so that is bar
-scarcity (449 weekly bars/symbol), not day-filter suppression.
+`tests/test_lookahead.py::_KNOWN_LOOKAHEAD_DETECTORS` — **it should only ever shrink**, and
+it reached **empty** on 2026-08-06 (its five entries were resolved; the diagnosis recorded
+beside three of them turned out to be wrong, which the module's docstring keeps as a
+caution). There is no allowlist for orphaned ratings: the fix is to prune them, not to
+accept them.
 
-Pure read (`read_only=True`). Exit 1 on any non-allowlisted dead cell; `--strict` also
-fails on allowlisted ones, which is how you verify the list can shrink. Wired into
-`make db-update` with a `-` prefix so a dead cell reports but never blocks a DB refresh.
+Pure read (`read_only=True`). Exit 1 on any non-allowlisted dead cell **or** any orphaned
+rating; `--strict` also fails on allowlisted dead cells, which is how you verify the list
+can shrink. Inside `make db-update` it never blocks the refresh, but the completion banner
+is conditional on it — it previously printed an unqualified `✅` beside nine orphans, one
+of them displaying 3★.
 
 **Run:** `make check-dead-surfaces` or
 `poetry run python tools/dead_surface_check.py [--config PATH ...] [--db PATH] [--strict]`

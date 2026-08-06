@@ -30,7 +30,7 @@ For Markdown changes: `make lint-md` — this covers `.claude/` (skills and cont
 
 For UI / API changes: `make web-build` (production bundle) or `make web-dev` (Vite dev server).
 
-For routine DB refresh after backtest/strategy changes: `make db-update` (= `db-update-backtest` → `db-update-recalibrate` → `regression-update` → `check-dead-surfaces`). The last step is advisory (`-` prefixed): it reports config-declared `(strategy × timeframe)` cells whose detector never fires, so a dead surface can't hide behind rows that merely exist. Run `make check-dead-surfaces` alone for a non-zero exit.
+For routine DB refresh after backtest/strategy changes: `make db-update` (= `db-update-backtest` → `db-update-recalibrate` → `regression-update` → `check-dead-surfaces`). The last step reports `(strategy × timeframe)` cells where declaration and output disagree in **either** direction — declared-but-dead (detector never fires, so a dead surface can't hide behind rows that merely exist) and rated-but-undeclared (a `confidence_ratings` row outliving the config that produced it). It never blocks the refresh, but the completion banner is **conditional on it**: a failure prints a warning instead of `✅`. Run `make check-dead-surfaces` alone for a non-zero exit.
 
 ## CLI
 
@@ -253,7 +253,7 @@ Skills live in `.claude/skills/<name>/SKILL.md` (project-specific, committed to 
 | `pr-summary` | `/pr-summary` | Write PR title + summary + test plan to `/tmp/pr-<branch>.md` | After finishing any feature branch |
 | `post-branch` | `/post-branch` | Behaviour-gated docs sweep: diff branch changes against CLAUDE.md / README.md / MEMORY.md / Makefile / docker-compose.yml / `.claude/context/`, propose targeted edits, append "Documentation updates" to PR body. Skips for pure refactors. | **Before** `gh pr create`, while the branch is still local-only (saves a duplicate CI matrix) |
 | `stats-dashboard` | `/stats-dashboard` | Stats page architecture, card inventory, adding new cards, timezone constraints | When working on Stats page or `stats_lib.py` |
-| `db-update` | `/db-update` | Routine `make db-update`: backtest (**2** configs — `signal_watch` + `signal_watch_weekdays`) → recalibrate → regression golden refresh → advisory dead-surface check | After any detector / strategy / config change that affects ratings or fixtures |
+| `db-update` | `/db-update` | Routine `make db-update`: backtest (**2** configs — `signal_watch` + `signal_watch_weekdays`) → recalibrate → regression golden refresh → surface check (declared-but-dead **and** rated-but-undeclared; gates the completion banner) | After any detector / strategy / config change that affects ratings or fixtures |
 | `data-backfill` | `/data-backfill` | OHLCV ingestion via `wifey analytics backfill` / `sync` | First-time setup, wiped DB, new symbol or timeframe, filling a data gap |
 | `confluence-backtest` | `/confluence-backtest` | Cross-TF (`--cross-tf`) and same-TF (`--combo`) co-firing backtests; HTF/LTF pair sweeps; post-run spot-check via `tools/combo_health.py` | After adding a strategy, changing entry logic, tuning the live `[combo]` gate, or to confirm combo tables are healthy after a refresh |
 | `frontend-svelte` | `/frontend-svelte` | Svelte 5 + Vite UI workflow for `web/ui/` — pages, stores, lightweight-charts, dev/build commands | Any work under `web/ui/`; pair with `/frontend-design` for visual work |

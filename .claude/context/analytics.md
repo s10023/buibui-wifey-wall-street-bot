@@ -9,6 +9,7 @@ Detailed API reference for `analytics/`. Load this when working on any analytics
 - `upsert_backtest_run` / `upsert_backtest_trades` — `upsert_backtest_run` accepts `universe_policy: str | None = None` (Phase 0.1 policy JSON stamp; all four call sites — sweep runner, single-run CLI, scanner persistence, web `POST /api/backtest` — pass `load_universe_policy().to_json()`)
 - `upsert_confidence_ratings(conn, config_name, ratings, win_rates, day_filter=None, direction="combined")` — PK `(config_name, strategy, tf, direction)`; direction = `'combined'` | `'long'` | `'short'`
 - `get_confidence_ratings(conn, config_name, direction="combined")` / `get_directional_confidence_ratings(conn, config_name)` → `{strategy: {tf: {"long": stars, "short": stars}}}`
+- `prune_undeclared_confidence_ratings(conn, config_name, declared)` → deletes that config's rows for cells it no longer declares (all directions) and returns the `(strategy, tf, direction)` triples. Needed because the upsert is insert-or-replace with no delete, so a dropped cell kept its stars indefinitely — `fib_golden_zone × 4h` held 3★ +0.4688 for 2.5 months after removal. A *declared* cell that is merely unrated this run is deliberately not pruned
 - `backtest_runs` columns: `adr_suppress_threshold REAL NULL`, `recovery_factor DOUBLE NULL`, `volume_suppress BOOLEAN NULL`, `universe_policy TEXT NULL` (Phase 0.1 — migration-list only, never in CREATE TABLE, so fresh + migrated DBs share one physical column order; `upsert_backtest_run`'s INSERT…SELECT is positional)
 - `_backtest_run_id` appends `|adr:X` / `|vol_suppress` for unique run_id per param combo; `universe_policy` is deliberately excluded from the hash (metadata, doesn't change P&L)
 - **D10 same-TF**: `backtest_combos` table; `upsert_combo_run` → stable `combo_id` (`symbol|tf|A+B|wN|day_filter`, no timestamp → `INSERT OR REPLACE`); `list_combo_runs(conn)`; `get_combo_lookup(conn)` → `dict[(symbol, tf, frozenset({a,b})), row_dict]` best avg_r per pair
@@ -353,9 +354,13 @@ Retired parent API this replaced (`cme_gap_lib.py`, kept here for historical ref
 
 ## recalibrate_lib.py / recalibrate_runner.py
 
-- `get_backtest_win_rates(conn)` → DataFrame with combined + directional columns
-- `compute_recalibrated_ratings(conn, min_trades)` → `dict[str, dict[str, int]]`
-- `compute_directional_ratings(conn, min_trades=5)` → `{strategy: {tf: {"long": stars, "short": stars}}}`
-- `write_confidence_to_db(conn, config_name, ratings, win_rates, day_filter=None, directional_ratings=None)`
+- `get_backtest_win_rates(conn, day_filter=None, adr_suppress_threshold=None, declared=None)` → DataFrame with combined + directional columns. **The single place the input population is filtered** — the report, `compute_recalibrated_ratings` and `compute_directional_ratings` all go through it, so they cannot disagree about which cells are live. Four restrictions, and two of them were added 2026-08-06 after both failed silently:
+  - `closed_trades > 0`, and latest run per `(strategy, timeframe, symbol)`
+  - `day_filter` / `adr_suppress_threshold` — keep recalibration inside one execution context
+  - `declared` — only cells the config scans (`signal_config.declared_cells`, honours `strategy_timeframes`). `backtest_runs` is permanent, so without it a cell is re-rated forever after leaving the config
+  - **`sweep_id IS NOT NULL`** — sweep rows only. `signal.scanner`'s live EV gate also writes `backtest_runs` (one row per direction-leg: single strategy, no live-parity params, no conflict resolver, `sweep_id` NULL) on every scan cycle, so it was almost always the newer row and *superseded* the competed sweep row. 42 of 316 inputs on `signal_watch` (13%), 15 of its 22 declared cells, median 4 closed trades vs the sweep's 8; `orb × 4h` read +0.0011 against a sweep-only +0.2126, and five cells landed on the wrong side of zero. `signal_watch_weekdays` never runs live, so the two configs' stars were not comparable populations
+- `compute_recalibrated_ratings(conn, min_trades, ..., declared=None)` → `dict[str, dict[str, int]]`
+- `compute_directional_ratings(conn, min_trades=5, ..., declared=None)` → `{strategy: {tf: {"long": stars, "short": stars}}}`
+- `write_confidence_to_db(conn, config_name, ratings, win_rates, day_filter=None, directional_ratings=None, declared=None)` → returns the pruned `(strategy, tf, direction)` triples; prunes first because the upsert cannot delete
 - `write_confidence_to_source` — legacy: patches `analytics/strategies/_registry.py` directly
-- Runner: `--config <toml>` derives `day_filter`, `config_name`, `adr_suppress_threshold`; `--apply` writes to DB (with config) or source (without config)
+- Runner: `--config <toml>` derives `day_filter`, `config_name`, `adr_suppress_threshold`, `declared`; `--apply` writes to DB (with config) or source (without config). The prune runs **even when nothing is ratable** — an orphan is by definition a row no current run overwrites, so gating it on "something to write" would skip the worst case
