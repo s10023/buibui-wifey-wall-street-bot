@@ -104,9 +104,12 @@ the policy bounds the bias, it does not remove it.
 `config/stocks.json` is the **live-alert watchlist** (13 symbols the daemon
 scans). For backtest / cross-sectional research there is a separate, larger
 **research breadth universe** in `config/universe.json` (committed/tracked, not
-gitignored — it is a reproducible research artifact): **508 members** (504 liquid
+gitignored — it is a reproducible research artifact): **505 members** (501 liquid
 US large-caps plus 4 index/sector ETFs), seeded from the S&P 100 (OEX) and
-widened since, each tagged with `sector`, `kind` (`stock`|`etf`), a `delisted` lifecycle flag
+widened to the S&P 500 since — minus one ticker per dual-class issuer (`GOOGL` over
+`GOOG`, `FOXA` over `FOX`, `NWSA` over `NWS`), a deliberate deviation from the index
+list so no company takes two slots in a cross-section. Each is tagged with
+`sector`, `kind` (`stock`|`etf`), a `delisted` lifecycle flag
 and an optional `listed` first-trading date (on names that list after the
 backfill start), under its own `universe_policy` + a `membership_as_of` snapshot
 date. Membership is **point-in-time-bounded, not scraped**: for mega-caps
@@ -141,7 +144,7 @@ each module does, because a second copy of the module map is what rotted the fir
 | `signals/` · `utils/` | Alerting + two-layer dedup daemon (detection itself lives in `analytics/`); shared Telegram / yfinance / EDGAR clients and the config-universe loaders | `.claude/context/signals.md` |
 | `web/` | FastAPI backend (`web/api/`) + Svelte 5 / Vite UI (`web/ui/`) | `.claude/context/web.md` |
 | `tools/` | One-shot analysis, audit, and research-ingest scripts; not part of the daemon or CLI surface | `.claude/context/tools.md` |
-| `config/` | `stocks.json` (gitignored 13-symbol live watchlist), `universe.json` (committed 508-member research breadth universe), `strategy_params.toml`, `signal_watch*.toml` | `.claude/context/config.md` |
+| `config/` | `stocks.json` (gitignored 13-symbol live watchlist), `universe.json` (committed 505-member research breadth universe), `strategy_params.toml`, `signal_watch*.toml` | `.claude/context/config.md` |
 | `tests/` | pytest suite; tests import from lib modules and pass mock dependencies directly | — |
 | `migrations/` | One-shot DB migration scripts, run by hand — routine schema changes go through `analytics/store/schema.py` instead | — |
 | `trade/` | Empty placeholder package marking the Phase B seam (both files are 0 bytes) — the fork's Binance order opener was stripped. Phase B fills it with an equities broker adapter | — |
@@ -274,7 +277,7 @@ Options:
 - `--since YYYY-MM-DD` — start date for backfill (default: `2023-01-01`)
 - `--symbols AAPL MSFT` — symbols to fetch (default: all symbols in `config/stocks.json`)
 - `--timeframes 4h 1d 1wk` — timeframes to fetch (default: `1h 4h`). Supported: `1h`, `4h`, `1d`, `1wk`
-- `--universe` — resolve symbols from `config/universe.json` (508-member research breadth universe) instead of the watchlist
+- `--universe` — resolve symbols from `config/universe.json` (505-member research breadth universe) instead of the watchlist
 
 **Incremental sync — fetch new candles since last stored:**
 

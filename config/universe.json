@@ -2,7 +2,7 @@
   "universe_policy": {
     "scope": "liquid_large_cap_breadth",
     "as_of": "today",
-    "survivorship_note": "Research breadth universe (~100 liquid US large-caps tracking the S&P 100 constituents + 4 index ETFs) selected 2026-06-16 from today's survivors. Membership tracks the published S&P 100 (OEX) as of 2026-05-29, with two deliberate adjustments: the redundant second Alphabet share class GOOG is dropped (GOOGL is retained) to avoid double-counting one issuer, and MSTR is retained as a liquid survivor carried over from the live watchlist though it is not an S&P 100 member. This is a forward-looking selection over the backtested history: it carries survivorship/selection bias because names that crashed, shrank, were acquired or delisted never enter the sample, and a few members (e.g. GEV, PLTR, UBER) list well after 2018 so carry shorter history. PIT constituent membership was deliberately NOT scraped (gap-map decision #6: bound the claim, do not chase paywalled delisted-price history). Bound every cross-sectional result to this fixed membership; do not extrapolate beyond it."
+    "survivorship_note": "Research breadth universe: 505 members = 501 stocks tracking the S&P 500 constituents + 4 index ETFs (SPY, QQQ, IWM, DIA). Originally ~105 members tracking the S&P 100 (selected 2026-06-16 from today's survivors); expanded to the S&P 500 on 2026-06-21 by tools/expand_universe_sp500.py for experiment #1's breadth arm. ONE ISSUER PER MEMBER: where a company lists two share classes the redundant one is dropped and the Class A / more liquid ticker retained - GOOGL over GOOG, FOXA over FOX, NWSA over NWS. This deviates from the S&P 500 constituent list on purpose, because this is a cross-sectional research universe and not an index tracker: two near-identical series for one company would take two slots in any top-N ranking and inject near-collinearity into residualisation and beta estimation. The S&P 100 selection made this call for GOOG; the S&P 500 merge silently re-added it (and FOX/NWS) until 2026-08-06. MSTR is retained as a liquid survivor carried over from the live watchlist. 'membership_as_of' deliberately remains 2026-06-16 (the pre-expansion snapshot date) because with_min_history anchors its cutoff to that field - it is a computed value, not a label, so moving it would shift a filter. This is a forward-looking selection over the backtested history: it carries survivorship/selection bias because names that crashed, shrank, were acquired or delisted never enter the sample, and later listings carry shorter history (only GEV, PLTR and UBER carry a 'listed' date, so min_history filtering sees just those three - the remaining 498 stocks are unbounded on that axis). PIT constituent membership was deliberately NOT scraped (gap-map decision #6: bound the claim, do not chase paywalled delisted-price history). Bound every cross-sectional result to this fixed membership; do not extrapolate beyond it."
   },
   "membership_as_of": "2026-06-16",
   "members": {
@@ -596,11 +596,6 @@
     },
     "ALL": {
       "sector": "Financials",
-      "kind": "stock",
-      "delisted": false
-    },
-    "GOOG": {
-      "sector": "Communication Services",
       "kind": "stock",
       "delisted": false
     },
@@ -1364,11 +1359,6 @@
       "kind": "stock",
       "delisted": false
     },
-    "FOX": {
-      "sector": "Communication Services",
-      "kind": "stock",
-      "delisted": false
-    },
     "BEN": {
       "sector": "Financials",
       "kind": "stock",
@@ -1845,11 +1835,6 @@
       "delisted": false
     },
     "NWSA": {
-      "sector": "Communication Services",
-      "kind": "stock",
-      "delisted": false
-    },
-    "NWS": {
       "sector": "Communication Services",
       "kind": "stock",
       "delisted": false

@@ -8,7 +8,7 @@ Two universes exist and they are **not** the same thing:
 | File | Tracked? | Purpose |
 | --- | --- | --- |
 | `config/stocks.json` | gitignored | the 13-symbol **live-alert watchlist** the daemon scans |
-| `config/universe.json` | committed | the 508-member **research breadth universe** the sleeves study |
+| `config/universe.json` | committed | the 505-member **research breadth universe** the sleeves study |
 
 ## config/stocks.json
 
@@ -25,7 +25,7 @@ how the watchlist was selected — absent → `DEFAULT_UNIVERSE_POLICY` applies.
 Phase A research **breadth universe** (N3, **committed/tracked** — a reproducible research
 artifact, intentionally distinct from the gitignored `stocks.json` live-alert watchlist).
 
-- **508 members** = 504 stocks (tracking the **current S&P 500** — expanded in experiment #1,
+- **505 members** = 501 stocks (tracking the **current S&P 500** — expanded in experiment #1,
   PR #98, 2026-06-21, from the prior 101-name S&P-100/OEX set via
   `tools/expand_universe_sp500.py`) + 4 index ETFs.
 - Each member is `{sector, kind: "stock"|"etf", delisted: bool}`, plus an optional `listed`
@@ -33,8 +33,18 @@ artifact, intentionally distinct from the gitignored `stocks.json` live-alert wa
   `universe_policy` block and a `membership_as_of` snapshot date.
 - The pre-expansion 101 S&P-100 stocks are snapshotted to `config/universe_sp100_snapshot.json`
   (the stable "mega" arm of experiment #1's 2×2).
-- Two deliberate S&P-100 adjustments: the redundant second Alphabet share class `GOOG` is dropped
-  (`GOOGL` retained, no issuer double-count), and `MSTR` is kept as a watchlist-carryover survivor.
+- **ONE ISSUER PER MEMBER — a deliberate deviation from the S&P 500 list.** Where a company
+  lists two share classes the redundant one is dropped and the Class A / more liquid ticker
+  kept: `GOOGL` over `GOOG`, `FOXA` over `FOX`, `NWSA` over `NWS`. This is a cross-sectional
+  research universe, not an index tracker — two near-identical series for one company take two
+  slots in any top-N ranking and inject near-collinearity into `xsmom/residual.py`'s regression
+  and into beta estimation. The S&P-100 selection made this call for `GOOG` (the 101-name
+  snapshot correctly excludes it); the 2026-06-21 S&P 500 merge silently re-added it **and**
+  `FOX`/`NWS`, because the expander merges constituents verbatim and nothing de-duplicates
+  issuers on load. All three removed 2026-08-06 (508 → 505). `MSTR` is separately kept as a
+  watchlist-carryover survivor. Enforced by
+  `tests/test_config_validation.py::TestShippedUniverseFile` — the pair list is checked as
+  data, so a future expansion re-introducing any of them fails and names the pair.
 - Loaded via `utils.config_validation.load_research_universe()`
   (`ResearchUniverse` / `UniverseMember`; `validate_research_universe` — `sector` is a free string,
   `kind` ∈ `{stock, etf}`).

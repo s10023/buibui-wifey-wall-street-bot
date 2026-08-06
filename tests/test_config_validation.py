@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -635,3 +636,86 @@ class TestShippedUniverseFile:
             Path("config/universe.json"), min_history_days=365 * 8
         )
         assert set(full.symbols()) - set(strict.symbols()) == {"UBER", "PLTR", "GEV"}
+
+    def test_note_states_the_true_member_counts(self) -> None:
+        """The self-description must match the file, or it is provenance fiction.
+
+        This binding is the durable half of the 2026-08-06 fix. The note claimed
+        "~100 liquid US large-caps ... 105 members" for a **508**-member file from
+        2026-06-21 (the S&P 500 expansion, PR #98) until 2026-08-06, because
+        ``tools/expand_universe_sp500.py`` rewrites ``members`` and never touches
+        ``universe_policy``. Nothing failed, and nothing could:
+        ``test_shipped_universe_loads`` asserts only ``n_active >= 50``, which waves
+        through any size at all. ``describe()`` even printed the true count on one
+        line and the false one on the next.
+        """
+        uni = load_research_universe(Path("config/universe.json"))
+        note = uni.policy.survivorship_note
+
+        counts = re.search(r"(\d+) members = (\d+) stocks", note)
+        assert counts, f"note must state 'N members = M stocks'; got: {note[:120]}"
+        stated_total, stated_stocks = int(counts.group(1)), int(counts.group(2))
+
+        etfs = re.search(r"\+ (\d+) index ETFs", note)
+        assert etfs, f"note must state the index-ETF count; got: {note[:120]}"
+        stated_etfs = int(etfs.group(1))
+
+        actual_total = len(uni.symbols())
+        actual_stocks = len(uni.stocks())
+        assert stated_total == actual_total, (
+            f"note says {stated_total} members, file has {actual_total}"
+        )
+        assert stated_stocks == actual_stocks, (
+            f"note says {stated_stocks} stocks, file has {actual_stocks}"
+        )
+        assert stated_etfs == actual_total - actual_stocks, (
+            f"note says {stated_etfs} ETFs, file has {actual_total - actual_stocks}"
+        )
+        assert stated_stocks + stated_etfs == stated_total, "note is self-inconsistent"
+        assert stated_total == uni.n_active, (
+            "every member should be active (delisted=False)"
+        )
+
+    def test_one_issuer_per_member_no_dual_share_classes(self) -> None:
+        """No company may occupy two slots via a second share class.
+
+        This is a cross-sectional research universe, not an index tracker, so it
+        deviates from the S&P 500 list on purpose: two near-identical series for one
+        issuer would take two slots in any top-N ranking and inject near-collinearity
+        into residualisation and beta estimation.
+
+        The S&P 100 selection made this call for GOOG. The 2026-06-21 S&P 500 merge
+        silently re-added it — and FOX and NWS with it — because the expander merges
+        constituents verbatim and nothing de-duplicates issuers on load. All three
+        were removed 2026-08-06. The pair list is checked as data rather than as one
+        hard-coded assertion so that a future expansion re-introducing *any* of them
+        fails here, naming the pair.
+        """
+        uni = load_research_universe(Path("config/universe.json"))
+        stocks = set(uni.stocks())
+        # (redundant class that must stay OUT, sibling that must stay IN)
+        dual_class = [("GOOG", "GOOGL"), ("FOX", "FOXA"), ("NWS", "NWSA")]
+        both = [f"{a}+{b}" for a, b in dual_class if {a, b} <= stocks]
+        assert not both, (
+            f"dual share classes of one issuer both present: {both}. "
+            "Drop the redundant class (keep the Class A / more liquid ticker) and "
+            "update universe_policy.survivorship_note's counts in the same commit."
+        )
+        # the retained sibling must actually be there — dropping both would be a
+        # different bug that the count test alone would not catch
+        for _, keep in dual_class:
+            assert keep in stocks, f"{keep} should be retained as the surviving class"
+
+    def test_note_declares_the_one_issuer_per_member_rule(self) -> None:
+        """The deviation from the S&P 500 list must be stated, not silent.
+
+        A universe that quietly differs from the index it claims to track is the
+        same provenance defect as a wrong count — a reader reconciling 501 against
+        S&P 500 membership needs the reason in the file, not in a commit message.
+        """
+        note = load_research_universe(Path("config/universe.json")).policy
+        assert "ONE ISSUER PER MEMBER" in note.survivorship_note
+        for sym in ("GOOGL", "FOXA", "NWSA"):
+            assert sym in note.survivorship_note, (
+                f"note must name {sym} as the retained class"
+            )
