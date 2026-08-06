@@ -99,7 +99,9 @@ def _compute_backtest(
         signals_df = filter_signals_by_day(signals_df, allowed_days)
 
     if adr_suppress_threshold is not None and not adr_exempt and not signals_df.empty:
-        signals_df = _filter_signals_by_adr(hist_df, signals_df, adr_suppress_threshold)
+        signals_df = _filter_signals_by_adr(
+            hist_df, signals_df, adr_suppress_threshold, timeframe
+        )
 
     return run_backtest(
         hist_df,

@@ -679,7 +679,7 @@ def _apply_adr_bias_gate_to_signals(
     if exempt_long and exempt_short:
         return signals
     if not exempt_long and not exempt_short:
-        return _filter_signals_by_adr(ohlcv, signals, threshold)
+        return _filter_signals_by_adr(ohlcv, signals, threshold, timeframe)
 
     # Per-direction: one side exempt, the other not. Split, filter the
     # non-exempt slice, concat back ordered by open_time.
@@ -692,7 +692,7 @@ def _apply_adr_bias_gate_to_signals(
 
     if non_exempt.empty:
         return signals
-    filtered = _filter_signals_by_adr(ohlcv, non_exempt, threshold)
+    filtered = _filter_signals_by_adr(ohlcv, non_exempt, threshold, timeframe)
     out = pd.concat([exempt, filtered], ignore_index=True)
     return out.sort_values("open_time").reset_index(drop=True)
 

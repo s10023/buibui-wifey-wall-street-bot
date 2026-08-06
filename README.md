@@ -380,7 +380,7 @@ run: `fibonacci_retracement.py` and `funding_extreme.py` (the latter is crypto-o
 - `--with-regime` / `--without-regime` — **wired (PR-2)**. Runs live's `_apply_regime_gate` against backtest signals via per-signal HTF regime lookup: each historical signal is evaluated against the regime active at its own `open_time` (mirrors live's `iloc[-2]` semantics — the last fully-closed HTF candle before the signal). Reads `[bias.regime]` from the same TOML the live daemon consumes (`enabled` / `mode=soft|hard` / `htf_tf` / `enabled_regimes` / `per_strategy`). Gate is a no-op unless **all of** `--with-regime`, `bias.regime_enabled=true`, and an HTF series is loadable for the symbol — otherwise falls open (matches live cache-miss).
 - `--with-direction-filter` / `--without-direction-filter` — **wired (PR-3)**. Pure per-event flag check — reads `[strategy_params.<name>].suppress_long` / `.suppress_short` and drops events whose direction is suppressed when `[bias.direction_filter].mode = "hard"` (soft mode logs only). No HTF state, no time-series — cheapest gate in the chain. Gate is a no-op unless `--with-direction-filter`, `bias.direction_filter_enabled=true`, and `strategy_params` are all supplied.
 - `--with-f8-htf-ema` / `--without-f8-htf-ema` — **wired (PR-3)**. Per-signal HTF EMA-slope lookup: pre-computes `(ema - ema.shift(slb)) / ema.shift(slb)` per `(symbol × anchor)` once per sweep, then resolves each signal's slope at its own `open_time` (same `iloc[-2]` semantics as regime). Drops longs opposing a negative slope / shorts opposing a positive slope when `[bias.htf_ema].mode = "hard"` (soft mode logs only); `|slope| < deadband_pct` lets both directions through. Reads `[bias.htf_ema]` and `[bias.htf_ema.per_strategy]` from the same TOML the live daemon consumes. Gate is a no-op unless `--with-f8-htf-ema`, `bias.htf_ema_enabled=true`, and the slope series is supplied for the symbol (otherwise falls open — matches live cache-miss).
-- `--with-adr-bias` / `--without-adr-bias` — **wired (PR-4)**. Reuses live's `_filter_signals_by_adr` via an engine adapter that splits signals by per-direction `_is_adr_exempt(strategy, direction)`, filters the non-exempt slice only, then concats back. Honours `[strategy_params.<name>].adr_exempt = true` (wifey has only the strategy-wide flag — parent's per-direction `adr_exempt_long`/`adr_exempt_short` overrides from PR #380 were not ported, so both directions inherit the strategy-wide value). When the gate is on, the runner skips its legacy strategy-wide ADR pre-filter so the engine path takes over without double-filtering. Gate is a no-op unless `--with-adr-bias` and `bias.adr_suppress_threshold` is set.
+- `--with-adr-bias` / `--without-adr-bias` — **wired (PR-4)**. Reuses live's `_filter_signals_by_adr` via an engine adapter that splits signals by per-direction `_is_adr_exempt(strategy, direction)`, filters the non-exempt slice only, then concats back. Honours `[strategy_params.<name>].adr_exempt = true` (wifey has only the strategy-wide flag — parent's per-direction `adr_exempt_long`/`adr_exempt_short` overrides from PR #380 were not ported, so both directions inherit the strategy-wide value). When the gate is on, the runner skips its legacy strategy-wide ADR pre-filter so the engine path takes over without double-filtering. Gate is a no-op unless `--with-adr-bias` and `bias.adr_suppress_threshold` is set — **and unless the timeframe is intraday** (`adr_gate_applies()`; `1d` / `1wk` no-op since 2026-08-06).
 - `--with-conflict-resolver` / `--without-conflict-resolver` — **wired (PR-4b)**. Pools backtest signals across strategies per `(symbol, tf)` and applies the lifted live conflict resolver (`_apply_conflict_resolver`, shared with `scanner.run_scan_cycle`) per `open_time` moment. The resolver's continuous tiebreaker reads `confidence_ratings.avg_r` keyed on `(strategy, tf, direction)` for the TOML stem (`cfg.config_name` → `signal_watch`, `signal_watch_weekdays`), preferring directional → falling back to `'combined'` → 0.0 for unrated. Implemented at the runner level (`_collect_sweep_results` is a three-phase pipeline: detect → resolve → backtest+save); the engine path is unchanged. Default-off is byte-identical (phase 2 short-circuits when the gate is off). Run `make db-update` to keep `confidence_ratings` fresh — the gate's effect depends on the avg_r values, but the default-off path is unchanged.
 - `--with-cooldown` / `--without-cooldown` — **wired (PR-5)**. Engine-side N-bar cooldown keyed by `(symbol, timeframe, strategy, direction)` via a per-call `_CooldownState` ledger — replays live's `cooldown_store` candle-watermark / per-strategy suppression against historical signals. Walks signals in `open_time` order and drops a row when `open_time < last_fire + cooldown_bars × tf_ms`; opposing-direction signals are not suppressed (separate key). Equity baked-in defaults: 4h=2, 1d=1, 1wk=1 bars (**not** parent's intraday `15m=4 / 1h=3 / 4h=2 / 1d=1`); unknown TF → 1; override via `[backtest.live_parity.cooldown_bars]` TOML sub-table. State is instantiated fresh inside `run_backtest()` per call, so two identical back-to-back calls are byte-equal.
 - TOML equivalent: `[backtest.live_parity]` block with `enabled` / `regime` / `direction_filter` / `f8_htf_ema` / `adr_bias` / `conflict_resolver` / `cooldown` keys + optional `[backtest.live_parity.cooldown_bars]` per-tf sub-table. CLI `--without-<gate>` wins over TOML; `--live-parity --without-cooldown` cleanly disables a single gate. **Defaults (all `False`) are a no-op for every gate, so existing callers see no behavioural change — proven by the regression-golden contract (`make test-regression` byte-identical).**
@@ -555,6 +555,12 @@ Order: `regime` (Step −1) → `htf_ema` / F8 (Step 0) → `adr_suppress_thresh
 # down). Reversal signals at the extreme still fire. Falls back to blanket suppress when
 # move direction is unknown.
 adr_suppress_threshold = 0.80   # e.g. 0.80 = suppress chasing direction when 80%+ consumed
+# INTRADAY TIMEFRAMES ONLY (2026-08-06). "Range consumed UP TO this candle" needs >1 bar
+# per calendar day to be a partial quantity; `1d` and `1wk` have exactly one, so the gate
+# no-ops there via `adr_gate_applies()`. On a one-bar day the ratio silently became a
+# high-range-day filter and its direction guard was true by construction, costing 28-82%
+# of every strategy's signals for an effect that survived correction in 1 of 17 cells.
+# See docs/audits/2026-08-06-adr-gate-timeframe-degeneracy.md.
 
 # DOW soft suppress: reduce confidence by 1 star when signal direction opposes today's
 # historical DOW avg return (from stats_lib). Signal still fires but shows lower conviction.
@@ -862,7 +868,7 @@ make wifey-recalibrate MIN_TRADES=20 CONFIG=config/signal_watch.toml APPLY=1
 make wifey-digest QUERY=strategy           # strategy leaderboard (default)
 make wifey-digest QUERY=symbol             # symbol leaderboard
 make wifey-digest QUERY=direction_bias     # long vs short avg R per strategy
-make wifey-digest QUERY=adr_ab             # ADR gate A/B delta
+make wifey-digest QUERY=adr_ab             # ADR gate A/B delta — see caveat below
 make wifey-digest QUERY=volume_ab          # volume suppress A/B delta
 make wifey-digest QUERY=day_filter_ab      # day filter A/B delta
 make wifey-digest QUERY=consistency        # edge breadth across symbol×TF combos
@@ -876,6 +882,12 @@ make wifey-digest MIN_TRADES=10            # raise min-trades threshold
 
 Defaults: `SYMBOL=SPY`, `STRATEGY=fvg`, `INTERVAL=4h`, `DAYS=90`.
 Optional overrides: `SL_PCT`, `TP_R`, `FEE_PCT`, `SAVE=1` (persist to DB).
+
+> **`QUERY=adr_ab` caveat.** It splits on `adr_suppress_threshold IS NOT NULL` vs `IS NULL`,
+> but that column records **what the config declared, not what the gate did**. Rows for
+> `adr_exempt` strategies (`bos`, `eqh_eql`) and — since 2026-08-06 — every `1d` / `1wk` row
+> carry a non-NULL threshold while the gate never ran, so they land on the "on" side and drag
+> the measured delta toward zero. Read it for `4h` non-exempt strategies only.
 
 To populate both `day_filter` variants for complete coverage:
 

@@ -45,6 +45,12 @@ Decision threshold:
 
 ## STOP — check the ADR gate before setting `volume_suppress = true`
 
+**Scope note (2026-08-06):** the ADR gate is now **intraday-only** (`adr_gate_applies()` —
+`1d` / `1wk` no-op, since "range consumed UP TO this candle" needs >1 bar per calendar day).
+So the conjunction below can only bite on **`4h`**. On `1d` / `1wk` there is no conjunction to
+avoid — but `adr_exempt` is still the right thing to check, because it is what the
+`voided_volume_gates` load guard keys on and the guard is timeframe-blind.
+
 **A favourable Delta is NOT sufficient.** The split table above is computed on the
 population *before* the volume filter, and it knows nothing about the `[bias]` ADR
 gate. Those two gates select for **opposite** bars:

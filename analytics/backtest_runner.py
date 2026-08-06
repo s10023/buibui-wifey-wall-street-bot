@@ -501,7 +501,9 @@ def _collect_sweep_results(
             and not signals.empty
             and not cfg.live_parity.is_on("adr_bias")
         ):
-            signals = _filter_signals_by_adr(ohlcv, signals, cfg.adr_suppress_threshold)
+            signals = _filter_signals_by_adr(
+                ohlcv, signals, cfg.adr_suppress_threshold, timeframe
+            )
 
         signals_map[(symbol, timeframe, strategy)] = (ohlcv, signals, None)
 
