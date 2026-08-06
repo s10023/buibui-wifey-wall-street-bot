@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -635,3 +636,63 @@ class TestShippedUniverseFile:
             Path("config/universe.json"), min_history_days=365 * 8
         )
         assert set(full.symbols()) - set(strict.symbols()) == {"UBER", "PLTR", "GEV"}
+
+    def test_note_states_the_true_member_counts(self) -> None:
+        """The self-description must match the file, or it is provenance fiction.
+
+        This binding is the durable half of the 2026-08-06 fix. The note claimed
+        "~100 liquid US large-caps ... 105 members" for a **508**-member file from
+        2026-06-21 (the S&P 500 expansion, PR #98) until 2026-08-06, because
+        ``tools/expand_universe_sp500.py`` rewrites ``members`` and never touches
+        ``universe_policy``. Nothing failed, and nothing could:
+        ``test_shipped_universe_loads`` asserts only ``n_active >= 50``, which waves
+        through any size at all. ``describe()`` even printed the true count on one
+        line and the false one on the next.
+        """
+        uni = load_research_universe(Path("config/universe.json"))
+        note = uni.policy.survivorship_note
+
+        counts = re.search(r"(\d+) members = (\d+) stocks", note)
+        assert counts, f"note must state 'N members = M stocks'; got: {note[:120]}"
+        stated_total, stated_stocks = int(counts.group(1)), int(counts.group(2))
+
+        etfs = re.search(r"\+ (\d+) index ETFs", note)
+        assert etfs, f"note must state the index-ETF count; got: {note[:120]}"
+        stated_etfs = int(etfs.group(1))
+
+        actual_total = len(uni.symbols())
+        actual_stocks = len(uni.stocks())
+        assert stated_total == actual_total, (
+            f"note says {stated_total} members, file has {actual_total}"
+        )
+        assert stated_stocks == actual_stocks, (
+            f"note says {stated_stocks} stocks, file has {actual_stocks}"
+        )
+        assert stated_etfs == actual_total - actual_stocks, (
+            f"note says {stated_etfs} ETFs, file has {actual_total - actual_stocks}"
+        )
+        assert stated_stocks + stated_etfs == stated_total, "note is self-inconsistent"
+        assert stated_total == uni.n_active, (
+            "every member should be active (delisted=False)"
+        )
+
+    def test_note_and_membership_agree_on_dual_share_classes(self) -> None:
+        """Bidirectional binding on the Alphabet double-count.
+
+        The S&P 100 selection deliberately dropped GOOG so one issuer was not
+        counted twice; the S&P 500 expansion silently re-added it, leaving the note
+        asserting an absence that had stopped being true. Both directions are bound
+        on purpose: if GOOG is ever removed, this fails until the note stops
+        declaring the defect — so the note cannot rot in either direction.
+        """
+        uni = load_research_universe(Path("config/universe.json"))
+        stocks = set(uni.stocks())
+        both_present = {"GOOG", "GOOGL"} <= stocks
+        note_declares = (
+            "both Alphabet share classes GOOG and GOOGL are present"
+            in uni.policy.survivorship_note
+        )
+        assert both_present == note_declares, (
+            "GOOG/GOOGL membership and survivorship_note disagree: "
+            f"both_present={both_present}, note_declares={note_declares}"
+        )

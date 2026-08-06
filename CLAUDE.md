@@ -63,7 +63,7 @@ behind a pointer is not a guard rail.
 | `signals/` · `utils/` | Alerting + dedup daemon (detection lives in `analytics/`); shared Telegram / yfinance / EDGAR clients and the two config-universe loaders | `context/signals.md` |
 | `web/` | FastAPI backend + Svelte 5 / Vite UI | `context/web.md` |
 | `tools/` | One-shot analysis, audit, and research-ingest scripts; not part of the daemon or CLI surface | `context/tools.md` |
-| `trade/open_trades.py` | Legacy Binance Futures order opener (manual/CLI use). **Phase A out of scope** — Phase B replaces it with an equities broker adapter (broker TBD) | — |
+| `trade/` | **Empty placeholder — both files are 0 bytes.** The parent's Binance Futures opener was dropped at fork time; nothing replaced it. `make wifey-open-trades` *ran* the empty file and exited 0 behind a success banner until 2026-08-06, and now fails loudly. Phase B (equities broker, TBD) is where an order layer would land | — |
 | `tests/` | pytest suite; tests import from lib modules and pass mock dependencies directly | — |
 | `migrations/` | One-shot DB migration scripts, run by hand. Only `001_day_filter_text.py` (fork-era, 2026-05-14); routine schema changes go through `analytics/store/schema.py`'s migration list instead | — |
 | `config/` | `stocks.json` (gitignored 13-symbol live watchlist), `universe.json` (committed 508-member research breadth universe), `strategy_params.toml` (shared base inherited via `extends`) | `context/config.md` |

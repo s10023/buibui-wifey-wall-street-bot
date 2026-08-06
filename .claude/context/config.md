@@ -33,8 +33,14 @@ artifact, intentionally distinct from the gitignored `stocks.json` live-alert wa
   `universe_policy` block and a `membership_as_of` snapshot date.
 - The pre-expansion 101 S&P-100 stocks are snapshotted to `config/universe_sp100_snapshot.json`
   (the stable "mega" arm of experiment #1's 2×2).
-- Two deliberate S&P-100 adjustments: the redundant second Alphabet share class `GOOG` is dropped
-  (`GOOGL` retained, no issuer double-count), and `MSTR` is kept as a watchlist-carryover survivor.
+- Two deliberate adjustments were made to the *S&P-100* selection, and **only one survived the
+  expansion**: `MSTR` is still kept as a watchlist-carryover survivor, but the `GOOG` drop did
+  **not** survive. The 101-name snapshot correctly excludes `GOOG` (keeping `GOOGL` alone, no
+  issuer double-count); the S&P 500 merge re-added it, and nothing de-duplicates issuers on load —
+  so **`GOOG` and `GOOGL` are both live in `stocks()` today** and Alphabet is counted twice in
+  every cross-sectional sleeve. Recorded as a KNOWN DEFECT in the file's own `survivorship_note`
+  and bound both ways by `tests/test_config_validation.py::TestShippedUniverseFile`. Fixing it is
+  a *research* decision (it changes membership, hence any future sleeve run), not a docs one.
 - Loaded via `utils.config_validation.load_research_universe()`
   (`ResearchUniverse` / `UniverseMember`; `validate_research_universe` — `sector` is a free string,
   `kind` ∈ `{stock, etf}`).

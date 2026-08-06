@@ -380,9 +380,13 @@ web-preview:
 
 web-full: web-build wifey-web
 
-wifey-open-trades:
-	@echo "🚀 Opening multiple trades..."
-	poetry run python trade/open_trades.py
+wifey-open-trades:  ## Phase B placeholder — fails loudly; there is no order layer yet
+	@echo "❌ No order layer exists. Phase A is signals-only."
+	@echo "   trade/open_trades.py is a 0-byte placeholder: the fork dropped the parent's"
+	@echo "   Binance Futures opener and Phase B (equities broker, TBD) has not landed."
+	@echo "   This target used to run the empty file, print a success banner and exit 0 —"
+	@echo "   indistinguishable from having placed orders. Failing instead (2026-08-06)."
+	@exit 1
 
 db-prune-backtests:
 	@echo "🧹 Pruning old backtest runs (hard cutoff 30d; soft cutoff 7d+top-10 per strategy×symbol×tf×day_filter×adr_threshold)..."
