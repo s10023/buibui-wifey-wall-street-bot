@@ -5,8 +5,9 @@ description: >
   the doc surfaces (CLAUDE.md, README.md, MEMORY.md, Makefile, docker-compose.yml,
   .claude/context/*.md, .claude/skills/*/SKILL.md)
   and propose targeted edits where they've drifted, then run a pre-merge
-  readiness check and offer a fresh-conversation handoff prompt. Use IMMEDIATELY
-  after `gh pr create` succeeds, BEFORE reporting the PR URL back to the user.
+  readiness check and offer a fresh-conversation handoff prompt. Use BEFORE
+  `gh pr create`, while the branch is still local-only, and fold the resulting
+  "Documentation updates" section into the initial PR body.
   Skip for pure refactors, bug fixes covered by tests, dependency bumps, and
   lint-only commits — the behaviour gate (Step 1) decides. Confirm every edit
   before writing; never force-push without explicit OK. Also triggers on the
@@ -24,8 +25,34 @@ sometimes silently. This skill walks a fixed list of doc surfaces, diffs
 each one against the PR's actual behaviour, surfaces the drift, and proposes
 edits the user can approve.
 
-It runs **after** the PR exists. Its job is not to gatekeep the PR but to
-catch doc drift before merge — when fixing it is still cheap.
+It runs **before the PR exists** — on a branch that is committed and pushed but
+not yet opened. Its job is not to gatekeep the PR but to catch doc drift while
+fixing it is still free.
+
+**Why before, not after** (user decision, 2026-08-06): these are private repos on
+the free tier, so GitHub Actions minutes are a hard budget. Sweeping after the PR
+is open means a second push to an open PR, and every push re-runs the full matrix
+— five checks here (`markdownlint`, `Trivy filesystem scan`, `lint-typecheck-test`,
+`frontend-check`, `Regression tests`) for what is usually a two-file docs edit.
+Sweeping first costs one CI run instead of two and the reviewer sees the same
+final tree either way. Practical consequence: **Step 6 composes the initial
+`--body` rather than editing an existing one**, and Steps 7→6 swap order.
+
+## Order of operations (the step numbers are historical — follow THIS)
+
+The steps below are numbered from when the sweep ran post-PR. The numbering is
+kept so existing references still resolve, but the running order is now:
+
+1. Steps 1–5 — behaviour gate, changed artifacts, doc walk, surface checks,
+   MEMORY.md. All pure local work; no PR, no `gh`, no network.
+2. **Step 7** — commit the doc edits and `git push -u origin <branch>`.
+3. **Step 6** — compose the "Documentation updates" section.
+4. `gh pr create --body …` with that section already **in** the initial body.
+5. Steps 10a (pre-merge check), 10b (handoff), **10c last** (re-verify PR state).
+
+Steps 6 and 7 are therefore swapped relative to their numbers, and everything
+touching `gh` moves after step 4. Step 10c genuinely needs a PR to exist, so it
+stays where it is — and it stays **last**.
 
 ---
 
@@ -105,16 +132,18 @@ Before walking any docs, decide if the PR changes behaviour a user or
 operator would notice. **If not, stop after MEMORY.md update — don't churn
 docs for invisible changes.**
 
-Read the PR's diff:
+Read the branch's diff. There is normally **no PR yet**, so this is pure git —
+no `gh` call, and no network:
 
 ```bash
-gh pr view <PR#> --json title,body,baseRefName,headRefName,files
-git diff main...<branch> -- .
-git log main..<branch> --oneline
+git diff main...HEAD --stat
+git diff main...HEAD -- .
+git log main..HEAD --oneline
 ```
 
-(If `<PR#>` is omitted, infer from the current branch with
-`gh pr view --json number`.)
+(Running late, on a branch whose PR already exists? `gh pr view <PR#> --json
+title,body,baseRefName,headRefName,files` still works — but prefer the git form,
+which is faster, offline, and correct in both cases.)
 
 User-facing signals — **walk the docs** if any are present:
 
@@ -412,11 +441,10 @@ behaviour-visible changes.
 
 ---
 
-## Step 6 — Update the PR body
+## Step 6 — Write the "Documentation updates" section (runs AFTER Step 7)
 
-Once edits are approved and applied (or the gate decided no edits were
-needed), append a "Documentation updates" section to the PR body so
-reviewers see the doc reasoning:
+Once edits are approved, applied and **committed** (Step 7), compose a
+"Documentation updates" section so reviewers see the doc reasoning:
 
 ```markdown
 ## Documentation updates
@@ -427,39 +455,47 @@ reviewers see the doc reasoning:
 - `MEMORY.md`: Current State updated with strat-2 summary
 ```
 
-Use the three-step fetch → append → push sequence:
+**This section goes into the INITIAL `gh pr create --body`** — that is the whole
+point of running the sweep first. Do not open the PR and then edit its body; that
+second push costs a duplicate CI matrix.
+
+State the no-change surfaces explicitly, with the reason. "no change needed:
+internal refactor only" is useful to a reviewer; silence is not.
+
+**Only if you are running late** (the PR already exists — you skipped the gate,
+or a reviewer asked mid-flight), fall back to the fetch → append → push sequence:
 
 ```bash
-# 1. Fetch the current body
 gh pr view <PR#> --json body --jq .body > /tmp/pr_body.md
-
-# 2. Append the new section (Edit tool, or heredoc)
 cat >> /tmp/pr_body.md <<'EOF'
 
 ## Documentation updates
 
 - `<file>`: <what changed>
 EOF
-
-# 3. Push the new body
 gh pr edit <PR#> --body-file /tmp/pr_body.md
 ```
 
-If the original PR body already has a "Documentation updates" section, open
-`/tmp/pr_body.md` in the Edit tool and update it in place — don't append a
-duplicate.
+If that body already has a "Documentation updates" section, edit it in place —
+don't append a duplicate.
 
 ---
 
-## Step 7 — Commit and push
+## Step 7 — Commit and push (runs BEFORE Step 6)
 
-Commit doc edits as a single follow-up commit on the PR branch:
+Commit doc edits as a single commit on the branch, then push, **then** open the
+PR with the Step 6 section already in its body:
 
 ```bash
 git add <files>
-git commit -m "docs: sync docs with PR behavior changes"
-git push
+git commit -m "docs: sync docs with branch behavior changes"
+git push -u origin <branch>
+# ...then gh pr create --body "<...includes Step 6's Documentation updates...>"
 ```
+
+Because the sweep now runs pre-PR, this push is part of the *same* CI run that
+the PR's first run will use — no duplicate matrix. That is the ordering's entire
+payoff, so don't open the PR before this commit lands.
 
 **MEMORY.md is never committed.** It lives outside the repo under
 `~/.claude-personal/...`, so it is not part of any project commit — save it
@@ -511,7 +547,7 @@ docker-compose.yml — no change needed: no new processes
 .claude/context/*  — updated: analytics.md (store/ paths) | no change needed
 .claude/skills/*   — updated: <skill> | no change needed: <reason>
 PR summary         — written to docs/plans/pr-<branch>.md
-PR body            — appended "Documentation updates" section
+PR body            — "Documentation updates" folded into the initial --body (1 CI run)
 pre-merge          — clean | <blocker> (see Step 10a)
 handoff prompt     — written to docs/plans/next-conversation-prompt.md | declined
 PR state re-check  — #<num>: <OPEN | MERGED>, handoff table rewritten to match

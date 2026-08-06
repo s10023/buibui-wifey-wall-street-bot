@@ -21,6 +21,35 @@ table, `read_only=True`); `build_coverage_rows`/`summarize` are the testable uni
 **Run:** `make universe-coverage` or
 `PYTHONPATH=. poetry run python tools/universe_coverage.py [--db PATH] [--timeframes 4h 1d 1wk]`
 
+## dead_surface_check.py — declared-but-dead (strategy × timeframe) cells
+
+Reports config-declared cells whose detector has **never fired** across the whole history
+and universe — the data-driven half of the silent-surface enforcement (the static half is
+`tests/test_makefile_invocations.py`). Walks each config's declared set
+(`declared_cells`: every strategy × its `strategy_timeframes` override, else the config's
+`timeframes`), joins it against `backtest_runs` scoped by `day_filter`, and flags any cell
+with **no runs** or **runs but zero `total_signals`**.
+
+The second case is the one that matters and the reason a plain "did it run?" check is not
+enough: `signal_watch.toml` held **338** `1wk`/`tue_thu` rows with zero closed trades for
+three months, so the surface *looked* covered (#139). Emptiness is indistinguishable from
+coverage unless something explicitly asks.
+
+`_KNOWN_DEAD_CELLS` is a `(day_filter, strategy, timeframe)` allowlist mirroring
+`tests/test_lookahead.py::_KNOWN_LOOKAHEAD_DETECTORS` — **it should only ever shrink.**
+Five entries as of 2026-08-06: `doji × 1d` (both filters), `doji`/`eqh_eql`/`ema × 1wk`
+(weekdays). `doji` is near-inert *everywhere* — its entire output in the DB is 3 signals
+(tue_thu/4h) and 9 (weekdays/4h), so it wants a detector review rather than a permanent
+allowlist entry. The `1wk` entries fire zero under **both** day filters, so that is bar
+scarcity (449 weekly bars/symbol), not day-filter suppression.
+
+Pure read (`read_only=True`). Exit 1 on any non-allowlisted dead cell; `--strict` also
+fails on allowlisted ones, which is how you verify the list can shrink. Wired into
+`make db-update` with a `-` prefix so a dead cell reports but never blocks a DB refresh.
+
+**Run:** `make check-dead-surfaces` or
+`poetry run python tools/dead_surface_check.py [--config PATH ...] [--db PATH] [--strict]`
+
 ## live_outcomes_report.py — read-only signal_alert_outcomes spot-check
 
 Read-only spot-check of `signal_alert_outcomes` after the T2 backfill worker runs; reports the
