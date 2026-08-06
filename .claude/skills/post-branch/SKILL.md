@@ -667,6 +667,23 @@ refreshing only their dated "state at" lines:
 This exists because a template that overwrites is a template that must name
 what survives.
 
+**Keep the standing context in its four labelled groups — do not re-flatten it.**
+Carried verbatim into one undifferentiated blockquote it reached ~90 lines by
+2026-08-06, at which point a reader cannot tell a hard prohibition from a
+`PYTHONPATH` reminder, and the block's own instruction to read it stops being
+followed. The groups are ordered by when a session needs them:
+
+| Group | Holds | When it is read |
+| --- | --- | --- |
+| **A — Settled decisions** | Concluded arcs, freezes, ruled-out work | Before proposing any task |
+| **B — Workflow rules** | `/post-branch` ordering, `gh` invocation, subagent cap, background tests, MEMORY cap | Before running a task |
+| **C — Evidence rules** | Re-derive-the-mechanism, the two backtest paths, window anchors, multiplicity, provenance | Before quoting any number |
+| **D — Environment gotchas** | Ad-hoc script recipe, import paths, absent libraries | On demand, as a lookup table |
+
+Open the block with a short note saying what it is, why it is long, and which
+groups to skim versus read. Append new findings to the group they belong to —
+a methodology lesson is **C**, not a new bullet at the end of **B**.
+
 Source the content from:
 
 1. **MEMORY.md "Next focus" section** — the top 1–3 entries are usually the
