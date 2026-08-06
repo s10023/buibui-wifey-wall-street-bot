@@ -12,6 +12,7 @@ from analytics.signal_config import (
     SymbolOverride,
     _day_filter_to_weekdays,
     _deep_merge,
+    dead_timeframes,
     load_signal_config,
 )
 
@@ -113,7 +114,10 @@ state_file = "my_state.json"
         """The committed config/signal_watch.toml must parse without errors."""
         cfg_path = Path(__file__).parent.parent / "config" / "signal_watch.toml"
         cfg = load_signal_config(cfg_path)
-        assert cfg.timeframes == ["4h", "1d", "1wk"]
+        # "1wk" dropped 2026-08-06 — day_filter="tue_thu" discarded every weekly
+        # bar (all stamped Monday), so it scanned and dispatched nothing. See
+        # TestDeadTimeframes; load_signal_config now refuses the pairing outright.
+        assert cfg.timeframes == ["4h", "1d"]
         # Telegram is off by default in the committed config; the --telegram CLI
         # flag (TELEGRAM=1 / `make go-live`) is the single master switch.
         assert cfg.telegram is False
@@ -1281,3 +1285,65 @@ borrow_rate_annual = 0.02
         assert model.borrow_rate_annual == 0.02
         # Unset keys keep the conservative defaults.
         assert model.half_spread_bps == CostModel().half_spread_bps
+
+
+class TestDeadTimeframes:
+    """A day_filter × fixed-open-weekday timeframe pairing is a blackout, not a filter.
+
+    `config/signal_watch.toml` paired `tue_thu` with `1wk` from PR #22 until
+    2026-08-06. Weekly bars are stamped Monday, so 100% of their signals were
+    discarded: zero alerts dispatched, zero closed trades in `backtest_runs`,
+    and therefore no `confidence_ratings` rows that any `make db-update` could
+    ever create.
+    """
+
+    def test_tue_thu_kills_weekly(self) -> None:
+        assert dead_timeframes("tue_thu", ["4h", "1d", "1wk"]) == ["1wk"]
+
+    def test_no_monfi_kills_weekly(self) -> None:
+        # Tue/Wed/Thu/Sat/Sun — Monday excluded, so weekly bars cannot pass.
+        assert dead_timeframes("no_monfi", ["1wk"]) == ["1wk"]
+
+    def test_weekdays_allows_weekly(self) -> None:
+        # Mon–Fri includes Monday — this is why signal_watch_weekdays has 1wk ratings.
+        assert dead_timeframes("weekdays", ["4h", "1d", "1wk"]) == []
+
+    def test_off_allows_everything(self) -> None:
+        assert dead_timeframes("off", ["1wk"]) == []
+
+    def test_intraday_and_daily_never_dead(self) -> None:
+        # Only fixed-open-weekday timeframes can black out; 4h/1d span every weekday.
+        assert dead_timeframes("tue_thu", ["4h", "1d"]) == []
+
+    def test_duplicates_reported_once(self) -> None:
+        assert dead_timeframes("tue_thu", ["1wk", "1wk"]) == ["1wk"]
+
+    def test_load_rejects_blackout_pairing(self, tmp_path: Path) -> None:
+        content = """
+timeframes = ["4h", "1d", "1wk"]
+day_filter = "tue_thu"
+"""
+        p = _write_toml(tmp_path, content)
+        with pytest.raises(ValueError, match="discards every bar"):
+            load_signal_config(p)
+
+    def test_load_rejects_blackout_via_strategy_timeframes(
+        self, tmp_path: Path
+    ) -> None:
+        # A per-strategy override can smuggle in a dead TF the top-level list omits.
+        content = """
+timeframes = ["4h"]
+day_filter = "tue_thu"
+
+[strategy_timeframes]
+pin_bar = ["1wk"]
+"""
+        p = _write_toml(tmp_path, content)
+        with pytest.raises(ValueError, match="discards every bar"):
+            load_signal_config(p)
+
+    def test_shipped_configs_have_no_blackout(self) -> None:
+        # Binds the guard to the real configs so neither can regress into a blackout.
+        for path in ("config/signal_watch.toml", "config/signal_watch_weekdays.toml"):
+            cfg = load_signal_config(path)
+            assert dead_timeframes(cfg.day_filter, cfg.timeframes) == [], path

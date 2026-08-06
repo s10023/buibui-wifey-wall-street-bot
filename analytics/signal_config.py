@@ -7,7 +7,9 @@ No module-level side effects.
 """
 
 import tomllib
+from collections.abc import Iterable
 from dataclasses import dataclass, field
+from itertools import chain
 from pathlib import Path
 from typing import Any
 
@@ -144,6 +146,34 @@ def _day_filter_to_weekdays(day_filter: str) -> list[int] | None:
     if day_filter == "tue_thu":
         return [1, 2, 3]  # Tue–Thu only
     return None  # "off" — no filter
+
+
+# Timeframes whose bars always carry the same open weekday, making a day filter
+# that excludes that weekday a total blackout rather than a filter. Weekly bars
+# are stamped at the week start (Monday) whether or not that Monday traded — all
+# 5,837 weekly bars on the live watchlist open Monday.
+_FIXED_OPEN_WEEKDAY: dict[str, int] = {"1wk": 0}
+
+
+def dead_timeframes(day_filter: str, timeframes: Iterable[str]) -> list[str]:
+    """Timeframes whose every bar ``day_filter`` discards, in declaration order.
+
+    Pairing a day filter with a fixed-open-weekday timeframe suppresses 100% of
+    that timeframe's signals, and it is silent at every downstream layer: the
+    scanner drops the events one by one, the backtest still records runs (with
+    zero closed trades), and recalibrate consequently writes no ratings — so
+    ``get_confidence`` falls back to a hardcoded 3 that no run can ever correct.
+    ``config/signal_watch.toml`` scanned ``1wk`` under ``tue_thu`` from PR #22
+    until 2026-08-06 and dispatched zero alerts in that entire window.
+    """
+    allowed = _day_filter_to_weekdays(day_filter)
+    if allowed is None:
+        return []  # "off" — nothing can be filtered out
+    return [
+        tf
+        for tf in dict.fromkeys(timeframes)
+        if tf in _FIXED_OPEN_WEEKDAY and _FIXED_OPEN_WEEKDAY[tf] not in allowed
+    ]
 
 
 @dataclass
@@ -777,9 +807,22 @@ def load_signal_config(path: str | Path) -> SignalWatchConfig:
         cross_tf_min_avg_r=float(raw_combo.get("cross_tf_min_avg_r", 1.0)),
     )
 
+    # Guard the day_filter × timeframe pairing before anything can consume it: a
+    # blackout pairing is invisible downstream (see dead_timeframes).
+    day_filter = str(data.get("day_filter", "off"))
+    timeframes: list[str] = data.get("timeframes", ["4h"])
+    dead = dead_timeframes(day_filter, chain(timeframes, *strategy_timeframes.values()))
+    if dead:
+        raise ValueError(
+            f"day_filter={day_filter!r} discards every bar of {dead} — those "
+            "timeframes stamp every bar on one weekday, so they would scan and "
+            "silently dispatch nothing. Drop them from the config or widen "
+            "day_filter."
+        )
+
     return SignalWatchConfig(
         symbols=data.get("symbols"),
-        timeframes=data.get("timeframes", ["4h"]),
+        timeframes=timeframes,
         strategies=data.get("strategies"),
         telegram=bool(data.get("telegram", False)),
         min_sl_pct=float(data.get("min_sl_pct", 0.0)),
@@ -787,7 +830,7 @@ def load_signal_config(path: str | Path) -> SignalWatchConfig:
         sl_pct=float(data.get("sl_pct", 0.02)),
         state_file=str(data.get("state_file", "signal_state.json")),
         backtest=backtest,
-        day_filter=str(data.get("day_filter", "off")),
+        day_filter=day_filter,
         strategy_timeframes=strategy_timeframes,
         strategy_params=strategy_params,
         atr_sl_multiplier=(

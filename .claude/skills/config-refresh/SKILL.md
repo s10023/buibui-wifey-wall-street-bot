@@ -68,6 +68,12 @@ order_block          = ["1d", "1wk"]        # 1h/4h suppressed (negative)
 bos                  = ["1h", "4h", "1d"]   # 1wk excluded: 0% wins
 ```
 
+**`1wk` here is subject to the same day-filter guard as the top-level list.** The
+filter reads each bar's OPEN weekday and weekly bars are stamped Monday, so a
+config on `tue_thu` / `no_monfi` cannot carry `1wk` in `strategy_timeframes`
+either — `load_signal_config` raises rather than scanning it into the void. The
+`order_block` line above is only valid on a `weekdays` / `off` config.
+
 ## Step 2 — Review `volume_suppress` flags per strategy
 
 Cross-reference each `[strategy_params.X].volume_suppress` flag against the

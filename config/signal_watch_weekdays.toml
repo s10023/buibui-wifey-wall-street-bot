@@ -1,5 +1,5 @@
 # Signal Watch — weekdays equity profile (Mon–Fri, no weekend signals)
-# Usage: make buibui-signal-watch CONFIG=config/signal_watch_weekdays.toml
+# Usage: make wifey-signal-watch CONFIG=config/signal_watch_weekdays.toml
 #
 # Inherits: bias, backtest defaults, and consistent per-strategy flags
 # from strategy_params.toml. Only weekdays-specific values are defined here.
