@@ -87,6 +87,33 @@ Full write-up: `docs/audits/2026-08-06-adr-volume-gate-conjunction.md`.
   the conjunction, on the surviving 2–8% subsample — flagged as debt in both configs and
   deliberately **not** re-derived (frozen TA-sweep work).
 
+**CRYPTO-ERA PROVENANCE — sweep this file by DATE, not by flag name.** Everything here was
+inherited from the crypto parent at the 2026-05-14 fork and is Binance-calibrated until re-derived.
+PR #141 removed four `volume_suppress*` flags of that vintage; #143 then found `bos.suppress_long`
+— same origin, same week, **one grep away** — untouched, because it greps as a *direction* flag
+rather than a *volume* flag. The durable query is `git log -S "<flag> = true" -- config/`: a parent
+PR number (#300–#500+, vs wifey's #22 upward) dated on or before 2026-05-14 means crypto-era.
+
+- The cheapest tell is the cited `n`. `bos.suppress_long` claimed *"avg_r=−0.268R on n=34,767"* out
+  of n=72,643; this repo's entire `backtest_trades` table holds **24,196 rows**. A sample larger
+  than the whole database is not equity data.
+- **Re-derivation can INVERT, not merely weaken** — on equities `bos`'s direction claim flips sign
+  on both timeframes. The correct prior for an inherited flag is *unknown*, never *attenuated*.
+- **Soft mode hides this class rather than defusing it.** `[bias.direction_filter]` ships
+  `mode = "soft"` (logs, keeps), so a wrong flag costs nothing — while that block instructs a future
+  session to flip it to hard after "≥2 weeks". Doing so would have suppressed `bos`'s better leg.
+- Guarded by `tests/test_signal_config.py::test_no_shipped_strategy_sets_direction_suppress`,
+  the sibling of #141's volume guard. Still un-swept: `[bias.regime.per_strategy]`
+  (`bos = ["high_vol", "range"]` is from the *same* 2026-05-13 audit), `atr_sl_multiplier_*`,
+  and the `tp_r` book. Audit: `docs/audits/2026-08-06-bos-timeframe-and-crypto-era-direction-flag.md`.
+
+**`[strategy_timeframes]` is per-config, and the two configs are two populations.** `bos` is
+restricted to `["1d"]` in `signal_watch.toml` but deliberately **unrestricted** in
+`signal_watch_weekdays.toml`. That asymmetry is the measurement, not an oversight: across the five
+`bos` cells, Benjamini–Hochberg at FDR 0.05 condemns `signal_watch 4h` (−0.282, p=0.0012) but
+**not** `weekdays 4h` (−0.143, p=0.054, n=495 vs 316). A finding on one config is not a finding on
+the other — never mirror a config edit because the configs look alike.
+
 - As of 2026-05-19 the per-strategy `tp_r_long` / `tp_r_short` directional overrides have been
   **retired** (the pin_bar audit closed the last one); directional overrides now live in the
   per-day-filter configs as `tp_r_long_<tf>` / `tp_r_short_<tf>` (the per-TF directional

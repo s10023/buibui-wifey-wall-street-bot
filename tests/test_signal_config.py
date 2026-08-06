@@ -890,14 +890,18 @@ class TestLoadWithExtends:
             assert cfg.bias.htf_ema_anchor(strat).tf == "1d", (
                 f"{strat} should override to 1d anchor"
             )
-        # T2c direction filter (soft mode) inherited from base — gate enabled
-        # so suppress_long / suppress_short on per-strategy blocks fires.
+        # T2c direction filter (soft mode) inherited from base — the gate stays
+        # enabled so suppress_long / suppress_short still fire for any strategy
+        # that declares them. NO strategy declares one as of 2026-08-06 (PR #143):
+        # bos's `suppress_long` was the only instance and it was a crypto-era flag
+        # whose claim inverts on equities. The gate mechanism is unchanged and is
+        # covered by tests/test_live_parity_direction_filter_gate.py, which builds
+        # its own StrategyOverride(suppress_long=True) rather than reading a config.
         assert cfg.bias.direction_filter_enabled is True
         assert cfg.bias.direction_filter_mode == "soft"
-        # bos long-side suppress flag carried through the parser.
         bos_override = cfg.strategy_params.get("bos")
         assert bos_override is not None
-        assert bos_override.suppress_long is True
+        assert bos_override.suppress_long is False
         assert bos_override.suppress_short is False
 
 
@@ -1469,3 +1473,25 @@ adr_exempt = true
                 assert cfg.effective_volume_suppress(name) is not True, f"{path} {name}"
                 assert cfg.effective_volume_suppress_long(name) is not True, name
                 assert cfg.effective_volume_suppress_short(name) is not True, name
+
+    def test_no_shipped_strategy_sets_direction_suppress(self) -> None:
+        """Direct sibling of the volume-flag guard above, for the DIRECTION flags.
+
+        `bos.suppress_long` was the only instance and it was removed 2026-08-06
+        (PR #143): it arrived from the crypto parent one day before the fork
+        (parent PR #367, justified by an n=72,643 Binance-trade audit) and its
+        claim INVERTS on equities — long is bos's better leg on both timeframes.
+        #141's sweep missed it because it greps as a direction flag, not a volume
+        flag, which is exactly why this needs its own assertion.
+
+        This flag class is latent rather than loud: `[bias.direction_filter]` ships
+        as mode="soft", so a wrong flag logs and keeps, costing nothing until
+        someone follows that block's own instruction to flip it to hard. Re-adding
+        one is allowed, but it must break this test and be re-measured on equity
+        data first.
+        """
+        for path in ("config/signal_watch.toml", "config/signal_watch_weekdays.toml"):
+            cfg = load_signal_config(path)
+            for name, override in cfg.strategy_params.items():
+                assert override.suppress_long is not True, f"{path} {name}"
+                assert override.suppress_short is not True, f"{path} {name}"

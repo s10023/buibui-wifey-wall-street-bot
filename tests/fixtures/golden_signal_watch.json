@@ -123,22 +123,6 @@
       }
     },
     "bos": {
-      "4h": {
-        "trade_count": 61,
-        "long_trade_count": 33,
-        "short_trade_count": 28,
-        "win_rate": 0.2295,
-        "avg_r": -0.1963,
-        "total_r": -11.9732,
-        "long_avg_r": 0.1999,
-        "short_avg_r": -0.6632,
-        "long_total_r": 6.5972,
-        "short_total_r": -18.5704,
-        "long_win_rate": 0.303,
-        "short_win_rate": 0.1429,
-        "max_drawdown_r": 15.3013,
-        "recovery_factor": -0.7825
-      },
       "1d": {
         "trade_count": 24,
         "long_trade_count": 14,

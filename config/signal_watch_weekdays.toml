@@ -105,6 +105,24 @@ orb = ["4h"]
 # _KNOWN_DEAD_CELLS keeps shrinking. Re-entry gated on G1 or paid data, never a sweep.
 eqh_eql = ["4h", "1d"]
 ema = ["4h", "1d"]
+# bos is deliberately NOT restricted here, unlike signal_watch.toml (PR #143). This
+# asymmetry is the measurement, not an oversight — do not "fix" it. Five bos cells were
+# tested together and Benjamini–Hochberg-corrected at FDR 0.05 (since 2018-01-02,
+# live-parity, competed sample):
+#   signal_watch 4h  −0.282  p=0.0012  SURVIVES  -> dropped there
+#   weekdays     1wk +0.441  p=0.0021  SURVIVES  -> positive; see below
+#   weekdays     4h  −0.143  p=0.0540  fails BH (crit 0.030) -> NOT condemned, so KEPT
+#   signal_watch 1d  +0.047  p=0.4301  no effect
+#   weekdays     1d  +0.025  p=0.5841  no effect
+# Two live configs are two populations: this config's day_filter admits Mon/Fri, and its
+# 4h cell is 495 trades vs signal_watch's 316. Mirroring the drop would remove a cell the
+# evidence does not condemn.
+# The 1wk cell is positive but is NOT promoted anywhere and must not be: it fails every
+# beta discriminator — long +1.020 (n=130) vs short −0.954 (n=54); its only losing year
+# (2022) is the only year it was mostly short; 2021 ran 33/33 long. That is a long-biased
+# beta harvest on 13 megacap survivors in a bull market, the same confound that voided the
+# xsmom/residual.py long-only read. It has also nearly stopped firing (n=3 in 2025, n=2 in
+# 2026). Audit: docs/audits/2026-08-06-bos-timeframe-and-crypto-era-direction-flag.md
 
 # Per-strategy overrides — T14 (2026-05-17) WFO on AAPL day_filter=weekdays.
 [strategy_params.engulfing]

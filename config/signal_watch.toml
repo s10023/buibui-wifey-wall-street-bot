@@ -133,6 +133,17 @@ strategies = [
 # Other restrictions deferred to T14 (equity WFO recalibration).
 [strategy_timeframes]
 orb = ["4h"]                                # T13: mechanical — 4h is the only equity TF with ≥2 bars per session
+# bos 4h dropped 2026-08-06 (PR #143). Measured on the post-#142 un-thinned sample,
+# competed (all 12 config strategies present, so the conflict resolver runs as it does
+# live): 4h avg R −0.282 over its ENTIRE available history, bootstrap 95% CI
+# [−0.447, −0.116] — excludes zero, and it is the worst of all 12 strategies on 4h in
+# both the full window and the trailing year. This is a correctness removal (a measured
+# effect whose CI excludes zero on the wrong side), NOT a threshold sweep — the TA book
+# stays frozen. 1d is KEPT: avg R +0.047, CI [−0.068, +0.166], i.e. indistinguishable
+# from zero and exactly the 12-strategy cohort median (+0.037) — no evidence to retire
+# it or to defend it, so the freeze says leave it. Note 4h history starts 2024-05-16,
+# so the "positive over ~7 years" framing never applied to this cell at all.
+bos = ["1d"]
 
 # Per-strategy parameter overrides — tp_r and sl_pct.
 # Lookup order: TF-specific key (e.g. tp_r_4h) → strategy-wide tp_r → global tp_r.
