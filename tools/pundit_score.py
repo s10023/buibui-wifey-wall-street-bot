@@ -77,6 +77,9 @@ import numpy as np
 import pandas as pd
 
 from analytics.backtest.engine import _compute_atr14
+from analytics.pundit_authors import normalize_author
+from analytics.pundit_direction import normalize_direction
+from analytics.pundit_horizon import normalize_horizon
 from analytics.store import DEFAULT_DB_PATH
 from analytics.store.market_data import get_ohlcv
 from analytics.trading_calendar import nyse_sessions
@@ -234,7 +237,14 @@ class LedgerCall:
 
     @property
     def timeframe(self) -> str:
-        """Scoring frame for this call's horizon (equity divergence 1)."""
+        """Scoring frame for this call's horizon (equity divergence 1).
+
+        The sibling of ``window_sessions``' fallback, and the reason an
+        unrecognised horizon was worse here than upstream: it picked the wrong
+        *bar series* as well as the wrong window, so a mistyped ``intraday``
+        was walked on ``1d`` bars. Likewise unreachable now for anything
+        ``load_ledger`` produced — see ``analytics/pundit_horizon.py``.
+        """
         return SCORE_TIMEFRAME.get(self.horizon, SCORE_TIMEFRAME["unspecified"])
 
 
@@ -277,15 +287,34 @@ def load_ledger(path: Path) -> tuple[list[LedgerCall], list[str]]:
             call = LedgerCall(
                 line_no=line_no,
                 source=str(obj.get("source", "")),
-                author=str(obj.get("author", "")),
+                # Normalised at READ, so a ledger written with a mixed '@'
+                # convention still groups as one person. This ledger already
+                # carries both conventions at once (see analytics/
+                # pundit_authors.py) — no key collides today, but nothing
+                # stops the next routed row from starting a second track
+                # record for an author already tracked here.
+                author=normalize_author(str(obj.get("author", ""))),
                 url=str(obj.get("url", "")),
                 call_ts_utc=str(obj["call_ts_utc"]),
                 symbol=symbol,
-                direction=str(obj.get("direction", "")).lower(),
+                # Raises on anything outside the enum, which the existing
+                # handler below turns into a per-line warning. Unlike the
+                # parent this scorer was never mis-booking these — score_call
+                # already gates `direction not in ("long", "short")` to
+                # UNSCORED — so this moves the rejection earlier and makes it
+                # name the line, rather than fixing a wrong number.
+                direction=normalize_direction(str(obj.get("direction", ""))),
                 entry=str(obj.get("entry", "") or ""),
                 stop=str(obj.get("stop", "") or ""),
                 target=str(obj.get("target", "") or ""),
-                horizon=str(obj.get("horizon", "unspecified") or "unspecified"),
+                # The one guard here that fixes a live silent defect. A present
+                # but unrecognised horizon used to buy TWO wrong answers at
+                # once — SCORE_TIMEFRAME's fallback (wrong bar timeframe) and
+                # SESSION_WINDOWS' (wrong window length) — with nothing
+                # raising. A MISSING one is still "unspecified": that is a real
+                # horizon, not a violation, which is why this is not a copy of
+                # the direction guard (analytics/pundit_horizon.py explains).
+                horizon=normalize_horizon(obj.get("horizon")),
                 confidence=str(obj.get("confidence", "") or ""),
                 raw_quote=str(obj.get("raw_quote", "") or ""),
                 entry_px=_opt_float(obj, "entry_px"),
@@ -534,7 +563,19 @@ def load_overrides(path: Path) -> dict[str, Override]:
 
 
 def window_sessions(horizon: str) -> int:
-    """Pre-committed horizon window in NYSE sessions; unknown values -> unspecified."""
+    """Pre-committed horizon window in NYSE sessions.
+
+    The ``.get`` fallback is now **unreachable for anything ``load_ledger``
+    produced** — ``normalize_horizon`` rejects an unrecognised value at the
+    read boundary, where the raw field is still visible and a typo is still
+    distinguishable from an honest ``unspecified``. It is kept as
+    defence-in-depth for direct callers, not as the guard: by the time a
+    string arrives here there is no way to tell those two cases apart, which
+    is exactly why this line silently mis-scored calls before. Note this is
+    one of **two** such fallbacks (see ``LedgerCall.timeframe``);
+    ``tests/test_pundit_horizon.py`` binds both tables' keys to
+    ``VALID_HORIZONS`` so they cannot drift apart.
+    """
     return SESSION_WINDOWS.get(horizon, SESSION_WINDOWS["unspecified"])
 
 
