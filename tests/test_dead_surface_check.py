@@ -13,6 +13,7 @@ from tools.dead_surface_check import (
     DeadCell,
     declared_cells,
     find_dead_cells,
+    find_orphan_ratings,
     unexpected,
 )
 
@@ -165,3 +166,100 @@ class TestAllowlist:
         which is the point: that is a deliberate act, not an oversight.
         """
         assert frozenset() == dead_surface_check._KNOWN_DEAD_CELLS
+
+
+def _conn_with_ratings(
+    rows: list[tuple[str, str, str, str, int, float | None]],
+) -> duckdb.DuckDBPyConnection:
+    """In-memory `confidence_ratings` holding (config, strategy, tf, direction, stars, avg_r)."""
+    conn = duckdb.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE confidence_ratings ("
+        "  config_name TEXT, strategy TEXT, tf TEXT, direction TEXT,"
+        "  stars INTEGER, avg_r DOUBLE"
+        ")"
+    )
+    for row in rows:
+        conn.execute(
+            "INSERT INTO confidence_ratings VALUES (?, ?, ?, ?, ?, ?)", list(row)
+        )
+    return conn
+
+
+class TestFindOrphanRatings:
+    """The inverse of a dead cell: rated but undeclared.
+
+    A dead cell surfaces as a zero and reads as absence; an orphan surfaces as
+    a *number* and reads as evidence, which is why it survived 2.5 months
+    unnoticed while `check-dead-surfaces` reported a clean run beside it.
+    """
+
+    def test_rating_for_an_undeclared_strategy_is_an_orphan(self) -> None:
+        conn = _conn_with_ratings(
+            [("signal_watch", "fib_golden_zone", "4h", "combined", 3, 0.4688)]
+        )
+        cfg = SignalWatchConfig(strategies=["bos"], timeframes=["4h"])
+        orphans = find_orphan_ratings(conn, cfg, "signal_watch")
+        assert [(o.strategy, o.timeframe) for o in orphans] == [
+            ("fib_golden_zone", "4h")
+        ]
+
+    def test_declared_cell_is_not_an_orphan(self) -> None:
+        conn = _conn_with_ratings([("signal_watch", "bos", "4h", "combined", 3, 0.1)])
+        cfg = SignalWatchConfig(strategies=["bos"], timeframes=["4h"])
+        assert find_orphan_ratings(conn, cfg, "signal_watch") == []
+
+    def test_undeclared_timeframe_of_a_declared_strategy_is_an_orphan(self) -> None:
+        """`strategy_timeframes` narrowing is the shape #143 created for `bos`."""
+        conn = _conn_with_ratings(
+            [
+                ("signal_watch", "bos", "1d", "combined", 2, 0.05),
+                ("signal_watch", "bos", "4h", "combined", 1, -0.3174),
+            ]
+        )
+        cfg = SignalWatchConfig(
+            strategies=["bos"],
+            timeframes=["4h", "1d"],
+            strategy_timeframes={"bos": ["1d"]},
+        )
+        orphans = find_orphan_ratings(conn, cfg, "signal_watch")
+        assert [(o.strategy, o.timeframe) for o in orphans] == [("bos", "4h")]
+
+    def test_every_direction_of_an_orphan_cell_is_reported(self) -> None:
+        conn = _conn_with_ratings(
+            [
+                ("signal_watch", "gone", "4h", "combined", 3, 0.4),
+                ("signal_watch", "gone", "4h", "long", 4, 0.8),
+                ("signal_watch", "gone", "4h", "short", 1, -0.2),
+            ]
+        )
+        cfg = SignalWatchConfig(strategies=["bos"], timeframes=["4h"])
+        orphans = find_orphan_ratings(conn, cfg, "signal_watch")
+        assert sorted(o.direction for o in orphans) == ["combined", "long", "short"]
+
+    def test_scoped_to_the_named_config(self) -> None:
+        """Called with the TOML *stem*, which is what the column stores."""
+        conn = _conn_with_ratings(
+            [("signal_watch_weekdays", "gone", "4h", "combined", 3, 0.4)]
+        )
+        cfg = SignalWatchConfig(strategies=["bos"], timeframes=["4h"])
+        assert find_orphan_ratings(conn, cfg, "signal_watch") == []
+
+    def test_null_avg_r_is_carried_not_crashed(self) -> None:
+        conn = _conn_with_ratings([("signal_watch", "gone", "4h", "combined", 3, None)])
+        cfg = SignalWatchConfig(strategies=["bos"], timeframes=["4h"])
+        orphans = find_orphan_ratings(conn, cfg, "signal_watch")
+        assert orphans[0].avg_r is None
+        assert "—" in str(orphans[0])
+
+    def test_worst_offender_sorts_first(self) -> None:
+        """Reported stars-desc so the most prominently displayed orphan leads."""
+        conn = _conn_with_ratings(
+            [
+                ("signal_watch", "quiet", "4h", "combined", 1, -0.5),
+                ("signal_watch", "loud", "4h", "combined", 5, 1.2),
+            ]
+        )
+        cfg = SignalWatchConfig(strategies=["bos"], timeframes=["4h"])
+        orphans = find_orphan_ratings(conn, cfg, "signal_watch")
+        assert [o.strategy for o in orphans] == ["loud", "quiet"]

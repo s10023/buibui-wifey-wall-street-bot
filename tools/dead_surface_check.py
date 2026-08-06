@@ -1,4 +1,4 @@
-"""Report declared (strategy × timeframe) cells that produce no signals at all.
+"""Report (strategy × timeframe) cells where declaration and output disagree.
 
 The recurring defect class in this repo is a **declared surface that nothing
 executes and nothing asserts about**. Emptiness is indistinguishable from
@@ -7,22 +7,40 @@ while `backtest_runs` held 338 rows for it — the surface *looked* covered, and
 every one of those rows had zero closed trades (#139).
 
 A config declares a cell for every (strategy × timeframe) pair it will scan.
-This walks that declared set, joins it against what `backtest_runs` actually
-recorded, and reports any cell whose detector has **never fired** across the
-whole history and universe. A cell like that is not a thin sample — it is a
-declaration the system cannot honour, costing detector work every scan cycle
-and returning nothing.
+That set and the set of cells the system carries state for should be the same
+set, and this checks both directions of the mismatch:
+
+**Dead cells** — declared but silent. Walks the declared set, joins it against
+what `backtest_runs` recorded, and reports any cell whose detector has *never
+fired* across the whole history and universe. Not a thin sample: a declaration
+the system cannot honour, costing detector work every scan cycle and returning
+nothing.
+
+**Orphaned ratings** — rated but undeclared, the exact inverse. `recalibrate`
+rebuilds `confidence_ratings` from historical `backtest_runs` and had no notion
+of what the config currently declares, while `upsert_confidence_ratings` only
+ever inserts-or-replaces. A cell dropped from a config therefore kept its stars
+and collected a *fresh timestamp on a stale value* on every refresh. Found
+2026-08-06: `fib_golden_zone × 4h` sat at 3★ +0.4688 — the second-highest-rated
+cell in the `signal_watch` table — 2.5 months after the strategy was removed.
+Ratings are a displayed surface (Backtest UI stars, the Telegram star line) and
+a live one (the backtest conflict resolver's tiebreaker), so an orphan is not
+merely cosmetic. Note the asymmetry with dead cells: a dead cell shows up as a
+zero and reads as absence, whereas an orphan shows up as a *number* and reads
+as evidence.
 
 Deliberately data-driven rather than static: `signal_config.dead_timeframes`
 already refuses the *structurally* impossible pairings it knows about (a day
 filter that excludes a fixed-open-weekday timeframe). This catches the ones
-nobody predicted — a detector that simply never triggers on a timeframe.
+nobody predicted — a detector that simply never triggers on a timeframe, or a
+rating outliving the declaration that produced it.
 
 Usage:
     make check-dead-surfaces
     poetry run python tools/dead_surface_check.py [--config PATH ...] [--strict]
 
-Exit codes: 0 = no unexpected dead cells, 1 = at least one (or a bad invocation).
+Exit codes: 0 = no unexpected dead cells and no orphaned ratings, 1 = at least
+one (or a bad invocation).
 """
 
 from __future__ import annotations
@@ -38,7 +56,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:  # pragma: no cover - import bootstrap
     sys.path.insert(0, str(REPO_ROOT))
 
-from analytics.signal_config import SignalWatchConfig, load_signal_config  # noqa: E402
+from analytics.signal_config import (  # noqa: E402
+    SignalWatchConfig,
+    declared_cells,
+    load_signal_config,
+)
 from analytics.store import DEFAULT_DB_PATH  # noqa: E402
 
 DEFAULT_CONFIGS = (
@@ -91,18 +113,53 @@ class DeadCell:
         return f"{self.strategy} × {self.timeframe} [{self.day_filter}] — {self.reason}"
 
 
-def declared_cells(cfg: SignalWatchConfig) -> list[tuple[str, str]]:
-    """(strategy, timeframe) pairs the config will scan, in declaration order.
+@dataclass(frozen=True)
+class OrphanRating:
+    """A `confidence_ratings` row for a cell the config no longer declares."""
 
-    A strategy listed in `strategy_timeframes` is restricted to those timeframes;
-    every other strategy runs on the config's full `timeframes` list.
+    config: str
+    strategy: str
+    timeframe: str
+    direction: str
+    stars: int
+    avg_r: float | None
+
+    def __str__(self) -> str:
+        avg_r = "—" if self.avg_r is None else f"{self.avg_r:+.4f}"
+        return (
+            f"{self.strategy} × {self.timeframe} [{self.direction}] — "
+            f"{self.stars}★ avg_r={avg_r}, not declared by the config"
+        )
+
+
+def find_orphan_ratings(
+    conn: duckdb.DuckDBPyConnection,
+    cfg: SignalWatchConfig,
+    config_name: str,
+) -> list[OrphanRating]:
+    """Rated cells the config does not declare, worst-first by displayed stars.
+
+    `config_name` is the TOML stem (`signal_watch`), which is what
+    `confidence_ratings.config_name` stores — not the path the CLI takes.
     """
-    cells: list[tuple[str, str]] = []
-    for strategy in cfg.strategies or []:
-        for tf in cfg.strategy_timeframes.get(strategy, cfg.timeframes):
-            if (strategy, tf) not in cells:
-                cells.append((strategy, tf))
-    return cells
+    declared = set(declared_cells(cfg))
+    rows = conn.execute(
+        "SELECT strategy, tf, direction, stars, avg_r FROM confidence_ratings "
+        "WHERE config_name = ? ORDER BY stars DESC, avg_r DESC",
+        [config_name],
+    ).fetchall()
+    return [
+        OrphanRating(
+            config=config_name,
+            strategy=str(strategy),
+            timeframe=str(tf),
+            direction=str(direction),
+            stars=int(stars),
+            avg_r=None if avg_r is None else float(avg_r),
+        )
+        for strategy, tf, direction, stars, avg_r in rows
+        if (str(strategy), str(tf)) not in declared
+    ]
 
 
 def find_dead_cells(
@@ -164,22 +221,30 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     all_dead: list[DeadCell] = []
+    all_orphans: list[OrphanRating] = []
     with duckdb.connect(str(db_path), read_only=True) as conn:
         for config in configs:
             cfg = load_signal_config(config)
             found = find_dead_cells(conn, cfg, config)
             all_dead.extend(found)
+            orphans = find_orphan_ratings(conn, cfg, Path(config).stem)
+            all_orphans.extend(orphans)
             n_declared = len(declared_cells(cfg))
             print(
                 f"\n{config}  (day_filter={cfg.day_filter}, {n_declared} cells declared)"
             )
-            if not found:
+            if found:
+                for cell in found:
+                    mark = "  " if cell.key in _KNOWN_DEAD_CELLS else "❌"
+                    known = " [known]" if cell.key in _KNOWN_DEAD_CELLS else ""
+                    print(f"  {mark} {cell}{known}")
+            else:
                 print("  ✅ every declared cell produces signals")
-                continue
-            for cell in found:
-                mark = "  " if cell.key in _KNOWN_DEAD_CELLS else "❌"
-                known = " [known]" if cell.key in _KNOWN_DEAD_CELLS else ""
-                print(f"  {mark} {cell}{known}")
+            if orphans:
+                for orphan in orphans:
+                    print(f"  ❌ {orphan}")
+            else:
+                print("  ✅ every rated cell is declared")
 
     failing = all_dead if args.strict else unexpected(all_dead)
     print()
@@ -192,11 +257,21 @@ def main(argv: list[str] | None = None) -> int:
             "and returns nothing.\nEither drop it from the config, or add it to "
             "_KNOWN_DEAD_CELLS with a reason."
         )
+    if all_orphans:
+        print(f"FAIL: {len(all_orphans)} orphaned confidence rating(s):")
+        for orphan in all_orphans:
+            print(f"  - {orphan.config}: {orphan}")
+        print(
+            "\nA rating for an undeclared cell is displayed in the UI and the Telegram\n"
+            "star line, and feeds the backtest conflict resolver, for a cell the daemon\n"
+            "will never scan. Run `make db-update-recalibrate` to prune them."
+        )
+    if failing or all_orphans:
         return 1
 
     n_known = len(all_dead)
     print(
-        "OK: no unexpected dead cells"
+        "OK: no unexpected dead cells and no orphaned ratings"
         + (f" ({n_known} known-dead, allowlisted)" if n_known else "")
     )
     return 0

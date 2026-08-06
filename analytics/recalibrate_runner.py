@@ -40,32 +40,41 @@ def run(
     config_name: str | None = None
 
     adr_suppress_threshold: float | None = None
+    # Cells the config actually scans. None in legacy source-patching mode
+    # (no --config), where there is no config to be undeclared by.
+    declared: list[tuple[str, str]] | None = None
 
     if config_path:
-        from analytics.signal_config import load_signal_config
+        from analytics.signal_config import declared_cells, load_signal_config
 
         watch_cfg = load_signal_config(config_path)
         day_filter = watch_cfg.day_filter
         config_name = Path(config_path).stem
         adr_suppress_threshold = watch_cfg.bias.adr_suppress_threshold
+        declared = declared_cells(watch_cfg)
 
     conn: duckdb.DuckDBPyConnection = duckdb.connect(str(db_path))
     try:
         init_schema(conn)
         win_rates = get_backtest_win_rates(
-            conn, day_filter=day_filter, adr_suppress_threshold=adr_suppress_threshold
+            conn,
+            day_filter=day_filter,
+            adr_suppress_threshold=adr_suppress_threshold,
+            declared=declared,
         )
         new_ratings = compute_recalibrated_ratings(
             conn,
             min_trades=min_trades,
             day_filter=day_filter,
             adr_suppress_threshold=adr_suppress_threshold,
+            declared=declared,
         )
         dir_ratings = compute_directional_ratings(
             conn,
             min_trades=max(min_trades // 2, 2),
             day_filter=day_filter,
             adr_suppress_threshold=adr_suppress_threshold,
+            declared=declared,
         )
 
         old_ratings = {
@@ -77,20 +86,32 @@ def run(
         print(report)
 
         if apply:
-            if not new_ratings:
-                print(
-                    "\n  Nothing to apply — no strategies had sufficient backtest data."
-                )
-                return
             if config_name:
-                write_confidence_to_db(
+                # Runs even when new_ratings is empty: an orphaned rating is
+                # exactly a row no current run can overwrite, so gating the
+                # prune on there being something to write would leave the
+                # worst case — nothing rated, everything stale — untouched.
+                pruned = write_confidence_to_db(
                     conn,
                     config_name,
                     new_ratings,
                     win_rates,
                     day_filter=day_filter,
                     directional_ratings=dir_ratings,
+                    declared=declared,
                 )
+                if pruned:
+                    print(
+                        f"\n  Pruned {len(pruned)} rating(s) for cells "
+                        f"'{config_name}' no longer declares:"
+                    )
+                    for strategy, tf, direction in sorted(pruned):
+                        print(f"    {strategy} × {tf} [{direction}]")
+                if not new_ratings:
+                    print(
+                        "\n  Nothing rated — no declared cell had sufficient backtest data."
+                    )
+                    return
                 print(
                     f"\n  Written to confidence_ratings table for config '{config_name}'."
                 )
@@ -98,6 +119,11 @@ def run(
                     print(f"    {name}: {new_ratings[name]}")
                 print("\n  Restart signal watch to pick up the new ratings.")
             else:
+                if not new_ratings:
+                    print(
+                        "\n  Nothing to apply — no strategies had sufficient backtest data."
+                    )
+                    return
                 # Legacy: patch indicators_lib.py source directly.
                 patched = write_confidence_to_source(new_ratings, source_path)
                 print(f"\n  Patched {len(patched)} strategy/ies in {source_path.name}.")

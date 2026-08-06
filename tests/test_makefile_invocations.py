@@ -2,7 +2,8 @@
 
 This is the static half of the silent-surface enforcement; the data-driven half is
 `tools/dead_surface_check.py` (+ `tests/test_dead_surface_check.py`), which reports
-declared (strategy × timeframe) cells whose detector never fires.
+(strategy × timeframe) cells where declaration and output disagree in either
+direction — declared but never firing, or rated but no longer declared.
 
 `make wifey-open-trades` ran `trade/open_trades.py` — a **0-byte file** — printed
 "🚀 Opening multiple trades…" and exited **0** until 2026-08-06 (#138). Python

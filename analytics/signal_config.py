@@ -574,6 +574,30 @@ class SignalWatchConfig:
         return self.atr_sl_floor
 
 
+def declared_cells(cfg: SignalWatchConfig) -> list[tuple[str, str]]:
+    """(strategy, timeframe) pairs the config will scan, in declaration order.
+
+    A strategy listed in ``strategy_timeframes`` is restricted to those
+    timeframes; every other strategy runs on the config's full ``timeframes``
+    list. This mirrors the allow-list that ``signal.scanner.scan_symbol``
+    applies per candle, so it is the authoritative answer to "what does this
+    config actually scan?".
+
+    Lives here rather than beside either of its two consumers because they ask
+    the question from opposite ends and must not drift apart:
+    ``tools/dead_surface_check.py`` asks which declared cells produce nothing,
+    and ``recalibrate_lib`` asks which rated cells are no longer declared. A
+    forked definition would let a cell be dead under one and healthy under the
+    other.
+    """
+    cells: list[tuple[str, str]] = []
+    for strategy in cfg.strategies or []:
+        for tf in cfg.strategy_timeframes.get(strategy, cfg.timeframes):
+            if (strategy, tf) not in cells:
+                cells.append((strategy, tf))
+    return cells
+
+
 def load_signal_config(path: str | Path) -> SignalWatchConfig:
     """Load SignalWatchConfig from a TOML file.
 

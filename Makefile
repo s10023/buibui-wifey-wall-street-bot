@@ -283,16 +283,22 @@ db-update-recalibrate:
 	$(MAKE) wifey-recalibrate CONFIG=config/signal_watch.toml APPLY=1
 	$(MAKE) wifey-recalibrate CONFIG=config/signal_watch_weekdays.toml APPLY=1
 
-## Report declared (strategy × timeframe) cells whose detector never fires.
-## Advisory inside db-update (a `-` prefix) so a dead cell never blocks a DB
-## refresh; run the target directly for a non-zero exit.
+## Report (strategy × timeframe) cells where declaration and output disagree:
+## declared-but-dead (detector never fires) and rated-but-undeclared (a
+## confidence_ratings row outliving the config that produced it).
+## Advisory inside db-update so neither ever blocks a DB refresh; run the
+## target directly for a non-zero exit.
 check-dead-surfaces:
-	@echo "🔍 Checking for declared-but-dead (strategy × timeframe) cells..."
+	@echo "🔍 Checking for declared-but-dead and rated-but-undeclared cells..."
 	@poetry run python tools/dead_surface_check.py
 
+## The completion banner is CONDITIONAL on the surface check. It used to print
+## an unqualified ✅ beside nine orphaned confidence_ratings rows, one of them
+## displaying 3★ — the refresh had "succeeded" and the output said so.
 db-update: db-update-backtest db-update-recalibrate regression-update
-	-@$(MAKE) --no-print-directory check-dead-surfaces
-	@echo "✅ Routine DB update complete. Review: git diff tests/fixtures/golden_*.json"
+	@$(MAKE) --no-print-directory check-dead-surfaces \
+	  && echo "✅ Routine DB update complete. Review: git diff tests/fixtures/golden_*.json" \
+	  || echo "⚠️  DB refresh finished, but the surface check above FAILED — fix that before trusting the ratings."
 
 wifey-digest:
 	@echo "📊 Running backtest analysis digest..."
