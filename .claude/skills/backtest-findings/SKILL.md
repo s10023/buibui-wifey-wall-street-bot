@@ -68,6 +68,19 @@ Always printed alongside main results (regardless of `volume_suppress` setting):
 - **Negative Δ** (Low Vol >> High Vol): do NOT suppress — low-vol signals have edge here
 - Decision threshold: |Δ| > 0.10R is meaningful; < 0.05R is noise
 
+**Before acting on a positive Δ (both added 2026-08-06):**
+
+1. **`volume_suppress = true` requires `adr_exempt = true`** on the same strategy —
+   `load_signal_config` raises otherwise. The ADR gate keeps quiet, small-range bars
+   while this flag keeps high-volume ones, and range/volume correlate at ~+0.65, so
+   the conjunction discards ~99% of signals silently.
+2. **The Δ above is a point estimate, not a result.** Significance-test it before
+   committing: a Δ of +0.11R justified throwing away 94% of `bos`'s signals for
+   months, and on retest every cell gave p ≥ 0.113 with the CI straddling zero. All
+   four shipped volume flags were removed once tested.
+
+See `/volume-sweep` and `docs/audits/2026-08-06-adr-volume-gate-conjunction.md`.
+
 **A14b findings (current per-strategy tp_r — see `volume-sweep` skill for full table):**
 
 - Suppress: `bos`, `orb`, `ote_entry`, `doji`, `bos`, `eqh_eql`

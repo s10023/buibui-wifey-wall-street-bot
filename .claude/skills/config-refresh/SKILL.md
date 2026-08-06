@@ -86,6 +86,17 @@ Decision threshold (per `/volume-sweep`):
 - Δ < −0.05R → `volume_suppress = false`
 - |Δ| ≤ 0.05R → omit the flag entirely (inherits global default)
 
+**Two preconditions on the `true` branch (2026-08-06) — read `/volume-sweep`'s STOP
+section before setting it:**
+
+- It requires `adr_exempt = true` on the same strategy, or `load_signal_config`
+  raises. The ADR gate and this flag select for opposite bars (range/volume correlate
+  ~+0.65), so together they discard ~99% of signals silently.
+- The Δ is untested by itself. Significance-test it — all four shipped flags failed
+  that test on 2026-08-06 and were removed, and **no strategy currently sets one.**
+  So in practice this step should now be confirming flags are *absent*, and any
+  addition needs a measured, tested justification.
+
 ## Step 3 — Sync `day_filter` and other top-level fields
 
 Confirm `day_filter`, `min_sl_pct`, and any other top-level fields match the
