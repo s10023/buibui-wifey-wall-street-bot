@@ -129,7 +129,8 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import date, datetime
 
-_UA = "buibui-wifey research (khaijian.ng@frgrisk.com)"
+# Contact moved to $EDGAR_CONTACT_EMAIL on 2026-08-06 — see utils/edgar_client.py
+_DEFAULT_CONTACT = "https://github.com/s10023/buibui-wifey-wall-street-bot"
 _MIN_INTERVAL = 0.12  # ~8 req/s, under SEC's 10 req/s ceiling
 _last_call = 0.0
 
