@@ -15,7 +15,7 @@
 telegram = false
 min_sl_pct = 0.005
 
-# Backtest sweep runner (make buibui-backtest) reads these top-level keys:
+# Backtest sweep runner (make wifey-backtest) reads these top-level keys:
 days = 365              # fallback lookback window (ignored when since is set); equity defaults to 1y
 # T13: legacy crypto anchor "2025-09-12" dropped — equity yfinance covers years.
 # T14 (WFO + recalibrate) sets a fresh `since` anchor tied to the equity backfill window.

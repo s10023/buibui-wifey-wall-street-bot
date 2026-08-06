@@ -1,14 +1,21 @@
 # Signal Watch — default equity configuration (Tue–Thu only)
-# Usage: make buibui-signal-watch CONFIG=config/signal_watch.toml
+# Usage: make wifey-signal-watch CONFIG=config/signal_watch.toml
 #
 # CLI flags always take precedence over values here.
 # Inherits: bias, backtest defaults, and consistent per-strategy flags
 # from strategy_params.toml. Only tue_thu-specific values are defined here.
 #
 # T13 (2026-05-17): rewritten for equities. Symbols come from config/stocks.json
-# (omit the `symbols` key below). Timeframes restricted to 4h | 1d | 1wk —
-# yfinance free tier caps 1h history at ~730d and lower TFs at 60d, so 15m / 1h
-# are out for Phase A.
+# (omit the `symbols` key below). yfinance free tier caps 1h history at ~730d and
+# lower TFs at 60d, so 15m / 1h are out for Phase A. Of the three TFs that remain
+# (4h | 1d | 1wk) this config runs 4h and 1d — see the `timeframes` note below.
+#
+# NOTE (2026-08-06): the "Fri close × tue_thu suppression" mechanism cited in the
+# per-strategy comments below is WRONG, though its symptom (1wk n=0 / no_grid)
+# was real. The day filter reads each bar's OPEN weekday, and weekly bars are
+# stamped Monday — so suppression was total, not a Friday-close edge case. Those
+# comments are left as the historical sweep record; do not read them as evidence
+# that some 1wk cells could have fired.
 #
 # T14 (2026-05-17): WFO sweep on AAPL × 4h/1d (since 2024-05-16 / 2023-01-03,
 # day_filter=tue_thu, fee_pct=0.0). 6 tp_r values updated where AAPL showed
@@ -79,7 +86,13 @@ extends = "strategy_params.toml"
 # Symbols to watch — omit to use the full watchlist from config/stocks.json.
 # symbols = ["AAPL", "MSFT"]
 
-timeframes = ["4h", "1d", "1wk"]
+# "1wk" was dropped 2026-08-06: weekly bars are stamped Monday, so day_filter
+# below discarded 100% of their signals — zero alerts dispatched between PR #22
+# and the removal. Re-adding it requires widening day_filter (load_signal_config
+# now refuses the blackout pairing), and the case for that is not yet there: on
+# signal_watch_weekdays, where 1wk does run, it is the worst timeframe measured
+# — 361 trades, total −89.65R, avg −0.2483R vs 4h's +402.58R / +0.0468R.
+timeframes = ["4h", "1d"]
 
 # Suppress signals by day: "off" | "weekdays" (Mon–Fri) | "tue_thu" (Tue–Thu only)
 # "tue_thu" suppresses Mon and Fri (ICT weekly cycle — manipulation/distribution days)
