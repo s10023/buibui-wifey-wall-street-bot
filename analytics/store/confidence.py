@@ -1,6 +1,7 @@
 """confidence_ratings table accessors (combined + directional star ratings)."""
 
 import time
+from collections.abc import Collection
 
 import duckdb
 import pandas as pd
@@ -65,6 +66,46 @@ def upsert_confidence_ratings(
         )
     finally:
         conn.unregister("_cr_upsert_df")
+
+
+def prune_undeclared_confidence_ratings(
+    conn: duckdb.DuckDBPyConnection,
+    config_name: str,
+    declared: Collection[tuple[str, str]],
+) -> list[tuple[str, str, str]]:
+    """Delete this config's ratings for cells it no longer declares.
+
+    Returns the deleted (strategy, tf, direction) triples so the caller can
+    report them — a silent delete would swap one invisible surface for another.
+
+    Necessary because ``upsert_confidence_ratings`` only ever inserts-or-
+    replaces: filtering the *write* stops new orphans but cannot remove rows
+    already on disk, which then outlive the declaration that produced them
+    indefinitely. Scoped to ``config_name`` so the two live configs never prune
+    each other, and keyed on (strategy, tf) across all directions because
+    ``declared`` has no direction axis.
+
+    A declared cell that is merely unrated this run — too few trades — is left
+    untouched: it is not an orphan, and dropping it would silently discard a
+    rating the next refresh may well restore.
+    """
+    rows = conn.execute(
+        "SELECT strategy, tf, direction FROM confidence_ratings WHERE config_name = ?",
+        [config_name],
+    ).fetchall()
+    allowed = set(declared)
+    orphans = [
+        (str(strategy), str(tf), str(direction))
+        for strategy, tf, direction in rows
+        if (str(strategy), str(tf)) not in allowed
+    ]
+    for strategy, tf, direction in orphans:
+        conn.execute(
+            "DELETE FROM confidence_ratings WHERE config_name = ? AND strategy = ? "
+            "AND tf = ? AND direction = ?",
+            [config_name, strategy, tf, direction],
+        )
+    return orphans
 
 
 def get_confidence_ratings(

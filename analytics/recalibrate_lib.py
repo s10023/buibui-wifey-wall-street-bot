@@ -4,17 +4,37 @@ No module-level side effects. No DB writes. No network calls.
 """
 
 import re
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from pathlib import Path
 
 import duckdb
 import pandas as pd
 
 
+def _empty_win_rates() -> pd.DataFrame:
+    """Zero-row frame with the exact column set callers index into."""
+    return pd.DataFrame(
+        columns=[
+            "strategy",
+            "timeframe",
+            "total_trades",
+            "win_rate",
+            "avg_r",
+            "long_total_trades",
+            "long_win_rate",
+            "long_avg_r",
+            "short_total_trades",
+            "short_win_rate",
+            "short_avg_r",
+        ]
+    )
+
+
 def get_backtest_win_rates(
     conn: duckdb.DuckDBPyConnection,
     day_filter: str | None = None,
     adr_suppress_threshold: float | None = None,
+    declared: Collection[tuple[str, str]] | None = None,
 ) -> pd.DataFrame:
     """Query backtest_runs grouped by (strategy, tf), return win_rate, avg_r, total_trades.
 
@@ -22,11 +42,39 @@ def get_backtest_win_rates(
     Only the latest run per (strategy, timeframe, symbol) is used — older runs
     from previous param sweeps are excluded to avoid polluting the ratings.
     Only includes rows where closed_trades > 0.
+
+    **Sweep rows only** (`sweep_id IS NOT NULL`). The live EV gate also writes
+    to `backtest_runs` (`signal.scanner`, one row per direction-leg it
+    evaluates) and those rows carry no `sweep_id`. They are not the same
+    measurement as a sweep row: the live gate backtests ONE strategy with no
+    live-parity params, so it never runs the conflict resolver, over whatever
+    window `signal_runner` hands it. Because rows are deduplicated by "latest
+    per (strategy, timeframe, symbol)" with no notion of provenance, a live row
+    silently *superseded* the sweep row for that symbol. Measured 2026-08-06
+    before this filter: 42 of 316 rating inputs on `signal_watch` were live
+    rows (13%), touching 15 of its 22 declared cells, at a median 4 closed
+    trades against the sweep's 8 — and five cells sat on the wrong side of
+    zero because of it (`orb × 4h` read +0.0011 against a sweep-only +0.2126).
+    `signal_watch_weekdays` never runs live and had none, so the two configs'
+    stars were not even computed from comparable populations. The `day_filter`
+    and `adr_suppress_threshold` filters below exist to keep recalibration
+    inside one execution context; this is the same rule applied to the axis
+    they missed.
     If day_filter is provided, only runs saved with that day_filter value are used.
     adr_suppress_threshold: when None (default) uses only runs with no ADR gate
     (adr_suppress_threshold IS NULL); when a float, uses only runs saved with that
     exact threshold. This mirrors the day_filter pattern so recalibration always
     uses runs from the same execution context as the live config.
+    declared: when given, restricts the result to these (strategy, timeframe)
+    cells — the set the config actually scans, from
+    `signal_config.declared_cells`. `backtest_runs` is a permanent historical
+    record, so without this filter a cell keeps being re-rated long after the
+    config stopped declaring it, and the *sweep* keeps producing fresh rows for
+    cells excluded only by `strategy_timeframes` (it walks the full symbol × TF
+    × strategy product). Applied here rather than in each caller so the printed
+    report, the combined ratings and the directional ratings can never disagree
+    about which cells are live. None (the default) keeps every rated cell, which
+    is what the legacy source-patching mode wants.
     Returns a DataFrame with columns:
         strategy, timeframe, total_trades, win_rate, avg_r
     """
@@ -48,26 +96,13 @@ def get_backtest_win_rates(
         f"long_closed_trades, long_win_count, long_avg_r, "
         f"short_closed_trades, short_win_count, short_avg_r "
         f"FROM backtest_runs "
-        f"WHERE closed_trades > 0 {day_filter_clause} {adr_clause}",
+        f"WHERE closed_trades > 0 AND sweep_id IS NOT NULL "
+        f"{day_filter_clause} {adr_clause}",
         params,
     )
     rows = cursor.fetchall()
     if not rows:
-        return pd.DataFrame(
-            columns=[
-                "strategy",
-                "timeframe",
-                "total_trades",
-                "win_rate",
-                "avg_r",
-                "long_total_trades",
-                "long_win_rate",
-                "long_avg_r",
-                "short_total_trades",
-                "short_win_rate",
-                "short_avg_r",
-            ]
-        )
+        return _empty_win_rates()
 
     raw = pd.DataFrame(
         rows,
@@ -87,6 +122,16 @@ def get_backtest_win_rates(
             "short_avg_r",
         ],
     )
+    if declared is not None:
+        allowed = set(declared)
+        raw = raw[
+            [
+                (s, tf) in allowed
+                for s, tf in zip(raw["strategy"], raw["timeframe"], strict=True)
+            ]
+        ]
+        if raw.empty:
+            return _empty_win_rates()
     # Keep only the latest run per (strategy, timeframe, symbol)
     raw = raw.sort_values("run_at_ms", ascending=False).drop_duplicates(
         subset=["strategy", "timeframe", "symbol"]
@@ -166,6 +211,7 @@ def compute_recalibrated_ratings(
     min_trades: int = 10,
     day_filter: str | None = None,
     adr_suppress_threshold: float | None = None,
+    declared: Collection[tuple[str, str]] | None = None,
 ) -> dict[str, dict[str, int]]:
     """Return {strategy: {tf: stars}} for strategies with sufficient data.
 
@@ -174,9 +220,14 @@ def compute_recalibrated_ratings(
     If day_filter is provided, only runs saved with that day_filter value are used.
     adr_suppress_threshold: mirrors the day_filter pattern — only runs saved with that
     exact threshold are used (default None uses runs with adr_suppress_threshold IS NULL).
+    declared: restricts rating to the cells the config scans — see
+    get_backtest_win_rates.
     """
     df = get_backtest_win_rates(
-        conn, day_filter=day_filter, adr_suppress_threshold=adr_suppress_threshold
+        conn,
+        day_filter=day_filter,
+        adr_suppress_threshold=adr_suppress_threshold,
+        declared=declared,
     )
     if df.empty:
         return {}
@@ -201,15 +252,21 @@ def compute_directional_ratings(
     min_trades: int = 5,
     day_filter: str | None = None,
     adr_suppress_threshold: float | None = None,
+    declared: Collection[tuple[str, str]] | None = None,
 ) -> dict[str, dict[str, dict[str, int]]]:
     """Return {strategy: {tf: {"long": stars, "short": stars}}} from backtest DB.
 
     Uses a lower default min_trades than compute_recalibrated_ratings (5 vs 10)
     because directional splits have fewer trades than the combined total.
     Directions with fewer than min_trades are omitted (not rated).
+    declared: restricts rating to the cells the config scans — see
+    get_backtest_win_rates.
     """
     df = get_backtest_win_rates(
-        conn, day_filter=day_filter, adr_suppress_threshold=adr_suppress_threshold
+        conn,
+        day_filter=day_filter,
+        adr_suppress_threshold=adr_suppress_threshold,
+        declared=declared,
     )
     if df.empty:
         return {}
@@ -372,15 +429,27 @@ def write_confidence_to_db(
     win_rates: pd.DataFrame,
     day_filter: str | None = None,
     directional_ratings: dict[str, dict[str, dict[str, int]]] | None = None,
-) -> None:
+    declared: Collection[tuple[str, str]] | None = None,
+) -> list[tuple[str, str, str]]:
     """Upsert confidence star ratings to the DB for a specific config.
 
     Writes combined stars (direction='combined') and, when directional_ratings is
     provided, also long/short directional stars.
     config_name: TOML stem, e.g. 'signal_watch', 'signal_watch_weekdays'.
     day_filter: stored alongside stars so backtest rows can JOIN without a UI selector.
+    declared: the cells the config scans. When given, rows for any other cell are
+    deleted first — the upsert cannot remove them on its own. Returns the pruned
+    (strategy, tf, direction) triples, empty when nothing was pruned or declared
+    is None.
     """
-    from analytics.data_store import upsert_confidence_ratings
+    from analytics.data_store import (
+        prune_undeclared_confidence_ratings,
+        upsert_confidence_ratings,
+    )
+
+    pruned: list[tuple[str, str, str]] = []
+    if declared is not None:
+        pruned = prune_undeclared_confidence_ratings(conn, config_name, declared)
 
     upsert_confidence_ratings(
         conn,
@@ -391,7 +460,7 @@ def write_confidence_to_db(
         direction="combined",
     )
     if not directional_ratings:
-        return
+        return pruned
     for direction, _total_col, avg_r_col, wr_col in [
         ("long", "long_total_trades", "long_avg_r", "long_win_rate"),
         ("short", "short_total_trades", "short_avg_r", "short_win_rate"),
@@ -414,6 +483,7 @@ def write_confidence_to_db(
                 avg_r_col=avg_r_col,
                 win_rate_col=wr_col,
             )
+    return pruned
 
 
 def write_confidence_to_source(

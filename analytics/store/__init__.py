@@ -30,6 +30,7 @@ from analytics.store.combos import (
 from analytics.store.confidence import (
     get_confidence_ratings,
     get_directional_confidence_ratings,
+    prune_undeclared_confidence_ratings,
     upsert_confidence_ratings,
 )
 from analytics.store.earnings import (
@@ -76,6 +77,7 @@ __all__ = [
     "list_combo_runs",
     "list_cross_tf_combo_runs",
     "prune_backtest_cache",
+    "prune_undeclared_confidence_ratings",
     "put_backtest_cache",
     "upsert_backtest_run",
     "upsert_backtest_trades",

@@ -7,13 +7,16 @@ import duckdb
 import pandas as pd
 
 from analytics.data_store import (
+    get_confidence_ratings,
     get_directional_confidence_ratings,
     init_schema,
+    prune_undeclared_confidence_ratings,
 )
 from analytics.recalibrate_lib import (
     compute_directional_ratings,
     compute_recalibrated_ratings,
     format_recalibration_report,
+    get_backtest_win_rates,
     win_rate_to_stars,
     write_confidence_to_db,
     write_confidence_to_source,
@@ -96,7 +99,7 @@ def _seed_backtest_runs(conn: duckdb.DuckDBPyConnection) -> None:
             "total_r": 18.0,
             "max_drawdown_r": 3.0,
             "run_at_ms": 1000,
-            "sweep_id": None,
+            "sweep_id": "sweep-1",
         },
         # fvg: avg_r=-0.1 over 20 closed trades on 1h → 1★
         {
@@ -120,7 +123,7 @@ def _seed_backtest_runs(conn: duckdb.DuckDBPyConnection) -> None:
             "total_r": -2.0,
             "max_drawdown_r": 4.0,
             "run_at_ms": 1000,
-            "sweep_id": None,
+            "sweep_id": "sweep-1",
         },
         # pin_bar: only 5 trades on 4h — below default min_trades=10 → excluded
         {
@@ -144,7 +147,7 @@ def _seed_backtest_runs(conn: duckdb.DuckDBPyConnection) -> None:
             "total_r": 6.0,
             "max_drawdown_r": 0.0,
             "run_at_ms": 1000,
-            "sweep_id": None,
+            "sweep_id": "sweep-1",
         },
         # engulfing: 4h=0.7 (4★), 1h=-0.2 (1★) — different ratings per TF
         {
@@ -168,7 +171,7 @@ def _seed_backtest_runs(conn: duckdb.DuckDBPyConnection) -> None:
             "total_r": 10.5,
             "max_drawdown_r": 2.0,
             "run_at_ms": 1000,
-            "sweep_id": None,
+            "sweep_id": "sweep-1",
         },
         {
             "run_id": "eee",
@@ -191,7 +194,7 @@ def _seed_backtest_runs(conn: duckdb.DuckDBPyConnection) -> None:
             "total_r": -2.4,
             "max_drawdown_r": 3.0,
             "run_at_ms": 1000,
-            "sweep_id": None,
+            "sweep_id": "sweep-1",
         },
     ]
     conn.executemany(
@@ -600,7 +603,7 @@ def _seed_directional_runs(conn: duckdb.DuckDBPyConnection) -> None:
             8.0,
             4.0,
             1000,
-            None,
+            "sweep-1",  # sweep_id — a live-gate row would be NULL here
             # long: 10 trades, avg_r=0.9 → 5★ at min_trades=5
             10,
             8,
@@ -652,3 +655,262 @@ class TestComputeDirectionalRatings:
         conn.close()
         # 10 trades per direction < min_trades=15 → neither direction rated
         assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# declared-cell filtering + orphan pruning
+#
+# `backtest_runs` is a permanent historical record and
+# `upsert_confidence_ratings` only inserts-or-replaces, so without both a read
+# filter and a delete a rating outlives the declaration that produced it.
+# Found 2026-08-06: `fib_golden_zone × 4h` still showed 3★ +0.4688 — the
+# second-highest-rated cell in the `signal_watch` table — 2.5 months after the
+# strategy left the config, refreshed with a new timestamp on every recalibrate.
+# ---------------------------------------------------------------------------
+
+
+class TestDeclaredCellFiltering:
+    def _make_conn(self) -> duckdb.DuckDBPyConnection:
+        conn = duckdb.connect(":memory:")
+        init_schema(conn)
+        return conn
+
+    def test_undeclared_cell_is_not_rated(self) -> None:
+        """engulfing/fvg have ratable runs but are absent from `declared`."""
+        conn = self._make_conn()
+        _seed_backtest_runs(conn)
+        rated = compute_recalibrated_ratings(conn, declared=[("bos", "4h")])
+        conn.close()
+        assert rated == {"bos": {"4h": 4}}
+
+    def test_one_timeframe_of_a_declared_strategy_can_be_undeclared(self) -> None:
+        """`strategy_timeframes` restricts a live strategy to a subset of TFs.
+
+        This is the shape the sweep ignores: `bos` stayed in `signal_watch`
+        while #143 retired it from 4h, so the sweep kept writing 4h rows and
+        recalibrate kept rating a cell the daemon no longer scans.
+        """
+        conn = self._make_conn()
+        _seed_backtest_runs(conn)
+        rated = compute_recalibrated_ratings(conn, declared=[("engulfing", "4h")])
+        conn.close()
+        assert rated == {"engulfing": {"4h": 4}}
+
+    def test_declared_none_rates_everything(self) -> None:
+        """Legacy source-patching mode has no config to be undeclared by."""
+        conn = self._make_conn()
+        _seed_backtest_runs(conn)
+        unfiltered = compute_recalibrated_ratings(conn, declared=None)
+        conn.close()
+        assert set(unfiltered) == {"bos", "engulfing", "fvg"}
+
+    def test_declared_filter_applies_to_directional_ratings_too(self) -> None:
+        """Combined and directional must not disagree about which cells are live."""
+        conn = self._make_conn()
+        _seed_directional_runs(conn)
+        kept = compute_directional_ratings(conn, min_trades=5, declared=[("bos", "4h")])
+        dropped = compute_directional_ratings(
+            conn, min_trades=5, declared=[("bos", "1d")]
+        )
+        conn.close()
+        assert kept["bos"]["4h"]["long"] == 5
+        assert dropped == {}
+
+    def test_win_rates_frame_keeps_columns_when_filter_empties_it(self) -> None:
+        """Callers index into these columns unconditionally."""
+        conn = self._make_conn()
+        _seed_backtest_runs(conn)
+        df = get_backtest_win_rates(conn, declared=[("nonexistent", "4h")])
+        conn.close()
+        assert df.empty
+        assert "long_avg_r" in df.columns
+        assert "short_win_rate" in df.columns
+
+
+class TestPruneUndeclaredConfidenceRatings:
+    def _conn(self) -> duckdb.DuckDBPyConnection:
+        conn = duckdb.connect(":memory:")
+        init_schema(conn)
+        return conn
+
+    def _empty_wr(self) -> pd.DataFrame:
+        return pd.DataFrame(columns=["strategy", "timeframe", "avg_r", "win_rate"])
+
+    def test_orphan_row_is_deleted_and_declared_row_kept(self) -> None:
+        conn = self._conn()
+        write_confidence_to_db(
+            conn,
+            "signal_watch",
+            {"bos": {"4h": 3}, "gone": {"4h": 5}},
+            self._empty_wr(),
+        )
+        pruned = prune_undeclared_confidence_ratings(
+            conn, "signal_watch", [("bos", "4h")]
+        )
+        result = get_confidence_ratings(conn, "signal_watch")
+        conn.close()
+        assert pruned == [("gone", "4h", "combined")]
+        assert result == {"bos": {"4h": 3}}
+
+    def test_prunes_every_direction_of_an_orphan_cell(self) -> None:
+        """`declared` has no direction axis — a dead cell is dead in all three."""
+        conn = self._conn()
+        write_confidence_to_db(
+            conn,
+            "signal_watch",
+            {"gone": {"4h": 5}},
+            self._empty_wr(),
+            directional_ratings={"gone": {"4h": {"long": 4, "short": 2}}},
+        )
+        pruned = prune_undeclared_confidence_ratings(conn, "signal_watch", [])
+        conn.close()
+        assert sorted(d for _, _, d in pruned) == ["combined", "long", "short"]
+
+    def test_scoped_to_one_config(self) -> None:
+        """The two live configs declare different cells and must not prune each other."""
+        conn = self._conn()
+        write_confidence_to_db(
+            conn, "signal_watch", {"bos": {"4h": 3}}, self._empty_wr()
+        )
+        write_confidence_to_db(
+            conn, "signal_watch_weekdays", {"bos": {"4h": 3}}, self._empty_wr()
+        )
+        prune_undeclared_confidence_ratings(conn, "signal_watch", [])
+        weekdays = get_confidence_ratings(conn, "signal_watch_weekdays")
+        conn.close()
+        assert weekdays == {"bos": {"4h": 3}}
+
+    def test_declared_but_unrated_cell_is_not_pruned(self) -> None:
+        """Too-few-trades is not orphanhood — the next refresh may restore it."""
+        conn = self._conn()
+        write_confidence_to_db(
+            conn, "signal_watch", {"bos": {"4h": 3}}, self._empty_wr()
+        )
+        pruned = prune_undeclared_confidence_ratings(
+            conn, "signal_watch", [("bos", "4h"), ("thin", "1d")]
+        )
+        result = get_confidence_ratings(conn, "signal_watch")
+        conn.close()
+        assert pruned == []
+        assert result == {"bos": {"4h": 3}}
+
+    def test_write_confidence_to_db_prunes_when_declared_given(self) -> None:
+        conn = self._conn()
+        write_confidence_to_db(
+            conn, "signal_watch", {"gone": {"4h": 5}}, self._empty_wr()
+        )
+        pruned = write_confidence_to_db(
+            conn,
+            "signal_watch",
+            {"bos": {"4h": 3}},
+            self._empty_wr(),
+            declared=[("bos", "4h")],
+        )
+        result = get_confidence_ratings(conn, "signal_watch")
+        conn.close()
+        assert pruned == [("gone", "4h", "combined")]
+        assert result == {"bos": {"4h": 3}}
+
+    def test_write_confidence_to_db_without_declared_keeps_orphans(self) -> None:
+        """Back-compat: the default must not silently delete rows."""
+        conn = self._conn()
+        write_confidence_to_db(
+            conn, "signal_watch", {"gone": {"4h": 5}}, self._empty_wr()
+        )
+        pruned = write_confidence_to_db(
+            conn, "signal_watch", {"bos": {"4h": 3}}, self._empty_wr()
+        )
+        result = get_confidence_ratings(conn, "signal_watch")
+        conn.close()
+        assert pruned == []
+        assert result == {"bos": {"4h": 3}, "gone": {"4h": 5}}
+
+
+# ---------------------------------------------------------------------------
+# live-gate rows must not reach the ratings
+#
+# The live EV gate writes one `backtest_runs` row per direction-leg it
+# evaluates, with no `sweep_id`. Deduplication is "latest per (strategy,
+# timeframe, symbol)" with no notion of provenance, so before this filter a
+# live row superseded the sweep row for that symbol — a different measurement
+# (one strategy, no live-parity params, no conflict resolver, its own window)
+# quietly replacing the competed one. Measured 2026-08-06: 42 of 316 rating
+# inputs on `signal_watch`, 15 of 22 declared cells, 5 of them across zero.
+# ---------------------------------------------------------------------------
+
+
+def _insert_run(
+    conn: duckdb.DuckDBPyConnection,
+    run_id: str,
+    strategy: str,
+    timeframe: str,
+    symbol: str,
+    closed_trades: int,
+    avg_r: float,
+    run_at_ms: int,
+    sweep_id: str | None,
+) -> None:
+    conn.execute(
+        "INSERT INTO backtest_runs VALUES "
+        "(?, ?, ?, ?, 0, 1, 90, 0.02, 2.0, 0.0005, 'off', ?, ?, ?, 0, 0.5, ?, "
+        "0.0, 0.0, ?, ?, "
+        "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "
+        "NULL, NULL, NULL)",
+        [
+            run_id,
+            symbol,
+            timeframe,
+            strategy,
+            closed_trades,
+            closed_trades,
+            closed_trades,
+            avg_r,
+            run_at_ms,
+            sweep_id,
+        ],
+    )
+
+
+class TestLiveGateRowsExcluded:
+    def _make_conn(self) -> duckdb.DuckDBPyConnection:
+        conn = duckdb.connect(":memory:")
+        init_schema(conn)
+        return conn
+
+    def test_newer_live_row_does_not_supersede_the_sweep_row(self) -> None:
+        """The exact shape found in production: `orb × 4h` read +0.0011 vs +0.2126."""
+        conn = self._make_conn()
+        _insert_run(conn, "s", "orb", "4h", "SPY", 20, 0.6, 1000, "sweep-1")
+        _insert_run(conn, "live", "orb", "4h", "SPY", 1, -1.0951, 2000, None)
+        df = get_backtest_win_rates(conn)
+        conn.close()
+        assert len(df) == 1
+        assert float(df.iloc[0]["avg_r"]) == 0.6
+        assert int(df.iloc[0]["total_trades"]) == 20
+
+    def test_a_cell_known_only_from_live_rows_is_not_rated(self) -> None:
+        conn = self._make_conn()
+        _insert_run(conn, "live", "orb", "4h", "SPY", 30, 1.4, 1000, None)
+        rated = compute_recalibrated_ratings(conn)
+        conn.close()
+        assert rated == {}
+
+    def test_live_row_for_one_symbol_leaves_other_symbols_intact(self) -> None:
+        """Contamination was per-symbol — it thinned the sample as well as skewing it."""
+        conn = self._make_conn()
+        _insert_run(conn, "s1", "orb", "4h", "SPY", 20, 0.6, 1000, "sweep-1")
+        _insert_run(conn, "s2", "orb", "4h", "QQQ", 20, 0.6, 1000, "sweep-1")
+        _insert_run(conn, "live", "orb", "4h", "SPY", 1, -1.0, 2000, None)
+        df = get_backtest_win_rates(conn)
+        conn.close()
+        assert int(df.iloc[0]["total_trades"]) == 40
+
+    def test_older_sweep_runs_are_still_superseded_by_newer_sweep_runs(self) -> None:
+        """The pre-existing param-sweep dedup must survive the provenance filter."""
+        conn = self._make_conn()
+        _insert_run(conn, "old", "orb", "4h", "SPY", 20, 0.6, 1000, "sweep-1")
+        _insert_run(conn, "new", "orb", "4h", "SPY", 25, 0.1, 2000, "sweep-2")
+        df = get_backtest_win_rates(conn)
+        conn.close()
+        assert len(df) == 1
+        assert int(df.iloc[0]["total_trades"]) == 25

@@ -436,10 +436,25 @@ poetry run python wifey.py recalibrate --apply
 poetry run python wifey.py recalibrate --min-trades 20 --apply
 ```
 
-`--config` derives `day_filter` and `config_name` from the TOML file, then filters
-`backtest_runs` to only runs matching that `day_filter` before computing stars.
+`--config` derives `day_filter`, `config_name`, `adr_suppress_threshold` and the declared
+cell set from the TOML file, then filters `backtest_runs` before computing stars.
 `--apply` with `--config` writes to the `confidence_ratings` table keyed by config name —
 signal watch loads these at startup so each TOML config uses its own calibrated stars.
+
+Two of those filters exist because their absence failed silently until 2026-08-06:
+
+- **Only cells the config declares** are rated, honouring `strategy_timeframes`; rows for
+  any other cell are **pruned** on `--apply`, since the upsert cannot delete. Without this
+  a cell keeps its stars indefinitely after leaving the config — `fib_golden_zone × 4h`
+  displayed 3★ +0.4688, the second-highest-rated cell in the `signal_watch` table, 2.5
+  months after removal.
+- **Only sweep runs** (`sweep_id IS NOT NULL`). The live EV gate writes `backtest_runs`
+  rows too — one per direction-leg, single strategy, no live-parity params — and since
+  rows are deduplicated by recency those newer rows used to supersede the competed sweep
+  rows for that symbol.
+
+`make check-dead-surfaces` fails on any orphaned rating that survives, and gates
+`make db-update`'s completion banner.
 
 **Star rating thresholds (avg R):**
 

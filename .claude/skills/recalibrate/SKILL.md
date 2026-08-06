@@ -21,8 +21,26 @@ the live signal filter's quality gate.
 1. Reads `backtest_runs` table — aggregates avg_r per `(strategy, timeframe)` across all symbols
 2. Maps avg_r → 1–5 stars (see thresholds below) — combined, long, and short directions
 3. Dry-run (default): prints a diff of old vs new ratings
-4. `--apply` with `--config`: writes combined + directional (long/short) stars to `confidence_ratings` DB table, keyed by `(config_name, strategy, tf, direction)`
+4. `--apply` with `--config`: writes combined + directional (long/short) stars to `confidence_ratings` DB table, keyed by `(config_name, strategy, tf, direction)`, and **prunes rows for cells the config no longer declares**
 5. `--apply` without `--config`: legacy fallback that patched `confidence=N` into `indicators_lib.py` — **dead in this fork**, that file was removed in strat-3. Always pass `--config`
+
+**Two filters on the input population, both easy to forget and both silent when wrong**
+(2026-08-06):
+
+- **Declared cells only.** With `--config`, only `(strategy, timeframe)` pairs the config
+  actually scans are rated — `declared_cells`, which honours `strategy_timeframes`.
+  `backtest_runs` is a permanent record, so without this a cell keeps its stars long after
+  leaving the config: `fib_golden_zone × 4h` showed 3★ +0.4688, the second-highest-rated
+  cell in the `signal_watch` table, 2.5 months after removal. Existing rows are deleted by
+  `prune_undeclared_confidence_ratings` (the upsert cannot remove them); a declared cell
+  that is merely *unrated this run* is left alone.
+- **Sweep rows only** (`sweep_id IS NOT NULL`). The live EV gate also writes to
+  `backtest_runs` — one row per direction-leg, single strategy, no live-parity params, no
+  conflict resolver. Dedup is "latest per (strategy, tf, symbol)", so those newer rows used
+  to *supersede* the competed sweep rows: 42 of 316 inputs on `signal_watch` (13%), 15 of
+  22 declared cells, five of them landing on the wrong side of zero.
+
+Run `make check-dead-surfaces` after applying — it fails on any orphan that survived.
 
 **Prefer `--config` path** — it keeps ratings per-config and doesn't touch source code.
 
@@ -106,7 +124,8 @@ Strategy Recalibration Report
 
 | File | Role |
 | ------ | ------ |
-| `analytics/recalibrate_lib.py` | `compute_recalibrated_ratings()`, `compute_directional_ratings()`, `write_confidence_to_db()`, `write_confidence_to_source()` (legacy) |
-| `analytics/recalibrate_runner.py` | Thin wrapper: opens DB, calls lib, prints report; `--config` derives `config_name`, `day_filter`, `adr_suppress_threshold` |
-| `analytics/data_store.py` | `confidence_ratings` table: PK `(config_name, strategy, tf, direction)` |
+| `analytics/recalibrate_lib.py` | `get_backtest_win_rates(declared=…)` (the one place the input population is filtered — report and both rating paths share it), `compute_recalibrated_ratings()`, `compute_directional_ratings()`, `write_confidence_to_db()`, `write_confidence_to_source()` (legacy) |
+| `analytics/recalibrate_runner.py` | Thin wrapper: opens DB, calls lib, prints report; `--config` derives `config_name`, `day_filter`, `adr_suppress_threshold`, `declared` |
+| `analytics/signal_config.py` | `declared_cells(cfg)` — shared with `tools/dead_surface_check.py`, which asks the same question from the other end |
+| `analytics/store/confidence.py` | `confidence_ratings` PK `(config_name, strategy, tf, direction)`; `prune_undeclared_confidence_ratings()` |
 | `wifey.py` | `wifey recalibrate [--config FILE] [--apply] [--min-trades N]` |

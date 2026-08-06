@@ -3,7 +3,8 @@ name: db-update
 description: >
   Routine DB refresh after backtest or strategy changes — runs `make db-update`
   which chains backtest (both signal_watch configs) → recalibrate → regression
-  golden-fixture refresh → an advisory dead-surface check.
+  golden-fixture refresh → a surface check (declared-but-dead and
+  rated-but-undeclared cells) that gates the completion banner.
   Invoke when the user says "/db-update", asks to "refresh the DB", "rerun all
   backtests", "update star ratings", or after any detector / strategy / config
   change that should be reflected in the live ratings and golden fixtures.
@@ -33,8 +34,8 @@ make db-update
   │    ├─ wifey-recalibrate CONFIG=config/signal_watch.toml          APPLY=1
   │    └─ wifey-recalibrate CONFIG=config/signal_watch_weekdays.toml APPLY=1
   ├─ regression-update       refresh tests/fixtures/golden_*.json
-  └─ check-dead-surfaces     report declared cells whose detector never fires
-                             (ADVISORY here — `-` prefixed, never blocks a refresh)
+  └─ check-dead-surfaces     report declared-but-dead AND rated-but-undeclared cells
+                             (never blocks a refresh, but GATES the ✅ banner)
 ```
 
 `signal_watch.toml` (tue_thu) + `signal_watch_weekdays.toml` (weekdays) are the
@@ -50,16 +51,24 @@ make db-update
 make db-update-backtest      # backtests only — populates backtest_runs/trades
 make db-update-recalibrate   # recalibrate only — assumes backtest_runs are fresh
 make regression-update       # golden fixtures only — for tests/test_regression.py
-make check-dead-surfaces     # dead-cell report only — EXITS 1 when run directly
+make check-dead-surfaces     # surface report only — EXITS 1 when run directly
 ```
 
-`check-dead-surfaces` is advisory inside the chain but **fails on its own**, which is
-the point: a declared `(strategy × timeframe)` cell whose detector never fires costs
-work every scan cycle and returns nothing. `signal_watch.toml` carried `1wk` under
-`tue_thu` for three months behind 338 backtest rows that all had zero closed trades
-(#139) — rows existing is not evidence the surface works. New dead cells fail; the
-five known ones sit in `_KNOWN_DEAD_CELLS` with reasons, and that list should only
-ever shrink.
+`check-dead-surfaces` never blocks the chain but **fails on its own** and now **gates
+the completion banner**, and it checks the mismatch in both directions.
+
+*Declared but dead* — a cell whose detector never fires costs work every scan cycle and
+returns nothing. `signal_watch.toml` carried `1wk` under `tue_thu` for three months
+behind 338 backtest rows that all had zero closed trades (#139); rows existing is not
+evidence the surface works. `_KNOWN_DEAD_CELLS` holds the accepted ones with reasons and
+should only ever shrink — it is **empty** as of 2026-08-06.
+
+*Rated but undeclared* — the inverse, and the reason the banner changed. `recalibrate`
+rebuilt ratings from historical `backtest_runs` with no notion of the current config, so
+a dropped cell kept its stars forever. On 2026-08-06 this chain printed
+`✅ Routine DB update complete` and "no unexpected dead cells" with **nine orphaned cells
+present**, one showing 3★ +0.4688 for a strategy removed in May. Recalibrate now prunes
+them; if any appear again, something re-created them and the warning says so.
 
 ## After the chain
 
