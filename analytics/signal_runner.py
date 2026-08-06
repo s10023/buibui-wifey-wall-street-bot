@@ -254,10 +254,19 @@ def run_signal_watch(
             with duckdb.connect(str(db_path)) as conn:
                 # Sync each symbol+timeframe; fall back to backfill for new symbols
                 now_ms = int(time.time() * 1000)
-                backfill_start_ms = now_ms - _DEFAULT_BACKFILL_DAYS * 24 * 3600 * 1000
+                # Live backtest window. `[backtest] days` is the DECLARED window (365
+                # in both live configs); until 2026-08-06 it reached NEITHER the OHLCV
+                # cache nor run_scan_cycle, so the EV gate ran on the 90-day signature
+                # default and abstained (n_closed < min_trades) on 71% of all
+                # direction-legs. The two surfaces below must move TOGETHER:
+                # run_scan_cycle prefers a populated `ohlcv_cache` over its own
+                # `start_ms` read, so widening `days` alone widens nothing.
+                # Audit: docs/audits/2026-08-06-live-ev-gate-window.md
+                bt_days = backtest_cfg.days if backtest_cfg else _DEFAULT_BACKFILL_DAYS
+                backfill_start_ms = now_ms - bt_days * 24 * 3600 * 1000
                 # OHLCV cache window: match backtest_cfg.since so _compute_backtest
                 # sees the same data range the alert labels (e.g. "since 2025-09-12").
-                # Falls back to 90d when no since is configured.
+                # Falls back to the `days` window when no since is configured.
                 if backtest_cfg and backtest_cfg.since:
                     import datetime as _dt
 
@@ -306,6 +315,7 @@ def run_signal_watch(
                     sl_pct=sl_pct,
                     min_sl_pct=min_sl_pct,
                     send_telegram=send_telegram,
+                    days=bt_days,
                     backtest_cfg=backtest_cfg,
                     day_filter=day_filter,
                     strategy_timeframes=strategy_timeframes,
