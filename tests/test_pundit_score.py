@@ -15,6 +15,7 @@ from pathlib import Path
 
 import duckdb
 import pandas as pd
+import pytest
 
 from analytics.store.market_data import upsert_ohlcv
 from analytics.store.schema import init_schema
@@ -313,6 +314,95 @@ class TestLoaders:
         assert len(calls) == 1
         assert len(warnings) == 5
         assert all("no symbol resolved" in w for w in warnings)
+
+    def test_author_is_normalised_at_read(self, tmp_path: Path) -> None:
+        """A ledger written with a mixed '@' convention groups as one person.
+
+        Without this the scorer reports two shorter track records and neither
+        may clear a min_n marker the whole would have.
+        """
+        lines = [
+            self._good_line() | {"author": "@fenggemeigu"},
+            self._good_line() | {"author": "fenggemeigu"},
+            self._good_line() | {"author": "  @fenggemeigu  "},
+        ]
+        p = tmp_path / "calls.jsonl"
+        p.write_text(
+            "".join(json.dumps(x) + "\n" for x in lines),
+            encoding="utf-8",
+        )
+        calls, warnings = load_ledger(p)
+        assert warnings == []
+        assert {c.author for c in calls} == {"fenggemeigu"}
+
+    def test_out_of_enum_horizon_is_rejected_with_a_named_warning(
+        self, tmp_path: Path
+    ) -> None:
+        """The live silent defect this port closes.
+
+        'scalp' used to load fine and then take BOTH unspecified fallbacks —
+        1d bars instead of 1h, and a 10-session window instead of 2.
+        """
+        p = tmp_path / "calls.jsonl"
+        p.write_text(
+            json.dumps(self._good_line() | {"horizon": "scalp"}) + "\n",
+            encoding="utf-8",
+        )
+        calls, warnings = load_ledger(p)
+        assert calls == []
+        assert len(warnings) == 1
+        assert "line 1" in warnings[0] and "scalp" in warnings[0]
+
+    def test_missing_horizon_is_unspecified_not_an_error(self, tmp_path: Path) -> None:
+        """Absence is a member of the enum, unlike `direction`."""
+        line = self._good_line()
+        del line["horizon"]
+        p = tmp_path / "calls.jsonl"
+        p.write_text(json.dumps(line) + "\n", encoding="utf-8")
+        calls, warnings = load_ledger(p)
+        assert warnings == []
+        assert calls[0].horizon == "unspecified"
+
+    def test_out_of_enum_direction_is_rejected_with_a_named_warning(
+        self, tmp_path: Path
+    ) -> None:
+        """Parity with the parent. score_call already gated this to UNSCORED,
+        so the change is that the rejection now names the ledger line."""
+        p = tmp_path / "calls.jsonl"
+        p.write_text(
+            json.dumps(self._good_line() | {"direction": "range"}) + "\n",
+            encoding="utf-8",
+        )
+        calls, warnings = load_ledger(p)
+        assert calls == []
+        assert len(warnings) == 1
+        assert "line 1" in warnings[0] and "range" in warnings[0]
+
+    def test_direction_casing_still_loads(self, tmp_path: Path) -> None:
+        """Dropping 'SHORT' would be a regression — the old read lowercased."""
+        p = tmp_path / "calls.jsonl"
+        p.write_text(
+            json.dumps(self._good_line() | {"direction": "SHORT"}) + "\n",
+            encoding="utf-8",
+        )
+        calls, warnings = load_ledger(p)
+        assert warnings == []
+        assert calls[0].direction == "short"
+
+    def test_live_ledger_rows_all_survive_the_new_guards(self) -> None:
+        """No behaviour change on the committed ledger.
+
+        Measured at port time: 19 rows, all in-enum, 4 author keys none of
+        which collide. If this ever fails, a real row was newly rejected and
+        the scorecard changed — which is exactly what should be noticed.
+        """
+        ledger = Path("docs/plans/pundit-calls.jsonl")
+        if not ledger.exists():  # gitignored; absent on a fresh clone
+            pytest.skip("pundit ledger not present")
+        calls, warnings = load_ledger(ledger)
+        enum_warnings = [w for w in warnings if "direction" in w or "horizon" in w]
+        assert enum_warnings == [], f"live ledger rows newly rejected: {enum_warnings}"
+        assert calls, "ledger present but no rows loaded"
 
     def test_load_overrides_and_missing_file(self, tmp_path: Path) -> None:
         p = tmp_path / "overrides.jsonl"

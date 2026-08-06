@@ -46,6 +46,38 @@ The **only** module importing `exchange_calendars`. No DB; one process-lifetime 
 - `nyse_sessions(start, end) -> list[date]` — NYSE (`XNYS`) session dates in `[start, end]`, weekends/holidays excluded, sorted. The calendar is built with an explicit `1990-01-01` start (not the library's rolling today-minus-20y default), and every query is clamped to its `[first_session, last_session]` window so out-of-range dates degrade to fewer/zero sessions rather than raising `DateOutOfBounds` (gap detection is warn-only and must never crash ingestion).
 - `check_session_gaps(df, timeframe) -> SessionGapReport` — bridge: derives the observed ET session-date range from `df["open_time"]`, fetches the spanning NYSE sessions, and delegates to the pure `data_quality.detect_session_gaps`. Empty frame → empty (no-gap) report. Consumed by `data_sync.backfill`.
 
+## pundit_direction.py / pundit_horizon.py / pundit_authors.py — ledger enum guards
+
+Three pure, IO-free modules (ported from parent #560 / #561 / #555) holding the domain of
+three `docs/plans/pundit-calls.jsonl` fields. The ledger is written by the **ingest skills**
+as free JSON — there is no Python write path — so nothing ever asserted these domains while
+`tools/pundit_score.py` read them through `.get(…, default)` tables. Applied at
+`load_ledger`, so a violation becomes a per-line warning naming the line and the value,
+instead of a silent wrong number. They live in `analytics/` rather than inside the scorer so
+a second reader (a ported Brief board) imports the same definition rather than re-deriving it.
+
+- `pundit_horizon.normalize_horizon(raw) -> str` — **the only one of the three that closed a
+  live defect here.** A present-but-unrecognised horizon took *two* silent fallbacks:
+  `SCORE_TIMEFRAME` (wrong **bar series** — a mistyped `intraday` walked on `1d` instead of
+  `1h`) and `SESSION_WINDOWS` (wrong **window** — 10 sessions instead of 2 or 21). The parent
+  has only the second. **Absence is legitimate**: `None`/`""` → `unspecified`, a real enum
+  member, so only a present unknown raises. `VALID_HORIZONS` is bound to **both** tables'
+  keys by `tests/test_pundit_horizon.py`; adding a member without an entry in each re-creates
+  the bug.
+- `pundit_direction.normalize_direction(raw) -> str` — **parity/prevention, not a repair.**
+  Upstream `score_call` special-cased only `"neutral"` and then ran
+  `dirsign = 1.0 if direction == "long" else -1.0`, booking every unknown *and every missing*
+  value as a SHORT; this fork already gated `direction not in ("long", "short")` → `UNSCORED`
+  with the value echoed in the note, so `dirsign` was never reachable. The guard moves the
+  rejection to the read boundary and binds `VALID_DIRECTIONS` to that inline tuple.
+- `pundit_authors.normalize_author(raw) -> str` — strips whitespace and a leading `@`, so a
+  ledger written with mixed conventions groups as one person. Idempotent, hence applicable at
+  read time on both sides of the ledger/priors join without a migration. No key collides in
+  this fork's ledger today (4 keys / 19 rows), but it already carries **both** conventions at
+  once, so the split is latent, not hypothetical. Deliberately does **not** handle case
+  variants, aliases/transliterations, or collisions — those need a curated roster this fork
+  does not have (parent's `config/pundit_roster.toml` was not ported).
+
 ## strategies/ — strategy signal detection package
 
 (After strat-3 the prior `indicators_lib.py` shim is removed; the 22 detect_* functions and the registries live in `analytics/strategies/`. Public entry: `from analytics.strategies import ...`.)

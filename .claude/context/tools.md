@@ -143,6 +143,17 @@ OHLCV → hit-rate + R proxies per author × setup-family × direction, plus a m
 (the parent defers that until a cell earns n≥30). Level parsing, family tagging, roll-up and
 output shape are byte-identical to the parent so the two ledgers stay comparable.
 
+`load_ledger` enforces three field domains at the read boundary via the pure
+`analytics/pundit_{direction,horizon,authors}.py` guards (parent #560/#561/#555 — see
+`context/analytics.md`): a violation becomes a per-line warning naming the line and the
+value, rather than a silent wrong number downstream. **`horizon` is the one that was live
+here** — an unrecognised value took *two* silent `.get` fallbacks (`SCORE_TIMEFRAME`'s wrong
+bar series *and* `SESSION_WINDOWS`' wrong window), where the parent has only the latter. The
+`author` guard changes the **priors JSON key shape** (`@fenggemeigu` → `fenggemeigu`); nothing
+in this fork reads that sidecar yet, so a future Brief/Card port must join on the normalised
+key. No scored number changed: the committed 19-row ledger produces a byte-identical report
+apart from the author column.
+
 ### Nine documented divergences
 
 (1)–(8) cover everything that touches the tape, because equities are a sessioned market, and
