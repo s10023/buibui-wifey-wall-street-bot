@@ -187,7 +187,30 @@ adr_exempt = true             # breakout — fires in continuation direction; AD
                               # PRESERVES sample (1d: n=1189 vs 831) and its point estimates mildly
                               # favour exemption on 1d/1wk — the opposite side of the same evidence
                               # trade-off, so the two flags resolve in opposite directions.
-suppress_long = true          # T2c: long-side avg_r=−0.268R on n=34,767 (routing audit 2026-05-13). Soft mode via [bias.direction_filter].
+# suppress_long REMOVED 2026-08-06 (PR #143) — it was a CRYPTO-ERA flag, not an equity one.
+# It arrived 2026-05-13 in parent PR #367, justified by `tools/bos_routing_audit.py` (parent
+# PR #365, same day) citing "long-side avg_r=−0.268R on n=34,767" out of an n=72,643 trade
+# population. This fork was cut 2026-05-14 — one day later — so both the tool and the flag
+# predate every equity bar we hold. The cited n cannot be equity data: this repo's ENTIRE
+# `backtest_trades` table holds 24,196 rows, of which 1,152 are bos. Those were Binance
+# futures trades.
+# Re-derived on equities (13-sym watchlist, live-parity, competed sample — all config
+# strategies present so the conflict resolver runs as it does live — since 2018-01-02) the
+# claim INVERTS on both timeframes. Long is the better leg, not the worse one (95% boot CI):
+#   1d  long +0.351 [+0.191, +0.520] n=417   short −0.352 [−0.494, −0.198] n=318
+#   4h  long −0.036 [−0.313, +0.243] n=144   short −0.488 [−0.675, −0.279] n=172
+# Same defect class as the four crypto-era volume flags removed in #141; that sweep missed
+# this one because it greps as a DIRECTION flag, not a volume flag.
+# Harmless *today* only because [bias.direction_filter] is mode="soft" (logs, keeps —
+# analytics/signal/gates.py:311-336). But that block's own comment prescribes flipping to
+# hard after "≥2 weeks", and that window passed ~3 months ago. Flipping it with this flag
+# in place would have suppressed bos's better leg and left only the significantly-negative
+# short — a latent inversion, exactly the shape #141 and #142 kept finding.
+# Deliberately NOT replaced with `suppress_short = true`: the 1d long-positive above is 13
+# megacap survivors across a 2018-2026 bull market — the same survivorship/beta confound
+# that voided the xsmom/residual.py long-only read — and picking a direction flag to
+# maximise avg R is precisely the frozen sweep work. Removing a falsified flag is
+# correctness; adding its mirror is not. Audit: docs/audits/2026-08-06-bos-timeframe-and-crypto-era-direction-flag.md
 
 [strategy_params.engulfing]
 # volume_suppress_long removed 2026-08-06 — gate conjunction (see block comment above).
