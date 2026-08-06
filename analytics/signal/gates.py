@@ -98,6 +98,11 @@ def _apply_conflict_resolver(
 # close-derived detectors (doji / ema / trend_day) read their direction from, so
 # `chasing` is true by construction and the guard spares nothing.
 # Measured 2026-08-06 — see docs/audits/2026-08-06-adr-gate-timeframe-degeneracy.md.
+#
+# This set classifies timeframes by bars-per-calendar-day arithmetic, which is a
+# property of the interval itself — it is NOT a claim about what this fork
+# ingests (`YF_INTERVALS` is 1h/1d/1wk, with 4h derived). Listing an interval
+# here means "the gate would be meaningful on it", not "we scan it".
 _ADR_INTRADAY_TIMEFRAMES = frozenset({"1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h"})
 
 

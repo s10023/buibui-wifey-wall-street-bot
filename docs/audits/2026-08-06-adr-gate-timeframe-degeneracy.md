@@ -162,6 +162,16 @@ code does what the fixture describes, never that the fixture describes productio
 still produces signals. A 77–82% silent haircut is invisible to it, exactly as `orb × 4h`'s n=1 was
 in #141.
 
+Nor could the regression goldens. `tests/test_regression.py` calls `run_backtest` with **no
+`bias_cfg` and no `live_parity`**, so all five live-parity gates (regime, direction_filter, F8
+HTF-EMA, ADR, cooldown) no-op inside the golden pipeline. The suite covers detectors, volume flags,
+`tp_r` and the cost model — the entire bias stack is outside it. This is why the goldens are
+**byte-identical across this fix** and moved for #141: `volume_suppress` *is* threaded into that call
+and `adr_suppress_threshold` is not. Unchanged goldens here are the correct result, not a missing
+refresh — but "regression suite green" carries no information about any bias gate.
+
+Three independent guards, three different blind spots, one defect passing through all of them.
+
 ## 7. The fix
 
 `adr_gate_applies(timeframe)` in `analytics/signal/gates.py` gates the whole filter: true only for
@@ -176,6 +186,22 @@ the same silent-surface class this repo has been closing since #136.
 
 `4h` is **unchanged**. A two-point progression does exist there, so the threshold is mis-scaled
 rather than meaningless, and re-picking it would be frozen sweep work.
+
+## 7b. Production impact, measured after `make db-update`
+
+Sample restored on the `1d` / `1wk` surfaces (pre-fix values as recorded in #141's handoff):
+
+| cell | signals before | signals after | rating after |
+| --- | --- | --- | --- |
+| `doji × 1d` tue_thu | 12 | **180** | 4★ |
+| `doji × 1d` weekdays | 17 | **273** | 4★ |
+| `doji × 1wk` weekdays | 4 | **57** | 2★ |
+
+`make check-dead-surfaces` still reports every declared cell alive in both configs (23 and 32 cells).
+
+And the predicted cost landed exactly where section 4 said it would: **`trend_day × 1wk` weekdays is
+now −0.200 avg_r at 1★ on 408 trades.** That is the single cell whose gate survived
+Benjamini–Hochberg, and removing it does hurt there. Recorded rather than engineered around.
 
 ## 8. What this is NOT
 
