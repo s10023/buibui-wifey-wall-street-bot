@@ -11,7 +11,7 @@ DEV_PORT ?= 5173
 PYTHON_FILES = $(shell find . -name "*.py" -not -path "./venv/*" -not -path "./.venv/*")
 DOCKER_IMAGE = wifey-bot
 
-.PHONY: lint lint-md lint-md-fix lint-py-check lint-py typecheck test test-cov test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-universe-backfill universe-coverage wifey-forecast-audit wifey-xsmom-audit wifey-xsmom-residual-audit wifey-lowvol-audit wifey-xasset-audit wifey-xasset-backfill wifey-pead-audit wifey-pead-backfill wifey-exit-audit wifey-pundit-score wifey-check-levels wifey-route-dedup-seed wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
+.PHONY: lint lint-md lint-md-fix lint-py-check lint-py typecheck test test-cov test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-universe-backfill universe-coverage wifey-forecast-audit wifey-xsmom-audit wifey-xsmom-residual-audit wifey-lowvol-audit wifey-xasset-audit wifey-xasset-backfill wifey-pead-audit wifey-pead-backfill wifey-exit-audit wifey-pundit-score wifey-check-levels wifey-route-dedup-seed wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent check-dead-surfaces wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
 
 lint: lint-md lint-py
 
@@ -283,7 +283,15 @@ db-update-recalibrate:
 	$(MAKE) wifey-recalibrate CONFIG=config/signal_watch.toml APPLY=1
 	$(MAKE) wifey-recalibrate CONFIG=config/signal_watch_weekdays.toml APPLY=1
 
+## Report declared (strategy × timeframe) cells whose detector never fires.
+## Advisory inside db-update (a `-` prefix) so a dead cell never blocks a DB
+## refresh; run the target directly for a non-zero exit.
+check-dead-surfaces:
+	@echo "🔍 Checking for declared-but-dead (strategy × timeframe) cells..."
+	@poetry run python tools/dead_surface_check.py
+
 db-update: db-update-backtest db-update-recalibrate regression-update
+	-@$(MAKE) --no-print-directory check-dead-surfaces
 	@echo "✅ Routine DB update complete. Review: git diff tests/fixtures/golden_*.json"
 
 wifey-digest:

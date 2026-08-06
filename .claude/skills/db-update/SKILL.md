@@ -2,8 +2,8 @@
 name: db-update
 description: >
   Routine DB refresh after backtest or strategy changes — runs `make db-update`
-  which chains backtest (all 3 signal_watch configs) → recalibrate → regression
-  golden-fixture refresh.
+  which chains backtest (both signal_watch configs) → recalibrate → regression
+  golden-fixture refresh → an advisory dead-surface check.
   Invoke when the user says "/db-update", asks to "refresh the DB", "rerun all
   backtests", "update star ratings", or after any detector / strategy / config
   change that should be reflected in the live ratings and golden fixtures.
@@ -32,7 +32,9 @@ make db-update
   ├─ db-update-recalibrate   recalibrate both configs with APPLY=1
   │    ├─ wifey-recalibrate CONFIG=config/signal_watch.toml          APPLY=1
   │    └─ wifey-recalibrate CONFIG=config/signal_watch_weekdays.toml APPLY=1
-  └─ regression-update       refresh tests/fixtures/golden_*.json
+  ├─ regression-update       refresh tests/fixtures/golden_*.json
+  └─ check-dead-surfaces     report declared cells whose detector never fires
+                             (ADVISORY here — `-` prefixed, never blocks a refresh)
 ```
 
 `signal_watch.toml` (tue_thu) + `signal_watch_weekdays.toml` (weekdays) are the
@@ -48,7 +50,16 @@ make db-update
 make db-update-backtest      # backtests only — populates backtest_runs/trades
 make db-update-recalibrate   # recalibrate only — assumes backtest_runs are fresh
 make regression-update       # golden fixtures only — for tests/test_regression.py
+make check-dead-surfaces     # dead-cell report only — EXITS 1 when run directly
 ```
+
+`check-dead-surfaces` is advisory inside the chain but **fails on its own**, which is
+the point: a declared `(strategy × timeframe)` cell whose detector never fires costs
+work every scan cycle and returns nothing. `signal_watch.toml` carried `1wk` under
+`tue_thu` for three months behind 338 backtest rows that all had zero closed trades
+(#139) — rows existing is not evidence the surface works. New dead cells fail; the
+five known ones sit in `_KNOWN_DEAD_CELLS` with reasons, and that list should only
+ever shrink.
 
 ## After the chain
 
@@ -81,7 +92,8 @@ make regression-update       # golden fixtures only — for tests/test_regressio
 
 | File | Role |
 | ------ | ------ |
-| `Makefile` | `db-update`, `db-update-backtest`, `db-update-recalibrate`, `regression-update` targets |
+| `Makefile` | `db-update`, `db-update-backtest`, `db-update-recalibrate`, `regression-update`, `check-dead-surfaces` targets |
+| `tools/dead_surface_check.py` | Reports declared cells with no runs or zero signals; `_KNOWN_DEAD_CELLS` allowlist |
 | `analytics/backtest_runner.py` | `--save` writes `backtest_runs` + `backtest_trades` |
 | `analytics/recalibrate_lib.py` | Reads `backtest_runs`, writes `confidence_ratings` |
 | `tests/test_regression.py` | Compares pipeline output to `tests/fixtures/golden_*.json`; `--update-golden` rewrites them |
