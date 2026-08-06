@@ -138,6 +138,23 @@ proves the code matches the fixture, never that the fixture matches production**
 cannot see this class: it finds exact zeros, and a 77–82% haircut leaves the cell non-empty.
 Audit: `docs/audits/2026-08-06-adr-gate-timeframe-degeneracy.md`.
 
+**A gate that fails open has no loud failure mode, and a config value that is RECORDED is more
+dangerous than one that is ignored.** `[backtest] days = 365` reached neither the OHLCV cache nor
+`run_scan_cycle` — the daemon took the **90**-day signature default — while `scanner.py:1232` wrote
+**365** into `backtest_runs.days`, so the audit trail actively corroborated the wrong window.
+`_passes_ev_gate` returns `True` below `min_trades`, so the narrow window never failed; it silently
+made the hard gate a no-op on **71%** of direction-legs (`signal_watch`; 62% on weekdays), and on
+both configs the median cell sat *below its own `min_trades`*. Four of the five `bos × 1d` alerts
+dispatched 2026-08-05 sit at avg_r ≈ **−1.0** over 365 days and were never evaluated at all. Two
+transferable rules: cross-check a recorded parameter against a recorded **observable** —
+`data_end_ms - data_start_ms` found this in one query (94 live rows declaring 365 over exactly
+**90.0** days, against 3,117 sweep rows declaring 365 over 365.0); and when a value reaches its
+consumer **through a cache, fixing the consumer's argument fixes nothing** — `run_scan_cycle`
+prefers a populated `ohlcv_cache` over its own read, so `days=365` alone would have widened the
+label and the cache key while the DataFrame stayed 90 days. Find who populates the cache first.
+Fixed 2026-08-06 by a single `bt_days` feeding both surfaces. Audit:
+`docs/audits/2026-08-06-live-ev-gate-window.md`.
+
 **Ingest level-parsing fails SILENTLY, and every instance so far was found by running the code, not
 by reading it.** Full narratives in `context/tools.md`; the standing rules:
 
