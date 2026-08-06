@@ -174,8 +174,23 @@ on equity data first. Prose does not enforce.
 
 ## 10. Found on the way, NOT fixed here
 
+> **CORRECTED 2026-08-06** (same day, next branch). Two claims below were measured on the
+> **sweep** path, not the live one, and are wrong as written. The corrections are inline and
+> struck through; the SE arithmetic and the direction of the concern are unaffected. Full
+> measurement: `docs/audits/2026-08-06-live-ev-gate-window.md`.
+>
+> - ~~"365-day directional avg_r"~~ → the live gate ran a **90-day** window. `[backtest] days = 365`
+>   never reached it (`signal_runner.py` omitted `days`, taking the 90-day signature default).
+> - ~~"13 of 52 `bos` cells pass the gate"~~ → computed via `_collect_sweep_results` (competed,
+>   live-parity gates on, 365d), **not** `bt_cache._compute_backtest` (single strategy, ~90d),
+>   which is what the daemon actually calls. The real live figure is worse: at 90d the gate
+>   **abstained entirely on 71%** of all direction-legs.
+>
+> Lesson: *parity by shared intent is not parity*. Verify a replica against observed live
+> behaviour, never against a second replica.
+
 **The live EV gate admits on n=2.** `analytics/signal/scanner.py:739-770` runs in `mode = "hard"`
-and suppresses a `(symbol, tf, direction)` cell whose 365-day directional `avg_r < 0.0` — but only
+and suppresses a `(symbol, tf, direction)` cell whose directional `avg_r < 0.0` — but only
 once `closed_trades >= min_trades`, and `[backtest] min_trades_1d = 2`, `min_trades_4h = 5`.
 
 `bos`'s per-trade R standard deviation is **1.652**. So:
@@ -187,10 +202,9 @@ once `closed_trades >= min_trades`, and `[backtest] min_trades_1d = 2`, `min_tra
 | 5 | 0.739 R |
 | 10 | 0.523 R |
 
-As of 2026-08-06, **13 of 52** `bos` cells pass the gate with directional avg_r between +0.11 and
-+1.76 on n=2–11 — every one of them inside ~1 SE of zero. The gate is not selecting on edge at
-these counts; it is selecting on noise, and it does so for **every** strategy, not just `bos`
-(`trend_day`, the 3★ control, has sd **2.343** → SE 1.66R at n=2).
+Cells that clear `min_trades` do so on n=2–11 — every one of them inside ~1 SE of zero. The gate is
+not selecting on edge at these counts; it is selecting on noise, and it does so for **every**
+strategy, not just `bos` (`trend_day`, the 3★ control, has sd **2.343** → SE 1.66R at n=2).
 
 This also corrects a tempting misreading: `bos` has dispatched **zero** live alerts since the daemon
 started 2026-06-04 while ten other strategies fired 260 — but that is a two-month small-sample fact,

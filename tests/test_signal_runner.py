@@ -146,6 +146,62 @@ def test_once_runs_single_cycle_then_exits(daemon_mocks: Any) -> None:
     daemon_mocks["secs_until_next_boundary"].assert_not_called()
 
 
+class TestLiveBacktestWindowIsExecuted:
+    """`[backtest] days` must reach the live EV gate, not just parse.
+
+    Until 2026-08-06 `run_signal_watch` called `run_scan_cycle` without `days`, so
+    the gate silently used the 90-day signature default while both live configs
+    declared 365. The gate abstains below `min_trades`, so the narrow window did not
+    fail loudly — it made the hard gate a no-op on 71% of all direction-legs.
+
+    These assert the EXECUTED window on both surfaces. Asserting that the config
+    parsed to 365 cannot detect this defect: it parsed correctly the whole time.
+    """
+
+    @staticmethod
+    def _run(days: int | None, mocks: Any) -> None:
+        cfg = (
+            None
+            if days is None
+            else signal_runner.BacktestFilterConfig(mode="hard", days=days)
+        )
+        signal_runner.run_signal_watch(
+            symbols=["AAPL"],
+            timeframes=["1d"],
+            strategies=["bos"],
+            once=True,
+            backtest_cfg=cfg,
+        )
+
+    def test_configured_days_reaches_run_scan_cycle(self, daemon_mocks: Any) -> None:
+        self._run(365, daemon_mocks)
+        assert daemon_mocks["run_scan_cycle"].call_args.kwargs["days"] == 365
+
+    def test_configured_days_also_widens_the_ohlcv_cache(
+        self, daemon_mocks: Any
+    ) -> None:
+        """The cache read must move with `days`.
+
+        `run_scan_cycle` prefers a populated `ohlcv_cache` over its own `start_ms`
+        read, so a `days` argument alone would widen the declared window while the
+        DataFrame handed to `_compute_backtest` stayed 90 days.
+        """
+        now_ms = int(time.time() * 1000)
+        self._run(365, daemon_mocks)
+        start_ms = daemon_mocks["_update_ohlcv_cache"].call_args.args[4]
+        span_days = (now_ms - start_ms) / 86_400_000
+        assert 364 <= span_days <= 366
+
+    def test_falls_back_to_default_without_a_backtest_config(
+        self, daemon_mocks: Any
+    ) -> None:
+        self._run(None, daemon_mocks)
+        assert (
+            daemon_mocks["run_scan_cycle"].call_args.kwargs["days"]
+            == signal_runner._DEFAULT_BACKFILL_DAYS
+        )
+
+
 def test_default_loops_and_sleeps_between_cycles(daemon_mocks: Any) -> None:
     # Break the otherwise-infinite loop by raising on the 2nd scan cycle.
     daemon_mocks["run_scan_cycle"].side_effect = [[], KeyboardInterrupt]

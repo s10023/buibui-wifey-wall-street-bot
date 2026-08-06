@@ -499,7 +499,8 @@ The `[backtest]` table in `config/signal_watch.toml` controls a per-alert expect
 ```toml
 [backtest]
 mode = "hard"           # "soft": append win rate | "hard": suppress low performers | "off"
-days = 200              # lookback window
+days = 365              # lookback window; sets the live EV gate's backtest window
+                        # (declared in strategy_params.toml; executed as of 2026-08-06)
 min_trades = 12         # global fallback — applied to directional trade count (longs for LONG alerts, shorts for SHORT)
 min_trades_4h  = 5      # per-TF overrides; calibrated from DB p25 directional counts
 min_trades_1d  = 2

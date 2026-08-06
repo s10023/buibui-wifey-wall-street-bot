@@ -104,12 +104,11 @@ tp_r = 3.0
 # Backtest filter config (hard mode = suppress signal if directional avg_r below min_avg_r)
 [backtest]
 mode = "hard"
-days = 200
+days = 365
 min_trades = 12
-min_trades_1h = 20
-min_trades_1h = 12
 min_trades_4h = 5
 min_trades_1d = 2
+min_trades_1wk = 1
 min_avg_r = 0.0          # suppress signals with directional avg_r below this threshold
 # volume_suppress = false  # global fallback; per-strategy override takes precedence
 # volume_spike_boost = false
