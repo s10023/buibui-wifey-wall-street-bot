@@ -676,23 +676,46 @@ class TestShippedUniverseFile:
             "every member should be active (delisted=False)"
         )
 
-    def test_note_and_membership_agree_on_dual_share_classes(self) -> None:
-        """Bidirectional binding on the Alphabet double-count.
+    def test_one_issuer_per_member_no_dual_share_classes(self) -> None:
+        """No company may occupy two slots via a second share class.
 
-        The S&P 100 selection deliberately dropped GOOG so one issuer was not
-        counted twice; the S&P 500 expansion silently re-added it, leaving the note
-        asserting an absence that had stopped being true. Both directions are bound
-        on purpose: if GOOG is ever removed, this fails until the note stops
-        declaring the defect — so the note cannot rot in either direction.
+        This is a cross-sectional research universe, not an index tracker, so it
+        deviates from the S&P 500 list on purpose: two near-identical series for one
+        issuer would take two slots in any top-N ranking and inject near-collinearity
+        into residualisation and beta estimation.
+
+        The S&P 100 selection made this call for GOOG. The 2026-06-21 S&P 500 merge
+        silently re-added it — and FOX and NWS with it — because the expander merges
+        constituents verbatim and nothing de-duplicates issuers on load. All three
+        were removed 2026-08-06. The pair list is checked as data rather than as one
+        hard-coded assertion so that a future expansion re-introducing *any* of them
+        fails here, naming the pair.
         """
         uni = load_research_universe(Path("config/universe.json"))
         stocks = set(uni.stocks())
-        both_present = {"GOOG", "GOOGL"} <= stocks
-        note_declares = (
-            "both Alphabet share classes GOOG and GOOGL are present"
-            in uni.policy.survivorship_note
+        # (redundant class that must stay OUT, sibling that must stay IN)
+        dual_class = [("GOOG", "GOOGL"), ("FOX", "FOXA"), ("NWS", "NWSA")]
+        both = [f"{a}+{b}" for a, b in dual_class if {a, b} <= stocks]
+        assert not both, (
+            f"dual share classes of one issuer both present: {both}. "
+            "Drop the redundant class (keep the Class A / more liquid ticker) and "
+            "update universe_policy.survivorship_note's counts in the same commit."
         )
-        assert both_present == note_declares, (
-            "GOOG/GOOGL membership and survivorship_note disagree: "
-            f"both_present={both_present}, note_declares={note_declares}"
-        )
+        # the retained sibling must actually be there — dropping both would be a
+        # different bug that the count test alone would not catch
+        for _, keep in dual_class:
+            assert keep in stocks, f"{keep} should be retained as the surviving class"
+
+    def test_note_declares_the_one_issuer_per_member_rule(self) -> None:
+        """The deviation from the S&P 500 list must be stated, not silent.
+
+        A universe that quietly differs from the index it claims to track is the
+        same provenance defect as a wrong count — a reader reconciling 501 against
+        S&P 500 membership needs the reason in the file, not in a commit message.
+        """
+        note = load_research_universe(Path("config/universe.json")).policy
+        assert "ONE ISSUER PER MEMBER" in note.survivorship_note
+        for sym in ("GOOGL", "FOXA", "NWSA"):
+            assert sym in note.survivorship_note, (
+                f"note must name {sym} as the retained class"
+            )

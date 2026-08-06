@@ -66,7 +66,7 @@ behind a pointer is not a guard rail.
 | `trade/` | **Empty placeholder — both files are 0 bytes.** The parent's Binance Futures opener was dropped at fork time; nothing replaced it. `make wifey-open-trades` *ran* the empty file and exited 0 behind a success banner until 2026-08-06, and now fails loudly. Phase B (equities broker, TBD) is where an order layer would land | — |
 | `tests/` | pytest suite; tests import from lib modules and pass mock dependencies directly | — |
 | `migrations/` | One-shot DB migration scripts, run by hand. Only `001_day_filter_text.py` (fork-era, 2026-05-14); routine schema changes go through `analytics/store/schema.py`'s migration list instead | — |
-| `config/` | `stocks.json` (gitignored 13-symbol live watchlist), `universe.json` (committed 508-member research breadth universe), `strategy_params.toml` (shared base inherited via `extends`) | `context/config.md` |
+| `config/` | `stocks.json` (gitignored 13-symbol live watchlist), `universe.json` (committed 505-member research breadth universe), `strategy_params.toml` (shared base inherited via `extends`) | `context/config.md` |
 
 ### Sleeve verdicts — do NOT rebuild a shelved sleeve
 
