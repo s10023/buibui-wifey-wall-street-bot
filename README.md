@@ -604,8 +604,13 @@ bos = ["high_vol", "range"]     # routing-audit-corrected (PR #366); trend regim
 enabled = true
 mode = "soft"                   # flip to "hard" after ≥2 weeks of soft-mode logs
 
-[strategy_params.bos]
-suppress_long = true            # T2c: long-side avg_r=−0.268R on n=34,767 (routing audit 2026-05-13)
+# No strategy sets suppress_long / suppress_short as of 2026-08-06 (PR #143). `bos` carried
+# suppress_long until then, but it arrived from the crypto parent one day before the fork
+# (parent PR #367) citing n=34,767 long trades — more than this repo's entire backtest_trades
+# table (24,196 rows), so it was never equity data. Re-derived on equities the claim INVERTS:
+# long is bos's BETTER leg on both timeframes. The gate below still reads these keys; it just
+# has nothing to act on. Re-adding one must break
+# tests/test_signal_config.py::test_no_shipped_strategy_sets_direction_suppress.
 ```
 
 ADR + DOW gates read from the per-symbol `StatsContext` computed each cycle (same data shown
