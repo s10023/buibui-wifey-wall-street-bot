@@ -88,10 +88,35 @@ def _apply_conflict_resolver(
     return winners
 
 
+# Timeframes whose bars span a whole calendar day or more. The ADR gate's
+# premise — "cumulative intraday range UP TO this candle" — requires at least two
+# bars per calendar day for that to be a *partial* quantity. When a day holds
+# exactly one bar the cumulative range IS the whole day's range for every row, so
+# the ratio stops measuring exhaustion and silently becomes a wide-range-bar
+# filter. Its direction guard degenerates in the same step: `move_up` reduces to
+# "close in the upper half of its own bar", which is the same quantity
+# close-derived detectors (doji / ema / trend_day) read their direction from, so
+# `chasing` is true by construction and the guard spares nothing.
+# Measured 2026-08-06 — see docs/audits/2026-08-06-adr-gate-timeframe-degeneracy.md.
+_ADR_INTRADAY_TIMEFRAMES = frozenset({"1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h"})
+
+
+def adr_gate_applies(timeframe: str) -> bool:
+    """Whether the ADR consumed-ratio gate is meaningful on ``timeframe``.
+
+    True only for intraday timeframes, where a calendar day holds more than one
+    bar and "range consumed so far today" is a genuinely partial quantity.
+    Unknown timeframes default to False — a gate that silently means something
+    other than its documentation is worse than one that is off.
+    """
+    return timeframe in _ADR_INTRADAY_TIMEFRAMES
+
+
 def _filter_signals_by_adr(
     ohlcv_df: pd.DataFrame,
     signals_df: pd.DataFrame,
     threshold: float,
+    timeframe: str,
 ) -> pd.DataFrame:
     """Return signals where the ADR consumed at signal time is below threshold.
 
@@ -101,8 +126,15 @@ def _filter_signals_by_adr(
     Signals where consumed_ratio >= threshold are dropped — the daily move was
     already mostly done when the signal fired.  Signals whose candle is not found
     in ohlcv_df pass through untouched (safe-default: don't suppress unknown data).
+
+    No-op on timeframes where a calendar day holds one bar (``1d`` / ``1wk``):
+    there is no "up to that candle" to measure. ``timeframe`` is required rather
+    than defaulted so mypy forces every call site to state it — a default would
+    let a new caller silently re-acquire the degenerate behaviour.
     """
     if signals_df.empty or ohlcv_df.empty:
+        return signals_df
+    if not adr_gate_applies(timeframe):
         return signals_df
 
     df = ohlcv_df.copy()

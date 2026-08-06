@@ -43,7 +43,11 @@ from analytics.signal.cofire import (
     _find_live_cofire,
     _parse_htf_ltf_pairs,
 )
-from analytics.signal.gates import _filter_signals_by_adr, _is_adr_exempt
+from analytics.signal.gates import (
+    _filter_signals_by_adr,
+    _is_adr_exempt,
+    adr_gate_applies,
+)
 from analytics.signal.resolvers import (
     _resolve_atr_sl_floor,
     _resolve_atr_sl_multiplier,
@@ -109,6 +113,7 @@ __all__ = [
     "_resolve_volume_suppress",
     "_resolve_volume_suppress_long",
     "_resolve_volume_suppress_short",
+    "adr_gate_applies",
     "gap_fill_warning",
     "get_backtest_cache",
     "get_ohlcv",

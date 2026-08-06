@@ -657,7 +657,7 @@ def run_param_sweep(
         from analytics.signal_lib import _filter_signals_by_adr
 
         signals_full = _filter_signals_by_adr(
-            ohlcv_full, signals_full, adr_suppress_threshold
+            ohlcv_full, signals_full, adr_suppress_threshold, timeframe
         )
 
     if day_filter != "off" and not signals_full.empty:
@@ -1139,7 +1139,9 @@ def run_strategy_audit(
                 and adr_suppress_threshold is not None
                 and not sigs.empty
             ):
-                sigs = _filter_signals_by_adr(ohlcv_full, sigs, adr_suppress_threshold)
+                sigs = _filter_signals_by_adr(
+                    ohlcv_full, sigs, adr_suppress_threshold, timeframe
+                )
             if sigs is not None and allowed_days is not None and not sigs.empty:
                 sigs = filter_signals_by_day(sigs, allowed_days)
             detected.append((strategy, sigs))

@@ -117,6 +117,27 @@ never detect that the parsed value produces nothing** — the pre-existing
 `test_signal_watch_toml_volume_suppress_flags` asserted `doji`'s flag was `True` and passed for
 months while the cell was empty. Audit: `docs/audits/2026-08-06-adr-volume-gate-conjunction.md`.
 
+**A gate can be undefined on a timeframe and still look like it is working.** The ADR gate's premise
+— `consumed_ratio = (cumulative intraday range UP TO this candle) / 14-day ADR` — needs **>1 bar per
+calendar day**. `1d` and `1wk` have exactly one, so the "cumulative" range is the whole day's range
+and the ratio silently stops measuring exhaustion, becoming a *high-range-day* filter instead (it is
+not pinned at 1.0 — it stays dispersed, p25 0.71 / p75 1.21, which is why it reads as functional).
+Its direction guard degenerates identically: `move_up` reduces to "closed in the upper half of its
+own bar", the same quantity `doji` / `ema` / `trend_day` derive direction from, so `chasing` is true
+**by construction** and drops **100%** of their above-threshold signals (`bos` 48% and `eqh_eql` 76%
+are the controls — their direction comes from prior structure). Cost: 28–82% of every strategy's
+signals on every timeframe either config scans, to buy an effect that survives Benjamini–Hochberg in
+**1 of 17 cells**. Fixed 2026-08-06 by `adr_gate_applies(timeframe)` — intraday only, unknown
+timeframes fall closed, and `timeframe` is a **required** arg so mypy forces every call site to state
+it. Three transferable rules: the live path (`analytics/stats/adr.py`, `1h`-derived, **not**
+degenerate) and the backtest path were never running the same gate, so *parity by shared function
+name is not parity*; `4h` on US-equity RTH is **2** bars/day, not the 6 the crypto-era 0.80 threshold
+assumes, so **re-derive a crypto-inherited constant against equity bar counts before trusting it**;
+and the parity test passed for months because its fixture built *"a single 24h day"* — **a green test
+proves the code matches the fixture, never that the fixture matches production**. `check-dead-surfaces`
+cannot see this class: it finds exact zeros, and a 77–82% haircut leaves the cell non-empty.
+Audit: `docs/audits/2026-08-06-adr-gate-timeframe-degeneracy.md`.
+
 **Ingest level-parsing fails SILENTLY, and every instance so far was found by running the code, not
 by reading it.** Full narratives in `context/tools.md`; the standing rules:
 
