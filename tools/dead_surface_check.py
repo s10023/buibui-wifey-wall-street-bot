@@ -46,31 +46,31 @@ DEFAULT_CONFIGS = (
     "config/signal_watch_weekdays.toml",
 )
 
-# Cells known dead as of 2026-08-06, kept visible rather than silently tolerated.
-# Mirrors `tests/test_lookahead.py::_KNOWN_LOOKAHEAD_DETECTORS`, which shrank to
-# empty once its findings were fixed. **This list should only ever shrink** — a
-# new entry means a new dead surface was accepted, which is the thing this
-# module exists to prevent.
+# Cells accepted as dead, kept visible rather than silently tolerated. Mirrors
+# `tests/test_lookahead.py::_KNOWN_LOOKAHEAD_DETECTORS`, which shrank to empty
+# once its findings were fixed. **This list should only ever shrink** — a new
+# entry means a new dead surface was accepted, which is the thing this module
+# exists to prevent.
 #
 # Keyed (day_filter, strategy, timeframe) because a cell can be dead under one
 # day filter and healthy under another.
 #
-#   doji      — near-inert everywhere, not merely on these cells: its ONLY
-#               output in the entire DB is 3 signals (tue_thu/4h) and 9
-#               (weekdays/4h). Worth a detector review, not an allowlist entry
-#               forever.
-#   *  × 1wk  — eqh_eql and ema fire zero on 1wk under BOTH day filters, so this
-#               is bar scarcity (449 weekly bars/symbol), not day-filter
-#               suppression. Reinforces #139's verdict on the timeframe.
-_KNOWN_DEAD_CELLS: frozenset[tuple[str, str, str]] = frozenset(
-    {
-        ("tue_thu", "doji", "1d"),
-        ("weekdays", "doji", "1d"),
-        ("weekdays", "doji", "1wk"),
-        ("weekdays", "eqh_eql", "1wk"),
-        ("weekdays", "ema", "1wk"),
-    }
-)
+# EMPTY as of 2026-08-06 — every declared cell in both configs now produces
+# signals. The five original entries were resolved, and the diagnosis recorded
+# here for three of them was WRONG, which is worth keeping as a caution:
+#
+#   doji × {1d, 1wk}  — annotated "near-inert everywhere ... worth a detector
+#       review". The detector was fine: it fires 1,247 times on 1d across the 13
+#       live symbols. `volume_suppress` in conjunction with the ADR gate was
+#       discarding ~100% of its output. Removing that flag revived all three
+#       cells. See docs/audits/2026-08-06-adr-volume-gate-conjunction.md.
+#   {eqh_eql, ema} × 1wk — this one held up: genuine bar scarcity under BOTH day
+#       filters, so both were dropped from signal_watch_weekdays.toml.
+#
+# The caution: a zero-signal cell looks identical whatever zeroed it, so the
+# reason recorded beside an entry is a hypothesis until it is traced. This check
+# reliably finds dead cells; it cannot diagnose them.
+_KNOWN_DEAD_CELLS: frozenset[tuple[str, str, str]] = frozenset()
 
 
 @dataclass(frozen=True)

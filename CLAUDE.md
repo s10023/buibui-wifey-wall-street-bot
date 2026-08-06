@@ -104,6 +104,19 @@ leak (`bos` read a centered swing window but stamped the signal at the swing bar
 2026-06-09 by stamping at the confirmation bar; `_KNOWN_LOOKAHEAD_DETECTORS` is now empty and all
 16 detectors pass.
 
+**Two filters that are each individually sane can cancel each other out, and nothing will say so.**
+`[bias] adr_suppress_threshold` keeps quiet small-range bars; `volume_suppress` keeps ≥1.5×-volume
+bars; range and volume correlate at **+0.65**, so declaring both without `adr_exempt = true` discards
+~99% of a strategy's signals. Until 2026-08-06 this ran `doji × 1d` at **0** signals against 1,247
+raw detector fires, `orb × 4h` at n=1, and **inverted the measured sign** on `engulfing × 1d` and
+`bos × 1d`. `load_signal_config::voided_volume_gates` now refuses the pairing (sibling of #139's
+`dead_timeframes`). Two transferable rules: a per-strategy flag whose correctness depends on a
+second flag must live in the **shared base**, not one day-filter config (`bos`'s `adr_exempt` was
+config-local, so weekdays never inherited it); and **a test that asserts a config value PARSED can
+never detect that the parsed value produces nothing** — the pre-existing
+`test_signal_watch_toml_volume_suppress_flags` asserted `doji`'s flag was `True` and passed for
+months while the cell was empty. Audit: `docs/audits/2026-08-06-adr-volume-gate-conjunction.md`.
+
 **Ingest level-parsing fails SILENTLY, and every instance so far was found by running the code, not
 by reading it.** Full narratives in `context/tools.md`; the standing rules:
 

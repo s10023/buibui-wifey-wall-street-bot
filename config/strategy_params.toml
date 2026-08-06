@@ -152,13 +152,58 @@ adv_window_days = 20.0                    # trailing ADV / sigma window
 # Per-strategy flags consistent across all three main configs.
 # Only non-tp_r fields are here — tp_r values are calibrated per day_filter in each config.
 # Strategies not listed here have no per-strategy flag override (loader default applies).
+#
+# GATE CONJUNCTION (2026-08-06): `volume_suppress*` and the [bias] ADR gate select
+# for OPPOSITE bars — ADR keeps quiet small-range bars, volume_suppress keeps
+# >=1.5x-average-volume bars, and range/volume correlate at +0.61 (1d) / +0.67 (4h).
+# Measured on the 13 live symbols: P(pass both) = 0.0046 vs 0.036 if independent, an
+# 8x shortfall. Any strategy carrying volume_suppress WITHOUT `adr_exempt = true` is
+# therefore near-voided. `load_signal_config` now REFUSES that pairing outright.
+# Set `adr_exempt = true` (entry geometry genuinely fires at extremes) or drop the
+# volume flag — never declare both without the exemption.
 [strategy_params.bos]
-volume_suppress = true        # A14b: normal-vol wins Δ=+0.11R
+# volume_suppress removed 2026-08-06 — the LAST of the four crypto-era A14b volume flags.
+# bos hit BOTH problems, on different configs, which is why it reads differently below:
+#   - signal_watch.toml: adr_exempt was set here, so the gates never conflicted. The flag
+#     acted alone, at its own base rate, and was NOT part of the conjunction defect.
+#   - signal_watch_weekdays.toml: adr_exempt was config-local to signal_watch.toml and so
+#     was never inherited — there bos DID run the voided conjunction (1d: n=86 @ -0.033R
+#     vs n=1328 @ +0.071R once exempt). Fixed by moving adr_exempt into this base file.
+# Removing the flag outright is a separate finding from that inheritance bug: its own
+# claim does not replicate on equities. Split the unsuppressed trades on the gate's own
+# `is_low_volume` predicate and normal-vol does NOT win:
+#   4h  tue_thu   Δ=-0.133  p=0.610      1d  tue_thu   Δ=+0.061  p=0.756
+#   4h  weekdays  Δ=-0.299  p=0.113      1d  weekdays  Δ=-0.069  p=0.626
+#   1wk weekdays  Δ=+0.521  p=0.203
+# The point estimate carries the WRONG SIGN on 3 of 5 cells, every 95% CI straddles zero,
+# and the flag was discarding 90-94% of bos's signals (1d: 1,210 -> 71) to buy an effect
+# measured at zero. Original note: "A14b: normal-vol wins Δ=+0.11R" — crypto-derived.
+# This is removal of a falsified flag, NOT a tp_r/gate sweep (nothing was searched or
+# maximised); the TA freeze is intact.
+adr_exempt = true             # breakout — fires in continuation direction; ADR gate degrades it.
+                              # MOVED here from signal_watch.toml 2026-08-06 (see above) so BOTH
+                              # configs inherit it. KEPT rather than removed: like volume_suppress
+                              # it is not statistically distinguishable (p=0.26–0.96), but it
+                              # PRESERVES sample (1d: n=1189 vs 831) and its point estimates mildly
+                              # favour exemption on 1d/1wk — the opposite side of the same evidence
+                              # trade-off, so the two flags resolve in opposite directions.
 suppress_long = true          # T2c: long-side avg_r=−0.268R on n=34,767 (routing audit 2026-05-13). Soft mode via [bias.direction_filter].
 
 [strategy_params.engulfing]
-volume_suppress_long = true   # directional: LONG low-vol -0.13R→+0.22R (tue_thu Δ=+0.36R); SHORT low-vol +0.72R — keep
-volume_spike_boost = true     # A15 spike sweep: spike +0.59R vs normal +0.23R (73 spikes)
+# volume_suppress_long removed 2026-08-06 — gate conjunction (see block comment above).
+# The A14b delta below was measured pre-ADR-gate and never re-derived against it; with
+# the ADR gate live it destroyed ~half the long sample and INVERTED the sign
+# (1d tue_thu: n=135 @ −0.273R with the flag vs n=271 @ +0.042R without, cost-inclusive).
+# Original note: LONG low-vol -0.13R→+0.22R (tue_thu Δ=+0.36R); SHORT low-vol +0.72R — keep.
+volume_spike_boost = true     # A15 spike sweep: spike +0.59R vs normal +0.23R (73 spikes).
+                              # INERT as of 2026-08-06, stated rather than silently dropped: the
+                              # engine reads _boost only inside `if _suppress and is_low_vol`
+                              # (backtest/engine.py), so with no volume_suppress on engulfing and
+                              # the global default false, this flag now changes no filtering
+                              # decision. `Trade.volume_spike` is still tagged, so the A15 split
+                              # stays measurable. Kept because it records a real measurement;
+                              # re-arm it only alongside a volume_suppress that has been checked
+                              # against the ADR gate (see the block comment above).
 
 [strategy_params.pin_bar]
 # pin_bar audit (2026-05-19): retired stale crypto-era tp_r_long=5.0 / tp_r_short=3.0
@@ -178,7 +223,12 @@ volume_suppress = false       # A14b: low-vol edge Δ=-0.35R
 volume_suppress = false       # A14b: low-vol edge (reversal confirmed)
 
 [strategy_params.orb]
-volume_suppress = true        # A14b: normal-vol wins Δ=+0.33R
+# volume_suppress removed 2026-08-06 — gate conjunction (see block comment above).
+# The A14b Δ=+0.33R was a crypto-era measurement taken before the ADR gate existed.
+# Under both gates orb × 4h was running live on ONE trade: n=1 vs n=256 @ +0.170R
+# (tue_thu) and n=1 vs n=394 @ +0.231R (weekdays), cost-inclusive.
+# NOT made adr_exempt: orb is a breakout like bos and arguably qualifies, but that
+# variant is unmeasured — the numbers above keep the ADR gate ON. Follow-up, not a fix.
 
 [strategy_params.inside_bar]
 # inside_bar audit (2026-05-19, 13-sym pooled WFO): retires the crypto-era

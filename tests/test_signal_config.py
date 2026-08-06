@@ -14,6 +14,7 @@ from analytics.signal_config import (
     _deep_merge,
     dead_timeframes,
     load_signal_config,
+    voided_volume_gates,
 )
 
 
@@ -864,8 +865,12 @@ class TestLoadWithExtends:
         assert cfg.bias.adr_suppress_threshold == 0.80
         assert cfg.backtest.effective_min_trades("4h") == 5
         assert cfg.backtest.effective_min_trades("1wk") == 1
-        # merged: base volume_suppress + child tp_r
-        assert cfg.effective_volume_suppress("bos") is True
+        # merged: base per-strategy flag + child tp_r. Was `volume_suppress` until
+        # 2026-08-06; `adr_exempt` replaced it as the demonstrator when that flag was
+        # removed, and it MOVED into the base in the same change precisely so both
+        # configs inherit it (living in signal_watch.toml alone had voided bos on
+        # weekdays). Same merge shape: base contributes the flag, child the tp_r.
+        assert cfg.strategy_params["bos"].adr_exempt is True
         assert cfg.effective_tp_r("bos", "AAPL", "4h") == 3.0
         # F8 HTF EMA gate inherited from base — enabled in hard mode after the
         # 2026-05-06 soft-mode validation; per-strategy overrides loaded for the
@@ -1011,13 +1016,26 @@ tp_r = 3.0
         assert cfg.effective_volume_suppress("orb") is False
 
     def test_signal_watch_toml_volume_suppress_flags(self) -> None:
-        """signal_watch.toml A14b volume_suppress flags must be parsed correctly."""
+        """signal_watch.toml volume_suppress flags must be parsed correctly.
+
+        Updated 2026-08-06: this test previously asserted `orb` and `doji` were
+        True and passed for months while both cells produced ~zero signals — it
+        checked that a flag PARSED, never that the flag left anything alive. That
+        is the #140 blind spot ("right value for the input I imagined" cannot see
+        "this surface produces nothing"); `TestVoidedVolumeGates` is the
+        output-oriented counterpart that can.
+        """
         cfg_path = Path(__file__).parent.parent / "config" / "signal_watch.toml"
         cfg = load_signal_config(cfg_path)
-        # suppress = true: strategies where normal-vol signals outperform
-        assert cfg.effective_volume_suppress("bos") is True
-        assert cfg.effective_volume_suppress("orb") is True
-        assert cfg.effective_volume_suppress("doji") is True
+        # All four crypto-era A14b volume flags were removed 2026-08-06:
+        # doji / orb / engulfing-long were VOIDED by conjunction with the ADR gate;
+        # bos was not voided (it is adr_exempt) but its claim does not replicate on
+        # equities — volume failed to predict R on every cell (all p >= 0.113, wrong
+        # sign on 3 of 5) while discarding 90-94% of its signals.
+        assert cfg.effective_volume_suppress("bos") is False
+        assert cfg.effective_volume_suppress("orb") is False
+        assert cfg.effective_volume_suppress("doji") is False
+        assert cfg.effective_volume_suppress_long("engulfing") is not True
         # suppress = false: strategies where low-vol signals have edge
         assert cfg.effective_volume_suppress("pin_bar") is False
         assert cfg.effective_volume_suppress("hammer_hanging_man") is False
@@ -1347,3 +1365,107 @@ pin_bar = ["1wk"]
         for path in ("config/signal_watch.toml", "config/signal_watch_weekdays.toml"):
             cfg = load_signal_config(path)
             assert dead_timeframes(cfg.day_filter, cfg.timeframes) == [], path
+
+
+class TestVoidedVolumeGates:
+    """`volume_suppress*` + a live ADR gate select for opposite bars.
+
+    The ADR gate keeps candles that have consumed little of their typical daily
+    range; `volume_suppress` keeps candles with >=1.5x mean volume. Range and
+    volume correlate at ~+0.65, so the conjunction is nearly the empty set —
+    measured P(pass both) = 0.0046 vs 0.036 under independence.
+
+    Shipped state before 2026-08-06: `doji` x 1d produced exactly 0 signals from
+    1,247 raw detector fires, `orb` x 4h ran on n=1, and `engulfing` x 1d /
+    `bos` x 1d had their measured avg_r sign inverted.
+    """
+
+    def test_flags_symmetric_suppress_without_exemption(self) -> None:
+        params = {"doji": StrategyOverride(volume_suppress=True)}
+        assert voided_volume_gates(params, 0.80) == ["doji"]
+
+    def test_flags_directional_suppress(self) -> None:
+        # engulfing carried only the LONG-side flag and was voided just the same.
+        params = {"engulfing": StrategyOverride(volume_suppress_long=True)}
+        assert voided_volume_gates(params, 0.80) == ["engulfing"]
+        params = {"x": StrategyOverride(volume_suppress_short=True)}
+        assert voided_volume_gates(params, 0.80) == ["x"]
+
+    def test_adr_exempt_clears_the_pairing(self) -> None:
+        # bos opts out of the ADR gate by entry geometry, so its volume flag acts alone.
+        params = {"bos": StrategyOverride(volume_suppress=True, adr_exempt=True)}
+        assert voided_volume_gates(params, 0.80) == []
+
+    def test_disabled_adr_gate_clears_the_pairing(self) -> None:
+        params = {"doji": StrategyOverride(volume_suppress=True)}
+        assert voided_volume_gates(params, None) == []
+
+    def test_explicit_false_is_not_a_conjunction(self) -> None:
+        # `volume_suppress = false` is the safe majority in strategy_params.toml.
+        params = {"pin_bar": StrategyOverride(volume_suppress=False)}
+        assert voided_volume_gates(params, 0.80) == []
+
+    def test_none_inherits_and_is_not_flagged(self) -> None:
+        # None means "inherit global"; only an explicit True pins the conjunction.
+        params = {"trend_day": StrategyOverride()}
+        assert voided_volume_gates(params, 0.80) == []
+
+    def test_load_rejects_the_conjunction(self, tmp_path: Path) -> None:
+        content = """
+timeframes = ["4h"]
+day_filter = "off"
+
+[bias]
+adr_suppress_threshold = 0.80
+
+[strategy_params.doji]
+volume_suppress = true
+"""
+        p = _write_toml(tmp_path, content)
+        with pytest.raises(ValueError, match="without adr_exempt"):
+            load_signal_config(p)
+
+    def test_load_accepts_the_conjunction_when_exempt(self, tmp_path: Path) -> None:
+        content = """
+timeframes = ["4h"]
+day_filter = "off"
+
+[bias]
+adr_suppress_threshold = 0.80
+
+[strategy_params.bos]
+volume_suppress = true
+adr_exempt = true
+"""
+        p = _write_toml(tmp_path, content)
+        cfg = load_signal_config(p)
+        assert cfg.effective_volume_suppress("bos") is True
+
+    def test_shipped_configs_carry_no_voided_gate(self) -> None:
+        # Binds the guard to the real configs. This assertion FAILS on the
+        # pre-2026-08-06 tree: signal_watch flagged [engulfing, orb, doji] and
+        # signal_watch_weekdays additionally flagged bos.
+        for path in ("config/signal_watch.toml", "config/signal_watch_weekdays.toml"):
+            cfg = load_signal_config(path)
+            assert (
+                voided_volume_gates(
+                    cfg.strategy_params, cfg.bias.adr_suppress_threshold
+                )
+                == []
+            ), path
+
+    def test_no_shipped_strategy_sets_volume_suppress(self) -> None:
+        """All four crypto-era A14b volume flags were removed on 2026-08-06.
+
+        Not merely a restatement of the guard above: a strategy could set the flag
+        legitimately by also setting `adr_exempt` (that is `bos`'s old shape, which
+        the guard permits). This pins the stronger, current fact — none of the four
+        replicated on equities, so none is set. Re-adding one is allowed, but it
+        must break this test and be re-measured first, not slip in.
+        """
+        for path in ("config/signal_watch.toml", "config/signal_watch_weekdays.toml"):
+            cfg = load_signal_config(path)
+            for name in cfg.strategy_params:
+                assert cfg.effective_volume_suppress(name) is not True, f"{path} {name}"
+                assert cfg.effective_volume_suppress_long(name) is not True, name
+                assert cfg.effective_volume_suppress_short(name) is not True, name

@@ -176,6 +176,53 @@ def dead_timeframes(day_filter: str, timeframes: Iterable[str]) -> list[str]:
     ]
 
 
+# Per-strategy flags that keep only HIGH-volume signal candles. Each is the
+# opposite selection to the ADR gate, which keeps only bars that have consumed
+# little of their typical daily range.
+_VOLUME_SUPPRESS_FLAGS = (
+    "volume_suppress",
+    "volume_suppress_long",
+    "volume_suppress_short",
+)
+
+
+def voided_volume_gates(
+    strategy_params: dict[str, StrategyOverride],
+    adr_suppress_threshold: float | None,
+) -> list[str]:
+    """Strategies whose volume gate and the ADR gate cancel each other out.
+
+    ``volume_suppress*`` keeps only candles with >=1.5x the trailing mean volume;
+    the ADR gate keeps only candles that have consumed < ``adr_suppress_threshold``
+    of the 14-day average daily range. Range and volume are strongly positively
+    correlated (+0.613 on 1d, +0.673 on 4h, measured over the 13 live symbols on
+    2026-08-06), so the two select for opposite bars and their conjunction is very
+    nearly the empty set: P(pass both) = 0.0046 against 0.036 under independence,
+    an 8x shortfall, and P(pass volume | passed ADR) = 0.012 vs P(pass volume) =
+    0.098.
+
+    This is silent at every layer — the detector fires normally and the events are
+    dropped one at a time, so the surface reads as "covered" while producing
+    nothing. Measured damage before the 2026-08-06 fix, cost-inclusive:
+    ``doji`` x 1d ran at exactly 0 signals against 1,247 raw detector fires;
+    ``orb`` x 4h at n=1; and on ``engulfing`` x 1d / ``bos`` x 1d the pairing did
+    not merely thin the sample but INVERTED its sign (-0.273R -> +0.042R and
+    -0.033R -> +0.071R once the conjunction was removed).
+
+    ``adr_exempt = true`` clears a strategy: entry geometries that fire at range
+    extremes by construction (breakouts, structure sweeps) legitimately opt out of
+    the ADR gate, leaving the volume flag to act alone.
+    """
+    if adr_suppress_threshold is None:
+        return []  # ADR gate disabled — the volume flag acts alone, no conjunction
+    return [
+        name
+        for name, override in strategy_params.items()
+        if not override.adr_exempt
+        and any(getattr(override, f) is True for f in _VOLUME_SUPPRESS_FLAGS)
+    ]
+
+
 @dataclass
 class BacktestFilterConfig:
     """Configuration for the per-signal backtest filter."""
@@ -818,6 +865,20 @@ def load_signal_config(path: str | Path) -> SignalWatchConfig:
             "timeframes stamp every bar on one weekday, so they would scan and "
             "silently dispatch nothing. Drop them from the config or widen "
             "day_filter."
+        )
+
+    # Same defect class, different axis: a volume gate and the ADR gate that select
+    # for opposite bars leave a strategy declared-but-voided (see voided_volume_gates).
+    voided = voided_volume_gates(strategy_params, bias.adr_suppress_threshold)
+    if voided:
+        raise ValueError(
+            f"{voided} declare volume_suppress* without adr_exempt, while the ADR "
+            f"gate is active (adr_suppress_threshold="
+            f"{bias.adr_suppress_threshold}). The two gates select for opposite "
+            "bars — range and volume correlate at ~+0.65 — so their conjunction "
+            "discards ~99% of signals silently and can invert measured avg_r. "
+            "Drop the volume flag, or set adr_exempt = true if the strategy's "
+            "entry genuinely fires at range extremes."
         )
 
     return SignalWatchConfig(

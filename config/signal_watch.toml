@@ -172,7 +172,14 @@ atr_sl_multiplier_1d = 1.0    # Task C-followup 13-sym: -0.06R least-bad, n=336
 tp_r = 3.0                    # fallback (also covers 1wk tue_thu — no_grid under Fri close × tue_thu suppression; 2026-05-22 doji-1wk ATR sweep confirmed n=0)
 tp_r_1d = 3.5                 # live-parity re-derive (2026-06-03): combined n=11 <20 too thin → keep Phase 2 value (raw n=67 inflated)
                               # tp_r_long_1d dropped — live-parity long n<10 (raw n=28 was already thin; inflated by ADR/cooldown)
-volume_suppress = true        # A14b crypto finding; T14 AAPL volume split not re-tested
+                              # DEBT (2026-08-06): every tp_r above was calibrated while the gate conjunction
+                              # below voided 98–100% of doji's signals, so it is fitted to a 0–2% subsample.
+                              # NOT re-derived — that is frozen TA-sweep work. Re-derive only if the freeze lifts.
+# volume_suppress removed 2026-08-06 — gate conjunction (see config/strategy_params.toml).
+# The flag's own note admitted it was never validated here ("A14b CRYPTO finding; T14 AAPL
+# volume split not re-tested"). Combined with the ADR gate it left doji × 1d at exactly ZERO
+# signals since the fork — 1,247 raw detector fires on the 13 live symbols reduced to 0 —
+# and doji × 4h at 2. Without it: 1d n=169 @ +0.319R, 4h n=104 @ +0.154R (cost-inclusive).
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on (1wk: no signals on tue_thu — Fri close × tue_thu suppression)
 atr_sl_multiplier_4h = 0.5    # Task C-followup 13-sym: +0.20R, n=40
 atr_sl_multiplier_1d = 2.5    # Task C-followup 13-sym: +0.29R, n=20
@@ -202,7 +209,9 @@ tp_r = 3.0                    # fallback (4h no_edge under ATR floor: best -0.26
 tp_r_short_4h = 1.5           # Phase 2 resweep 13-sym directional: shorts +0.050R, n=50 (NEW commit; long no_edge so combined stays net-neg, short carries the only directional edge)
 tp_r_1d = 2.5                 # Phase 2 resweep 13-sym (under ATR floor 2.0×): combined 2.5@+0.136R, n=88 (was fallback 3.0@+0.071R)
 tp_r_long_1d = 4.0            # Phase 2 resweep 13-sym directional: longs +0.400R, n=50 (NEW commit; long edge dominates on 1d)
-adr_exempt = true             # breakout — fires in continuation direction; ADR gate degrades it
+# adr_exempt MOVED to config/strategy_params.toml 2026-08-06 so BOTH configs inherit it.
+# Living here made it config-local: signal_watch_weekdays.toml never got it, and bos ran
+# there with volume_suppress against a live ADR gate (1d: n=86 @ −0.033R vs n=1328 @ +0.071R).
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 2.0    # Task C-followup 13-sym: -0.29R least-bad (tied 0.5/1.0/2.0), n=153
 atr_sl_multiplier_1d = 2.0    # Task C-followup 13-sym: +0.04R, n=85

@@ -43,6 +43,50 @@ Decision threshold:
 - Delta < -0.05R → `volume_suppress = false` (explicitly keep low-vol signals)
 - |Delta| ≤ 0.05R → neutral (omit the flag entirely — inherits global default)
 
+## STOP — check the ADR gate before setting `volume_suppress = true`
+
+**A favourable Delta is NOT sufficient.** The split table above is computed on the
+population *before* the volume filter, and it knows nothing about the `[bias]` ADR
+gate. Those two gates select for **opposite** bars:
+
+- the ADR gate keeps candles that have consumed *little* of their typical daily range;
+- `volume_suppress` keeps candles with *≥1.5×* mean volume;
+- range and volume correlate at **+0.613 (1d) / +0.673 (4h)** on the live watchlist.
+
+Their conjunction is nearly the empty set — measured `P(pass both) = 0.0046` against
+`0.036` under independence, an **8× shortfall**. Setting the flag on a strategy that
+is not `adr_exempt` therefore discards ~99% of its signals, and it does so *silently*:
+the detector fires normally and the events are dropped one at a time.
+
+This is not hypothetical. It shipped for months and was found on 2026-08-06:
+`doji × 1d` produced **0** signals from 1,247 raw detector fires, `orb × 4h` ran on
+**n=1**, and on `engulfing × 1d` and `bos × 1d` the pairing **inverted the measured
+sign** — so the Delta this skill reads was itself an artifact on those rows.
+
+**Required before committing `volume_suppress = true` (or the `_long` / `_short`
+variants):**
+
+1. Check `[strategy_params.<name>].adr_exempt`. If it is not `true`, do **not** set
+   the flag — `load_signal_config` will now refuse to load the config
+   (`voided_volume_gates`), so the run fails loudly rather than silently.
+2. If the strategy genuinely fires at range extremes by construction (breakouts,
+   structure sweeps — `bos`, `eqh_eql`), set `adr_exempt = true` **in the shared base**
+   `config/strategy_params.toml`, never in one day-filter config. `bos`'s exemption was
+   config-local and `signal_watch_weekdays.toml` never inherited it, which voided it there.
+3. Re-read the Delta *after* the ADR gate, not before. A split measured on the
+   pre-gate population does not describe the population the flag will actually filter.
+4. Remember the freeze: re-deriving a flag to chase avg R is TA-sweep work
+   (CLAUDE.md → sleeve verdicts). Removing a provably-void flag is correctness and is
+   allowed; tuning one for edge is not.
+
+Background: `docs/audits/2026-08-06-adr-volume-gate-conjunction.md`.
+
+Related trap — **`volume_spike_boost` is inert without suppression.** The engine reads
+`_boost` only inside `if _suppress and is_low_vol` (`analytics/backtest/engine.py`), so
+a spike-boost flag on a strategy with no volume suppression changes no filtering
+decision. `Trade.volume_spike` is still tagged, so the split stays measurable — but do
+not read an unchanged result as "the boost did nothing useful"; it did nothing at all.
+
 ## Where to set volume_suppress
 
 ### Per-strategy (A14b — implemented)
@@ -66,7 +110,28 @@ Resolution order: per-strategy → global `[backtest].volume_suppress` (default 
 volume_suppress = true   # applies to all strategies with no per-strategy override
 ```
 
-## A14b findings (2026-04-06 — at current per-strategy tp_r)
+## A14b findings (2026-04-06) — SUPERSEDED, kept as a record
+
+**Every `true` in the table below has been reverted, and the table is retained only as
+evidence of how the decisions were made.** All four A14b volume flags that ever reached
+the equity configs (`bos`, `orb`, `doji`, `engulfing`-long) were removed on 2026-08-06:
+three because they conjoined with the ADR gate and voided their strategies outright, and
+`bos` because its own claim does not replicate on equities (Δ carries the **wrong sign**
+on 3 of 5 cells; every p ≥ 0.113). **As of 2026-08-06 no strategy in either config sets
+`volume_suppress*`.**
+
+Two reasons these numbers must not be re-applied as-is:
+
+1. They are **crypto-era** measurements, taken before the equity re-target and before the
+   `[bias]` ADR gate existed. The `doji` flag's own comment admitted as much ("T14 AAPL
+   volume split not re-tested").
+2. The Delta column is computed on the **pre-ADR-gate** population, so it does not
+   describe the population the flag would actually filter.
+
+Note the table also names strategies that no longer exist in the registries
+(`ote_entry`, `fvg`) or in either config (`marubozu`) — another sign of its vintage.
+
+Before trusting any row, re-measure it, and read the STOP section above first.
 
 ### signal_watch.toml (tue_thu day filter)
 
@@ -107,6 +172,16 @@ make wifey-backtest CONFIG=config/signal_watch.toml
 #    > +0.05R → volume_suppress = true
 #    < -0.05R → volume_suppress = false
 #    |Δ| ≤ 0.05R → omit (neutral)
+#
+#    A raw Delta is NOT sufficient — it is a point estimate on a noisy sample.
+#    Test it: split the UNSUPPRESSED trades on `Trade.low_volume` and run a Welch t
+#    (or bootstrap the difference). On `bos` every cell came back p >= 0.113 with the
+#    95% CI straddling zero, so a Delta of +0.11R justified discarding 94% of the
+#    signals for nothing. Never compare flag-ON against flag-OFF: ON is a strict
+#    SUBSET of OFF, so the arms are dependent and no test applies.
+
+# 2b. STOP — confirm `adr_exempt = true` before any `volume_suppress = true`.
+#     Without it `load_signal_config` now raises (voided_volume_gates). See above.
 
 # 3. Add volume_suppress to [strategy_params.X] in TOML
 # 4. Repeat for weekdays and all configs separately (day filter changes trade population)

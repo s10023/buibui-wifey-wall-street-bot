@@ -8,6 +8,7 @@ import duckdb
 import pytest
 
 from analytics.signal_config import SignalWatchConfig
+from tools import dead_surface_check
 from tools.dead_surface_check import (
     DeadCell,
     declared_cells,
@@ -114,22 +115,53 @@ class TestFindDeadCells:
 
 
 class TestAllowlist:
+    """Exercises the filtering mechanism, NOT whatever the allowlist happens to hold.
+
+    These tests pinned the shipped contents until 2026-08-06 and broke the moment
+    the list emptied — a test coupled to data that is designed to change. The
+    mechanism is patched here; the shipped contents get their own assertion below.
+    """
+
     @pytest.fixture
     def cell(self) -> DeadCell:
         return DeadCell("c.toml", "tue_thu", "doji", "1d", "detector never fired")
 
-    def test_known_cell_is_not_unexpected(self, cell: DeadCell) -> None:
-        # ("tue_thu", "doji", "1d") ships on the allowlist.
+    @pytest.fixture
+    def _allowlisted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            dead_surface_check,
+            "_KNOWN_DEAD_CELLS",
+            frozenset({("tue_thu", "doji", "1d")}),
+        )
+
+    def test_known_cell_is_not_unexpected(
+        self, cell: DeadCell, _allowlisted: None
+    ) -> None:
         assert unexpected([cell]) == []
 
-    def test_same_cell_under_another_day_filter_is_unexpected(self) -> None:
+    def test_same_cell_under_another_day_filter_is_unexpected(
+        self, _allowlisted: None
+    ) -> None:
         """The allowlist is keyed on day_filter — a cell dead elsewhere still fails."""
         other = DeadCell("c.toml", "off", "doji", "1d", "detector never fired")
         assert unexpected([other]) == [other]
 
-    def test_new_dead_cell_is_reported(self) -> None:
+    def test_new_dead_cell_is_reported(self, _allowlisted: None) -> None:
         fresh = DeadCell("c.toml", "tue_thu", "bos", "4h", "detector never fired")
         assert unexpected([fresh]) == [fresh]
 
     def test_key_is_the_allowlist_tuple(self, cell: DeadCell) -> None:
         assert cell.key == ("tue_thu", "doji", "1d")
+
+    def test_empty_allowlist_reports_everything(self, cell: DeadCell) -> None:
+        """With nothing allowlisted, every dead cell must surface."""
+        assert unexpected([cell]) == [cell]
+
+    def test_shipped_allowlist_is_empty(self) -> None:
+        """The allowlist may only ever SHRINK — it reached empty on 2026-08-06.
+
+        A new entry means a dead surface was accepted, which is the thing this
+        module exists to prevent. Growing it should require deleting this test,
+        which is the point: that is a deliberate act, not an oversight.
+        """
+        assert frozenset() == dead_surface_check._KNOWN_DEAD_CELLS
