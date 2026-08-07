@@ -46,6 +46,14 @@ the live signal filter's quality gate.
   `origin`, and one `make db-update` restores the full grid. **If a cell's ratings look
   thin, check its symbol count before its avg_r.**
 
+- **The input population is now LIVE-PARITY gated** (2026-08-07). `config/strategy_params.toml`
+  declares `[backtest.live_parity]` with five gates on, so the sweep measures what the daemon
+  would dispatch, not the raw detector output — closed trades are ~33–35% below the ungated
+  count and 52 of 160 rating rows changed stars at the flip. **`conflict_resolver` is off on
+  purpose**: it reads `confidence_ratings`, so enabling it makes recalibrate non-deterministic
+  (two full passes disagreed on 108 rows). If you ever see `make db-update` produce different
+  stars on a re-run with no code change, check that flag first.
+
 Run `make check-dead-surfaces` after applying — it fails on any orphan that survived.
 
 **Prefer `--config` path** — it keeps ratings per-config and doesn't touch source code.

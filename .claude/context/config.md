@@ -67,8 +67,21 @@ refresh membership via `tools/expand_universe_sp500.py` (default scrapes Wikiped
 ## config/strategy_params.toml
 
 Shared base config inherited via `extends = "strategy_params.toml"` by `signal_watch.toml` and
-`signal_watch_weekdays.toml`. Contains `[bias]`, `[backtest]` defaults and per-strategy
-`volume_suppress` / `volume_spike_boost` flags.
+`signal_watch_weekdays.toml`. Contains `[bias]`, `[backtest]` defaults (including
+`[backtest.cost_model]` and `[backtest.live_parity]`) and per-strategy `volume_suppress` /
+`volume_spike_boost` flags.
+
+**`[backtest.live_parity]` — five gates on, `conflict_resolver` OFF and that is load-bearing**
+(2026-08-07). Until this block existed the ratings sweep ran every gate off, so `confidence_ratings`
+measured the raw population while the daemon gated dispatch with all six. `regime`,
+`direction_filter`, `f8_htf_ema`, `adr_bias` and `cooldown` are pure functions of price + config, so
+they are safe. `conflict_resolver` **reads `confidence_ratings`**, so enabling it inside the sweep
+that produces them makes `make db-update` a fixed-point iteration rather than a computation:
+measured over three full passes, 108 → 66 rows differing, damping but not converged, with cells
+still oscillating at iteration 3. With five gates two consecutive passes differ on **0 of 160**
+rows. **It lives in this shared base and not behind a Makefile flag on purpose** — a flag is exactly
+how ad-hoc `--live-parity` research runs and the routine sweep diverged unnoticed for ~2.5 months.
+Full write-up: `docs/audits/2026-08-07-live-parity-ratings-sweep.md`.
 
 **GATE CONJUNCTION — `volume_suppress*` requires `adr_exempt = true`.** The `[bias]` ADR gate keeps
 only bars that have consumed little of their typical daily range; `volume_suppress` keeps only bars

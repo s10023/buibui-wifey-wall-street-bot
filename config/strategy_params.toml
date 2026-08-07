@@ -149,6 +149,53 @@ borrow_rate_annual = 0.01                 # shorts: conservative constant
 commission_bps = 0.0                      # US retail ≈ 0
 adv_window_days = 20.0                    # trailing ADV / sigma window
 
+# T6 live-parity gates — ENABLED 2026-08-07. Until this block existed, the sweep
+# behind `make db-update-backtest` ran with EVERY gate off, so `confidence_ratings`
+# measured the raw signal population while the daemon gates dispatch with all six.
+# T6 (2026-05-26) shipped `LiveParityConfig` default-off to keep the regression
+# goldens byte-identical during the 6-PR port (plan §8) and nothing ever flipped it;
+# the 2026-06-03 `tp_r` re-derives and #143's `bos × 4h` retirement were run with
+# ad-hoc `--live-parity`, i.e. against a population the routine sweep never measured.
+#
+# It lives HERE, in the shared base, and not as a Makefile flag on purpose: a flag is
+# exactly how ad-hoc runs and the routine sweep diverged unnoticed for ~2.5 months.
+# Both live configs inherit this via single-level `extends`.
+#
+# Measured cost before enabling (docs/plans/scripts/live_parity_rating_fallout.py):
+# closed trades −41.6% (signal_watch) / −42.5% (weekdays), and of 54 declared cells
+# exactly TWO drop below recalibrate's min_trades — `eqh_eql × 1d` (26 → 9) and
+# `hammer_hanging_man × 1wk` (20 → 0). Both are arguably correct losses: a cell the
+# live gates reduce to zero is one the daemon never dispatches. An unrated cell is
+# NOT blocked — confidence falls back to `STRATEGY_REGISTRY[s].get_confidence(tf)`.
+#
+# This flip MOVES the regression goldens by design (spec pattern: db-update + golden
+# refresh + recalibrate), exactly as the Phase 0.4 cost-model flip did in #80.
+#
+# `conflict_resolver` is deliberately the ONE gate left OFF, and it is not a
+# preference — the six-gate version is non-deterministic and therefore unshippable.
+# It is the only gate that reads `confidence_ratings`, so switching it on closes a
+# loop: sweep reads ratings to break ties -> that changes which signals survive ->
+# which changes `backtest_runs` -> which changes ratings. Measured 2026-08-07 over
+# three consecutive full backtest+recalibrate passes: 108 -> 66 rows differing
+# (18 -> 8 star changes), damping but NOT converged, and individual cells still
+# oscillating at iteration 3 (`pin_bar × 1d` long 2* +0.10 -> 4* +0.76 while
+# `pin_bar × 1wk` long went 4* -> 2*). `make db-update` must be deterministic or a
+# real rating change is indistinguishable from a re-run artifact. The other five
+# gates are pure functions of price + config, so they have no feedback path.
+# The LIVE path does not have this problem: it reads ratings already written and
+# never feeds its own output back within a cycle. Only the sweep closes the loop.
+[backtest.live_parity]
+enabled = false          # master switch stays off — set the five gates explicitly
+regime = true
+direction_filter = true
+f8_htf_ema = true
+adr_bias = true
+conflict_resolver = false
+cooldown = true
+# cooldown_bars defaults to the equity map {"4h": 2, "1d": 1, "1wk": 1}
+# (`_DEFAULT_COOLDOWN_BARS_PER_TF`), NOT the parent's intraday map. Left implicit so
+# the single source of truth stays in code.
+
 # Per-strategy flags consistent across all three main configs.
 # Only non-tp_r fields are here — tp_r values are calibrated per day_filter in each config.
 # Strategies not listed here have no per-strategy flag override (loader default applies).

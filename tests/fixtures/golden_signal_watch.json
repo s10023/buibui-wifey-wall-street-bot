@@ -1,23 +1,23 @@
 {
-  "generated_at": "2026-08-06",
+  "generated_at": "2026-08-07",
   "config": "config/signal_watch.toml",
   "strategies": {
     "wick_fill": {
       "4h": {
-        "trade_count": 390,
+        "trade_count": 391,
         "long_trade_count": 254,
-        "short_trade_count": 136,
-        "win_rate": 0.3615,
-        "avg_r": 0.0525,
-        "total_r": 20.4906,
+        "short_trade_count": 137,
+        "win_rate": 0.3606,
+        "avg_r": 0.0497,
+        "total_r": 19.4409,
         "long_avg_r": 0.1036,
-        "short_avg_r": -0.0427,
+        "short_avg_r": -0.0501,
         "long_total_r": 26.3027,
-        "short_total_r": -5.8122,
+        "short_total_r": -6.8619,
         "long_win_rate": 0.378,
-        "short_win_rate": 0.3309,
+        "short_win_rate": 0.3285,
         "max_drawdown_r": 30.859,
-        "recovery_factor": 0.664
+        "recovery_factor": 0.63
       },
       "1d": {
         "trade_count": 200,

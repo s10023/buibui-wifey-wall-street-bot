@@ -175,19 +175,31 @@ only the count was wrong; and `backtest_cache` / `backtest_cross_tf_combos` were
 one writer each, so verify the blast radius rather than assuming it. Audit:
 `docs/audits/2026-08-07-backtest-runs-writer-collision.md`.
 
-**The backtest sweep that produces the star ratings has NEVER run the live-parity gate stack.**
-T6 (2026-05-26) wired all six live gates into the engine behind a **default-off** `LiveParityConfig`
-to keep the regression goldens byte-identical during the port — and nothing ever flipped it. No
-config declares `[backtest.live_parity]` (`git log -S live_parity -- config/` is empty) and
-`make wifey-backtest` passes no `--live-parity`, so `make db-update-backtest` measures the **raw**
-signal population while the daemon *gates dispatch* with all six and the research that sets policy
-runs gated (#143's audit: "live-parity all gates on"). Every measurement is ungated; only dispatch
-is gated. Measured 2026-08-07: turning the gates on drops closed trades **−41.6%** (`signal_watch`)
-and **−42.5%** (weekdays), and flips the sign of **6 of 24** and **8 of 36** cells — `eqh_eql × 1d`
-+0.506 → **−0.126**, `order_block × 4h` −0.047 → **+0.239**, `hammer_hanging_man × 1wk` 20 closed
-trades → **0**. **Not fixed**: enabling them halves the sample, pushes many cells under `min_trades`,
-and moves the goldens by design, so it is a policy call. Script:
-`docs/plans/scripts/live_parity_sweep_diff.py`.
+**`conflict_resolver` is the ONE live-parity gate the sweep must never run, and that is
+load-bearing, not an oversight.** Until 2026-08-07 the sweep behind the star ratings ran with
+**every** gate off — T6 (2026-05-26) shipped `LiveParityConfig` default-off to keep goldens
+byte-identical during the port, no config declared `[backtest.live_parity]`, and
+`make wifey-backtest` passes no `--live-parity` — so `confidence_ratings` measured the **raw**
+population while the daemon gates dispatch with all six, and the committed `tp_r` values were
+calibrated under *ad-hoc* `--live-parity` against a population the routine sweep never produced.
+Five gates are now **on** in `config/strategy_params.toml` (the **shared base**, deliberately not a
+Makefile flag — a flag is how the two surfaces diverged unnoticed for ~2.5 months). But
+`conflict_resolver` **reads `confidence_ratings`**, so switching it on inside the sweep that
+*produces* them closes a loop: sweep resolves ties → drops a side → `backtest_runs` changes →
+recalibrate writes different ratings. Measured over three consecutive full `backtest + recalibrate`
+passes with all six on: **108 → 66** rows differing (18 → 8 star changes) — damping but **not
+converged**, with cells still oscillating at iteration 3 (`pin_bar × 1d` long 2★ +0.10 → **4★
++0.76** while `pin_bar × 1wk` long went 4★ → 2★). **`make db-update` must be deterministic or a
+real rating change is indistinguishable from a re-run artifact.** With five gates it is: two
+consecutive passes differ on **0 of 160** rows, closed trades fall **−33.4%** / **−34.8%** (~4/5 of
+the full effect), **no cell loses its rating**, and 52 of 160 rows change stars. Two transferable
+rules: **a gate that reads a table its own pipeline writes is not a gate, it is a fixed-point
+iteration** — check data-flow direction before enabling one in the producer of its own input; and
+**"it converges" needs three points, not two** (1→2 alone looks like transient re-seeding; only
+2→3 shows the decay rate, and aggregate decay hides per-cell oscillation). The live path is
+unaffected — it reads ratings already written and never feeds its own output back in-cycle. Audit:
+`docs/audits/2026-08-07-live-parity-ratings-sweep.md`. Scripts:
+`docs/plans/scripts/live_parity_sweep_diff.py`, `live_parity_rating_fallout.py`.
 
 **Ingest level-parsing fails SILENTLY, and every instance so far was found by running the code, not
 by reading it.** Full narratives in `context/tools.md`; the standing rules:
