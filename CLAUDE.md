@@ -289,6 +289,9 @@ from a dense video as a cap artifact before concluding the video made no calls.
 - Analytics tests use `duckdb.connect(":memory:")` for full DB isolation — never touch the real `analytics.db`
 - Run: `make test` (= `pytest tests/ -q --durations=10`, no coverage — nothing gates on it). `make test-cov` when you actually want a coverage report.
 - **Regression tests**: `make test-regression` — compares backtest pipeline output to golden JSON files in `tests/fixtures/`; skips if fixture parquets are absent; run `make regression-update` to regenerate golden files after intentional changes
+- **A green suite does not mean a test exercises its subject.** Two mechanical guards exist because prose did not enforce either constraint:
+  - `tests/test_schema_insert_arity.py` (in `make test`) ties every positional INSERT to its table's real column list — `INSERT … SELECT` is checked by **name order**, so a transposition of two same-typed columns fails. Adding a column to a table written positionally requires updating that statement in the same PR.
+  - `make check-orphan-tests` (advisory, heuristic, **not** in `make test`) reports `Test*` classes that name a unit but never call it. Its `not-importable` verdict means the unit is a **closure** and no test can reach it — extraction is then a prerequisite for a fix, not scope creep (#150: five `TestEvGate` tests never invoked the EV gate, one reduced to `assert None is None`, and all five passed against any implementation).
 
 ## Dependencies
 

@@ -95,6 +95,54 @@ treat them as registry exceptions.
 - `*_runner.py` files must NOT contain business logic — only: create client, open DB, call lib, close
 - `*_lib.py` files must NOT make network calls or open DB connections at module level. (The fork's `utils/binance_client.py` is gone; the equivalent live clients are `utils/yfinance_client.py` and `utils/edgar_client.py`, both of which must stay side-effect-free at import time.)
 
+### Tests that name a unit but never call it
+
+```bash
+make check-orphan-tests
+```
+
+Advisory, not part of `make test`. Two verdicts, both actionable:
+
+- **`not-importable`** — the unit exists only as a **closure**, so no test can
+  call it and the tests can only re-implement it. This is the #150 shape:
+  `TestEvGate` held five tests that never invoked the EV gate because it was
+  `def _passes_ev_gate` nested inside `run_scan_cycle`; one asserted the defect
+  as the expectation, another reduced to `assert None is None`, and all five
+  passed against any implementation. **Extraction is a prerequisite for fixing
+  such a bug, not scope creep.**
+- **`not-called`** — an importable callable matches the class's subject, but no
+  test in the class calls it. Ordinary drift after an extract or rename.
+
+A clean tree prints `✅`. Findings are advisory — **review, never auto-fix**, and
+if one is a genuine false positive add it to `EXEMPT_CLASSES` in
+`tools/orphan_test_audit.py` **with its reason** (three are listed there today;
+all three are the subject being reached one indirection away, via a local test
+helper or a CLI `main()`). An allowlist entry without a reason is how the check
+decays into a no-op.
+
+Note that neither this check nor a green suite can see the sibling trap in
+CLAUDE.md: **a test that asserts a config value PARSED can never detect that the
+parsed value produces nothing.**
+
+### Schema ↔ positional INSERT arity
+
+Enforced by `tests/test_schema_insert_arity.py`, so it runs in `make test` — no
+separate command. It exists because nothing mechanically tied a table's DDL to
+its positional INSERT: `put_backtest_cache` writes `VALUES (?,…)` with a
+hand-counted placeholder list, and `schema.py` states the constraint in prose.
+
+If it fails, do **not** relax the test — the INSERT is almost certainly wrong.
+Two things to know before touching it:
+
+- The truth side is the **real schema** (`init_schema` against an in-memory
+  DuckDB, read back from `information_schema.columns`), not parsed DDL text.
+  Four `backtest_runs` columns exist **only** in the migration list and never in
+  `CREATE TABLE`, so a text-parsing check would report a false failure on the
+  very table it is meant to guard.
+- `INSERT … SELECT` is checked by **name order**, not just count, because that
+  form is positional — a transposition of two same-typed columns is otherwise
+  silent.
+
 ---
 
 ## 3. Documentation sync

@@ -65,6 +65,45 @@ of them displaying 3★.
 **Run:** `make check-dead-surfaces` or
 `poetry run python tools/dead_surface_check.py [--config PATH ...] [--db PATH] [--strict]`
 
+## orphan_test_audit.py — test classes that NAME a unit but never CALL it
+
+The third mechanical enforcement check, alongside `dead_surface_check.py` (data-driven)
+and `tests/test_makefile_invocations.py` (static). It exists because a green suite proves
+nothing about whether a test exercises its subject: `TestEvGate` held five tests that never
+invoked the EV gate, because the gate was `def _passes_ev_gate` **nested inside**
+`run_scan_cycle` and therefore unimportable. Every test re-implemented the comparison
+inline; one asserted the defect as the expectation, another reduced to `assert None is
+None`, and all five passed against any implementation (#150).
+
+Two verdicts:
+
+- **`not-importable`** — the subject matches a **closure** and no module-level callable.
+  The unit is unreachable from a test, so the tests can only re-implement it. **Extraction
+  is a prerequisite for the fix, not scope creep.**
+- **`not-called`** — an importable callable matches but no test in the class calls it.
+  Ordinary drift after an extract or rename.
+
+Matching is token-based and **directional**: the callable's name must contain the class's
+subject tokens contiguously and in order, so `ev_gate` matches `_passes_ev_gate` while
+`p_r` matches neither. An earlier substring formulation produced **95** findings on a clean
+tree, nearly all junk. A class whose subject matches nothing at all is deliberately not
+reported — descriptive names (`TestWatermarkOnSend`) are legitimate and were most of that
+noise.
+
+`EXEMPT_CLASSES` is keyed `"<test file>::<class>"` and every entry carries its reason. The
+three current entries are all the same false-positive shape — the subject reached **one
+indirection away**, via a local test helper or a CLI `main()`. An entry without a reason is
+how the check decays into a no-op, and a check that always prints the same findings is
+ignored, which amounts to the same thing.
+
+Heuristic, so it is **advisory and not part of `make test`** — unlike
+`tests/test_schema_insert_arity.py`, which is deterministic and therefore runs in the
+suite. Exit 0 by default; `--strict` exits 1 on findings. Verified against the pre-#150
+tree, where it isolates `TestEvGate` and names `_passes_ev_gate`; clean on HEAD.
+
+**Run:** `make check-orphan-tests` or
+`poetry run python tools/orphan_test_audit.py [--strict]`
+
 ## live_outcomes_report.py — read-only signal_alert_outcomes spot-check
 
 Read-only spot-check of `signal_alert_outcomes` after the T2 backfill worker runs; reports the

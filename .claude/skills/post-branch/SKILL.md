@@ -156,6 +156,34 @@ User-facing signals — **walk the docs** if any are present:
 - New external dependency or system requirement
 - Behaviour change to an existing public command
 - New long-running daemon or one-shot tool (docker-compose)
+- **The diff touches `analytics/store/schema.py`** — see the DB-migration block below
+
+### DB migrations are operator-facing even when nothing else in the PR is
+
+If the diff touches `analytics/store/schema.py`, the doc surfaces do not cover
+what the operator needs to know, because a schema change **applies silently at
+the next `init_schema`** — there is no command to run and no output to read.
+The handoff (Step 10) must therefore state, explicitly:
+
+1. **When it applies** — next `init_schema`, i.e. the next process that opens
+   the DB. Name that process if it is a scheduled one.
+2. **Whether existing rows stay readable**, and if not, what breaks.
+3. **Whether any manual step is needed** — a backfill, a `make db-update`, a
+   `clean-db`, or nothing.
+4. **Whether it is self-healing**, and *why*. A nullable column on a table whose
+   rows age out on their own needs no backfill; a nullable column on a table
+   that accumulates does.
+
+PR #151 is the worked example: `backtest_cache` gained two nullable columns, and
+because the cache key includes `last_candle_ts`, pre-migration rows aged out
+within one bar and read as "abstain" until they did — additive, no manual step.
+None of that is derivable from the diff, and it was written by hand because
+nothing prompted for it.
+
+Also confirm the positional-INSERT guard still passes
+(`tests/test_schema_insert_arity.py`, in `make test`): adding a column to a
+table written by a bare `VALUES (?,…)` or an `INSERT … SELECT` requires updating
+that statement in the same PR.
 
 Skip signals — **stop here** (after MEMORY.md update) if the PR is purely:
 
@@ -227,6 +255,9 @@ For each surface in the config, do the following:
    - **Negative claims** — sentences asserting the thing the PR just built
      does *not* exist ("not ported", "no reader", "until that port lands").
      These are the most dangerous class and the easiest to miss; see Step 3b.
+   - **A stale VALUE under a correct KEY** — see 3.1 below.
+   - **A behaviour the PR REMOVED or NARROWED** — see 3.2 below.
+   - **A doc that needs no edit because it was right all along** — see 3.3.
 
 3. **Decide if an edit is warranted.** Bias toward minimal, targeted edits.
    Don't rewrite docs that aren't affected. If a `README.md` doesn't mention
@@ -248,6 +279,39 @@ For each surface in the config, do the following:
 
 5. **Apply via the `Edit` tool.** Never use `Write` to overwrite a doc —
    always targeted edits.
+
+### 3.1 — A stale VALUE hides under a correct KEY
+
+The name grep in step 1 matches on the key, so a doc that names the right key
+with the wrong value reads as a hit and then passes review. **When a PR changes
+what a config key DOES, grep the key across every doc surface and compare the
+documented VALUE against the config's current value**, not just the key's
+presence. Confirmed on PR #146, and it had bitten before that.
+
+### 3.2 — Removals have no new symbol to grep
+
+Steps 2–3 key off the changed artifact's name. A PR that *removes*, *narrows*,
+or *disables* a behaviour introduces no new symbol, so the entire walk has
+nothing to search for and comes back clean. **Grep the name of the artifact that
+was constrained — not the name of the thing that replaced it.** Confirmed on
+PR #143. Note this is the mirror of Step 3b: 3b covers additions falsifying
+negative claims, 3.2 covers removals leaving positive claims behind.
+
+### 3.3 — The doc can be right and the code wrong
+
+The whole sweep is framed as "did the docs drift from the code". Check the other
+direction too: **when a PR changes behaviour that a doc already describes, diff
+the doc's claim against the PRE-fix code, not only the post-fix code.**
+
+If the doc already described the corrected behaviour, that is evidence the bug
+was a *bug* rather than a design choice — and the fix restored a calibration
+instead of choosing a new one, which changes how the PR body and handoff should
+describe it. PR #150 is the case: `README.md` said the EV gate's guard was
+"applied to directional trade count" and the ladder was "calibrated from DB p25
+directional counts". Both were false of the code and true of the intent. The doc
+needed no edit, and that silence was the most informative thing in the sweep.
+
+**A doc/code mismatch is not automatically doc drift.**
 
 ---
 
@@ -349,15 +413,32 @@ to know the answer, and they still do.
   glob: the check reported green because it could not see the files.
 
   **So for context docs, run a presence check, not only a mention grep.** For
-  every package directory added or renamed in this PR, confirm the matching
-  context doc gained an entry. Cheap version:
+  every module added or renamed in this PR, confirm the matching context doc
+  gained an entry.
+
+  **Key it off the branch diff, not off a directory walk.** The old version of
+  this check looped over top-level directories, which made it blind one level
+  down: `analytics/` is documented, so a brand-new `analytics/<sleeve>/` package
+  — or any new module inside an already-documented package — never tripped it.
+  That is the same omission blindness this bullet is about, reproduced in the
+  check meant to catch it. The diff knows exactly what is new:
 
   ```bash
-  # every top-level package vs. what the context docs actually document
-  for d in */; do d=${d%/}
-    case $d in tests|docs|config|scripts|__pycache__|.*) continue;; esac
-    grep -rqs "$d" .claude/context/ || echo "UNDOCUMENTED: $d"; done
+  # every module this branch ADDS vs. what the context docs actually document
+  git diff main...HEAD --diff-filter=A --name-only -- '*.py' | while read -r f; do
+    case $f in tests/*|docs/*|migrations/*) continue;; esac
+    grep -rqs -e "$f" -e "$(basename "$f" .py)" .claude/context/ \
+      || echo "UNDOCUMENTED: $f"
+  done
   ```
+
+  Renames need the same treatment — swap `--diff-filter=A` for `--diff-filter=R`
+  and check the new path. A hit here is a prompt to judge, not an automatic
+  edit: a private helper module may legitimately not warrant a context entry.
+
+  Two top-level packages are knowingly absent and are **not** findings:
+  `trade/` (empty placeholder, both files 0 bytes) and `migrations/` (still
+  undocumented — it is carried debt, tracked in the handoff).
 
 - **CLAUDE.md must not re-absorb this content.** The 2026-08-05 split left
   CLAUDE.md holding a package index plus verdicts and footguns, and the context
@@ -666,6 +747,55 @@ refreshing only their dated "state at" lines:
 
 This exists because a template that overwrites is a template that must name
 what survives.
+
+### PRUNE on every run — carry-forward is not append-only
+
+**Standing rule (user, 2026-08-07).** Carrying content forward is not the same
+as keeping all of it. Every run, delete from the handoff:
+
+- **Merged PRs** beyond the most recent one or two. The PR-state table is there
+  so the next session can verify what is *in flight*; a merged PR from four
+  branches ago is git history, not state.
+- **Completed tasks and closed findings.** A "Task 2 — ANSWERED, nothing to do"
+  entry has done its job once the answer is in group A; keep the *decision*, drop
+  the task slot.
+- **"What #N found" narratives** once their transferable lesson is in group C.
+  The lesson is the asset; the blow-by-blow belongs in the audit doc, which is
+  committed and linked.
+- **Skill-fix items that shipped.** Delete them outright — the code is the
+  record. Do not leave `DONE in #146` tombstones.
+- **Answered open questions.** Move the answer to group A, delete the question.
+
+The test to apply to every line: **"if the next session never reads this, does
+it do something wrong?"** If no, cut it. Anything worth keeping but not worth
+re-reading every session belongs in a memory topic file or an audit doc, linked
+by one line — not pasted here.
+
+Left unpruned this file grows monotonically, and past ~500 lines the standing
+blocks stop being read at all, which costs more than the deleted content ever
+would. **Report the before/after line count** when you rewrite it, so the trend
+is visible rather than discovered.
+
+### Operator actions: verify the command resolves in THIS repo
+
+When writing an operator action into the handoff, **name the exact command,
+target, or unit — and verify it exists here before writing it.** Prose like
+"restart the signal watcher" is not actionable and, worse, can be false.
+
+A previous handoff carried "restart signal watch to pick up new ratings" for a
+daemon **this repo does not have**. The `buibui-signal-watch.service`/`.timer`
+pair in `systemctl --user` belongs to the *crypto parent*
+(`WorkingDirectory=/home/kng/repo/buibui-moon-trader-bot`, `DATA_SOURCE=binance`).
+Wifey dispatch is the manual one-shot `make go-live`, and because
+`signal_runner.py` loads `confidence_ratings` "once at startup", a one-shot
+process picks up a ratings change on its next run automatically. The instruction
+was a non-instruction, and disproving it cost a full verification cycle.
+
+Cheap checks before writing one: `grep -n '<target>:' Makefile` for a make
+target, `systemctl --user cat <unit> | head -5` for a unit (read
+`WorkingDirectory` — not just whether the unit exists), `wifey <cmd> --help` for
+a CLI path. **A unit or command existing on the machine is not evidence it
+belongs to this repo.**
 
 **Keep the standing context in its four labelled groups — do not re-flatten it.**
 Carried verbatim into one undifferentiated blockquote it reached ~90 lines by

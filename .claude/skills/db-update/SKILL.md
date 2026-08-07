@@ -82,12 +82,55 @@ them; if any appear again, something re-created them and the warning says so.
    recalibration-only runs. If a diff is unexpectedly massive, stop and
    investigate before committing.
 
-2. **Restart the live signal-watch daemon** so it picks up the new ratings from
-   `confidence_ratings`. Star ratings are loaded once per cycle and drive the
-   `min_avg_r` quality gate.
+2. **Prove the golden diff belongs to your change.** A diff here is usually
+   **fixture data drift**, not a behaviour change: `regression-update` re-extracts
+   the input parquets from a DB that has moved on since the goldens were written,
+   so the goldens shift even when the code is byte-identical. One command
+   falsifies it:
 
-3. **Commit** the golden file changes alongside whatever change motivated the
-   update — they belong in the same PR.
+   ```bash
+   git checkout -- tests/fixtures/ && make test-regression
+   ```
+
+   **If that passes, your code is golden-neutral and the goldens should not ship
+   in your PR** — revert them and say so. Confirmed on #148, where a golden diff
+   after `make db-update` looked like a behaviour change and was not.
+
+   This cuts both ways: #146's first dry run showed 44 changed rows that the
+   change could not possibly cause, and chasing that discrepancy is what found a
+   larger defect. **An unexplained diff is a lead, not noise.**
+
+3. **No daemon restart is needed — and there is no daemon to restart.** This
+   step used to say "restart the live signal-watch daemon"; that was false, and
+   disproving it cost a full verification cycle in #150. The
+   `buibui-signal-watch.service`/`.timer` pair in `systemctl --user` belongs to
+   the **crypto parent** (`WorkingDirectory=/home/kng/repo/buibui-moon-trader-bot`,
+   `DATA_SOURCE=binance`). Wifey dispatch is the manual one-shot
+   `CATCH_UP=1 make go-live`, and `analytics/signal_runner.py:195` loads
+   `confidence_ratings` *"once at startup"* — which, for a one-shot process, is
+   every run. **A ratings change is picked up by the next `make go-live`
+   automatically.**
+
+   Ratings also do **not** drive `min_avg_r`, as this step previously claimed.
+   They become `confidence_override` → the per-signal star score, which feeds
+   the `conflict_resolver` gate (`scanner.py:568` picks the side with higher
+   confidence), the DOW soft-suppress step, the alert's displayed stars, and
+   `confidence_at_fire` in the outcome ledger. `min_avg_r` is an independent
+   threshold from the config's `[backtest]` block. There is no `min_confidence`
+   gate anywhere in the tree.
+
+4. **Commit** the golden file changes alongside whatever change motivated the
+   update — they belong in the same PR, *unless* step 2 showed they are fixture
+   drift.
+
+**A recalibrate can legitimately change ratings with no backtest re-run.**
+`db-update-recalibrate` reads whatever is already in `backtest_runs`, so running
+it alone — or running the full chain twice — can move stars without any detector
+or config change. That is expected, not a bug, and it is why the sweep must stay
+**deterministic**: with `conflict_resolver` off, two consecutive passes differ on
+0 of 160 rows, so a real rating change is distinguishable from a re-run artifact.
+Flipping `conflict_resolver` on inside the sweep destroys that property (it reads
+the table the sweep writes) and is settled — see CLAUDE.md.
 
 ## When NOT to use
 
