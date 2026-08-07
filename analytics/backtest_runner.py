@@ -574,6 +574,7 @@ def _collect_sweep_results(
                 cost_model=cfg.cost_model.to_json()
                 if cfg.cost_model is not None
                 else None,
+                origin="sweep",
             )
             upsert_backtest_trades(conn, bt, run_id)
 
@@ -944,6 +945,7 @@ def run_backtest_cmd(
                 fee_pct=fee_pct,
                 day_filter="off",
                 universe_policy=universe.to_json(),
+                origin="single_run",
             )
             upsert_backtest_trades(conn, bt_result, run_id)
             print(f"\n  Results saved to DB (run_id={run_id})")

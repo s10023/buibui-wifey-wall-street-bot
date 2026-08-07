@@ -633,6 +633,13 @@ def run_scan_cycle(
                 )
 
                 if backtest_cfg.cache_enabled:
+                    # Deliberately the DEFAULT origin: this run_id is only a
+                    # `backtest_cache` key, and that table has exactly one
+                    # writer (this scanner), so it cannot collide with anyone.
+                    # Do NOT "align" it with the origin="live_gate" used for
+                    # the backtest_runs write below — that write needs a
+                    # distinct identity because backtest_runs has four writers;
+                    # this one would just cold-start the cache for no gain.
                     run_id = _backtest_run_id(
                         symbol,
                         tf,
@@ -1247,6 +1254,7 @@ def run_scan_cycle(
                     cost_model=backtest_cfg.cost_model.to_json()
                     if backtest_cfg.cost_model is not None
                     else None,
+                    origin="live_gate",
                 )
             except Exception:
                 logger.exception(

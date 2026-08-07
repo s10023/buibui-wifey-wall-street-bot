@@ -173,6 +173,7 @@ def run_backtest_endpoint(
         "off",
         volume_suppress=None,
         universe_policy=load_universe_policy().to_json(),
+        origin="web",
     )
     upsert_backtest_trades(db, result, run_id)
     return _result_to_response(result)
