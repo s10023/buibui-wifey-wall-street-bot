@@ -304,9 +304,26 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
             h_median         DOUBLE,
             h_long_median    DOUBLE,
             h_short_median   DOUBLE,
-            cached_at_ms     BIGINT  NOT NULL
+            cached_at_ms     BIGINT  NOT NULL,
+            -- Per-direction sd of pnl_r, for the EV gate's significance test
+            -- (2026-08-07). Declared LAST and appended by the migration below so
+            -- fresh and migrated DBs share one physical column order —
+            -- put_backtest_cache's INSERT is positional, same constraint as
+            -- backtest_runs.universe_policy / cost_model above.
+            r_long_sd        DOUBLE,
+            r_short_sd       DOUBLE
         )
     """)
+    existing_cache_cols = {
+        row[0]
+        for row in conn.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'backtest_cache'"
+        ).fetchall()
+    }
+    for col, dtype in [("r_long_sd", "DOUBLE"), ("r_short_sd", "DOUBLE")]:
+        if col not in existing_cache_cols:
+            conn.execute(f"ALTER TABLE backtest_cache ADD COLUMN {col} {dtype}")
     # Edge-hunt #4 (PEAD-lite): free EDGAR earnings facts. Brand-new table touched
     # by nothing legacy, so it lives in CREATE TABLE with no positional-INSERT
     # hazard; read-only by every audit path after the one-shot backfill populates it.

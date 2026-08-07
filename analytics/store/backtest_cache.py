@@ -45,10 +45,26 @@ class BacktestSnapshot:
     h_median: float | None = None
     h_long_median: float | None = None
     h_short_median: float | None = None
+    # Per-direction sd of pnl_r (2026-08-07). NULL on rows cached before the
+    # column existed, and on cells with fewer than 2 directional trades — both
+    # mean "no dispersion estimate", which the EV gate treats as abstain. The
+    # cache is keyed per candle, so pre-migration rows age out within a bar.
+    r_long_sd: float | None = None
+    r_short_sd: float | None = None
 
     @property
     def closed_trades(self) -> list[None]:
         return [None] * self.n_closed
+
+    @property
+    def long_pnl_sd(self) -> float | None:
+        """Mirrors `BacktestResult.long_pnl_sd` so the EV gate reads one interface."""
+        return self.r_long_sd
+
+    @property
+    def short_pnl_sd(self) -> float | None:
+        """Mirrors `BacktestResult.short_pnl_sd` so the EV gate reads one interface."""
+        return self.r_short_sd
 
     @property
     def long_closed_trades(self) -> list[None]:
@@ -139,7 +155,8 @@ def get_backtest_cache(
         "r_win_rate, r_avg, r_total, "
         "n_long_win, r_long_win_rate, r_long_avg, r_long_total, "
         "n_short_win, r_short_win_rate, r_short_avg, r_short_total, "
-        "h_median, h_long_median, h_short_median "
+        "h_median, h_long_median, h_short_median, "
+        "r_long_sd, r_short_sd "
         "FROM backtest_cache WHERE cache_key = ?",
         [cache_key],
     ).fetchone()
@@ -169,6 +186,8 @@ def get_backtest_cache(
         h_median=float(row[20]) if row[20] is not None else None,
         h_long_median=float(row[21]) if row[21] is not None else None,
         h_short_median=float(row[22]) if row[22] is not None else None,
+        r_long_sd=float(row[23]) if row[23] is not None else None,
+        r_short_sd=float(row[24]) if row[24] is not None else None,
     )
 
 
@@ -190,7 +209,7 @@ def put_backtest_cache(
     now_ms = int(time.time() * 1000)
     conn.execute(
         "INSERT OR REPLACE INTO backtest_cache VALUES "
-        "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [
             cache_key,
             run_id,
@@ -219,6 +238,9 @@ def put_backtest_cache(
             result.long_median_duration_h,
             result.short_median_duration_h,
             now_ms,
+            # Must stay last, matching the DDL/migration column order.
+            result.long_pnl_sd,
+            result.short_pnl_sd,
         ],
     )
 

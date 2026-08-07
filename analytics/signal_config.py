@@ -255,6 +255,19 @@ class BacktestFilterConfig:
     # direction only. Falls back to min_avg_r when None.
     min_avg_r_long: float | None = None
     min_avg_r_short: float | None = None
+    # Significance requirement on the BLOCK decision (2026-08-07). The gate
+    # suppresses only when the directional avg_r falls below its threshold by
+    # more than this many standard errors — i.e. when the shortfall is
+    # distinguishable from zero, not merely negative. Default 1.64 = one-sided
+    # 95%. Measured on the post-#150 population, a bare `avg_r < threshold` test
+    # made 43% (signal_watch) / 55% (weekdays) of blocks on evidence
+    # indistinguishable from zero, and a block destroys the ledger row too.
+    # NOT multiplicity-corrected, deliberately: BH guards against SELECTING a
+    # winner from many candidates (the sweep's problem); this gate makes an
+    # independent per-leg call, and correcting over ~200-400 cells drives the
+    # critical value to z~3.5, at which a fail-open gate blocks ~nothing.
+    # 0.0 restores the legacy point-estimate behaviour.
+    min_avg_r_z: float = 1.64
     # Persist computed backtest results to backtest_runs table (default on)
     save_results: bool = True
     # Taker fee per leg (e.g. 0.0005 = 0.05%); applied to each backtest trade
@@ -639,6 +652,10 @@ def load_signal_config(path: str | Path) -> SignalWatchConfig:
             if raw_bt.get("min_avg_r_short") is not None
             else None
         ),
+        # Default matches the dataclass (1.64). Deliberately NOT defaulted off:
+        # T6 shipped LiveParityConfig default-off "to be flipped later" and it
+        # stayed off for ~2.5 months (#149). A behaviour change ships on.
+        min_avg_r_z=float(raw_bt.get("min_avg_r_z", 1.64)),
         save_results=bool(raw_bt.get("save_results", True)),
         # [backtest].fee_pct takes precedence; falls back to top-level fee_pct
         fee_pct=float(raw_bt.get("fee_pct", data.get("fee_pct", 0.0))),

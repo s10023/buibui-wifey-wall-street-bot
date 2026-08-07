@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import statistics
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -194,6 +195,27 @@ class BacktestResult:
     def short_avg_r(self) -> float | None:
         r_values = [t.pnl_r for t in self.short_closed_trades if t.pnl_r is not None]
         return sum(r_values) / len(r_values) if r_values else None
+
+    @property
+    def long_pnl_sd(self) -> float | None:
+        """Sample sd of long `pnl_r`. None below 2 trades (no dispersion estimate).
+
+        Added 2026-08-07 for the EV gate's significance test: the gate blocks only
+        when a negative `avg_r` is distinguishable from zero, which needs the
+        dispersion of the same population `long_avg_r` averages over. Mirrored on
+        `BacktestSnapshot` (cached path) as a stored column, since a snapshot has
+        no trades — a two-point approximation from win rate was measured and
+        rejected (median error 10.6%, p90 100%, flipping 28.5% of gate verdicts;
+        `docs/plans/scripts/sd_approx_check.py`).
+        """
+        r_values = [t.pnl_r for t in self.long_closed_trades if t.pnl_r is not None]
+        return statistics.stdev(r_values) if len(r_values) >= 2 else None
+
+    @property
+    def short_pnl_sd(self) -> float | None:
+        """Sample sd of short `pnl_r`. None below 2 trades. See `long_pnl_sd`."""
+        r_values = [t.pnl_r for t in self.short_closed_trades if t.pnl_r is not None]
+        return statistics.stdev(r_values) if len(r_values) >= 2 else None
 
     @property
     def avg_r(self) -> float:
