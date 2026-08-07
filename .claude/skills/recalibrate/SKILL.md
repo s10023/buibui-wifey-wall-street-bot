@@ -39,6 +39,12 @@ the live signal filter's quality gate.
   conflict resolver. Dedup is "latest per (strategy, tf, symbol)", so those newer rows used
   to *supersede* the competed sweep rows: 42 of 316 inputs on `signal_watch` (13%), 15 of
   22 declared cells, five of them landing on the wrong side of zero.
+- **The same two writers also shared a `run_id`** until 2026-08-07, so the live gate's
+  `INSERT OR REPLACE` *overwrote* the sweep row outright — meaning the filter above could
+  not recover the competed measurement, it dropped that symbol. `signal_watch` was rated on
+  263 of 312 sweep rows (`trend_day × 4h` on 3 of 13 symbols). Each writer now stamps an
+  `origin`, and one `make db-update` restores the full grid. **If a cell's ratings look
+  thin, check its symbol count before its avg_r.**
 
 Run `make check-dead-surfaces` after applying — it fails on any orphan that survived.
 

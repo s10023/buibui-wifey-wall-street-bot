@@ -30,11 +30,24 @@ def _backtest_run_id(
     adr_exempt: bool = False,
     atr_sl_floor: bool = False,
     cost_model: str | None = None,
+    origin: str = "sweep",
 ) -> str:
     """Return a deterministic 16-char hex ID for a backtest param combination.
 
     Optional suffixes are appended only when set so existing run_ids are
     unchanged (None = flag not applied, same hash as before these columns).
+
+    ``origin`` identifies the *writer*, not the parameters. It exists because a
+    param combination does not uniquely identify a measurement: the sweep
+    (`_collect_sweep_results`) and the live EV gate (`signal.scanner`) can
+    produce the same `symbol|timeframe|strategy|days|sl_pct|tp_r|fee_pct|
+    day_filter` tuple while measuring completely different things — the sweep
+    runs every configured strategy over the config window, the live gate runs
+    one strategy over the scan window. Sharing a run_id made
+    `INSERT OR REPLACE` *overwrite* one writer's row with the other's instead
+    of accumulating both, silently deleting sweep measurements that
+    `confidence_ratings` is built from. `"sweep"` is the legacy value and adds
+    no suffix, so every historical sweep run_id is unchanged.
     """
     key = (
         f"{symbol}|{timeframe}|{strategy}|{days}|{sl_pct}|{tp_r}|{fee_pct}|{day_filter}"
@@ -65,6 +78,8 @@ def _backtest_run_id(
         key += "|atr_floor"
     if cost_model is not None:
         key += f"|cost:{cost_model}"
+    if origin != "sweep":
+        key += f"|origin:{origin}"
     return hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
@@ -83,11 +98,21 @@ def upsert_backtest_run(
     volume_suppress: bool | None = None,
     universe_policy: str | None = None,
     cost_model: str | None = None,
+    *,
+    origin: str,
 ) -> str:
     """Insert or replace a backtest aggregate result row.
 
     result must be a BacktestResult instance.
     Returns the run_id so the caller can link backtest_trades rows.
+
+    ``origin`` is a REQUIRED keyword so mypy forces every call site to say
+    which writer it is. `backtest_runs` has four writers and the row key is
+    derived from parameters alone, so two writers measuring different things
+    over different windows used to collide and overwrite each other — see
+    `_backtest_run_id`. Making this required (rather than defaulting it) is the
+    same enforcement `adr_gate_applies(timeframe)` uses: a new call site cannot
+    silently inherit another writer's identity.
     """
     run_id = _backtest_run_id(
         result.symbol,
@@ -101,6 +126,7 @@ def upsert_backtest_run(
         adr_suppress_threshold,
         volume_suppress,
         cost_model=cost_model,
+        origin=origin,
     )
     row: dict[str, Any] = {
         "run_id": run_id,

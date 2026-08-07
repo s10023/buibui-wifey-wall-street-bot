@@ -479,6 +479,7 @@ _BT_PARAMS: dict[str, Any] = {
     "fee_pct": 0.0,
     "day_filter": "off",
     "sweep_id": None,
+    "origin": "sweep",
 }
 
 
@@ -862,6 +863,105 @@ class TestBacktestCache:
         assert not bool(snap.short_closed_trades)
 
 
+class TestBacktestRunIdOrigin:
+    """A param combination does not uniquely identify a MEASUREMENT.
+
+    The sweep and the live EV gate can produce identical
+    `symbol|timeframe|strategy|days|sl_pct|tp_r|fee_pct|day_filter` tuples
+    while measuring different things over different windows. They shared a
+    run_id, so `INSERT OR REPLACE` made the live gate overwrite the sweep row
+    in place (flipping `sweep_id` to NULL) instead of accumulating alongside
+    it — deleting the very rows `confidence_ratings` is built from.
+    """
+
+    def test_sweep_origin_keeps_legacy_hash(self) -> None:
+        """Every historical sweep run_id must survive this change untouched."""
+        from analytics.data_store import _backtest_run_id
+
+        legacy = _backtest_run_id("SPY", "4h", "bos", 90, 0.02, 2.0, 0.0, "off")
+        explicit = _backtest_run_id(
+            "SPY", "4h", "bos", 90, 0.02, 2.0, 0.0, "off", origin="sweep"
+        )
+        assert legacy == explicit
+
+    def test_live_gate_origin_differs_from_sweep(self) -> None:
+        from analytics.data_store import _backtest_run_id
+
+        sweep = _backtest_run_id("SPY", "4h", "bos", 90, 0.02, 2.0, 0.0, "tue_thu")
+        live = _backtest_run_id(
+            "SPY", "4h", "bos", 90, 0.02, 2.0, 0.0, "tue_thu", origin="live_gate"
+        )
+        assert sweep != live
+
+    def test_distinct_origins_do_not_overwrite_each_other(
+        self, conn: duckdb.DuckDBPyConnection
+    ) -> None:
+        """The regression: a live-gate write must not destroy the sweep row.
+
+        Identical params, identical `day_filter` — exactly what the live
+        scanner passes. Before the `origin` discriminator this left ONE row,
+        with `sweep_id` NULL and the live gate's numbers.
+        """
+        from analytics.data_store import upsert_backtest_run
+
+        params: dict[str, Any] = {
+            "days": 365,
+            "data_start_ms": 0,
+            "data_end_ms": 1,
+            "sl_pct": 0.02,
+            "tp_r": 2.0,
+            "fee_pct": 0.0,
+            "day_filter": "tue_thu",
+        }
+        swept = BacktestResult(symbol="SPY", timeframe="4h", strategy="bos")
+        upsert_backtest_run(conn, swept, sweep_id="sweep-1", origin="sweep", **params)
+        live = BacktestResult(symbol="SPY", timeframe="4h", strategy="bos")
+        upsert_backtest_run(conn, live, sweep_id=None, origin="live_gate", **params)
+
+        rows = conn.execute(
+            "SELECT sweep_id FROM backtest_runs WHERE symbol = 'SPY' "
+            "AND timeframe = '4h' AND strategy = 'bos'"
+        ).fetchall()
+        assert len(rows) == 2, "live-gate write overwrote the sweep row"
+        assert {r[0] for r in rows} == {None, "sweep-1"}
+
+    def test_sweep_row_survives_repeated_live_writes(
+        self, conn: duckdb.DuckDBPyConnection
+    ) -> None:
+        """The live gate writes every scan cycle; the sweep row must persist."""
+        from analytics.data_store import upsert_backtest_run
+
+        params: dict[str, Any] = {
+            "days": 365,
+            "data_start_ms": 0,
+            "data_end_ms": 1,
+            "sl_pct": 0.02,
+            "tp_r": 2.0,
+            "fee_pct": 0.0,
+            "day_filter": "weekdays",
+        }
+        upsert_backtest_run(
+            conn,
+            BacktestResult(symbol="AAPL", timeframe="1d", strategy="doji"),
+            sweep_id="sweep-9",
+            origin="sweep",
+            **params,
+        )
+        for _ in range(5):
+            upsert_backtest_run(
+                conn,
+                BacktestResult(symbol="AAPL", timeframe="1d", strategy="doji"),
+                sweep_id=None,
+                origin="live_gate",
+                **params,
+            )
+
+        surviving = conn.execute(
+            "SELECT count(*) FROM backtest_runs WHERE sweep_id = 'sweep-9'"
+        ).fetchone()
+        assert surviving is not None and surviving[0] == 1
+
+
 class TestBacktestRunIdCostModel:
     def test_none_cost_model_keeps_legacy_hash(self) -> None:
         from analytics.data_store import _backtest_run_id
@@ -902,6 +1002,7 @@ class TestBacktestRunIdCostModel:
             fee_pct=0.0,
             day_filter="off",
             cost_model='{"impact_coef":1.0}',
+            origin="sweep",
         )
         row = conn.execute(
             "SELECT cost_model FROM backtest_runs WHERE run_id = ?", [run_id]
