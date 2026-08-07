@@ -364,9 +364,22 @@ class TestEvGate:
     combined count — into the test body, encoding the bug as the expectation.
     """
 
-    def _cfg(self, min_trades: int = 5, min_avg_r: float = 0.0) -> BacktestFilterConfig:
+    def _cfg(
+        self,
+        min_trades: int = 5,
+        min_avg_r: float = 0.0,
+        min_avg_r_z: float = 0.0,
+    ) -> BacktestFilterConfig:
+        """Default z=0.0 keeps the pre-significance tests testing what they name.
+
+        The shipped default is 1.64; the significance tests below set it explicitly.
+        """
         return BacktestFilterConfig(
-            mode="hard", days=90, min_trades=min_trades, min_avg_r=min_avg_r
+            mode="hard",
+            days=90,
+            min_trades=min_trades,
+            min_avg_r=min_avg_r,
+            min_avg_r_z=min_avg_r_z,
         )
 
     def test_low_winrate_positive_avg_r_passes(self) -> None:
@@ -505,6 +518,118 @@ class TestEvGate:
             backtest_cfg=self._cfg(min_trades=5),
         ), "snapshot long leg has 1 trade — abstain, not block"
 
+    # -- significance requirement on the block decision (min_avg_r_z) ---------
+
+    def test_negative_but_insignificant_avg_r_is_not_blocked(self) -> None:
+        """A shortfall inside the noise must abstain, not block.
+
+        3 wins / 9 losses at tp_r=2 → avg_r −0.25, sd 1.357, SE 0.392, z 0.64.
+        Below 1.64, so the gate must not suppress — and must not destroy the
+        ledger row, which is the real cost of a wrong block.
+        """
+        result = _make_result_with_avg_r(
+            long_wins=3, long_losses=9, short_wins=0, short_losses=0, tp_r=2.0
+        )
+        assert result.long_avg_r is not None and result.long_avg_r < 0.0
+        assert passes_ev_gate(
+            result,
+            direction="long",
+            timeframe="4h",
+            backtest_cfg=self._cfg(min_trades=5, min_avg_r_z=1.64),
+        )
+
+    def test_negative_and_significant_avg_r_is_blocked(self) -> None:
+        """1 win / 20 losses at tp_r=2 → avg_r −0.857, z ≈ 6.0. Must block."""
+        result = _make_result_with_avg_r(
+            long_wins=1, long_losses=20, short_wins=0, short_losses=0, tp_r=2.0
+        )
+        assert not passes_ev_gate(
+            result,
+            direction="long",
+            timeframe="4h",
+            backtest_cfg=self._cfg(min_trades=5, min_avg_r_z=1.64),
+        )
+
+    def test_z_zero_restores_point_estimate_behaviour(self) -> None:
+        """`min_avg_r_z = 0.0` is the documented escape hatch to the old rule."""
+        result = _make_result_with_avg_r(
+            long_wins=3, long_losses=9, short_wins=0, short_losses=0, tp_r=2.0
+        )
+        cfg_legacy = self._cfg(min_trades=5, min_avg_r_z=0.0)
+        cfg_sig = self._cfg(min_trades=5, min_avg_r_z=1.64)
+        assert not passes_ev_gate(
+            result, direction="long", timeframe="4h", backtest_cfg=cfg_legacy
+        )
+        assert passes_ev_gate(
+            result, direction="long", timeframe="4h", backtest_cfg=cfg_sig
+        )
+
+    def test_zero_variance_blocks_only_on_a_long_enough_run(self) -> None:
+        """All-identical trades break the t-test; the run length carries the evidence."""
+        cfg = self._cfg(min_trades=2, min_avg_r_z=1.64)
+        long_run = _make_result_with_avg_r(
+            long_wins=0, long_losses=5, short_wins=0, short_losses=0, tp_r=2.0
+        )
+        short_run = _make_result_with_avg_r(
+            long_wins=0, long_losses=3, short_wins=0, short_losses=0, tp_r=2.0
+        )
+        assert long_run.long_pnl_sd == 0.0 and short_run.long_pnl_sd == 0.0
+        assert not passes_ev_gate(
+            long_run, direction="long", timeframe="4h", backtest_cfg=cfg
+        ), "5 straight full losses is evidence"
+        assert passes_ev_gate(
+            short_run, direction="long", timeframe="4h", backtest_cfg=cfg
+        ), "3 identical trades is not"
+
+    def test_snapshot_uses_its_stored_sd(self) -> None:
+        """The cached path carries sd as a column; the same rule must apply there."""
+        cfg = self._cfg(min_trades=5, min_avg_r_z=1.64)
+        significant = BacktestSnapshot(
+            symbol="AAPL",
+            timeframe="4h",
+            strategy="fvg",
+            n_closed=21,
+            n_long=21,
+            r_long_avg=-0.857,
+            r_long_sd=0.6547,
+        )
+        noisy = BacktestSnapshot(
+            symbol="AAPL",
+            timeframe="4h",
+            strategy="fvg",
+            n_closed=12,
+            n_long=12,
+            r_long_avg=-0.25,
+            r_long_sd=1.357,
+        )
+        assert not passes_ev_gate(
+            significant, direction="long", timeframe="4h", backtest_cfg=cfg
+        )
+        assert passes_ev_gate(noisy, direction="long", timeframe="4h", backtest_cfg=cfg)
+
+    def test_snapshot_without_sd_abstains(self) -> None:
+        """A row cached before the sd column existed must fail OPEN, not block.
+
+        These age out within a candle (the cache key includes last_candle_ts), so
+        the degraded window is one bar — but during it the gate must not block on
+        a dispersion it cannot see.
+        """
+        stale = BacktestSnapshot(
+            symbol="AAPL",
+            timeframe="4h",
+            strategy="fvg",
+            n_closed=21,
+            n_long=21,
+            r_long_avg=-0.857,
+            r_long_sd=None,
+        )
+        assert passes_ev_gate(
+            stale,
+            direction="long",
+            timeframe="4h",
+            backtest_cfg=self._cfg(min_trades=5, min_avg_r_z=1.64),
+        )
+
     def test_per_tf_min_trades_is_honoured(self) -> None:
         """The guard reads the per-timeframe ladder, not the global fallback."""
         result = _make_result_with_avg_r(
@@ -516,6 +641,10 @@ class TestEvGate:
             min_trades=12,
             min_trades_per_tf={"4h": 2, "1d": 10},
             min_avg_r=0.0,
+            # z=0.0 isolates the ladder: these 3 trades are identical, so at the
+            # shipped default (1.64) the zero-variance run-length rule would
+            # abstain and this would stop testing the per-TF lookup.
+            min_avg_r_z=0.0,
         )
         # 3 long trades: above 4h's 2 → evaluated (and blocked); below 1d's 10.
         assert not passes_ev_gate(

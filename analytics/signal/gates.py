@@ -1,6 +1,7 @@
 """Signal gates: ADR consumption filter, per-strategy ADR exemption, EV gate."""
 
 import logging
+import math
 from collections.abc import Callable, Mapping
 
 import pandas as pd
@@ -13,6 +14,14 @@ from analytics.store.backtest_cache import BacktestSnapshot
 from analytics.strategies import STRATEGY_REGISTRY
 
 logger = logging.getLogger(__name__)
+
+# A zero-variance directional sample (every trade returned the same R, almost
+# always a run of full stop-outs at -1R) breaks the t-statistic — the SE is 0 and
+# z is infinite. The run is still evidence, but only once it is long enough:
+# measured on the post-#150 blocked population, 12 of 207 `signal_watch` blocks
+# and 74 of 384 on weekdays were zero-variance, and only 6 and 4 of those had 5+
+# trades behind them. Below this, abstain.
+_ZERO_VARIANCE_MIN_TRADES = 5
 
 
 def passes_ev_gate(
@@ -53,9 +62,11 @@ def passes_ev_gate(
     """
     if result is None:
         return True  # no data — don't suppress
+    sd: float | None
     if direction == "long":
         avg_r = result.long_avg_r
         n_closed = len(result.long_closed_trades)
+        sd = result.long_pnl_sd
         threshold = (
             backtest_cfg.min_avg_r_long
             if backtest_cfg.min_avg_r_long is not None
@@ -64,20 +75,40 @@ def passes_ev_gate(
     elif direction == "short":
         avg_r = result.short_avg_r
         n_closed = len(result.short_closed_trades)
+        sd = result.short_pnl_sd
         threshold = (
             backtest_cfg.min_avg_r_short
             if backtest_cfg.min_avg_r_short is not None
             else backtest_cfg.min_avg_r
         )
     else:
+        # Defensive branch — live SignalEvents are always long or short. No
+        # combined sd is stored on the cached snapshot, so leave sd None and
+        # let the significance step abstain rather than add a third column for
+        # a path that does not fire.
         avg_r = result.avg_r
         n_closed = len(result.closed_trades)
+        sd = None
         threshold = backtest_cfg.min_avg_r
     if n_closed < backtest_cfg.effective_min_trades(timeframe):
         return True  # not enough trades IN THIS DIRECTION — noise
     if avg_r is None:
         return True  # no directional data — don't suppress
-    return avg_r >= threshold
+    if avg_r >= threshold:
+        return True
+    # avg_r is below its threshold. Block only when the SHORTFALL is
+    # distinguishable from zero — see `min_avg_r_z` for why, and why this is
+    # not multiplicity-corrected.
+    if backtest_cfg.min_avg_r_z <= 0.0:
+        return False  # legacy point-estimate behaviour, opt-in
+    if sd is None:
+        return True  # no dispersion estimate (n<2, or a pre-migration cache row)
+    if sd == 0.0:
+        # Every trade in this direction returned the same R — degenerate for a
+        # t-test, but an unbroken run is evidence once it is long enough.
+        return n_closed < _ZERO_VARIANCE_MIN_TRADES
+    z = (threshold - avg_r) / (sd / math.sqrt(n_closed))
+    return z < backtest_cfg.min_avg_r_z
 
 
 def _apply_conflict_resolver(

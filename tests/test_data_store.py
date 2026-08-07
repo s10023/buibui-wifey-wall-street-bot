@@ -773,6 +773,48 @@ class TestBacktestCache:
         put_backtest_cache(conn, "key1", "run1", 100_000, result)
         assert get_backtest_cache(conn, "key2") is None
 
+    def test_directional_sd_round_trips(self, conn: duckdb.DuckDBPyConnection) -> None:
+        """The EV gate's significance test reads sd off the cached snapshot.
+
+        Without this the gate silently degrades to abstain on every cache hit —
+        which is the normal steady-state path, so the gate would stop biting
+        without any error. Added with the sd columns, 2026-08-07.
+        """
+        result = _make_result()
+        put_backtest_cache(conn, "sd_key", "run_sd", 100_000, result)
+        snap = get_backtest_cache(conn, "sd_key")
+        assert snap is not None
+        assert result.long_pnl_sd is not None
+        assert snap.r_long_sd == pytest.approx(result.long_pnl_sd)
+        # `long_pnl_sd` is the interface the gate reads — it must agree on both
+        # types, not merely be present on each.
+        assert snap.long_pnl_sd == pytest.approx(result.long_pnl_sd)
+
+    def test_migration_adds_sd_columns_to_a_preexisting_cache(
+        self, conn: duckdb.DuckDBPyConnection
+    ) -> None:
+        """A DB created before the sd columns must gain them, and read back NULL.
+
+        NULL is the abstain signal, so an un-refreshed row must not block. The
+        cache key includes last_candle_ts, so real rows age out within a bar.
+        """
+
+        def cache_cols() -> set[str]:
+            return {
+                row[0]
+                for row in conn.execute(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name = 'backtest_cache'"
+                ).fetchall()
+            }
+
+        conn.execute("ALTER TABLE backtest_cache DROP COLUMN r_long_sd")
+        conn.execute("ALTER TABLE backtest_cache DROP COLUMN r_short_sd")
+        assert "r_long_sd" not in cache_cols()
+
+        init_schema(conn)  # re-run migrations, as a real process does at startup
+        assert {"r_long_sd", "r_short_sd"} <= cache_cols()
+
     def test_prune_removes_old_entries(self, conn: duckdb.DuckDBPyConnection) -> None:
         result = _make_result()
         put_backtest_cache(conn, "new_key", "run_new", 100_000, result)
@@ -784,7 +826,9 @@ class TestBacktestCache:
             "n_closed, n_long, n_short, n_win, n_loss, r_win_rate, r_avg, r_total, "
             "n_long_win, r_long_win_rate, r_long_avg, r_long_total, "
             "n_short_win, r_short_win_rate, r_short_avg, r_short_total, "
-            "h_median, h_long_median, h_short_median, ? "
+            "h_median, h_long_median, h_short_median, ?, "
+            # Positional INSERT — must track the DDL's trailing columns.
+            "r_long_sd, r_short_sd "
             "FROM backtest_cache WHERE cache_key = 'new_key'",
             [old_ms],
         )
