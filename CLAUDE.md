@@ -229,6 +229,30 @@ check where a filter sits relative to the persistence call before judging its co
 `docs/audits/2026-08-07-ev-gate-directional-sample-guard.md`. Script:
 `docs/plans/scripts/ev_gate_min_trades_diff.py`.
 
+**A threshold applied to a POINT ESTIMATE is a coin flip with extra steps.** `min_avg_r = 0.0`
+made the live EV gate suppress any negative directional `avg_r` regardless of dispersion: measured
+with the real per-cell, per-direction sd, **84 of 207** blocked `signal_watch` legs (41%) and
+**141 of 384** on weekdays sat at **|t| < 1** — indistinguishable from zero. A cell at −0.006R was
+blocked exactly as hard as one at −1.01R, and since a blocked leg never reaches
+`signal_alert_outcomes`, each was a destroyed ledger row. Fixed 2026-08-07 by `min_avg_r_z`
+(default **1.64**, one-sided 95%): the shortfall must be that many standard errors below the
+threshold. `min_avg_r` itself is unchanged, which is why this is *correctness* and not the frozen
+threshold-selection — it changes the decision RULE, not the line. Blocks **207 → 101** and
+**384 → 158**, **zero** newly blocked. Three transferable rules: **multiplicity correction belongs
+where SELECTION happens** — BH is right for the sweep (#142 ran 17 cells, 1 survived; #143 ran 5,
+2 did) and wrong for a per-leg operational gate, since Bonferroni over ~300 cells gives z ≈ 3.5, at
+which a **fail-open** gate blocks almost nothing and the "correction" silently disables the thing
+it was meant to sharpen (an earlier draft of this very fix recommended BH; it was withdrawn before
+implementation); **measure the cheap alternative against a bar you wrote down FIRST** — recovering
+sd from win rate under a two-point payoff looked plausible and failed at median **10.6%** error,
+p90 **100%**, flipping **28.5%** of gate verdicts, which is why `backtest_cache` took the schema
+change instead; and **when a cached type shadows a computed one, a new statistic must be added to
+BOTH** — `BacktestSnapshot` is the *normal* steady-state path (cache hit on the same closed
+candle), so omitting it would have degraded the gate on the hot path with no error, leaving
+suppression dependent on cache state. Audit:
+`docs/audits/2026-08-07-ev-gate-significance-test.md`. Scripts:
+`docs/plans/scripts/ev_gate_significance_impact.py`, `sd_approx_check.py`.
+
 **Ingest level-parsing fails SILENTLY, and every instance so far was found by running the code, not
 by reading it.** Full narratives in `context/tools.md`; the standing rules:
 

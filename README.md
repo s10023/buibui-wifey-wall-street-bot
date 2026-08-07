@@ -531,6 +531,9 @@ min_trades_4h  = 5      # per-TF overrides; calibrated from DB p25 directional c
 min_trades_1d  = 2
 min_trades_1wk = 1
 min_avg_r = 0.0         # hard mode: suppress alert if directional avg_r < this (positive EV gate)
+min_avg_r_z = 1.64      # ...and only when the shortfall is this many standard errors below, i.e.
+                        # distinguishable from zero. 0.0 = block on any shortfall (legacy). The
+                        # gate FAILS OPEN, so a larger min_trades suppresses LESS, not more.
 fee_pct = 0.0005        # flat fee applied to inline backtest (falls back to top-level fee_pct)
 ```
 

@@ -113,11 +113,17 @@ min_trades_4h = 5
 min_trades_1d = 2
 min_trades_1wk = 1
 min_avg_r = 0.0          # suppress signals with directional avg_r below this threshold
+min_avg_r_z = 1.64       # ...and only when the shortfall is significant (0.0 = legacy rule)
 # volume_suppress = false  # global fallback; per-strategy override takes precedence
 # volume_spike_boost = false
 ```
 
 **Note**: `filter_threshold` was renamed to `min_avg_r`. Update any old TOML that still has the old key.
+
+**Both sample-size knobs fail OPEN.** `min_trades` and `min_avg_r_z` each cause the gate to
+*abstain* when unmet, so raising either makes the daemon dispatch **more**, not less — at
+`min_trades = 20` the `1wk` gate reaches 100% bypass, i.e. off. Check which way the knob turns
+before tuning it.
 
 ## Stopping the daemon
 
