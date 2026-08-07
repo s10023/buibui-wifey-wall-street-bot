@@ -155,6 +155,40 @@ label and the cache key while the DataFrame stayed 90 days. Find who populates t
 Fixed 2026-08-06 by a single `bt_days` feeding both surfaces. Audit:
 `docs/audits/2026-08-06-live-ev-gate-window.md`.
 
+**A row key derived from PARAMETERS does not identify a MEASUREMENT, and `INSERT OR REPLACE` turns
+that into silent data loss.** `backtest_runs` has **four** writers; `_backtest_run_id` hashed only
+the param tuple, and the live EV gate (`scanner.py:1229`) passes the config's real `days` **and**
+`day_filter` — so for any cell the daemon evaluated its run_id was **identical** to the sweep's and
+the daemon's single-strategy row *replaced* the competed sweep row in place, flipping `sweep_id` to
+NULL. The write's own comment says it accumulates "passively"; it did not accumulate, it replaced.
+The runner produced **312** rows for `signal_watch` (24 cells × 13 symbols, 0 skipped) and the table
+held **263** — 17 of 24 cells short, `trend_day × 4h` rated on **3 of 13** symbols. This also
+undercut #146: `sweep_id IS NOT NULL` cannot recover an overwritten row, it only **drops** it, and
+`weekdays` looked healthy (468 = 36 × 13 exactly) purely because it never runs live. Fixed
+2026-08-07 by an `origin` discriminator naming the *writer*; `"sweep"` adds no suffix so every
+historical run_id is unchanged, and `origin` is a **required** kwarg on `upsert_backtest_run` so
+mypy forces each call site to declare itself (same enforcement as `adr_gate_applies`). Three
+transferable rules: when a table has more than one writer the writer belongs in the **key**, since a
+provenance *column* cannot help if the loser is deleted before any query runs; **check a producer's
+output count against what the consumer stored** — every one of those 263 rows held correct values,
+only the count was wrong; and `backtest_cache` / `backtest_cross_tf_combos` were checked and have
+one writer each, so verify the blast radius rather than assuming it. Audit:
+`docs/audits/2026-08-07-backtest-runs-writer-collision.md`.
+
+**The backtest sweep that produces the star ratings has NEVER run the live-parity gate stack.**
+T6 (2026-05-26) wired all six live gates into the engine behind a **default-off** `LiveParityConfig`
+to keep the regression goldens byte-identical during the port — and nothing ever flipped it. No
+config declares `[backtest.live_parity]` (`git log -S live_parity -- config/` is empty) and
+`make wifey-backtest` passes no `--live-parity`, so `make db-update-backtest` measures the **raw**
+signal population while the daemon *gates dispatch* with all six and the research that sets policy
+runs gated (#143's audit: "live-parity all gates on"). Every measurement is ungated; only dispatch
+is gated. Measured 2026-08-07: turning the gates on drops closed trades **−41.6%** (`signal_watch`)
+and **−42.5%** (weekdays), and flips the sign of **6 of 24** and **8 of 36** cells — `eqh_eql × 1d`
++0.506 → **−0.126**, `order_block × 4h` −0.047 → **+0.239**, `hammer_hanging_man × 1wk` 20 closed
+trades → **0**. **Not fixed**: enabling them halves the sample, pushes many cells under `min_trades`,
+and moves the goldens by design, so it is a policy call. Script:
+`docs/plans/scripts/live_parity_sweep_diff.py`.
+
 **Ingest level-parsing fails SILENTLY, and every instance so far was found by running the code, not
 by reading it.** Full narratives in `context/tools.md`; the standing rules:
 

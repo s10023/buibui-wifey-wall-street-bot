@@ -451,7 +451,11 @@ Two of those filters exist because their absence failed silently until 2026-08-0
 - **Only sweep runs** (`sweep_id IS NOT NULL`). The live EV gate writes `backtest_runs`
   rows too — one per direction-leg, single strategy, no live-parity params — and since
   rows are deduplicated by recency those newer rows used to supersede the competed sweep
-  rows for that symbol.
+  rows for that symbol. As of 2026-08-07 the two writers are also keyed apart: their
+  `run_id` was identical, so the live gate's `INSERT OR REPLACE` **overwrote** the sweep
+  row rather than competing with it, and this filter then dropped the cell's symbols
+  instead of recovering them (`signal_watch` was rated on 263 of 312 rows). Every writer
+  now stamps an `origin`, so the rows accumulate side by side.
 
 `make check-dead-surfaces` fails on any orphaned rating that survives, and gates
 `make db-update`'s completion banner.
