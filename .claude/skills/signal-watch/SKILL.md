@@ -20,7 +20,10 @@ allowed-tools: "*"
 3. **Dedup**: two-layer cooldown in `signals/cooldown_store.py`:
    - Candle watermark per `(symbol, tf, strategy)` — never re-alerts same candle
    - Cooldown timer per `(symbol, strategy, direction)` — default 1h between alerts
-4. **Backtest filter**: runs mini-backtest per signal; suppresses if avg_r below threshold (hard mode)
+4. **Backtest filter** (`gates.py::passes_ev_gate`): runs mini-backtest per signal; suppresses if
+   avg_r below threshold (hard mode). The `min_trades` guard counts the **tested direction**, and
+   the gate **fails open** below it — so raising `min_trades` makes the gate suppress *less*, not
+   more. A suppressed signal is dropped before step 6, so it leaves no ledger row at all
 5. **Telegram**: sends formatted alert via `utils/telegram.py`
 6. **Persist**: saves passing signals to `signals` table in `analytics.db`
 
