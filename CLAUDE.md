@@ -142,8 +142,9 @@ Audit: `docs/audits/2026-08-06-adr-gate-timeframe-degeneracy.md`.
 dangerous than one that is ignored.** `[backtest] days = 365` reached neither the OHLCV cache nor
 `run_scan_cycle` — the daemon took the **90**-day signature default — while `scanner.py:1232` wrote
 **365** into `backtest_runs.days`, so the audit trail actively corroborated the wrong window.
-`_passes_ev_gate` returns `True` below `min_trades`, so the narrow window never failed; it silently
-made the hard gate a no-op on **71%** of direction-legs (`signal_watch`; 62% on weekdays), and on
+`passes_ev_gate` (now in `analytics/signal/gates.py`) returns `True` below `min_trades`, so the
+narrow window never failed; it silently made the hard gate a no-op on **71%** of direction-legs
+(`signal_watch`; 62% on weekdays), and on
 both configs the median cell sat *below its own `min_trades`*. Four of the five `bos × 1d` alerts
 dispatched 2026-08-05 sit at avg_r ≈ **−1.0** over 365 days and were never evaluated at all. Two
 transferable rules: cross-check a recorded parameter against a recorded **observable** —
@@ -200,6 +201,33 @@ iteration** — check data-flow direction before enabling one in the producer of
 unaffected — it reads ratings already written and never feeds its own output back in-cycle. Audit:
 `docs/audits/2026-08-07-live-parity-ratings-sweep.md`. Scripts:
 `docs/plans/scripts/live_parity_sweep_diff.py`, `live_parity_rating_fallout.py`.
+
+**A sample-size guard that counts a different population than the one it tests is not a weak guard,
+it is not a guard.** The live EV gate compared the **combined** closed-trade count against
+`min_trades` (`scanner.py:752`) and then tested a **directional** `avg_r` (`:757`), so a long
+verdict could rest entirely on short trades. Measured over the declared 365d window: **53 of 260**
+blocked legs on `signal_watch` (20%) and **45 of 429** on weekdays (10%) had fewer trades in the
+tested direction than the config demands, and **19** / **68** rested on a *single* one, where
+dispersion is undefined (`doji × 1d` GOOGL short: n_cmb=3, n_dir=1, avg_r −1.011). **No `min_trades`
+value fixes this** — raising it to 10 still admits an n_dir=1 block whenever the opposite direction
+carries the count. The cost is not alert volume: a blocked leg is dropped from `passing_events` at
+`scanner.py:777` while the outcome writer runs downstream at `:1048`, so it never reaches
+`signal_alert_outcomes` — under option (d) ("bank correctness, let the ledgers mature") the gate was
+**deleting observations** using non-evidence. `README.md` documented the directional semantics all
+along and the ladder was *"calibrated from DB p25 directional counts"* — **the doc was right and the
+code was wrong**, so the fix restores the calibrated behaviour rather than choosing a new one.
+Fixed 2026-08-07 by counting `long_closed_trades` / `short_closed_trades`; strictly permissive, zero
+cells newly blocked. Three transferable rules: **a gate that fails open inverts the meaning of
+"stricter"** — at `min_trades = 20` the `1wk` gate reaches **100%** bypass, i.e. the safest-sounding
+change switches it *off*; **a test that re-implements the code under test can never falsify it** —
+`_passes_ev_gate` was a closure inside `run_scan_cycle` so no test could call it, every `TestEvGate`
+test copied the comparison inline, and `test_insufficient_trades_passes` asserted
+`len(result.closed_trades) < effective_min_trades()`, writing the defect down as the expectation
+(all five passed against any implementation, so extraction is a *prerequisite* for the fix, not
+scope creep); and **suppression upstream of the recorder destroys evidence, not just output** —
+check where a filter sits relative to the persistence call before judging its cost. Audit:
+`docs/audits/2026-08-07-ev-gate-directional-sample-guard.md`. Script:
+`docs/plans/scripts/ev_gate_min_trades_diff.py`.
 
 **Ingest level-parsing fails SILENTLY, and every instance so far was found by running the code, not
 by reading it.** Full narratives in `context/tools.md`; the standing rules:

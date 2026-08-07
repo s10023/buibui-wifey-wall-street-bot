@@ -1,16 +1,83 @@
-"""Signal gates: ADR consumption filter and per-strategy ADR exemption."""
+"""Signal gates: ADR consumption filter, per-strategy ADR exemption, EV gate."""
 
 import logging
 from collections.abc import Callable, Mapping
 
 import pandas as pd
 
+from analytics.backtest.engine import BacktestResult
 from analytics.regime import Regime
 from analytics.signal.types import SignalEvent
-from analytics.signal_config import BiasConfig, StrategyOverride
+from analytics.signal_config import BacktestFilterConfig, BiasConfig, StrategyOverride
+from analytics.store.backtest_cache import BacktestSnapshot
 from analytics.strategies import STRATEGY_REGISTRY
 
 logger = logging.getLogger(__name__)
+
+
+def passes_ev_gate(
+    result: BacktestResult | BacktestSnapshot | None,
+    *,
+    direction: str,
+    timeframe: str,
+    backtest_cfg: BacktestFilterConfig,
+) -> bool:
+    """Return True when a signal survives the hard EV gate (i.e. is dispatched).
+
+    Extracted from a closure inside ``run_scan_cycle`` on 2026-08-07. It was
+    unreachable from a test while it lived there, so every "EV gate" test in
+    ``tests/test_backtest_filter.py`` re-implemented the comparison inline and
+    asserted on its own copy — which is why the defect below survived: one of
+    those tests encoded it verbatim.
+
+    **The sample-size guard counts the population the statistic is computed
+    from.** Until 2026-08-07 it counted ``len(result.closed_trades)`` — BOTH
+    directions — and then tested a DIRECTIONAL ``avg_r``, so a long verdict
+    could rest entirely on short trades. Measured on the live path over the
+    declared 365d window: 53 of 260 blocked legs on ``signal_watch`` (20%) and
+    45 of 429 on ``weekdays`` (10%) had fewer trades in the tested direction
+    than ``min_trades`` nominally requires; 19 and 68 respectively rested on a
+    SINGLE directional trade, where dispersion is undefined. No value of
+    ``min_trades`` fixes that — raising it to 10 still admits an n_dir=1 block
+    whenever the opposite direction carries the count.
+
+    This matters beyond alert volume: a blocked leg is dropped from
+    ``passing_events`` in ``run_scan_cycle`` BEFORE the outcome writer runs, so
+    it never reaches ``signal_alert_outcomes``. A wrong block does not merely
+    silence an alert, it destroys the observation.
+
+    The gate FAILS OPEN in three places here (no result, too few trades, no
+    directional data) plus a fourth in the caller, which skips it entirely
+    unless ``backtest_cfg.mode == "hard"``. Audit:
+    ``docs/audits/2026-08-07-ev-gate-directional-sample-guard.md``.
+    """
+    if result is None:
+        return True  # no data — don't suppress
+    if direction == "long":
+        avg_r = result.long_avg_r
+        n_closed = len(result.long_closed_trades)
+        threshold = (
+            backtest_cfg.min_avg_r_long
+            if backtest_cfg.min_avg_r_long is not None
+            else backtest_cfg.min_avg_r
+        )
+    elif direction == "short":
+        avg_r = result.short_avg_r
+        n_closed = len(result.short_closed_trades)
+        threshold = (
+            backtest_cfg.min_avg_r_short
+            if backtest_cfg.min_avg_r_short is not None
+            else backtest_cfg.min_avg_r
+        )
+    else:
+        avg_r = result.avg_r
+        n_closed = len(result.closed_trades)
+        threshold = backtest_cfg.min_avg_r
+    if n_closed < backtest_cfg.effective_min_trades(timeframe):
+        return True  # not enough trades IN THIS DIRECTION — noise
+    if avg_r is None:
+        return True  # no directional data — don't suppress
+    return avg_r >= threshold
 
 
 def _apply_conflict_resolver(

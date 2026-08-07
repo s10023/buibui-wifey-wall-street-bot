@@ -53,6 +53,7 @@ from analytics.signal.gates import (
     _apply_htf_ema_gate,
     _apply_regime_gate,
     _is_adr_exempt,
+    passes_ev_gate,
 )
 from analytics.signal.resolvers import (
     _resolve_atr_sl_floor,
@@ -744,37 +745,16 @@ def run_scan_cycle(
                 bt_results[event.strategy] = bt_result
 
             if backtest_cfg.mode == "hard":
-
-                def _passes_ev_gate(e: SignalEvent) -> bool:
-                    result = bt_results.get(e.strategy)  # noqa: B023 — called inline below
-                    if result is None:
-                        return True  # no data — don't suppress
-                    if len(result.closed_trades) < backtest_cfg.effective_min_trades(
-                        tf  # noqa: B023 — called inline below
-                    ):
-                        return True  # not enough trades — noise
-                    if e.direction == "long":
-                        avg_r = result.long_avg_r
-                        threshold = (
-                            backtest_cfg.min_avg_r_long
-                            if backtest_cfg.min_avg_r_long is not None
-                            else backtest_cfg.min_avg_r
-                        )
-                    elif e.direction == "short":
-                        avg_r = result.short_avg_r
-                        threshold = (
-                            backtest_cfg.min_avg_r_short
-                            if backtest_cfg.min_avg_r_short is not None
-                            else backtest_cfg.min_avg_r
-                        )
-                    else:
-                        avg_r = result.avg_r
-                        threshold = backtest_cfg.min_avg_r
-                    if avg_r is None:
-                        return True  # no directional data — don't suppress
-                    return avg_r >= threshold
-
-                passing_events = [e for e in passing_events if _passes_ev_gate(e)]
+                passing_events = [
+                    e
+                    for e in passing_events
+                    if passes_ev_gate(
+                        bt_results.get(e.strategy),
+                        direction=e.direction,
+                        timeframe=tf,
+                        backtest_cfg=backtest_cfg,
+                    )
+                ]
                 if not passing_events:
                     logger.info("Backtest hard filter suppressed %s %s", symbol, tf)
                     continue

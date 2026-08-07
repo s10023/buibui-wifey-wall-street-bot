@@ -7,8 +7,10 @@ import pandas as pd
 import pytest
 
 from analytics.backtest_lib import BacktestResult, Trade
+from analytics.signal.gates import passes_ev_gate
 from analytics.signal_config import BacktestFilterConfig
 from analytics.signal_lib import _backtest_summary, _compute_backtest
+from analytics.store.backtest_cache import BacktestSnapshot
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -352,7 +354,15 @@ def _make_result_with_avg_r(
 
 
 class TestEvGate:
-    """Verify the avg_r EV gate passes low-WR profitable strategies and blocks losers."""
+    """Verify the avg_r EV gate passes low-WR profitable strategies and blocks losers.
+
+    Every test here calls the real ``passes_ev_gate``. Before 2026-08-07 the gate
+    was a closure inside ``run_scan_cycle`` and therefore unreachable from a test,
+    so these tests re-implemented the comparison inline and asserted on their own
+    copy. That is why the directional-count defect survived: the old
+    ``test_insufficient_trades_passes`` wrote ``len(result.closed_trades)`` — the
+    combined count — into the test body, encoding the bug as the expectation.
+    """
 
     def _cfg(self, min_trades: int = 5, min_avg_r: float = 0.0) -> BacktestFilterConfig:
         return BacktestFilterConfig(
@@ -361,51 +371,156 @@ class TestEvGate:
 
     def test_low_winrate_positive_avg_r_passes(self) -> None:
         """25% WR at 4R is still +EV — must NOT be suppressed."""
-
         # 25% win rate, tp_r=4 → avg_r = 0.25*4 - 0.75*1 = +0.25 (positive EV)
         result = _make_result_with_avg_r(
             long_wins=5, long_losses=15, short_wins=0, short_losses=0, tp_r=4.0
         )
-        cfg = self._cfg(min_trades=5, min_avg_r=0.0)
-        assert result.long_avg_r is not None
-        assert result.long_avg_r > 0.0, "25% WR × 4R should be positive EV"
-
-        # Simulate the gate check directly
-        avg_r = result.long_avg_r
-        assert avg_r >= cfg.min_avg_r
+        assert result.long_avg_r is not None and result.long_avg_r > 0.0
+        assert passes_ev_gate(
+            result,
+            direction="long",
+            timeframe="4h",
+            backtest_cfg=self._cfg(min_trades=5),
+        )
 
     def test_negative_avg_r_blocked(self) -> None:
         """Strategy with negative avg_r must be suppressed."""
         result = _make_result_with_avg_r(
             long_wins=2, long_losses=10, short_wins=0, short_losses=0, tp_r=2.0
         )
-        cfg = self._cfg(min_trades=5, min_avg_r=0.0)
-        avg_r = result.long_avg_r
-        assert avg_r is not None
-        assert avg_r < 0.0, "Low WR × low R should be negative EV"
-        assert avg_r < cfg.min_avg_r
+        assert result.long_avg_r is not None and result.long_avg_r < 0.0
+        assert not passes_ev_gate(
+            result,
+            direction="long",
+            timeframe="4h",
+            backtest_cfg=self._cfg(min_trades=5),
+        )
 
     def test_short_direction_uses_short_avg_r(self) -> None:
         """Gate uses short_avg_r for SHORT signals, not long_avg_r."""
-        # Long trades are losers, short trades are winners
+        # Long trades are losers, short trades are winners; both legs are fat
+        # enough to be evaluated so the split is the only thing under test.
         result = _make_result_with_avg_r(
-            long_wins=1, long_losses=10, short_wins=5, short_losses=1, tp_r=2.0
+            long_wins=1, long_losses=10, short_wins=8, short_losses=1, tp_r=2.0
         )
-        assert result.long_avg_r is not None and result.long_avg_r < 0.0
-        assert result.short_avg_r is not None and result.short_avg_r > 0.0
+        cfg = self._cfg(min_trades=5)
+        assert not passes_ev_gate(
+            result, direction="long", timeframe="4h", backtest_cfg=cfg
+        )
+        assert passes_ev_gate(
+            result, direction="short", timeframe="4h", backtest_cfg=cfg
+        )
 
     def test_none_result_always_passes(self) -> None:
         """No backtest data → signal must not be suppressed."""
-        # result is None → gate passes regardless of min_avg_r
-        result = None
-        passes = result is None
-        assert passes
+        assert passes_ev_gate(
+            None, direction="long", timeframe="4h", backtest_cfg=self._cfg()
+        )
 
     def test_insufficient_trades_passes(self) -> None:
         """Below min_trades threshold → gate passes (insufficient data)."""
         result = _make_result_with_avg_r(
             long_wins=1, long_losses=3, short_wins=0, short_losses=0, tp_r=2.0
         )
-        cfg = self._cfg(min_trades=20, min_avg_r=0.0)
-        passes = len(result.closed_trades) < cfg.effective_min_trades("4h")
-        assert passes  # 4 trades < 20 threshold
+        assert passes_ev_gate(
+            result,
+            direction="long",
+            timeframe="4h",
+            backtest_cfg=self._cfg(min_trades=20),
+        )
+
+    # -- regression: the sample-size guard must count the tested direction ----
+
+    def test_thin_long_leg_not_judged_on_short_trades(self) -> None:
+        """A long verdict must not rest on the short leg's sample size.
+
+        The defect fixed 2026-08-07: the guard counted BOTH directions, so this
+        result (1 long trade, 20 short) cleared ``min_trades=5`` on the combined
+        count of 21 and the gate then BLOCKED long on a single trade's avg_r.
+        Measured on the live path, 53 of 260 blocked ``signal_watch`` legs and 45
+        of 429 on ``weekdays`` were of this shape; 19 and 68 rested on n_dir=1.
+        """
+        result = _make_result_with_avg_r(
+            long_wins=0, long_losses=1, short_wins=10, short_losses=10, tp_r=2.0
+        )
+        assert len(result.closed_trades) == 21  # combined clears min_trades=5
+        assert len(result.long_closed_trades) == 1  # the tested leg does not
+        assert result.long_avg_r is not None and result.long_avg_r < 0.0
+        assert passes_ev_gate(
+            result,
+            direction="long",
+            timeframe="4h",
+            backtest_cfg=self._cfg(min_trades=5),
+        ), "long leg has 1 trade — the gate must abstain, not block"
+
+    def test_thin_short_leg_not_judged_on_long_trades(self) -> None:
+        """Mirror of the above: a short verdict needs short trades."""
+        result = _make_result_with_avg_r(
+            long_wins=10, long_losses=10, short_wins=0, short_losses=1, tp_r=2.0
+        )
+        assert len(result.closed_trades) == 21
+        assert len(result.short_closed_trades) == 1
+        assert result.short_avg_r is not None and result.short_avg_r < 0.0
+        assert passes_ev_gate(
+            result,
+            direction="short",
+            timeframe="4h",
+            backtest_cfg=self._cfg(min_trades=5),
+        ), "short leg has 1 trade — the gate must abstain, not block"
+
+    def test_fat_directional_leg_still_blocks(self) -> None:
+        """The fix must not disarm the gate where the evidence IS directional."""
+        result = _make_result_with_avg_r(
+            long_wins=1, long_losses=19, short_wins=0, short_losses=0, tp_r=2.0
+        )
+        assert len(result.long_closed_trades) == 20
+        assert not passes_ev_gate(
+            result,
+            direction="long",
+            timeframe="4h",
+            backtest_cfg=self._cfg(min_trades=5),
+        )
+
+    def test_snapshot_counts_directionally_too(self) -> None:
+        """The cached BacktestSnapshot path takes the same directional count.
+
+        ``bt_results`` holds ``BacktestResult | BacktestSnapshot``; the snapshot
+        exposes ``long_closed_trades`` as an ``[None] * n_long`` shim, so only
+        its length is meaningful — which is all the guard reads.
+        """
+        snap = BacktestSnapshot(
+            symbol="AAPL",
+            timeframe="4h",
+            strategy="fvg",
+            n_closed=21,
+            n_long=1,
+            n_short=20,
+            r_long_avg=-1.0,
+            r_short_avg=0.5,
+        )
+        assert passes_ev_gate(
+            snap,
+            direction="long",
+            timeframe="4h",
+            backtest_cfg=self._cfg(min_trades=5),
+        ), "snapshot long leg has 1 trade — abstain, not block"
+
+    def test_per_tf_min_trades_is_honoured(self) -> None:
+        """The guard reads the per-timeframe ladder, not the global fallback."""
+        result = _make_result_with_avg_r(
+            long_wins=0, long_losses=3, short_wins=0, short_losses=0, tp_r=2.0
+        )
+        cfg = BacktestFilterConfig(
+            mode="hard",
+            days=90,
+            min_trades=12,
+            min_trades_per_tf={"4h": 2, "1d": 10},
+            min_avg_r=0.0,
+        )
+        # 3 long trades: above 4h's 2 → evaluated (and blocked); below 1d's 10.
+        assert not passes_ev_gate(
+            result, direction="long", timeframe="4h", backtest_cfg=cfg
+        )
+        assert passes_ev_gate(
+            result, direction="long", timeframe="1d", backtest_cfg=cfg
+        )
