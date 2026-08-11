@@ -627,12 +627,18 @@ Makefile           — no change needed: no new CLI commands
 docker-compose.yml — no change needed: no new processes
 .claude/context/*  — updated: analytics.md (store/ paths) | no change needed
 .claude/skills/*   — updated: <skill> | no change needed: <reason>
-PR summary         — written to docs/plans/pr-<branch>.md
+PR summary         — written to docs/plans/pr-<branch>.md   (slashes flattened to -)
 PR body            — "Documentation updates" folded into the initial --body (1 CI run)
 pre-merge          — clean | <blocker> (see Step 10a)
 handoff prompt     — written to docs/plans/next-conversation-prompt.md | declined
 PR state re-check  — #<num>: <OPEN | MERGED>, handoff table rewritten to match
 ```
+
+**The PR-summary path flattens `/` to `-`.** Every branch here is `docs/…`,
+`feat/…`, `fix/…` or `chore/…`, so a literal `docs/plans/pr-<branch>.md` names a
+directory that does not exist and the write fails. `pr-summary/SKILL.md` owns
+the rule and the exact derivation; this line is the sibling that referenced the
+same artifact without it, which is the blind spot Step 4 describes.
 
 Be explicit. "no change needed: internal refactor only" is useful;
 silence is not.
