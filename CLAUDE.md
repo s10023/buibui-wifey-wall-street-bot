@@ -412,4 +412,26 @@ Skills live in `.claude/skills/<name>/SKILL.md` (project-specific, committed to 
 - Do not commit `.env`, `config/stocks.json`, or IDE-specific files
 - **Per-repo git identity is mandatory** before any commit: this account uses `s10023 <ngkhaijian@gmail.com>` (global config inherits a work identity and will mis-attribute commits). Verify via `git config --local user.email` before committing. SSH alias `git@github.com-personal:...` is also required for s10023 remotes — see auto-memory `reference_ssh_host_aliases.md` for the full recipe.
 - **Invoke `/post-branch` BEFORE `gh pr create`, while the branch is still local-only** — then fold its "Documentation updates" section into the *initial* `--body`. Its own Step 1 behaviour gate decides whether a docs sweep is warranted, so this is cheap even on a pure refactor. Step 10c (re-verify PR state) still runs last, after the PR exists. **Why before, not after** (user decision, 2026-08-06): these are private repos on the free tier and Actions minutes are a hard budget, so a doc-sync commit pushed to an already-open PR re-runs the whole 5-check matrix (`markdownlint`, `Trivy`, `lint-typecheck-test`, `frontend-check`, `Regression tests`) for what is usually a two-file docs edit — one CI run instead of two, with identical review signal. Prose in the Agent Skills table demonstrably is not enough: the skill fired zero times across PRs #123–#125 here, each time on the main thread, including the session that was repairing it. A local `PreToolUse` hook on `Bash` greps for `gh pr create` and emits an advisory reminder (never blocking) — it must be `PreToolUse`, since a `PostToolUse` hook cannot fire before the PR exists and so cannot enforce this ordering at all. **It is not in git** — `.gitignore` excludes `.claude/*`, so `.claude/settings.json` is machine-local; **re-add it after a reclone**.
+- **CI-quota workaround: flip the repo PUBLIC before opening a PR, back to PRIVATE after it
+  merges** (user decision, 2026-08-11 — this **reverses** the earlier "do not flip public"
+  rule). Public repos get unlimited free standard-runner Actions minutes, which is the only
+  way to get real CI here: every check had died at the runner in 2–4 seconds without executing
+  a step since #144. Verified on #153 — all five checks went green on the first re-run after
+  the flip.
+
+  ```bash
+  GH_TOKEN=$(gh auth token --user s10023) gh repo edit s10023/buibui-wifey-wall-street-bot \
+    --visibility public --accept-visibility-change-consequences
+  # ...open PR, let CI run, merge...
+  GH_TOKEN=$(gh auth token --user s10023) gh repo edit s10023/buibui-wifey-wall-street-bot \
+    --visibility private --accept-visibility-change-consequences
+  ```
+
+  **Know what the window costs, because flipping back does not undo it.** wifey is not a
+  GitHub fork — its history was *copied* — so **389 of 541 commits** are the still-private
+  parent's pre-fork research and they are published for the duration. Anything cloned or
+  indexed in that window stays out, and any fork created while public is split into its own
+  network and **survives the flip back**. This is an IP/history exposure, not a secrets one:
+  all 4,519 blobs scanned clean and the one real PII leak was fixed in #145.
+  **Flip back promptly after the merge, and check `forks_count` is still 0 before you do.**
 - **`gh` commands in this repo must pass `--repo s10023/buibui-wifey-wall-street-bot` explicitly.** The user's `gh` default repo is intentionally set to the parent `s10023/buibui-moon-trader-bot` (primary project), so `gh pr view N` / `gh pr list` / `gh pr create` without `--repo` will resolve against the parent and either fail or target the wrong repo. This is a preference, not a fix-to-be-found — do not run `gh repo set-default` to "solve" it.
