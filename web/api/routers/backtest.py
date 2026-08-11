@@ -174,6 +174,10 @@ def run_backtest_endpoint(
         volume_suppress=None,
         universe_policy=load_universe_policy().to_json(),
         origin="web",
+        # The ad-hoc UI backtest above passes neither live_parity nor bias_cfg,
+        # so no ADR gate can run on this path — NULL is the executed truth, not
+        # an omission.
+        adr_suppress_threshold=None,
     )
     upsert_backtest_trades(db, result, run_id)
     return _result_to_response(result)

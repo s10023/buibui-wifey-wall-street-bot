@@ -11,6 +11,7 @@ PR-1 lands the dataclass + plumbing only. Per-gate logic ports ship in PRs 2-5.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import ClassVar
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,18 @@ class LiveParityConfig:
     switch OR the specific gate field is set. Cooldown bars per timeframe are
     optional and fall back to the engine's baked-in defaults when None.
     """
+
+    #: Every gate, in the order the engine applies them. Canonical — the CLI
+    #: builds its `--with-/--without-` flags from this, so a new gate cannot be
+    #: added to one surface and forgotten on the other.
+    GATES: ClassVar[tuple[str, ...]] = (
+        "regime",
+        "direction_filter",
+        "f8_htf_ema",
+        "adr_bias",
+        "conflict_resolver",
+        "cooldown",
+    )
 
     enabled: bool = False
     regime: bool = False
@@ -40,3 +53,16 @@ class LiveParityConfig:
         one gate while the master switch stays on (the acceptance contract).
         """
         return bool(getattr(self, gate))
+
+    def describe(self) -> str:
+        """One-line resolved gate state for the run banner.
+
+        Every rating in `confidence_ratings` is conditional on this line, and
+        until 2026-08-07 nothing printed it: `[backtest.live_parity]` went
+        undeclared for ~2.5 months while the sweep behind the stars ran with
+        every gate off, and the committed `tp_r` values had been calibrated
+        under an ad-hoc `--live-parity` against a population the routine sweep
+        never produced. A recorded parameter that is never echoed cannot be
+        checked against what executed — the same defect class as #144's `days`.
+        """
+        return " ".join(f"{g}={'on' if self.is_on(g) else 'off'}" for g in self.GATES)

@@ -12,14 +12,9 @@ from analytics.backtest_config import BacktestSweepConfig, load_backtest_config
 from analytics.strategies import KNOWN_STRATEGIES
 from cli._common import parse_since_to_ms
 
-_LIVE_PARITY_GATES: tuple[str, ...] = (
-    "regime",
-    "direction_filter",
-    "f8_htf_ema",
-    "adr_bias",
-    "conflict_resolver",
-    "cooldown",
-)
+# Canonical list lives on the dataclass so the CLI flags and the run banner
+# can never disagree about which gates exist.
+_LIVE_PARITY_GATES: tuple[str, ...] = LiveParityConfig.GATES
 
 
 def _resolve_live_parity(

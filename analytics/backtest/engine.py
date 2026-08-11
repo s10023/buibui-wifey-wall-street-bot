@@ -34,14 +34,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_LIVE_PARITY_GATE_ORDER = (
-    "regime",
-    "direction_filter",
-    "f8_htf_ema",
-    "adr_bias",
-    "conflict_resolver",
-    "cooldown",
-)
+# Canonical on the dataclass — this was one of three hand-maintained copies of
+# the gate list (engine, CLI flags, run banner) that had to agree for the
+# gate-state report to be true.
+_LIVE_PARITY_GATE_ORDER = LiveParityConfig.GATES
 
 # Default cooldown bars per timeframe — reconciled to wifey's equity TFs.
 # Wifey trades only 4h / 1d / 1wk (no intraday), so parent's intraday map
@@ -887,13 +883,7 @@ def run_backtest(
     if live_parity is not None and any(
         live_parity.is_on(gate) for gate in _LIVE_PARITY_GATE_ORDER
     ):
-        logger.info(
-            "live_parity: %s",
-            " ".join(
-                f"{gate}={'on' if live_parity.is_on(gate) else 'off'}"
-                for gate in _LIVE_PARITY_GATE_ORDER
-            ),
-        )
+        logger.info("live_parity: %s", live_parity.describe())
 
     if (
         live_parity is not None

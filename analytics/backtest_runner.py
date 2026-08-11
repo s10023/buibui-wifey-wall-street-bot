@@ -51,6 +51,7 @@ from analytics.data_store import (
 )
 from analytics.digest_lib import run_digest
 from analytics.perf_timer import timed
+from analytics.signal.gates import _is_adr_exempt, effective_adr_threshold
 from analytics.signal_lib import _filter_signals_by_adr
 from analytics.strategies import (
     DETECTOR_REGISTRY,
@@ -568,7 +569,15 @@ def _collect_sweep_results(
                 fee_pct=cfg.fee_pct,
                 day_filter=cfg.day_filter,
                 sweep_id=sweep_id,
-                adr_suppress_threshold=cfg.adr_suppress_threshold,
+                # What the gate EXECUTED, not what the config declared. Both
+                # branches above (engine when live_parity.adr_bias is on, the
+                # legacy pre-filter when it is off) reduce to the same two
+                # conditions this helper encodes.
+                adr_suppress_threshold=effective_adr_threshold(
+                    cfg.adr_suppress_threshold,
+                    timeframe,
+                    adr_exempt=cfg.is_adr_exempt(strategy),
+                ),
                 volume_suppress=cfg.effective_volume_suppress(strategy) or None,
                 universe_policy=universe_policy,
                 cost_model=cfg.cost_model.to_json()
@@ -634,6 +643,11 @@ def run_backtest_sweep(
             f"{n_strats} {strat_word} ({window_label})"
         )
     print(universe.describe(len(symbols)))
+    # Every rating this sweep feeds is conditional on the resolved gate state,
+    # so echo it. `conflict_resolver` must stay off here — it reads
+    # `confidence_ratings`, which this sweep produces, making it a fixed-point
+    # iteration rather than a gate (#149).
+    print(f"live_parity: {cfg.live_parity.describe()}")
 
     single_run_mode = not tp_sweep_mode and not atr_sweep_mode
     sweep_id = str(uuid.uuid4()) if cfg.save_results and single_run_mode else None
@@ -946,6 +960,20 @@ def run_backtest_cmd(
                 day_filter="off",
                 universe_policy=universe.to_json(),
                 origin="single_run",
+                # This path has no ADR pre-filter — the gate reaches it only
+                # through the engine, which needs adr_bias parity AND a
+                # bias_cfg. `cli/backtest.py` passes live_parity but never
+                # bias_cfg, so today this is always None; deriving it rather
+                # than hardcoding keeps that true if a caller starts passing one.
+                adr_suppress_threshold=effective_adr_threshold(
+                    bias_cfg.adr_suppress_threshold
+                    if bias_cfg is not None
+                    and live_parity is not None
+                    and live_parity.is_on("adr_bias")
+                    else None,
+                    timeframe,
+                    adr_exempt=_is_adr_exempt(live_strategy_params, strategy),
+                ),
             )
             upsert_backtest_trades(conn, bt_result, run_id)
             print(f"\n  Results saved to DB (run_id={run_id})")

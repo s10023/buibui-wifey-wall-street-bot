@@ -215,6 +215,46 @@ def adr_gate_applies(timeframe: str) -> bool:
     return timeframe in _ADR_INTRADAY_TIMEFRAMES
 
 
+def effective_adr_threshold(
+    declared: float | None,
+    timeframe: str,
+    *,
+    adr_exempt: bool,
+) -> float | None:
+    """The ADR threshold that actually gated a cell, or None if the gate was inert.
+
+    ``backtest_runs.adr_suppress_threshold`` is provenance: it answers "what
+    suppressed the signals behind this row". Writing the *declared* config value
+    there makes the audit trail corroborate a gate that never ran — the same
+    defect class as #144's ``days``, where a recorded parameter contradicted the
+    executed one and the row actively argued for the wrong answer. Measured
+    2026-08-11: 2,091 of 3,246 rows (64.4%) recorded 0.80 for a cell the gate
+    could not have touched — 1,974 of them purely because the timeframe is not
+    intraday.
+
+    ``declared`` is what the *caller's path* would apply, not what the config
+    says: a writer that never wires the gate into its backtest passes None. The
+    two reasons handled here are the universal ones, and they mirror the order
+    the executing code checks them in:
+
+    - ``adr_gate_applies(timeframe)`` — the consumed-ratio gate is undefined
+      where a calendar day holds one bar (#142), and `_filter_signals_by_adr`
+      no-ops there.
+    - ``adr_exempt`` — the strategy bypasses the gate entirely.
+
+    Both `_collect_sweep_results` (via the engine or its legacy pre-filter) and
+    `bt_cache._compute_backtest` reduce to exactly these conditions, so one
+    helper describes every gate-capable writer.
+    """
+    if declared is None:
+        return None
+    if not adr_gate_applies(timeframe):
+        return None
+    if adr_exempt:
+        return None
+    return declared
+
+
 def _filter_signals_by_adr(
     ohlcv_df: pd.DataFrame,
     signals_df: pd.DataFrame,
