@@ -13,8 +13,9 @@ allowed-tools: Bash, Read
 
 # DB Update — Routine Pipeline
 
-`make db-update` is the trusted, chained refresh of analytics state across all
-three signal_watch configs. Use it whenever:
+`make db-update` is the trusted, chained refresh of analytics state across both
+signal_watch configs (the diagram below is the authority — the Makefile runs
+**2**, not 3; this line said "three" until 2026-08-11). Use it whenever:
 
 - A detector function changes (entry / SL / TP logic)
 - A strategy is added or removed
@@ -72,7 +73,32 @@ them; if any appear again, something re-created them and the warning says so.
 
 ## After the chain
 
-1. **Review golden diffs** before committing:
+1. **Read the gate-state banner back.** Each backtest leg prints its resolved
+   `LiveParityConfig` before the results table:
+
+   ```text
+   live_parity: regime=on direction_filter=on f8_htf_ema=on adr_bias=on conflict_resolver=off cooldown=on
+   ```
+
+   Confirm it says **`conflict_resolver=off`** and the other five `on`. That flag
+   is settled (#149) and load-bearing: `conflict_resolver` reads
+   `confidence_ratings`, which this chain *writes*, so switching it on inside the
+   sweep is a fixed-point iteration rather than a gate — three consecutive
+   `backtest + recalibrate` passes went 108 → 66 rows differing, damping but not
+   converged, with cells still oscillating at iteration 3. With five gates the
+   chain is deterministic (0 of 160 rows differ across two passes), which is what
+   makes a real rating change distinguishable from a re-run artifact.
+
+   Until 2026-08-11 nothing printed this. The engine logged it only when at least
+   one gate was **on**, so it was silent for exactly the ~2.5 months the ratings
+   sweep ran with all six off — the state it needed to make visible. A banner
+   that reads `conflict_resolver=on` here means **stop**, not "interesting":
+   the ratings this chain produces would not be reproducible.
+   `tests/test_live_parity_config.py::TestSharedBaseGateState` asserts the
+   committed config, but only the banner tells you what *this run* executed
+   (an ad-hoc `--with-conflict-resolver` would not touch the config).
+
+2. **Review golden diffs** before committing:
 
    ```bash
    git diff tests/fixtures/golden_*.json
@@ -82,7 +108,7 @@ them; if any appear again, something re-created them and the warning says so.
    recalibration-only runs. If a diff is unexpectedly massive, stop and
    investigate before committing.
 
-2. **Prove the golden diff belongs to your change.** A diff here is usually
+3. **Prove the golden diff belongs to your change.** A diff here is usually
    **fixture data drift**, not a behaviour change: `regression-update` re-extracts
    the input parquets from a DB that has moved on since the goldens were written,
    so the goldens shift even when the code is byte-identical. One command
@@ -100,7 +126,7 @@ them; if any appear again, something re-created them and the warning says so.
    change could not possibly cause, and chasing that discrepancy is what found a
    larger defect. **An unexplained diff is a lead, not noise.**
 
-3. **No daemon restart is needed — and there is no daemon to restart.** This
+4. **No daemon restart is needed — and there is no daemon to restart.** This
    step used to say "restart the live signal-watch daemon"; that was false, and
    disproving it cost a full verification cycle in #150. The
    `buibui-signal-watch.service`/`.timer` pair in `systemctl --user` belongs to
@@ -119,8 +145,8 @@ them; if any appear again, something re-created them and the warning says so.
    threshold from the config's `[backtest]` block. There is no `min_confidence`
    gate anywhere in the tree.
 
-4. **Commit** the golden file changes alongside whatever change motivated the
-   update — they belong in the same PR, *unless* step 2 showed they are fixture
+5. **Commit** the golden file changes alongside whatever change motivated the
+   update — they belong in the same PR, *unless* step 3 showed they are fixture
    drift.
 
 **A recalibrate can legitimately change ratings with no backtest re-run.**

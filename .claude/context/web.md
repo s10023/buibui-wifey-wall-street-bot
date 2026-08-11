@@ -38,7 +38,7 @@ Build: `make web-build` → `web/ui/dist/` served by FastAPI StaticFiles.
 - **"◈ \<config\>" button** — pre-fills all chips + fee_pct/tp_r/sl_pct from active TOML
 - Stars per row: `stars` (combined), `long_stars` (↑★), `short_stars` (↓★) — JOINed by `(strategy, tf, day_filter, direction)`
 - Columns: long/short win rate, avg R, total R (↑/↓), Max DD, RF (≥3 green / 2–3 yellow / <2 red) — all sortable
-- ADR Gate column shows `adr_suppress_threshold` per row (2dp, `—` for NULL). **It reports the declared config value, not whether the gate ran** — `adr_exempt` strategies and, since 2026-08-06, all `1d` / `1wk` rows display `0.80` with no gate applied (`adr_gate_applies()` is intraday-only)
+- ADR Gate column shows `adr_suppress_threshold` per row (2dp, `—` for NULL). Since 2026-08-11 it reports **what the gate executed**, so `adr_exempt` strategies and every `1d` / `1wk` row correctly display `—`; only `4h` non-exempt rows show `0.80`. Rows written before 2026-08-06 still display `0.80` on `1d` / `1wk` — the gate really did run there back then (degenerately), so the migration left them alone
 - Filter sections: CATEGORY (symbol/TF/strategy/day filter/ADR gate/stars), PERF (win%/trades/avg R/total R/max DD/RF), DIR (directional long+short)
 - **Analysis sub-tab** — 12 lazy-loaded cards; `min_trades` input + "◈ Scope to config" toggle
 

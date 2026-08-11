@@ -94,12 +94,12 @@ def upsert_backtest_run(
     fee_pct: float,
     day_filter: str,
     sweep_id: str | None = None,
-    adr_suppress_threshold: float | None = None,
     volume_suppress: bool | None = None,
     universe_policy: str | None = None,
     cost_model: str | None = None,
     *,
     origin: str,
+    adr_suppress_threshold: float | None,
 ) -> str:
     """Insert or replace a backtest aggregate result row.
 
@@ -113,6 +113,16 @@ def upsert_backtest_run(
     `_backtest_run_id`. Making this required (rather than defaulting it) is the
     same enforcement `adr_gate_applies(timeframe)` uses: a new call site cannot
     silently inherit another writer's identity.
+
+    ``adr_suppress_threshold`` is a REQUIRED keyword for the same reason, and it
+    is the threshold that was **executed**, not the one the config declared —
+    pass `effective_adr_threshold(...)`, never `cfg.adr_suppress_threshold`. It
+    defaulted to None until 2026-08-11, which let the two writers that do wire
+    the gate hand it their raw config value: 2,091 of 3,246 rows then recorded a
+    threshold for a cell the gate never touched (1,974 of them on `1d`/`1wk`,
+    where the gate is undefined since #142). A defaulted argument cannot
+    distinguish "this path does not run the gate" from "nobody thought about
+    it"; a required one forces each writer to answer.
     """
     run_id = _backtest_run_id(
         result.symbol,

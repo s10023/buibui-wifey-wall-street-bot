@@ -253,6 +253,36 @@ suppression dependent on cache state. Audit:
 `docs/audits/2026-08-07-ev-gate-significance-test.md`. Scripts:
 `docs/plans/scripts/ev_gate_significance_impact.py`, `sd_approx_check.py`.
 
+**A provenance column that records what was DECLARED is not provenance, and when that column is
+part of the row-identity hash, fixing the writer without migrating history MANUFACTURES evidence.**
+`backtest_runs.adr_suppress_threshold` stored `cfg.adr_suppress_threshold` flat at both writers
+that set it, so **2,091 of 3,246 rows (64.4%)** claimed a gate that never touched them. The
+proportions invert the obvious framing: **1,974 were purely the timeframe** (`adr_gate_applies` is
+intraday-only since #142), only **117** were `adr_exempt` (`bos`, `eqh_eql`). Two of the four
+writers (`web`, `single_run`) were already correct — neither wires `bias_cfg` into `run_backtest`,
+so no gate can run there, and their NULL was truth rather than omission. Fixed 2026-08-11 by
+`effective_adr_threshold(declared, timeframe, adr_exempt=…)` as a **required** kwarg on
+`upsert_backtest_run`. Four transferable rules. **`mypy` cannot enforce a required kwarg through a
+`**dict` splat** — the explicit call site failed type-check immediately while **12** sites passing
+`**_BT_PARAMS` type-checked clean and blew up at runtime, so a green mypy is not evidence that a
+required-argument change is covered; run the suite. **A column in the identity hash cannot be
+corrected in place without a migration** — flipping a value changes `run_id`, so
+`INSERT OR REPLACE` writes a *new* row and leaves the old one, and the two then satisfy
+`digest QUERY=adr_ab`'s join as a fake gated-vs-ungated pair: **661** of them, comparing a June
+measurement against an August one. The fix needs a matching-window clause
+(`data_start_ms`/`data_end_ms`); `days` cannot stand in, since **every row in the table declares
+365** while the oldest were measured over 90. **A migration must respect CODE ERAS** — before #142
+`_filter_signals_by_adr` had no timeframe guard, so on `1d`/`1wk` the gate really did run
+(degenerately), and #141 had not yet moved `adr_exempt` into the shared base; reconstructing
+"executed" for those rows from today's config would replace one false claim with another, so only
+the **518** post-#142 rows were rewritten. **Check whether the consumer already assumed the correct
+semantics** — `recalibrate_lib` matched `= threshold OR IS NULL` with a comment about "exempt-strategy
+runs (NULL)", i.e. the reader was written against semantics the writer never implemented, which is
+why the migration is provably rating-neutral (all 6 rating surfaces byte-identical). `adr_ab` itself
+was **never alive**: it had zero NULL rows for its entire history, and post-fix its join still cannot
+match within a config, because the executed threshold is a pure function of `(strategy, timeframe)`.
+Audit: `migrations/002_adr_threshold_executed.py` docstring.
+
 **Ingest level-parsing fails SILENTLY, and every instance so far was found by running the code, not
 by reading it.** Full narratives in `context/tools.md`; the standing rules:
 
@@ -369,7 +399,39 @@ Skills live in `.claude/skills/<name>/SKILL.md` (project-specific, committed to 
 
 - Commit messages use conventional commits: `feat:`, `fix:`, `test:`, `docs:`, `build:`, `chore:`
 - Branch naming: `feat/`, `fix/`, `docs/`, `chore/`
+- **Always branch off the LATEST `main` — never off another feature branch, and never
+  keep working on `main` itself.** Before the first edit of a task:
+  `git fetch origin && git switch main && git merge --ff-only origin/main`, then
+  `git switch -c <type>/<slug>`. If work has already started on `main`, `git switch -c`
+  carries the uncommitted changes over — do that as soon as it is noticed rather than
+  committing to `main`. Verify with `git status -b` (should read
+  `## <branch>...origin/main` or no upstream yet), not from memory of what branch you
+  were on. Squash-merges mean a branch cut from a stale `main` replays work that is
+  already in, and a branch cut from another feature branch inherits its whole diff into
+  the PR — both surface as review noise rather than as an error.
 - Do not commit `.env`, `config/stocks.json`, or IDE-specific files
 - **Per-repo git identity is mandatory** before any commit: this account uses `s10023 <ngkhaijian@gmail.com>` (global config inherits a work identity and will mis-attribute commits). Verify via `git config --local user.email` before committing. SSH alias `git@github.com-personal:...` is also required for s10023 remotes — see auto-memory `reference_ssh_host_aliases.md` for the full recipe.
 - **Invoke `/post-branch` BEFORE `gh pr create`, while the branch is still local-only** — then fold its "Documentation updates" section into the *initial* `--body`. Its own Step 1 behaviour gate decides whether a docs sweep is warranted, so this is cheap even on a pure refactor. Step 10c (re-verify PR state) still runs last, after the PR exists. **Why before, not after** (user decision, 2026-08-06): these are private repos on the free tier and Actions minutes are a hard budget, so a doc-sync commit pushed to an already-open PR re-runs the whole 5-check matrix (`markdownlint`, `Trivy`, `lint-typecheck-test`, `frontend-check`, `Regression tests`) for what is usually a two-file docs edit — one CI run instead of two, with identical review signal. Prose in the Agent Skills table demonstrably is not enough: the skill fired zero times across PRs #123–#125 here, each time on the main thread, including the session that was repairing it. A local `PreToolUse` hook on `Bash` greps for `gh pr create` and emits an advisory reminder (never blocking) — it must be `PreToolUse`, since a `PostToolUse` hook cannot fire before the PR exists and so cannot enforce this ordering at all. **It is not in git** — `.gitignore` excludes `.claude/*`, so `.claude/settings.json` is machine-local; **re-add it after a reclone**.
+- **CI-quota workaround: flip the repo PUBLIC before opening a PR, back to PRIVATE after it
+  merges** (user decision, 2026-08-11 — this **reverses** the earlier "do not flip public"
+  rule). Public repos get unlimited free standard-runner Actions minutes, which is the only
+  way to get real CI here: every check had died at the runner in 2–4 seconds without executing
+  a step since #144. Verified on #153 — all five checks went green on the first re-run after
+  the flip.
+
+  ```bash
+  GH_TOKEN=$(gh auth token --user s10023) gh repo edit s10023/buibui-wifey-wall-street-bot \
+    --visibility public --accept-visibility-change-consequences
+  # ...open PR, let CI run, merge...
+  GH_TOKEN=$(gh auth token --user s10023) gh repo edit s10023/buibui-wifey-wall-street-bot \
+    --visibility private --accept-visibility-change-consequences
+  ```
+
+  **Know what the window costs, because flipping back does not undo it.** wifey is not a
+  GitHub fork — its history was *copied* — so **389 of 541 commits** are the still-private
+  parent's pre-fork research and they are published for the duration. Anything cloned or
+  indexed in that window stays out, and any fork created while public is split into its own
+  network and **survives the flip back**. This is an IP/history exposure, not a secrets one:
+  all 4,519 blobs scanned clean and the one real PII leak was fixed in #145.
+  **Flip back promptly after the merge, and check `forks_count` is still 0 before you do.**
 - **`gh` commands in this repo must pass `--repo s10023/buibui-wifey-wall-street-bot` explicitly.** The user's `gh` default repo is intentionally set to the parent `s10023/buibui-moon-trader-bot` (primary project), so `gh pr view N` / `gh pr list` / `gh pr create` without `--repo` will resolve against the parent and either fail or target the wrong repo. This is a preference, not a fix-to-be-found — do not run `gh repo set-default` to "solve" it.

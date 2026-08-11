@@ -16,7 +16,11 @@ from analytics.backtest.engine import (
     run_backtest,
 )
 from analytics.backtest.live_parity_config import LiveParityConfig
-from analytics.signal.gates import _filter_signals_by_adr, adr_gate_applies
+from analytics.signal.gates import (
+    _filter_signals_by_adr,
+    adr_gate_applies,
+    effective_adr_threshold,
+)
 from analytics.signal_config import BiasConfig, StrategyOverride
 
 # ---------------------------------------------------------------------------
@@ -311,6 +315,53 @@ class TestAdrGateApplies:
         # than one that is off, so unknown timeframes must fall closed.
         assert not adr_gate_applies("3d")
         assert not adr_gate_applies("")
+
+
+class TestEffectiveAdrThreshold:
+    """`backtest_runs.adr_suppress_threshold` must record what EXECUTED.
+
+    Recording the declared config value made 2,091 of 3,246 rows claim a gate
+    that never ran, so the audit trail corroborated the wrong answer — the
+    #144 `days` defect class. Each inert reason below is one the executing
+    code independently checks.
+    """
+
+    def test_applied_when_intraday_and_not_exempt(self) -> None:
+        assert effective_adr_threshold(0.8, "4h", adr_exempt=False) == 0.8
+
+    def test_inert_when_no_threshold_declared(self) -> None:
+        assert effective_adr_threshold(None, "4h", adr_exempt=False) is None
+
+    def test_inert_on_non_intraday_timeframes(self) -> None:
+        # #142: the consumed-ratio gate is undefined where a calendar day holds
+        # one bar, and `_filter_signals_by_adr` no-ops there. 1,974 of the 2,091
+        # wrong rows were this case alone.
+        for tf in ("1d", "1wk"):
+            assert effective_adr_threshold(0.8, tf, adr_exempt=False) is None, tf
+
+    def test_inert_when_strategy_is_exempt(self) -> None:
+        assert effective_adr_threshold(0.8, "4h", adr_exempt=True) is None
+
+    def test_unknown_timeframe_falls_closed(self) -> None:
+        assert effective_adr_threshold(0.8, "3d", adr_exempt=False) is None
+
+    def test_matches_whether_the_filter_actually_dropped_signals(self) -> None:
+        """The recorded value must track the gate, not the config.
+
+        Ties the provenance helper to observed filter behaviour rather than to
+        a second copy of its own rule — on data where the gate has something to
+        bite, a cell it reports as gated must lose signals and a cell it
+        reports as inert must not.
+        """
+        ohlcv = _one_bar_per_day_ohlcv()
+        signals = pd.DataFrame(
+            {"open_time": [ohlcv["open_time"].iloc[7]], "direction": ["long"]}
+        )
+        for tf in ("4h", "1d"):
+            reported = effective_adr_threshold(0.8, tf, adr_exempt=False)
+            out = _filter_signals_by_adr(ohlcv, signals, 0.8, tf)
+            dropped = len(out) < len(signals)
+            assert dropped == (reported is not None), tf
 
 
 class TestAdrGateTimeframeDegeneracy:

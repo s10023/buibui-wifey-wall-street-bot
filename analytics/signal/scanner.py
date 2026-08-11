@@ -53,6 +53,7 @@ from analytics.signal.gates import (
     _apply_htf_ema_gate,
     _apply_regime_gate,
     _is_adr_exempt,
+    effective_adr_threshold,
     passes_ev_gate,
 )
 from analytics.signal.resolvers import (
@@ -1223,9 +1224,15 @@ def run_scan_cycle(
                     tp_r=_resolve_tp_r(strategy_params, strategy, sym, tf, tp_r),
                     fee_pct=backtest_cfg.fee_pct,
                     day_filter=day_filter,
-                    adr_suppress_threshold=bias_cfg.adr_suppress_threshold
-                    if bias_cfg
-                    else None,
+                    # Mirrors the conditions `bt_cache._compute_backtest`
+                    # actually applied for this cell (its pre-filter no-ops on
+                    # non-intraday timeframes and skips exempt strategies), not
+                    # the config's declared value.
+                    adr_suppress_threshold=effective_adr_threshold(
+                        bias_cfg.adr_suppress_threshold if bias_cfg else None,
+                        tf,
+                        adr_exempt=_is_adr_exempt(strategy_params, strategy),
+                    ),
                     volume_suppress=_resolve_volume_suppress(
                         strategy_params, strategy, backtest_cfg.volume_suppress
                     )

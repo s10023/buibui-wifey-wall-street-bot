@@ -480,6 +480,10 @@ _BT_PARAMS: dict[str, Any] = {
     "day_filter": "off",
     "sweep_id": None,
     "origin": "sweep",
+    # Required since 2026-08-11: the EXECUTED threshold, not the declared one.
+    # Note mypy cannot enforce this through a `**dict` splat — the 12 call
+    # sites below type-checked clean and failed at runtime.
+    "adr_suppress_threshold": None,
 }
 
 
@@ -956,6 +960,7 @@ class TestBacktestRunIdOrigin:
             "tp_r": 2.0,
             "fee_pct": 0.0,
             "day_filter": "tue_thu",
+            "adr_suppress_threshold": None,
         }
         swept = BacktestResult(symbol="SPY", timeframe="4h", strategy="bos")
         upsert_backtest_run(conn, swept, sweep_id="sweep-1", origin="sweep", **params)
@@ -983,6 +988,7 @@ class TestBacktestRunIdOrigin:
             "tp_r": 2.0,
             "fee_pct": 0.0,
             "day_filter": "weekdays",
+            "adr_suppress_threshold": None,
         }
         upsert_backtest_run(
             conn,
@@ -1047,6 +1053,7 @@ class TestBacktestRunIdCostModel:
             day_filter="off",
             cost_model='{"impact_coef":1.0}',
             origin="sweep",
+            adr_suppress_threshold=None,
         )
         row = conn.execute(
             "SELECT cost_model FROM backtest_runs WHERE run_id = ?", [run_id]

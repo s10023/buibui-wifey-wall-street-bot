@@ -304,6 +304,22 @@ def query_adr_ab(
           AND on_r.sl_pct      = off_r.sl_pct
           AND on_r.tp_r        = off_r.tp_r
           AND on_r.fee_pct     = off_r.fee_pct
+          -- Same data window. An A/B across different windows is not a
+          -- controlled comparison whatever the gate did — a 365-day-anchored
+          -- run gives no warm-up and truncates at the edge, and two windows
+          -- can differ in SIGN on the same cell. `days` cannot stand in for
+          -- this: every row in the table declares 365 while the earliest were
+          -- measured over 90 (the #144 recorded-vs-executed defect).
+          --
+          -- This is also what keeps the card honest now that
+          -- `adr_suppress_threshold` records what EXECUTED (2026-08-11).
+          -- Pre-#142 rows legitimately carry 0.80 on 1d/1wk (the gate ran
+          -- there, degenerately); their post-#142 twins correctly carry NULL.
+          -- Those two are not an experiment, they are the same cell measured
+          -- under different code two months apart, and without this clause the
+          -- card reported 661 such pairs as gated-vs-ungated deltas.
+          AND on_r.data_start_ms = off_r.data_start_ms
+          AND on_r.data_end_ms   = off_r.data_end_ms
         WHERE on_r.adr_suppress_threshold IS NOT NULL
           AND off_r.adr_suppress_threshold IS NULL
           AND {mt_expr}{on_sc}

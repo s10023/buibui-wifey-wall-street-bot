@@ -380,3 +380,65 @@ class TestBacktestSweepConfigField:
         cfg = BacktestSweepConfig()
         assert isinstance(cfg.live_parity, LiveParityConfig)
         assert cfg.live_parity == LiveParityConfig()
+
+
+class TestDescribe:
+    """The run banner's source. It must report every gate, including off ones.
+
+    The engine's existing log line fires only when at least one gate is on, so
+    it was silent for the ~2.5 months the ratings sweep ran with all six off —
+    exactly the state it needed to make visible.
+    """
+
+    def test_reports_every_gate(self) -> None:
+        out = LiveParityConfig().describe()
+        for gate in LiveParityConfig.GATES:
+            assert f"{gate}=off" in out, gate
+
+    def test_reports_on_and_off_together(self) -> None:
+        out = LiveParityConfig(regime=True, adr_bias=True).describe()
+        assert "regime=on" in out
+        assert "adr_bias=on" in out
+        assert "conflict_resolver=off" in out
+
+    def test_gate_list_covers_every_boolean_field(self) -> None:
+        """GATES is canonical for the engine, the CLI flags and the banner.
+
+        A gate added to the dataclass but not to GATES would silently never be
+        reported and never get a CLI flag.
+        """
+        bool_fields = {
+            f.name
+            for f in dataclasses.fields(LiveParityConfig)
+            if f.type is bool or f.type == "bool"
+        }
+        assert bool_fields - {"enabled"} == set(LiveParityConfig.GATES)
+
+
+class TestSharedBaseGateState:
+    """`conflict_resolver` off in the shared base is SETTLED (#149).
+
+    It is the only gate that READS `confidence_ratings`, so enabling it inside
+    the sweep that PRODUCES them is a fixed-point iteration, not a gate: three
+    consecutive backtest+recalibrate passes went 108 → 66 rows differing,
+    damping but not converged, with cells still oscillating at iteration 3.
+    With five gates the sweep is deterministic (0 of 160 rows differ).
+    """
+
+    def test_base_config_runs_five_gates_with_conflict_resolver_off(self) -> None:
+        from analytics.backtest_config import load_backtest_config
+
+        cfg = load_backtest_config("config/strategy_params.toml")
+        assert cfg.live_parity.is_on("conflict_resolver") is False, (
+            "conflict_resolver must stay OFF in the ratings sweep — it reads the "
+            "table this sweep writes. See docs/audits/"
+            "2026-08-07-live-parity-ratings-sweep.md"
+        )
+        for gate in (
+            "regime",
+            "direction_filter",
+            "f8_htf_ema",
+            "adr_bias",
+            "cooldown",
+        ):
+            assert cfg.live_parity.is_on(gate), gate

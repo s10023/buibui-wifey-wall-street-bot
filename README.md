@@ -917,11 +917,17 @@ make wifey-digest MIN_TRADES=10            # raise min-trades threshold
 Defaults: `SYMBOL=SPY`, `STRATEGY=fvg`, `INTERVAL=4h`, `DAYS=90`.
 Optional overrides: `SL_PCT`, `TP_R`, `FEE_PCT`, `SAVE=1` (persist to DB).
 
-> **`QUERY=adr_ab` caveat.** It splits on `adr_suppress_threshold IS NOT NULL` vs `IS NULL`,
-> but that column records **what the config declared, not what the gate did**. Rows for
-> `adr_exempt` strategies (`bos`, `eqh_eql`) and — since 2026-08-06 — every `1d` / `1wk` row
-> carry a non-NULL threshold while the gate never ran, so they land on the "on" side and drag
-> the measured delta toward zero. Read it for `4h` non-exempt strategies only.
+> **`QUERY=adr_ab` returns nothing, and that is now the honest answer.** The column it splits
+> on records **what the gate executed** since 2026-08-11 (it recorded the declared config value
+> before, so `adr_exempt` strategies and every `1d` / `1wk` row landed on the "on" side while
+> the gate never ran). Within one config the executed threshold is a pure function of
+> `(strategy, timeframe)`, so the card's join — which requires the same strategy *and*
+> timeframe on both sides — can never find a genuine on/off pair from the routine sweep. It
+> needs two runs **over the same window** that differ only in the ADR setting, which nothing in
+> the pipeline produces; `make db-update` will not populate it. The join also requires matching
+> `data_start_ms` / `data_end_ms`, without which the corrected column pairs a pre-2026-08-06 row
+> against its post-fix twin and reports 661 fabricated deltas comparing measurements two months
+> apart.
 
 To populate both `day_filter` variants for complete coverage:
 

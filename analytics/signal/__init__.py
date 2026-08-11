@@ -47,6 +47,7 @@ from analytics.signal.gates import (
     _filter_signals_by_adr,
     _is_adr_exempt,
     adr_gate_applies,
+    effective_adr_threshold,
 )
 from analytics.signal.resolvers import (
     _resolve_atr_sl_floor,
@@ -114,6 +115,7 @@ __all__ = [
     "_resolve_volume_suppress_long",
     "_resolve_volume_suppress_short",
     "adr_gate_applies",
+    "effective_adr_threshold",
     "gap_fill_warning",
     "get_backtest_cache",
     "get_ohlcv",
