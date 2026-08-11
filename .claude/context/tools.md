@@ -551,3 +551,32 @@ OOS `avg_r` (subject to `pooled_n ≥ 10`).
   tool sweeps one strategy at a time
 
 **Run:** `PYTHONPATH=. poetry run python tools/multi_symbol_wfo.py [--cells task-a|t-a|inside-bar|pin-bar|candle-resweep|phase2-resweep] [--direction long|short|both|combined] [--cell strategy/tf/day_filter] [--fixed-atr] [--live-parity]`
+
+## sync_parent.py — parent-repo PR triage for `/sync-parent`
+
+Enumerates parent PRs merged since the memory-held sync pointer, groups them by the `(#N)`
+squash suffix (the parent has **no merge commits**), translates each touched parent path to a
+wifey target, and classifies SKIP / PORT / EVALUATE with an ALREADY-APPLIED confidence overlay.
+Read-only on both repos except the state file, which only `--bump-to` writes.
+
+**The report is the triage artifact, so it is written in-repo:**
+`docs/plans/parent-sync/parent-sync-<date>.md` (gitignored via `docs/plans/`, directory created
+on demand). It was `/tmp` until 2026-08-11 — a `/tmp` clear destroyed the 2026-07-29 report with
+**57 of 67 PRs still undecided**, forcing a full re-scan. A reviewer decides PRs against this
+file over days; it has to outlive a reboot.
+
+**The parent's checked-out branch does not matter.** Every parent read is ref-based against
+`origin/main` (`cat-file` / `fetch` / `log` / `show` / `rev-parse`) and nothing touches the
+parent working tree, so the only real precondition is that `origin/main` resolves. A
+checked-out-branch guard blocked scans outright on 2026-06-17 and 2026-08-11 and was removed.
+
+**Two limits to know before trusting a bucket.** The classifier defaults to EVALUATE whenever a
+path resolves, so at a wide range the counts degrade (2026-08-11: 0 SKIP / 39 PORT / 107
+EVALUATE over 156 PRs). And **buckets cannot see portability** — a mechanical check of whether
+the touched files exist in wifey is the cheap filter, and it inverts the parent's own ranking:
+on 2026-08-11 `fix(xsmom)` #572 touched **0** files present here despite wifey owning
+`analytics/xsmom/`.
+
+**Run:** `make wifey-sync-parent [FROM=<hash>] [FULL=1] [NO_FETCH=1] [BUMP_TO=<hash>]`. Never
+`--bump-to` while the state file doubles as a memory — it rewrites the file to a stub and wipes
+the triage body; hand-edit the frontmatter pointer instead.
