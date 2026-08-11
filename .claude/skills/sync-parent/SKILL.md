@@ -4,7 +4,8 @@ description: >
   Detect-and-recommend pipeline for porting upstream parent-repo
   (buibui-moon-trader-bot) changes into the wifey fork. Scans parent PRs merged
   since the last sync point, classifies each SKIP / PORT / EVALUATE /
-  ALREADY-APPLIED, and writes a context-rich report to /tmp/parent-sync-<date>.md.
+  ALREADY-APPLIED, and writes a context-rich report to
+  docs/plans/parent-sync/parent-sync-<date>.md.
   Invoke when the user says "/sync-parent", asks to "check the parent repo",
   "port upstream changes", "what changed in the parent", or after a known parent
   refactor.
@@ -25,7 +26,10 @@ suggested approach. **It never edits wifey code** — a human ports.
 
 ## Prerequisites
 
-- Parent clone present at `/home/kng/repo/buibui-moon-trader-bot`, checked out on `main`.
+- Parent clone present at `/home/kng/repo/buibui-moon-trader-bot` with a readable
+  `origin/main`. **Its checked-out branch does not matter** — every parent read is
+  ref-based against `origin/main` and nothing touches the parent working tree, so
+  the parent can stay parked on a feature branch while you scan.
 - State file `project_parent_sync_state.md` exists in wifey memory, or the skill
   bootstraps from the fork commit `635ed5a` on first run.
 
@@ -43,11 +47,14 @@ Direct: `PYTHONPATH=. poetry run python tools/sync_parent.py [flags]`.
 
 ## Output
 
-- `/tmp/parent-sync-<date>.md` — bucket summary table, a **Workstreams** table,
-  then four sections (SKIP / PORT / EVALUATE / ALREADY-APPLIED). PORT and EVALUATE
-  entries are full detail blocks with parent paths → wifey targets, the parent
-  MEMORY excerpt, and a suggested approach (`verify-only` /
-  `cherry-pick-with-edits` / `re-implement`).
+- `docs/plans/parent-sync/parent-sync-<date>.md` — bucket summary table, a
+  **Workstreams** table, then four sections (SKIP / PORT / EVALUATE /
+  ALREADY-APPLIED). PORT and EVALUATE entries are full detail blocks with parent
+  paths → wifey targets, the parent MEMORY excerpt, and a suggested approach
+  (`verify-only` / `cherry-pick-with-edits` / `re-implement`).
+  **In-repo and gitignored, deliberately not `/tmp`** — the report is the triage
+  artifact and a review spans days. A `/tmp` clear destroyed the 2026-07-29 report
+  with 57 of 67 PRs still undecided, forcing a full re-scan.
 - The **Workstreams** table clusters the range's PRs into multi-PR campaigns
   (e.g. a `live-parity (backtest engine port)` row spanning 6 PRs) so a large
   range reads as a handful of themes rather than a flat PR list. Clustering is
@@ -59,10 +66,11 @@ Direct: `PYTHONPATH=. poetry run python tools/sync_parent.py [flags]`.
 ## Workflow
 
 1. Run `make wifey-sync-parent`. If it reports a fail-fast error (parent missing,
-   not on `main`, malformed state), **surface it to the user and stop** — do not
-   auto-clone, auto-checkout, or auto-bump.
-2. Read `/tmp/parent-sync-<date>.md`. Summarise the **Workstreams** table (the
-   major multi-PR campaigns) and the bucket counts for the user.
+   no readable `origin/main`, malformed state), **surface it to the user and stop**
+   — do not auto-clone, auto-fetch, or auto-bump.
+2. Read `docs/plans/parent-sync/parent-sync-<date>.md`. Summarise the
+   **Workstreams** table (the major multi-PR campaigns) and the bucket counts for
+   the user.
 3. For each **PORT** / **EVALUATE** candidate the user wants: open a fresh Claude
    session, paste the PR number + the parent MEMORY excerpt from the report, and
    do the actual port work there (this skill does not edit code).

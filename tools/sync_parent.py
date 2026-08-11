@@ -3,7 +3,7 @@
 Read-only on both repos except the wifey memory state file (written only on
 ``--bump-to``). Enumerates parent PRs merged since the last sync point, classifies
 each (SKIP / PORT / EVALUATE, with an ALREADY-APPLIED routing overlay), and writes a
-context-rich report to ``/tmp/parent-sync-<date>.md``.
+context-rich report to ``docs/plans/parent-sync/parent-sync-<date>.md``.
 
 The parent (``buibui-moon-trader-bot``) squash-merges every PR into a single commit
 whose subject ends in ``(#N)`` — there are no merge commits — so PR grouping keys off
@@ -103,7 +103,12 @@ WORKSTREAM_RULES: list[tuple[str, str]] = [
     (r"^build\(deps", "dependency bumps"),
 ]
 
-REPORT_DIR = Path("/tmp")
+# In-repo (and gitignored via ``docs/plans/``), deliberately NOT ``/tmp``: the report
+# IS the triage artifact — a reviewer decides PRs against it over days, and the
+# sync-state memory only records what was already decided. On 2026-07-29 a ``/tmp``
+# clear destroyed a 67-PR report with 57 still undecided, and the range had to be
+# re-scanned from scratch. It must outlive a reboot.
+REPORT_DIR = WIFEY_REPO_PATH / "docs" / "plans" / "parent-sync"
 
 PathKind = Literal["direct", "renamed", "removed", "skip", "unmapped"]
 
@@ -652,10 +657,6 @@ def format_report(reports: list[PRReport], from_hash: str, to_hash: str) -> str:
 # --------------------------------------------------------------------------- #
 
 
-def _parent_current_branch() -> str:
-    return _git(PARENT_REPO_PATH, "branch", "--show-current").strip()
-
-
 def _parent_head_hash() -> str:
     return _git(PARENT_REPO_PATH, "rev-parse", "--short", "origin/main").strip()
 
@@ -729,9 +730,17 @@ def main(argv: list[str] | None = None) -> int:
         return _fail(
             f"Parent repo not found at {PARENT_REPO_PATH}. Clone it or update PARENT_REPO_PATH."
         )
-    branch = _parent_current_branch()
-    if branch != "main":
-        return _fail(f"Parent must be on 'main'. Currently on '{branch}'.")
+    # Deliberately NOT a checked-out-branch guard. Every parent read here is
+    # ref-based against origin/main (cat-file / fetch / log / show / rev-parse) and
+    # nothing touches the parent working tree, so which branch happens to be checked
+    # out cannot change a scan's result. Guarding on it blocked a scan outright on
+    # 2026-06-17 (parent parked on feat/xsmom-sleeve) and again on 2026-08-11 — pure
+    # friction, and a blocked scan is how a triage backlog grows.
+    if not _hash_exists_in_parent("origin/main"):
+        return _fail(
+            f"No readable origin/main in {PARENT_REPO_PATH}. Fetch it first: "
+            f"git -C {PARENT_REPO_PATH} fetch origin main"
+        )
 
     if args.bump_to:
         if not _hash_exists_in_parent(args.bump_to):
@@ -772,11 +781,12 @@ def main(argv: list[str] | None = None) -> int:
     reports = run_pipeline(prs, _read_parent_memory())
     report = format_report(reports, from_hash, to_hash)
 
+    path = _report_path()
     try:
-        path = _report_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(report)
-    except OSError:
-        return _fail("Cannot write report. Check /tmp permissions.")
+    except OSError as exc:
+        return _fail(f"Cannot write report to {path}: {exc}")
 
     print(f"Wrote {len(reports)} PR(s) to {path}")
     print(

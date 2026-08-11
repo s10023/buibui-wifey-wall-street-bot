@@ -477,7 +477,7 @@ class TestSmokeRun:
 
     def test_main_writes_report_file(self, mocker: Any, tmp_path: Path) -> None:
         mocker.patch("tools.sync_parent.PARENT_REPO_PATH", tmp_path)  # exists
-        mocker.patch("tools.sync_parent._parent_current_branch", return_value="main")
+        mocker.patch("tools.sync_parent._hash_exists_in_parent", return_value=True)
         mocker.patch(
             "tools.sync_parent.fetch_parent_commits",
             return_value=[
@@ -495,14 +495,68 @@ class TestSmokeRun:
         assert report_path.exists()
         assert "Parent sync report" in report_path.read_text()
 
+    def test_main_creates_report_dir_when_missing(
+        self, mocker: Any, tmp_path: Path
+    ) -> None:
+        """A checkout with no report dir yet still gets its report written.
+
+        ``_report_path`` is deliberately NOT patched here — the sibling test above
+        patches it and so never exercises the directory, which is the whole risk of
+        writing into the repo instead of a directory /tmp guarantees exists.
+        """
+        mocker.patch("tools.sync_parent.PARENT_REPO_PATH", tmp_path)
+        mocker.patch("tools.sync_parent._hash_exists_in_parent", return_value=True)
+        mocker.patch(
+            "tools.sync_parent.fetch_parent_commits",
+            return_value=[
+                sp.Commit("abc", "fix: regime (#403)", "", ["analytics/regime.py"])
+            ],
+        )
+        mocker.patch("tools.sync_parent._parent_head_hash", return_value="abcdef0")
+        mocker.patch("tools.sync_parent._read_parent_memory", return_value="(empty)")
+        mocker.patch("tools.sync_parent._wifey_path_exists", return_value=True)
+        mocker.patch("tools.sync_parent.extract_added_symbols", return_value=[])
+        report_dir = tmp_path / "docs" / "plans" / "parent-sync"
+        mocker.patch("tools.sync_parent.REPORT_DIR", report_dir)
+        assert not report_dir.exists()
+
+        code = sp.main(["--from", "635ed5a", "--no-fetch"])
+
+        assert code == 0
+        written = list(report_dir.glob("parent-sync-*.md"))
+        assert len(written) == 1
+        assert "Parent sync report" in written[0].read_text()
+
+    def test_report_dir_is_inside_the_repo(self) -> None:
+        """The report must outlive a reboot: a /tmp clear lost a 67-PR triage once."""
+        assert sp.REPORT_DIR.is_relative_to(sp.WIFEY_REPO_PATH)
+
     def test_main_bump_to_unknown_hash_exits_1(
         self, mocker: Any, tmp_path: Path
     ) -> None:
         mocker.patch("tools.sync_parent.PARENT_REPO_PATH", tmp_path)
-        mocker.patch("tools.sync_parent._parent_current_branch", return_value="main")
-        mocker.patch("tools.sync_parent._hash_exists_in_parent", return_value=False)
+        # origin/main resolves and ONLY the bump target is unknown, so exit 1 here
+        # can only come from the bump check. Patching _hash_exists_in_parent flat to
+        # False would also trip the origin/main precondition and pass either way.
+        mocker.patch(
+            "tools.sync_parent._hash_exists_in_parent",
+            side_effect=lambda h: h == "origin/main",
+        )
         code = sp.main(["--bump-to", "nope123"])
         assert code == 1
+
+    def test_main_fails_when_origin_main_is_unreadable(
+        self, mocker: Any, tmp_path: Path
+    ) -> None:
+        """An unfetched parent clone is the real precondition — the branch is not.
+
+        The tests above reach a written report with `tmp_path` (not a git repo, and
+        so on no branch at all) standing in for the parent, which is what proves the
+        checked-out branch no longer gates a scan.
+        """
+        mocker.patch("tools.sync_parent.PARENT_REPO_PATH", tmp_path)
+        mocker.patch("tools.sync_parent._hash_exists_in_parent", return_value=False)
+        assert sp.main(["--from", "635ed5a", "--no-fetch"]) == 1
 
 
 def _ws_report(title: str, number: int | None) -> Any:
