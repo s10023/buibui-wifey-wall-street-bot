@@ -110,7 +110,7 @@ straight if the cohort is revisited at n≥30.
   spec's whole point is edge-specific policy assignment, and that is still blocked.
 - **Not a claim about today's gate.** See below.
 
-## The population predates the current gate — and the ledger has stopped growing
+## The population predates the current gate
 
 **All 264 resolved rows have signal candles at or before 2026-08-06**, and the
 newest row of *any* status is an `open` row at 2026-08-06 13:30 UTC. #151 (the EV
@@ -119,19 +119,57 @@ gate's significance test, which freed 106 + 226 legs into dispatch) merged
 this diagnostic characterises the *narrow*-gate population. Group C's rule applies
 directly: a forecast is conditional on the configuration it was measured under.
 
-That also settles the handoff's standing watch item (*"if the ledger does not grow,
-something downstream of the gate is dropping rows"*) as **still open, with the
-suggested mechanism not yet confirmed**. What is established:
+### The watch item, traced — and a measurement trap on the way
 
-- `make go-live` is manual, and the only live-gate evaluation since 2026-08-06 is
-  **2026-08-11 12:25 UTC** (`backtest_runs` where `sweep_id IS NULL`), which is
-  **08:25 ET — pre-open**.
-- That run evaluated **35 rows across 13 distinct cells**, so detectors did fire,
-  and it wrote **zero** ledger rows.
+The handoff's standing watch item reads *"if the ledger does not grow, something
+downstream of the gate is dropping rows."* Tracing it produced a **correction to
+this audit's own first draft**, which is worth recording because the trap is
+generic.
 
-Whether that zero is normal (dedup against `signal_state.json`, or every leg gated)
-or a real drop is **not determined here** — it needs the dispatch path read against
-that run, and it is a separate question from this diagnostic. Flagged, not diagnosed.
+**A histogram of the ledger by `candle_ts_ms` says nothing about whether the ledger
+GREW.** The scanner stamps two clocks on every row — `candle_ts_ms` (the signal's
+bar) and `fired_at_ms` (the run). Grouped by candle, the newest bucket is
+2026-08-06 and the 2026-08-11 run appears to have written **nothing**. Grouped by
+`fired_at_ms`, that same run wrote **13 rows** — they were simply filed under
+candle dates from **2026-06-25 → 2026-08-06**. The first reading was wrong, and it
+was wrong in the direction that invents a defect.
+
+What the dispatch path actually says (`scanner.py`): the outcome writer at `:1029`
+runs over `passing_events` **unconditionally** — the comment at `:947` is explicit
+that "DB + outcome persistence stay unconditional", and only the *dispatch*
+watermark is gated. So ledger writes are not evidence of dispatch, and the absence
+of dispatch is not evidence of a missing write. The 35 gate rows and the 13 ledger
+rows are consistent with each other; there is **no drop to explain**.
+
+The residual fact is narrower and still unexplained: **no signal_id exists for any
+candle after 2026-08-06 13:30**, although OHLCV reaches 2026-08-10 and a scan ran on
+2026-08-11. Two candidate mechanisms, neither confirmed here — the run was at
+**12:25 UTC / 08:25 ET, pre-open**, and `make go-live`'s
+`-$(MAKE) wifey-analytics-sync` is already known to **fail quietly** (its `-` prefix
+swallows the exit code), so a scan on stale bars would produce exactly this shape.
+Distinguishing them needs one `CATCH_UP=1 make go-live` during market hours, which
+is an operator action.
+
+### Latent, found while tracing: a re-detection NULLs a resolved outcome
+
+`upsert_signal_outcome` is `INSERT OR REPLACE` over all 16 columns, and the
+scanner's call at `:1029` passes **no** `outcome` / `outcome_r` /
+`outcome_filled_at_ms` key — `row.get(col)` yields NULL for all three. So whenever a
+scan re-detects a signal it has already recorded (which demonstrably happens: 13
+rows re-stamped on 2026-08-11, the oldest a 2026-06-25 candle), **the resolved label
+is erased and rewritten as NULL**.
+
+It survives today only because `backfill_outcomes` runs downstream in the same cycle
+and re-derives the same answer — deterministically, and more so since #578 bounded
+it to closed bars. The exposure is the window between: if the process dies, or that
+symbol hits the backfill's `no_ohlcv` path, a resolved row silently reverts to
+`open` and its outcome is gone. Note this also qualifies the claim that a label
+written off a forming bar is "permanent" — the permanence comes from
+`outcome IS NULL` filtering, and a re-detection is exactly the thing that undoes it.
+
+**Not fixed here** (this is a docs branch, and the fix is a one-line column
+carry-forward plus a test). Same family as #148: `INSERT OR REPLACE` against a key
+that identifies the row but not the *measurement* attached to it.
 
 ## Recommendation on #437 (exit-policy A/B): the data blocker is CLEARED, the design blocker is NOT
 
