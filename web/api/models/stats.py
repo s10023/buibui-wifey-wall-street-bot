@@ -36,6 +36,11 @@ class ADRResponse(BaseModel):
 class DOWPatternRow(BaseModel):
     dow: str
     avg_range_pct: float
+    # Display-only companion to the mean, like the ADR medians above — nothing
+    # gates or sizes off it. Computed in analytics/stats/dow.py since this port;
+    # the parent plumbs the same field into a Brief tab, which this fork does not
+    # have, so the Stats tab is its only surface here.
+    median_range_pct: float
     bull_pct: float
     sample_days: int
     avg_return_pct: float

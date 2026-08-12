@@ -106,6 +106,7 @@ def _bundle_to_response(bundle: StatsBundle) -> StatsResponse:
         DOWPatternRow(
             dow=row.dow,
             avg_range_pct=row.avg_range_pct,
+            median_range_pct=row.median_range_pct,
             bull_pct=row.bull_pct,
             sample_days=row.sample_days,
             avg_return_pct=row.avg_return_pct,

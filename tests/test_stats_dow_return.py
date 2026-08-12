@@ -1,4 +1,8 @@
-"""DOW median return + the standard error the Stats tab dims on (parent #598 port).
+"""DOW medians + the standard error the Stats tab dims on (parent #598/#593 ports).
+
+Covers both medians on the card: `median_return_pct` + `return_stderr_pct` (#598)
+and `median_range_pct` (#593). They share one deliberately-skewed fixture, which is
+why the range tests live in a module named for the return work.
 
 Why the error bar exists at all: at the n this card runs (~48-52 weekdays in a 1y
 window), SE measured **0.08-0.32%** across SPY/QQQ/NVDA/AAPL/MSFT at 365d against
@@ -91,6 +95,43 @@ def test_median_return_ignores_the_crash_the_mean_cannot() -> None:
     assert row.median_return_pct == pytest.approx(QUIET_RET)
     # The whole point: one drags negative, the other does not.
     assert row.avg_return_pct < 0 < row.median_return_pct
+
+
+def test_median_range_ignores_the_wide_day_the_mean_cannot() -> None:
+    """`median_range_pct` (parent #593) — lives here because it needs the SAME
+    deliberately-skewed fixture: a symmetric one makes mean == median and would
+    pass against an implementation that computed AVG twice.
+
+    The fixture's bars are open=100, high=max(100, close), low=min(100, close),
+    so each day's range_pct is exactly |ret|. One −20% Monday against seven +1%
+    Mondays therefore puts the mean at 3.375% and the median at 1% — the mean is
+    3.4x a range no Monday in the sample except one has ever printed. That gap is
+    the entire reason the column was added.
+    """
+    rets = [CRASH_RET] + [QUIET_RET] * (N_MONDAYS - 1)
+    row = _mon(_mondays(rets))
+    ranges = [abs(r) for r in rets]
+
+    assert row.avg_range_pct == pytest.approx(statistics.mean(ranges))
+    assert row.median_range_pct == pytest.approx(QUIET_RET)
+    # The discriminating assertion: MEDIAN(...) silently swapped for AVG(...)
+    # collapses these two to the same value and fails here, not on the approx
+    # checks above.
+    assert row.avg_range_pct > 3 * row.median_range_pct
+
+
+def test_median_range_is_never_negative() -> None:
+    """Range is unsigned, which is why the UI never dims this column.
+
+    `median_return_pct` needs an error bar because its SIGN can mislead; range is
+    bounded below by zero and carries no direction, so the failure mode
+    `return_stderr_pct` exists to prevent cannot occur here. Pins that property
+    against a future refactor that computes range as a signed difference.
+    """
+    rets = [CRASH_RET] + [QUIET_RET] * (N_MONDAYS - 1)
+    row = _mon(_mondays(rets))
+    assert row.median_range_pct >= 0
+    assert row.avg_range_pct >= 0
 
 
 def test_stderr_matches_stddev_over_sqrt_n() -> None:

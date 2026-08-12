@@ -399,6 +399,9 @@ export interface ADRResponse {
 export interface DOWPatternRow {
   dow: string;
   avg_range_pct: number;
+  /** Median (high-low)/open. Display-only companion to avg_range_pct — range is
+   *  unsigned, so unlike the return columns it is never dimmed. */
+  median_range_pct: number;
   bull_pct: number;
   sample_days: number;
   avg_return_pct: number;

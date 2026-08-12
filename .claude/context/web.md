@@ -68,7 +68,7 @@ Build: `make web-build` → `web/ui/dist/` served by FastAPI StaticFiles.
 
 ### Stats page
 
-- 10-card grid: P1/P2 (incl. P1 strong%), ADR (mean **and median**, `avg / med` at 2dp), hourly distribution, DOW patterns (incl. Str H/Str L, plus **Med Return** and a noise-dimmed **Avg Return**), session breakdown, weekly P1/P2, avg return by day, weekly P2 timing with flip risk, Daily Distance, P1 Wick Rank
+- 10-card grid: P1/P2 (incl. P1 strong%), ADR (mean **and median**, `avg / med` at 2dp), hourly distribution, DOW patterns (incl. Str H/Str L, plus **Med Range** beside Avg Range at 2dp, **Med Return** and a noise-dimmed **Avg Return**), session breakdown, weekly P1/P2, avg return by day, weekly P2 timing with flip risk, Daily Distance, P1 Wick Rank
 - **DOW return columns dim inside `2.576 × SE`** (Bonferroni over the 5 equity weekdays, *not* the parent's k=7 2.69). A dimmed `+` and `−` share one grey deliberately. Display-only; nothing gates on it, and on current data all 25 measured cells dim. See `/stats-dashboard`.
 - **Live Alert Outcomes** card (full-width, below the grid) — cross-symbol, fetched independently of the symbol picker via `getLiveOutcomes(days, minN)`; all-time roll-up chips (incl. a no-TP integrity badge) + period/min-n pill toggles + by-strategy and by-cell tables with diverging avg-R bars
 - Default lookback: 365d
