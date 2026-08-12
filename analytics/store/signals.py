@@ -71,21 +71,49 @@ def get_signals_history(
 
 
 def upsert_signal_outcome(conn: duckdb.DuckDBPyConnection, row: dict[str, Any]) -> None:
-    """Insert or replace a single signal outcome row.
+    """Insert a signal outcome row, or refresh an existing one in place.
 
     The row dict must contain at minimum: signal_id, symbol, tf, strategy,
     direction, fired_at_ms.  All other fields are optional and default to NULL
-    when omitted.
+    on a fresh insert.
 
-    Conflicts on signal_id are replaced so that outcome / outcome_r /
-    outcome_filled_at_ms can be backfilled later without inserting duplicates.
+    **A conflict does not blank the resolution.** `outcome` / `outcome_r` /
+    `outcome_filled_at_ms` are `COALESCE`d against the stored row, so an
+    omitted (NULL) value keeps whatever is already there and a supplied value
+    still wins. This is not defensive coding — it is the live shape.
+    `scanner.py` re-writes the alert row on **every** scan that still detects
+    the signal (the write is unconditional; only *dispatch* is watermarked)
+    and passes none of the three keys, so under the previous
+    `INSERT OR REPLACE` a re-detection set all three back to NULL. Measured on
+    the live ledger 2026-08-11: 13 rows re-stamped in a single cycle, the
+    oldest a signal from 7 weeks earlier already booked as a loss. It survived
+    only because `backfill_outcomes` re-derives the label downstream in the
+    same cycle — so the exposure was a crash, or that symbol hitting the
+    backfill's `no_ohlcv` path, silently reverting a resolved row to `open`.
+
+    `backfill_outcomes` does not route through here (it issues a direct
+    `UPDATE`), so preserving on NULL costs the resolver nothing.
     """
     values = [row.get(col) for col in _OUTCOME_COLUMNS]
     conn.execute(
-        "INSERT OR REPLACE INTO signal_alert_outcomes "
+        "INSERT INTO signal_alert_outcomes "
         "(signal_id, symbol, tf, strategy, direction, fired_at_ms, "
         "candle_ts_ms, entry_price, sl_price, tp_price, rr_ratio, "
         "confidence_at_fire, tags, outcome, outcome_r, outcome_filled_at_ms) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT (signal_id) DO UPDATE SET "
+        "symbol = excluded.symbol, tf = excluded.tf, "
+        "strategy = excluded.strategy, direction = excluded.direction, "
+        "fired_at_ms = excluded.fired_at_ms, "
+        "candle_ts_ms = excluded.candle_ts_ms, "
+        "entry_price = excluded.entry_price, sl_price = excluded.sl_price, "
+        "tp_price = excluded.tp_price, rr_ratio = excluded.rr_ratio, "
+        "confidence_at_fire = excluded.confidence_at_fire, "
+        "tags = excluded.tags, "
+        "outcome = COALESCE(excluded.outcome, signal_alert_outcomes.outcome), "
+        "outcome_r = COALESCE(excluded.outcome_r, "
+        "signal_alert_outcomes.outcome_r), "
+        "outcome_filled_at_ms = COALESCE(excluded.outcome_filled_at_ms, "
+        "signal_alert_outcomes.outcome_filled_at_ms)",
         values,
     )
