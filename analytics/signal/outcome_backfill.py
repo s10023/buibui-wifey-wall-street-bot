@@ -34,11 +34,19 @@ from analytics.signal._common import parse_timeframe_secs
 logger = logging.getLogger(__name__)
 
 
-# Hold caps in BARS — never in calendar time. Each sits near the p85–p90 of the
-# hold actually observed in `backtest_trades` (4,000-row sample, 2026-08-12:
-# `4h` p50 3 / p90 27, `1d` p50 2 / p90 24.5), so the cap bites the tail rather
-# than the body. The values are equity-measured and fine; it is the day-
-# equivalents that were inherited from crypto and are wrong.
+# Hold caps in BARS — never in calendar time. Each is calibrated to the FRACTION
+# OF TRADES THAT RESOLVE WITHIN IT, measured over the full closed-trade
+# population in `backtest_trades` (2026-08-12): `4h` 30 bars covers **91.0%** of
+# 15,799 trades, `1d` 14 bars covers **85.5%** of 7,168. So a cap bites the tail
+# and leaves the body alone. That coverage figure — not a day count — is the
+# thing to reproduce when adding or revisiting a timeframe; the script is
+# `docs/plans/scripts/max_hold_coverage.py`.
+#
+# Coverage MUST be computed with the one-bar offset below (a live cap of N
+# admits `bars_held <= N-1`). Comparing `bars_held <= N` instead inflates every
+# figure by roughly a percentage point and is not comparable across timeframes,
+# because the size of the bar-0 bucket differs sharply by TF (`4h` 20%, `1d`
+# 28%, `1wk` 58%).
 #
 # READ THESE AS BARS. US-equity RTH does not have six `4h` bars in a day — it
 # has TWO — so the old "5d" annotation understated the real window by 3×.
@@ -52,12 +60,41 @@ logger = logging.getLogger(__name__)
 # a FUNCTION parameter only — there is no `[outcome_backfill]` TOML block, and
 # `signal_runner` passes no override, so on the production path these defaults
 # are always the effective values.
+#
+# Every timeframe any config scans MUST have an entry here — `_resolve_max_hold`
+# refuses an unlisted one rather than guessing, and `test_max_hold_covers_every
+# _configured_timeframe` fails the build if a config adds a timeframe without one.
 DEFAULT_MAX_HOLD_BARS: dict[str, int] = {
     "15m": 96,  # 96 bars — no live rows
     "1h": 48,  # 48 bars — no live rows
     "4h": 30,  # 30 bars = ~15 RTH trading days (~3 calendar weeks), NOT 5 days
     "1d": 14,  # 14 bars = 14 trading days (~20 calendar days), NOT 2 weeks
+    # 7 bars ≈ 7 weeks. Covers 91.1% of 729 closed `1wk` trades, matched
+    # deliberately to `4h`'s 91.0% rather than `1d`'s 85.5% (which would be 5):
+    # the error is asymmetric. Too small force-expires a signal that would have
+    # reached TP/SL and writes that wrong label PERMANENTLY, because this module
+    # only ever revisits rows where `outcome IS NULL`; too large merely leaves a
+    # row open one more cycle. Chosen by the user 2026-08-12. Note the live
+    # window is offset by one from the backtest's: `_scan_forward` counts bars
+    # strictly after the SIGNAL candle, while a backtest trade enters on the next
+    # bar's open and can exit on it (58% of `1wk` trades do), so
+    # live max_hold = backtest bars_held + 1.
+    "1wk": 7,
 }
+
+
+def _resolve_max_hold(tf: str, hold_map: dict[str, int]) -> int | None:
+    """Bars to scan for `tf`, or None if the timeframe has no calibrated cap.
+
+    Returning None makes the caller leave those rows unresolved. The previous
+    behaviour was `hold_map.get(tf, max(hold_map.values()))` — a fallback to the
+    LOOSEST entry, so an unlisted timeframe silently received the most permissive
+    window available: `1wk` would have taken the `15m` value of 96 bars, i.e. a
+    **96-week** hold. Guessing wide is not the safe direction here, because the
+    guess ends up written into `signal_alert_outcomes` as an `expired` label with
+    a mark-to-market `outcome_r`, and nothing revisits it.
+    """
+    return hold_map.get(tf)
 
 
 def _scan_forward(
@@ -115,9 +152,13 @@ def backfill_outcomes(
     """Resolve unresolved signal_alert_outcomes rows by walking OHLCV forward.
 
     Returns a counts dict: {"win": N, "loss": N, "expired": N, "open": N,
-                            "no_ohlcv": N}.  "open" means the row was inspected
-    but the hold window hasn't elapsed yet — it stays NULL so the next cycle
-    can retry. "no_ohlcv" means we found no candles after the signal bar.
+                            "no_ohlcv": N, "no_hold_cap": N}.  "open" means the
+    row was inspected but the hold window hasn't elapsed yet — it stays NULL so
+    the next cycle can retry. "no_ohlcv" means we found no candles after the
+    signal bar. "no_hold_cap" means the timeframe has no entry in
+    `DEFAULT_MAX_HOLD_BARS`, so the rows were left unresolved rather than scored
+    against a guessed window; it should always be 0 in production, and a
+    non-zero value means a config gained a timeframe the calibration missed.
 
     Only rows with both `tp_price` and `sl_price` set are eligible — that
     matches the P1 fire-time persistence rule.
@@ -135,7 +176,14 @@ def backfill_outcomes(
         "AND rr_ratio IS NOT NULL"
     ).fetchall()
 
-    counts = {"win": 0, "loss": 0, "expired": 0, "open": 0, "no_ohlcv": 0}
+    counts = {
+        "win": 0,
+        "loss": 0,
+        "expired": 0,
+        "open": 0,
+        "no_ohlcv": 0,
+        "no_hold_cap": 0,
+    }
     if not rows:
         return counts
 
@@ -186,14 +234,19 @@ def backfill_outcomes(
             counts["no_ohlcv"] += len(tf_rows)
             continue
 
-        # NOTE: the fallback is the LARGEST entry, i.e. the most permissive
-        # window, so an unlisted TF gets the loosest cap rather than the safest.
-        # `1wk` is unlisted and would take the `15m` value — 96 bars = 96 WEEKS.
-        # Latent only (no `1wk` row has ever reached this table and `1wk` is not
-        # live), and picking a real value is calibration, so it is a user call
-        # rather than a drive-by fix. Measured for whoever makes it: observed
-        # `1wk` hold is p50 0 / p90 7 / p99 23 bars, max 30.
-        max_hold = hold_map.get(tf, max(hold_map.values()))
+        max_hold = _resolve_max_hold(tf, hold_map)
+        if max_hold is None:
+            # No calibrated cap for this timeframe. Leave the rows NULL rather
+            # than scoring them against a guessed window — see _resolve_max_hold.
+            logger.warning(
+                "No max_hold_bars for timeframe %r; leaving %d row(s) unresolved. "
+                "Add an entry to DEFAULT_MAX_HOLD_BARS.",
+                tf,
+                len(tf_rows),
+            )
+            counts["no_hold_cap"] += len(tf_rows)
+            continue
+
         updates: list[tuple[str, float, int, str]] = []
 
         for (
