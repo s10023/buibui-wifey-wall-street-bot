@@ -36,10 +36,17 @@ logger = logging.getLogger(__name__)
 
 # Hold caps in BARS — never in calendar time. Each is calibrated to the FRACTION
 # OF TRADES THAT RESOLVE WITHIN IT, measured over the full closed-trade
-# population in `backtest_trades` (2026-08-12): `4h` 30 bars covers **91.3%** of
-# 15,799 trades, `1d` 14 bars covers **86.3%** of 7,168. So a cap bites the tail
+# population in `backtest_trades` (2026-08-12): `4h` 30 bars covers **91.0%** of
+# 15,799 trades, `1d` 14 bars covers **85.5%** of 7,168. So a cap bites the tail
 # and leaves the body alone. That coverage figure — not a day count — is the
-# thing to reproduce when adding or revisiting a timeframe.
+# thing to reproduce when adding or revisiting a timeframe; the script is
+# `docs/plans/scripts/max_hold_coverage.py`.
+#
+# Coverage MUST be computed with the one-bar offset below (a live cap of N
+# admits `bars_held <= N-1`). Comparing `bars_held <= N` instead inflates every
+# figure by roughly a percentage point and is not comparable across timeframes,
+# because the size of the bar-0 bucket differs sharply by TF (`4h` 20%, `1d`
+# 28%, `1wk` 58%).
 #
 # READ THESE AS BARS. US-equity RTH does not have six `4h` bars in a day — it
 # has TWO — so the old "5d" annotation understated the real window by 3×.
@@ -63,7 +70,7 @@ DEFAULT_MAX_HOLD_BARS: dict[str, int] = {
     "4h": 30,  # 30 bars = ~15 RTH trading days (~3 calendar weeks), NOT 5 days
     "1d": 14,  # 14 bars = 14 trading days (~20 calendar days), NOT 2 weeks
     # 7 bars ≈ 7 weeks. Covers 91.1% of 729 closed `1wk` trades, matched
-    # deliberately to `4h`'s 91.3% rather than `1d`'s 86.3% (which would be 5):
+    # deliberately to `4h`'s 91.0% rather than `1d`'s 85.5% (which would be 5):
     # the error is asymmetric. Too small force-expires a signal that would have
     # reached TP/SL and writes that wrong label PERMANENTLY, because this module
     # only ever revisits rows where `outcome IS NULL`; too large merely leaves a
