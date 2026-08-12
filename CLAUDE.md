@@ -359,7 +359,9 @@ expression was inlined four times in production plus a fifth time inside
 `tests/test_xsmom_residual_report.py`, which re-derived it to build its own expected value and so
 passed against any implementation. Extraction to one definition is what made the leg set legible
 at all. Equivalence of the extraction was proven over 2,985,984 exhaustive combinations
-(including NaN/±inf) plus 200k random draws, 0 mismatches.
+(including NaN/±inf) plus 200k random draws, 0 mismatches. Script (reproduces every number
+here, by calling the production functions rather than restating their arithmetic):
+`docs/plans/scripts/sleeve_gate_mintrl_bar.py`.
 
 **A statistic can report a value it was DEFINED to report, and a cohort median is where that hides.**
 `exits/`'s MFE for a loss comes from `fav[:-1]` — every held bar except the exit bar, the deliberate
