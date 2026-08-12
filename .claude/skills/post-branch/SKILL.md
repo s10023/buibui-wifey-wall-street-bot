@@ -43,8 +43,11 @@ final tree either way. Practical consequence: **Step 6 composes the initial
 The steps below are numbered from when the sweep ran post-PR. The numbering is
 kept so existing references still resolve, but the running order is now:
 
-1. Steps 1–5 — behaviour gate, changed artifacts, doc walk, surface checks,
-   MEMORY.md. All pure local work; no PR, no `gh`, no network.
+1. Steps 1–5c — behaviour gate, changed artifacts, doc walk, surface checks,
+   MEMORY.md, **SoT reconcile**, **claims audit**. All pure local work; no PR,
+   no `gh`, no network. Steps 5b and 5c write nothing to the repo (the SoT lives
+   outside it, and the claims audit edits prose the branch already has), so both
+   are free of CI either way.
 2. **Step 7** — commit the doc edits and `git push -u origin <branch>`.
 3. **Step 6** — compose the "Documentation updates" section.
 4. `gh pr create --body …` with that section already **in** the initial body.
@@ -522,6 +525,83 @@ behaviour-visible changes.
 
 ---
 
+## Step 5b — SoT reconcile (always, and it is NOT covered by Step 5)
+
+**Ask one question: does this branch close, change, or contradict a row in the
+SoT** (`~/.claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot/memory/project_todo_master.md`)?
+If yes, reconcile it **now, in this same session** — move the row to **Closed**
+with a one-line verdict, per that file's own rule ("Move items there with a
+one-line verdict; never delete"). Like MEMORY.md it lives outside the repo, so
+it is **never committed** and costs no CI.
+
+Cheap way to find the row — search for the item ID and the PR number:
+
+```bash
+SOT=~/.claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot/memory/project_todo_master.md
+grep -n 'N1\|N3\|W4\|#159' "$SOT"     # the IDs and PRs this branch touched
+grep -n 'OPEN\|not yet\|unfixed' "$SOT" | grep -i "$TOPIC"
+```
+
+**Why this step exists, and why it is separate from Step 5.** Nothing auto-updates
+the SoT — the session-memory wiring (CLAUDE.md "Session Memory Protocol", this
+skill's Step 5, `/sanity-check`) all touches **MEMORY.md**, not the SoT. **The SoT
+predicted this failure in its own "How to use this file" section**; drift recurred
+and nobody acted on the trigger, so the step is now here.
+
+**The failure it prevents is misinformation, not clutter.** Measured on this repo
+2026-08-12, three rows were stale in a way that would misdirect a fresh session:
+`N1` still listed the **0.1 universe-as-of policy** and the **0.4 cost model** as
+the remaining work when `analytics/backtest/cost_model.py` and the
+`universe_policy` / `cost_model` columns were already live; `N3` asked to "expand
+beyond the 13-symbol watchlist … start ~S&P 100" against a committed **505**-member
+`config/universe.json`; and `W4` said "next `/sync-parent` scans `90a04e0..HEAD`"
+after **two** scans had run. A session picking up work from the SoT would have
+rebuilt shipped code.
+
+**A stale row is worse than a missing one**, because it reads as current evidence.
+If you are unsure whether a row is still true, do not leave it — either verify it
+against the code or mark it unverified with today's date. **Reconcile to what you
+verified, not to what is tidy**: a row that shipped *with a known residual gap*
+gets the gap written down, not a blanket close.
+
+---
+
+## Step 5c — Claims audit (run whenever the branch ADDS PROSE; before Step 7's commit)
+
+Every other step in this skill checks whether the **docs** drifted from the
+**code**. Nothing checks whether the **numbers the branch itself asserts** are
+true. On 2026-08-12 two false quantitative claims reached committed documents —
+one into an audit doc that merged as #156, one into the #157 PR body, CLAUDE.md
+and `.claude/context/analytics.md`. Both cost a retraction commit plus a duplicate
+CI matrix: exactly the cost this skill's pre-PR ordering exists to avoid.
+
+**Extract every quantitative claim from the branch's new prose** — commit
+messages, audit docs, the PR body, CLAUDE.md / `context/*.md` additions, and the
+handoff — **and, for each, name the query or command that reproduces it.** A claim
+whose reproduction you cannot state is not ready to ship: cut it, soften it to
+what you did measure, or go measure it.
+
+Three shapes to hunt specifically:
+
+1. **A claim about a MECHANISM supported only by a COUNT.** Both 2026-08-12
+   failures had this shape — `"the run wrote zero ledger rows"` (grouped by the
+   wrong clock) and `"13 rows re-stamped proves re-detection"` (they were first
+   inserts in both tables). A count is consistent with many mechanisms. **Demand
+   the query that rules the OTHER mechanisms out**, not merely one that produced
+   the number. Where two writers use opposite conflict policies, their
+   disagreement is a free discriminator.
+2. **A claim inherited from the handoff counts as one of the branch's own.**
+   #158's "23 rows past their hold window" was carried forward unchallenged for
+   two sessions and was an artifact of reading a **bar** count as calendar days.
+   If the branch repeats it, the branch owns it.
+3. **An upstream number quoted as this repo's.** A ported fix's measured impact
+   upstream is not wifey's; re-derive it here or say "preventive, not a repair".
+
+Record the reproduction in the commit message or the audit doc, not just in
+the session — that is what makes the next challenge cheap.
+
+---
+
 ## Step 6 — Write the "Documentation updates" section (runs AFTER Step 7)
 
 Once edits are approved, applied and **committed** (Step 7), compose a
@@ -623,6 +703,9 @@ PR #<num> behaviour gate: <walked | skipped (pure refactor)>
 CLAUDE.md          — updated: <what> | no change needed: <reason>
 README.md          — updated: <what> | no change needed: <reason>
 MEMORY.md          — updated: Current State + <other>  (never committed)
+SoT reconcile      — <row> moved to Closed | <row> corrected | no SoT row affected
+                     (never committed)
+claims audit       — <n> claims, each with its reproducing query | no new prose
 Makefile           — no change needed: no new CLI commands
 docker-compose.yml — no change needed: no new processes
 .claude/context/*  — updated: analytics.md (store/ paths) | no change needed
