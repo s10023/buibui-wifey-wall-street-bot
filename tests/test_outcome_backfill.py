@@ -6,11 +6,18 @@ and the eligibility gate (only rows with non-NULL tp_price / sl_price /
 entry_price / rr_ratio are inspected).
 """
 
+from pathlib import Path
+
 import duckdb
 import pandas as pd
 import pytest
 
-from analytics.signal.outcome_backfill import backfill_outcomes
+from analytics.signal.outcome_backfill import (
+    DEFAULT_MAX_HOLD_BARS,
+    _resolve_max_hold,
+    backfill_outcomes,
+)
+from analytics.signal_config import load_signal_config
 from analytics.store import init_schema, upsert_signal_outcome
 
 
@@ -308,7 +315,14 @@ class TestBackfillEligibility:
         )
 
         counts = backfill_outcomes(conn, now_ms=2 * _HOUR)
-        assert counts == {"win": 0, "loss": 0, "expired": 0, "open": 0, "no_ohlcv": 0}
+        assert counts == {
+            "win": 0,
+            "loss": 0,
+            "expired": 0,
+            "open": 0,
+            "no_ohlcv": 0,
+            "no_hold_cap": 0,
+        }
         outcome, _, _ = _fetch_one(conn, "sig_no_tp")
         assert outcome is None
 
@@ -344,7 +358,14 @@ class TestBackfillEligibility:
         first = backfill_outcomes(conn, now_ms=2 * _HOUR)
         assert first["win"] == 1
         second = backfill_outcomes(conn, now_ms=3 * _HOUR)
-        assert second == {"win": 0, "loss": 0, "expired": 0, "open": 0, "no_ohlcv": 0}
+        assert second == {
+            "win": 0,
+            "loss": 0,
+            "expired": 0,
+            "open": 0,
+            "no_ohlcv": 0,
+            "no_hold_cap": 0,
+        }
 
 
 class TestBackfillBatching:
@@ -467,3 +488,47 @@ class TestStillFormingFinalBar:
         )
         assert counts["win"] == 1
         assert _fetch_one(conn, "sig1")[0] == "win"
+
+
+class TestMaxHoldCalibrationCoverage:
+    """Every timeframe a config scans must have a calibrated hold cap.
+
+    This guard could not be written before 2026-08-12: `1wk` had no entry, the
+    fallback silently handed it the `15m` value (96 bars = 96 WEEKS), and the
+    `weekdays` config scans `1wk` — so the assertion would have been red with no
+    correct value to make it green. Choosing 7 (user, 2026-08-12) is what made
+    the guard writable, which is the point worth remembering: a guard whose only
+    fix is a calibration decision belongs WITH that decision, not before it.
+    """
+
+    def test_max_hold_covers_every_configured_timeframe(self) -> None:
+        config_dir = Path(__file__).parent.parent / "config"
+        configs = sorted(config_dir.glob("signal_watch*.toml"))
+        assert configs, "no signal_watch configs found — glob or layout changed"
+
+        missing: list[str] = []
+        for cfg_path in configs:
+            cfg = load_signal_config(cfg_path)
+            for tf in cfg.timeframes:
+                if tf not in DEFAULT_MAX_HOLD_BARS:
+                    missing.append(f"{cfg_path.name}:{tf}")
+
+        assert not missing, (
+            "timeframe(s) scanned by a config but absent from "
+            f"DEFAULT_MAX_HOLD_BARS: {missing}. Rows on those timeframes will be "
+            "left unresolved (counts['no_hold_cap']). Add a calibrated entry — "
+            "match the fraction of backtest_trades that resolve within it, the "
+            "way 4h (91.3%) / 1d (86.3%) / 1wk (91.1%) are calibrated."
+        )
+
+    def test_unlisted_timeframe_is_refused_not_guessed(self) -> None:
+        """A timeframe with no cap must leave rows NULL, not invent a window.
+
+        Mutation check: reverting `_resolve_max_hold` to
+        `hold_map.get(tf, max(hold_map.values()))` makes this fail, because the
+        row would be scored against the 96-bar `15m` cap instead of skipped.
+        """
+        assert _resolve_max_hold("1wk", DEFAULT_MAX_HOLD_BARS) == 7
+        assert _resolve_max_hold("30m", DEFAULT_MAX_HOLD_BARS) is None
+        # The old fallback would have returned this instead of None.
+        assert max(DEFAULT_MAX_HOLD_BARS.values()) == 96
