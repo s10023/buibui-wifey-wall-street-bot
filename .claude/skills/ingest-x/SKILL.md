@@ -10,7 +10,9 @@ description: >
   gate for the whole batch) into one of three streams: A hypotheses ->
   docs/plans/thesis-inbox.md, B mechanics -> docs/plans/mechanics-backlog.md,
   C daily setups -> docs/plans/pundit-calls.jsonl. Iteration 2 = text + still
-  images + quoted-tweet; video is detected and skipped. Invoke when the user says
+  images + quoted-tweet; a post in a thread is recovered upward to its root
+  (bookmark the LAST post), and video is handed off to /ingest-video rather than
+  skipped. Invoke when the user says
   "/ingest-x", pastes one or more x.com / twitter.com status URLs, or says
   "ingest this/these X post(s)".
 allowed-tools: Bash, Read, Write, Edit, Task
@@ -44,6 +46,43 @@ pasted, then run the flow once over the whole set.
    user and ask them to paste that post's text + drop a screenshot; continue that
    one from step 2 with the pasted text + image. Do NOT run the old `python -c`
    download one-liner — `photo_paths` already holds the local files.
+
+   **1a. `is_thread: true` ⇒ recover the rest of the thread before extracting.**
+   A single post from a thread is a fragment, and extracting from a fragment
+   classifies a call without the argument it rests on. Upstream measured this on
+   its own cache (**13 of 167** posts classified from a fragment); wifey's X cache
+   is empty, so the count here is 0 of 0 — the rule is inherited on the mechanism,
+   not on a local measurement. Run:
+
+   ```bash
+   PYTHONPATH=. poetry run python tools/x_fetch.py <url> --thread --json
+   ```
+
+   It returns `{"posts": [...root → leaf...], "notes": [...]}`, each post carrying
+   `thread_pos` (0 = root), `in_reply_to_id`, `in_reply_to_author` and
+   `conversation_count`. Feed the **whole chain** to the step-2 subagent as one
+   author's argument, in order, and **keep the per-post `post_ts_utc`** — a thread
+   spans time, so the call time is the timestamp of the post the item came from, or
+   the **leaf** if it cannot be attributed (the conservative choice; it gives the call
+   the shortest forward window).
+
+   **⚠ OPERATOR RULE — bookmark the LAST post of a thread, never the parent.** The
+   endpoint exposes the reply-to chain but has no replies/children field, so a thread
+   can only be recovered **upward**. A bookmarked parent yields nothing below it.
+
+   Two traps: **`conversation_count` is NOT thread length** (it counts everyone's
+   replies to the conversation — a 2-post thread routinely reads 9); and always read
+   `notes` — a walk that stopped early on an author change, a hop cap or a deleted
+   middle post says so there, and a truncated chain otherwise reads as a complete one.
+
+   **1b. `video_present: true` ⇒ hand off to `/ingest-video`, don't make the operator
+   re-paste.** `tools/video_fetch.py` already matches X status URLs — `_X_RE`, and
+   `parse_video_url` returns `("x-video", <status_id>)` (**not** `("x", …)`; the parent's
+   skill prose names the wrong value against its own identical code) — and the Groq
+   whisper fallback covers caption-less X video (`GROQ_API_KEY` is set), so the same URL
+   runs there unchanged. Say plainly that you are handing it off, and carry over any chain
+   recovered in 1a. Do **not** attempt the vision pass here — this skill has no frame
+   extraction.
 
 2. **Extract via a subagent — one per post, pinned to sonnet.** For each post,
    dispatch a `general-purpose` subagent (Task tool) **with `model: "sonnet"`**
@@ -236,6 +275,8 @@ universe FAILED their gates; the free-data edge arc is CONCLUDED (honest exit,
   edge-hunt from an ingested claim without an explicit user go.
 - Never auto-write a stream file before the user approves the digest — one approval
   covers the whole batch.
-- Iteration 2: text + still images + quoted-tweet surfacing. No video (use
-  `/ingest-video` for that), no thread-walking, no reply bodies, no scraping.
+- Scope: text + still images + quoted-tweet surfacing + **upward** self-thread
+  recovery (step 1a). Video is **handed to `/ingest-video`** (step 1b), not skipped.
+  Still out of scope: downward thread expansion (the endpoint has no children
+  field — structurally impossible), reply bodies from other authors, and scraping.
   Syndication + manual-paste are the only two fetch paths.

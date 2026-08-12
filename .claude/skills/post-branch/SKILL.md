@@ -742,7 +742,10 @@ Run a short status sweep and report any blockers in one line each:
 ```bash
 git status --short                                      # working tree clean?
 git log @{u}..HEAD --oneline 2>/dev/null || true        # unpushed commits?
-gh pr view <PR#> --json mergeable,mergeStateStatus,reviewDecision,statusCheckRollup
+gh pr view <PR#> --repo s10023/buibui-wifey-wall-street-bot \
+  --json mergeable,mergeStateStatus,reviewDecision,statusCheckRollup \
+  --jq '{mergeable,mergeStateStatus,reviewDecision,
+         checks: [.statusCheckRollup[] | {name, conclusion, startedAt, completedAt}]}'
 ```
 
 Flag, do not fix:
@@ -752,6 +755,25 @@ Flag, do not fix:
 - `mergeable: CONFLICTING` or `mergeStateStatus: DIRTY`
 - Failing required checks in `statusCheckRollup`
 - `reviewDecision: CHANGES_REQUESTED`
+
+**⚠ Before reporting ANY failing check, compute its runtime from
+`startedAt`/`completedAt` — that is why they are in the `--jq` above.**
+
+**A check that FAILS in 2–5 seconds never ran. That is a BILLING signal, never a code
+one.** When the GitHub Actions allowance is exhausted every job fails in a few seconds
+with zero steps executed, which renders identically to a real test failure. Every check
+on this repo died that way from #144 until the public-flip workaround (#153).
+
+**Use `conclusion` AND duration together — a fast check is not by itself the tell.**
+Wifey's real green baseline, measured on #166: `lint-typecheck-test` **4m34s**, `Trivy`
+**29s**, `Regression tests` **43s**, but `markdownlint` and `frontend-check` legitimately
+finish in **7s**. A bare "under 10s" threshold would flag two healthy checks — the
+discriminating shape is a *FAILURE* in seconds, especially several at once.
+
+Report it as such — *"4 checks failed in 2–3s each: GHA billing, not code"* — and point at
+the standing workaround (flip the repo public for the open-PR window, private again on
+merge; **confirm with the operator every time** — it publishes the parent's history).
+**Never open a debugging session on that shape.**
 
 Output one line per item. If everything is green, say so explicitly:
 `pre-merge: clean — ready when you are.`

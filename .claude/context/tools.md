@@ -333,10 +333,24 @@ protected/deleted/tombstone/non-200/non-dict. Batch path `fetch_x_batch` fetches
 each with a randomized cooldown *between network fetches only* (default 4–12s; skipped before
 the first fetch and on cache hits) + a per-id dedup cache (`.cache/x-posts/<id>.json` → zero
 network on re-runs); `sleep`/`rng`/`get` are injected for deterministic, network-free tests
-while `fetch_x_post` stays pure. Backs the `/ingest-x` skill (ported from parent #466/#467;
-spec `docs/superpowers/specs/2026-06-30-x-post-ingest-design.md`).
+while `fetch_x_post` stays pure. **Thread path** `walk_thread` (parent #591) recovers one
+author's self-thread by following `in_reply_to_status_id_str` **upward** from the tail,
+returning a `ThreadChain` (posts root→leaf with `thread_pos`, plus `notes`). **The direction is
+a hard constraint, not a choice: the endpoint has no replies/children field, so a thread is
+reachable only from its LAST post — a bookmarked parent yields nothing below it.** `XPost`
+gained `in_reply_to_id` / `in_reply_to_author` / `conversation_count` / `thread_pos`, **all
+defaulted** because `_load_cached` does `XPost(**raw)` and any pre-existing cache entry lacks
+the keys (wifey's `.cache/x-posts/` is empty, so this is inherited belt-and-braces here — and
+`_load_cached` already catches `TypeError` as a cache miss, so it fails safe either way). The
+walk stops at the root, on an author change (climbing further would attribute another pundit's
+words to the bookmarked author), at `max_hops` (25), or on an unavailable hop — every stop but
+the root records a note, and it never raises. It **reads** the per-id cache but deliberately
+does **not write** it: an entry written here with empty `photo_paths` would make a later ingest
+of that post skip its chart download. ⚠ `conversation_count` counts the whole conversation's
+replies (everyone's) and is **not** thread length. Backs the `/ingest-x` skill (ported from
+parent #466/#467; spec `docs/superpowers/specs/2026-06-30-x-post-ingest-design.md`).
 
-**Run:** `PYTHONPATH=. poetry run python tools/x_fetch.py <url…> [--batch] [--json] [--force] [--min-delay/--max-delay S] [--cache-dir/--media-root DIR]`
+**Run:** `PYTHONPATH=. poetry run python tools/x_fetch.py <url…> [--batch] [--thread] [--json] [--force] [--min-delay/--max-delay S] [--cache-dir/--media-root DIR]`
 
 ## x_route.py — routing decision and shared level sign-check
 

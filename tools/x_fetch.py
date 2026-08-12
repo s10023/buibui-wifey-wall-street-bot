@@ -16,7 +16,7 @@ import re
 import sys
 import time
 from collections.abc import Callable
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
@@ -64,6 +64,12 @@ class XPost:
     is_quote: bool
     quoted_text: str = ""  # nested quoted_tweet body, best-effort
     quoted_author: str = ""  # nested quoted_tweet @handle, best-effort
+    # Thread fields. Defaults are load-bearing: _load_cached does XPost(**raw) and
+    # every cache entry written before these existed lacks the keys.
+    in_reply_to_id: str = ""  # the post this one replies to, "" at the root
+    in_reply_to_author: str = ""  # @handle replied to; == author on a self-thread
+    conversation_count: int = 0  # replies to the CONVERSATION, never thread length
+    thread_pos: int = 0  # 0 = root, ascending toward the leaf
 
 
 @dataclass(frozen=True)
@@ -113,6 +119,9 @@ def fetch_x_post(url: str, *, get: HttpGet = _requests_get) -> XPost | Unavailab
         is_quote=data.get("quoted_tweet") is not None,
         quoted_text=quoted.get("text", "") if isinstance(quoted, dict) else "",
         quoted_author=quoted_user.get("screen_name", ""),
+        in_reply_to_id=str(data.get("in_reply_to_status_id_str") or ""),
+        in_reply_to_author=str(data.get("in_reply_to_screen_name") or ""),
+        conversation_count=int(data.get("conversation_count") or 0),
     )
 
 
@@ -137,6 +146,82 @@ class BatchResult:
     post: XPost | Unavailable
     photo_paths: list[str] = field(default_factory=list)
     cached: bool = False
+
+
+@dataclass
+class ThreadChain:
+    """One author's self-thread, root -> leaf, plus why the walk stopped."""
+
+    posts: list[XPost] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+
+def walk_thread(
+    url: str,
+    *,
+    max_hops: int = 25,
+    cache_dir: Path = Path(".cache/x-posts"),
+    min_delay: float = 4.0,
+    max_delay: float = 12.0,
+    get: HttpGet = _requests_get,
+    sleep: Callable[[float], None] = time.sleep,
+    rng: random.Random | None = None,
+) -> ThreadChain:
+    """Walk a self-thread UPWARD from its tail and return it root -> leaf.
+
+    The syndication endpoint exposes ``in_reply_to_status_id_str`` but has no
+    replies/children field, so a thread can only be recovered from its LAST post
+    — bookmarking the parent yields nothing below it.
+
+    Stops at the root, on an author change (climbing further would harvest a
+    different pundit's words), at ``max_hops``, or on an unavailable hop. Every
+    stop except reaching the root records a note; a truncated chain that reported
+    nothing would read as a complete one. Never raises on a broken chain.
+
+    Reads the per-id cache so an ancestor already ingested costs no network. Does
+    not WRITE it: cache entries carry ``photo_paths``, and writing one here with
+    no photos would make a later ingest of that post skip its chart download.
+    """
+    rng = rng or random.Random()
+    walked: list[XPost] = []
+    notes: list[str] = []
+    did_network = False
+    next_url: str | None = url
+    while next_url is not None:
+        if len(walked) >= max_hops:
+            notes.append(
+                f"stopped: max_hops={max_hops} reached — chain truncated, "
+                "older posts were NOT fetched"
+            )
+            break
+        tweet_id = parse_tweet_id(next_url)
+        cached = _load_cached(cache_dir, tweet_id)
+        if cached is not None:
+            post = cached[0]
+        else:
+            if did_network:
+                sleep(rng.uniform(min_delay, max_delay))
+            did_network = True
+            fetched = fetch_x_post(next_url, get=get)
+            if isinstance(fetched, Unavailable):
+                notes.append(f"stopped at {tweet_id}: {fetched.reason}")
+                break
+            post = fetched
+        walked.append(post)
+        if not post.in_reply_to_id:
+            break  # root reached — the normal stop, no note
+        if post.in_reply_to_author and post.in_reply_to_author != post.author:
+            notes.append(
+                f"stopped: @{post.author} is replying to @{post.in_reply_to_author}, "
+                "not self-threading"
+            )
+            break
+        next_url = f"https://x.com/{post.author}/status/{post.in_reply_to_id}"
+    walked.reverse()
+    return ThreadChain(
+        posts=[replace(p, thread_pos=i) for i, p in enumerate(walked)],
+        notes=notes,
+    )
 
 
 def _cache_path(cache_dir: Path, tweet_id: str) -> Path:
@@ -262,6 +347,11 @@ def main(
     )
     parser.add_argument("--force", action="store_true", help="ignore the dedup cache")
     parser.add_argument(
+        "--thread",
+        action="store_true",
+        help="walk the self-thread upward from this post (pass the LAST post)",
+    )
+    parser.add_argument(
         "--min-delay", type=float, default=4.0, help="min cooldown seconds"
     )
     parser.add_argument(
@@ -272,6 +362,41 @@ def main(
         "--media-root", default=".cache/x-media", help="downloaded-chart dir"
     )
     args = parser.parse_args(argv)
+
+    if args.thread:
+        rc = 0
+        for url in args.urls:
+            chain = walk_thread(
+                url,
+                cache_dir=Path(args.cache_dir),
+                min_delay=args.min_delay,
+                max_delay=args.max_delay,
+                get=get,
+                sleep=sleep,
+            )
+            if not chain.posts:
+                print(f"UNAVAILABLE: {url}", file=sys.stderr)
+                rc = 1
+                continue
+            if args.json:
+                print(
+                    json.dumps(
+                        {
+                            "posts": [asdict(p) for p in chain.posts],
+                            "notes": chain.notes,
+                        },
+                        indent=2,
+                    )
+                )
+            else:
+                # The recovered count is the review surface: a bookmark that
+                # silently expanded into N posts cannot be reviewed as one.
+                print(f"thread: {len(chain.posts)} posts @{chain.posts[0].author}")
+                for p in chain.posts:
+                    print(f"\n--- [{p.thread_pos}] {p.url}\n{_format_human(p)}")
+                for note in chain.notes:
+                    print(f"\n! {note}", file=sys.stderr)
+        return rc
 
     if len(args.urls) == 1 and not args.batch:
         result = fetch_x_post(args.urls[0], get=get)

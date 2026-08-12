@@ -8,6 +8,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -16,12 +17,14 @@ from tools.x_fetch import (
     Unavailable,
     XPost,
     _format_human,
+    _load_cached,
     _orig,
     download_photos,
     fetch_x_batch,
     fetch_x_post,
     main,
     parse_tweet_id,
+    walk_thread,
 )
 
 
@@ -447,3 +450,232 @@ def test_batch_unavailable_not_cached(tmp_path: Path) -> None:
     )
     assert isinstance(results[0].post, Unavailable)
     assert not (cache_dir / "9.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# Thread walk — recover a self-thread from its tail (spec 2026-08-10)
+# ---------------------------------------------------------------------------
+
+
+def _thread_meta(
+    tid: str,
+    author: str,
+    text: str,
+    reply_to: str | None = None,
+    reply_to_author: str | None = None,
+    conv: int = 0,
+) -> str:
+    payload = dict(
+        _CRYPTIC,
+        text=text,
+        photos=[],
+        mediaDetails=[],
+        id_str=tid,
+        user={"name": author.upper(), "screen_name": author},
+        conversation_count=conv,
+    )
+    if reply_to is not None:
+        payload["in_reply_to_status_id_str"] = reply_to
+        payload["in_reply_to_screen_name"] = reply_to_author or author
+        payload["parent"] = {"id_str": reply_to, "text": "parent body"}
+    return json.dumps(payload)
+
+
+def _ids(calls: list[str]) -> list[str]:
+    out = []
+    for u in calls:
+        m = re.search(r"id=(\d+)", u)
+        if "tweet-result" in u and m:
+            out.append(m.group(1))
+    return out
+
+
+def _selfthread() -> dict[str, FakeResp]:
+    return {
+        "3": FakeResp(200, _thread_meta("3", "a", "leaf", reply_to="2")),
+        "2": FakeResp(200, _thread_meta("2", "a", "mid", reply_to="1")),
+        "1": FakeResp(200, _thread_meta("1", "a", "root", conv=9)),
+    }
+
+
+def test_walk_follows_chain_in_request_order(tmp_path: Path) -> None:
+    calls: list[str] = []
+    chain = walk_thread(
+        _url("3"),
+        cache_dir=tmp_path / "posts",
+        get=make_routed_get(_selfthread(), calls=calls),
+        sleep=RecordingSleep(),
+        rng=random.Random(0),
+    )
+    assert _ids(calls) == ["3", "2", "1"]  # it really walks, leaf -> root
+    assert [p.text for p in chain.posts] == ["root", "mid", "leaf"]  # returned in order
+    assert [p.thread_pos for p in chain.posts] == [0, 1, 2]
+    assert chain.posts[0].conversation_count == 9
+
+
+def test_walk_stops_at_root(tmp_path: Path) -> None:
+    calls: list[str] = []
+    chain = walk_thread(
+        _url("1"),
+        cache_dir=tmp_path / "posts",
+        get=make_routed_get(
+            {"1": FakeResp(200, _thread_meta("1", "a", "solo"))}, calls=calls
+        ),
+        sleep=RecordingSleep(),
+        rng=random.Random(0),
+    )
+    assert [p.text for p in chain.posts] == ["solo"]
+    assert _ids(calls) == ["1"]
+    assert chain.notes == []
+
+
+def test_walk_stops_when_author_changes(tmp_path: Path) -> None:
+    calls: list[str] = []
+    chain = walk_thread(
+        _url("2"),
+        cache_dir=tmp_path / "posts",
+        get=make_routed_get(
+            {
+                "2": FakeResp(
+                    200,
+                    _thread_meta("2", "a", "reply", reply_to="1", reply_to_author="b"),
+                ),
+                "1": FakeResp(200, _thread_meta("1", "b", "someone else")),
+            },
+            calls=calls,
+        ),
+        sleep=RecordingSleep(),
+        rng=random.Random(0),
+    )
+    assert [p.text for p in chain.posts] == ["reply"]
+    assert _ids(calls) == ["2"]  # never climbed into @b's post
+    assert any("@b" in n for n in chain.notes)
+
+
+def test_walk_hop_cap_is_reported(tmp_path: Path) -> None:
+    metas = {
+        str(i): FakeResp(200, _thread_meta(str(i), "a", f"p{i}", reply_to=str(i - 1)))
+        for i in range(2, 11)
+    }
+    metas["1"] = FakeResp(200, _thread_meta("1", "a", "p1"))
+    chain = walk_thread(
+        _url("10"),
+        max_hops=3,
+        cache_dir=tmp_path / "posts",
+        get=make_routed_get(metas),
+        sleep=RecordingSleep(),
+        rng=random.Random(0),
+    )
+    assert len(chain.posts) == 3
+    assert any("max_hops" in n for n in chain.notes)
+
+
+def test_walk_broken_chain_returns_partial(tmp_path: Path) -> None:
+    chain = walk_thread(
+        _url("3"),
+        cache_dir=tmp_path / "posts",
+        get=make_routed_get(
+            {"3": FakeResp(200, _thread_meta("3", "a", "leaf", reply_to="2"))}
+        ),
+        sleep=RecordingSleep(),
+        rng=random.Random(0),
+    )
+    assert [p.text for p in chain.posts] == ["leaf"]
+    assert any("404" in n for n in chain.notes)
+
+
+def test_walk_reuses_cached_ancestor_without_network(tmp_path: Path) -> None:
+    cache_dir = tmp_path / "posts"
+    fetch_x_batch(
+        [_url("1")],
+        cache_dir=cache_dir,
+        media_root=tmp_path / "media",
+        get=make_routed_get({"1": FakeResp(200, _thread_meta("1", "a", "root"))}),
+        sleep=RecordingSleep(),
+        rng=random.Random(0),
+    )
+    calls: list[str] = []
+    chain = walk_thread(
+        _url("2"),
+        cache_dir=cache_dir,
+        get=make_routed_get(
+            {"2": FakeResp(200, _thread_meta("2", "a", "leaf", reply_to="1"))},
+            calls=calls,
+        ),
+        sleep=RecordingSleep(),
+        rng=random.Random(0),
+    )
+    assert [p.text for p in chain.posts] == ["root", "leaf"]
+    assert _ids(calls) == ["2"]  # ancestor served from cache, no network
+
+
+def test_walk_sleeps_between_network_hops_only(tmp_path: Path) -> None:
+    sleeper = RecordingSleep()
+    walk_thread(
+        _url("3"),
+        cache_dir=tmp_path / "posts",
+        get=make_routed_get(_selfthread()),
+        sleep=sleeper,
+        rng=random.Random(0),
+    )
+    assert len(sleeper.calls) == 2  # 3 network fetches, none before the first
+
+
+def test_pre_change_cache_entry_still_loads(tmp_path: Path) -> None:
+    """A cache entry written before the thread fields existed must still load.
+
+    Upstream this guarded 167 real entries; wifey's `.cache/x-posts/` is empty, so
+    here it is the positive control for the field defaults rather than a repair.
+    `_load_cached` also catches `TypeError` as a miss, so the failure mode would be
+    a silent re-fetch, not a crash — which is exactly why it needs asserting.
+    """
+    cache_dir = tmp_path / "posts"
+    cache_dir.mkdir(parents=True)
+    legacy = {
+        "post": {
+            "source": "twitter",
+            "author": "a",
+            "author_name": "A",
+            "url": _url("1"),
+            "post_ts_utc": "2026-08-01T00:00:00.000Z",
+            "text": "legacy",
+            "photo_urls": [],
+            "video_present": False,
+            "is_thread": False,
+            "is_quote": False,
+            "quoted_text": "",
+            "quoted_author": "",
+        },
+        "photo_paths": [],
+    }
+    (cache_dir / "1.json").write_text(json.dumps(legacy))
+    loaded = _load_cached(cache_dir, "1")
+    assert loaded is not None
+    post, _ = loaded
+    assert post.text == "legacy"
+    assert post.in_reply_to_id == ""
+    assert post.in_reply_to_author == ""
+    assert post.conversation_count == 0
+    assert post.thread_pos == 0
+
+
+def test_main_thread_flag_emits_chain(tmp_path: Path, capsys: Any) -> None:
+    rc = main(
+        [_url("3"), "--thread", "--json", "--cache-dir", str(tmp_path / "posts")],
+        get=make_routed_get(_selfthread()),
+        sleep=RecordingSleep(),
+    )
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert [p["text"] for p in out["posts"]] == ["root", "mid", "leaf"]
+    assert out["notes"] == []
+
+
+def test_main_thread_human_shows_recovered_count(tmp_path: Path, capsys: Any) -> None:
+    rc = main(
+        [_url("3"), "--thread", "--cache-dir", str(tmp_path / "posts")],
+        get=make_routed_get(_selfthread()),
+        sleep=RecordingSleep(),
+    )
+    assert rc == 0
+    assert "thread: 3 posts" in capsys.readouterr().out
