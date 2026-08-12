@@ -181,8 +181,6 @@ def evaluate_residual_grid(
         dsr=c.dsr,
         pbo=c.pbo,
         boot_lo=c.boot_lo,
-        n_obs=c.n_obs,
-        min_trl=c.min_trl,
         sharpe_annual=c.sharpe_annual,
     )
     return ResidualGridReport(cells=cells, committed_key=committed_key, passed=passed)

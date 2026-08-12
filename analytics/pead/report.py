@@ -71,8 +71,6 @@ def evaluate_pead_grid(
         dsr=c.dsr,
         pbo=c.pbo,
         boot_lo=c.boot_lo,
-        n_obs=c.n_obs,
-        min_trl=c.min_trl,
         sharpe_annual=c.sharpe_annual,
     )
     lo = cells[long_only_key]

@@ -13,19 +13,23 @@ the same statistical bar, and a threshold that is restated rather than imported
 is the failure mode this project keeps meeting — a bare number that looks
 portable, is copied, and then silently means something else.
 
-**Layer 2 — wifey's five-leg sleeve composition** (:func:`passes_sleeve_gate`).
-The four equity sleeves (``xsmom``, ``lowvol``, ``xasset``, ``pead``) each add
-two more legs to the three above::
+**Layer 2 — wifey's four-leg sleeve composition** (:func:`passes_sleeve_gate`).
+The four equity sleeves (``xsmom``, ``lowvol``, ``xasset``, ``pead``) add one
+economic leg to the three statistical ones above::
 
-    AND n_obs >= min_trl  AND  sharpe_annual >= GATE_SHARPE
+    AND sharpe_annual >= GATE_SHARPE
 
-**This diverges from the parent, which excludes ``min_trl`` on purpose**, and
-the divergence has a measured cost. ``min_track_record_length`` is called with
-``target_sr`` equal to an annualized Sharpe of **1.0**, so it asks "can I
-confirm Sharpe >= 1?" — and returns ``inf`` for any sample whose own Sharpe is
-at or below 1.0, because no amount of data confirms a hypothesis the sample
-contradicts. The leg therefore imposes an *undeclared* Sharpe bar well above
-the declared one:
+Each leg now does distinct work: DSR is multiplicity-corrected significance,
+PBO is overfitting, ``boot_lo`` is the interval, ``GATE_SHARPE`` is the
+economic bar. ``min_track_record_length`` is still computed and reported beside
+them as **a stamp that gates nothing** — same as the parent.
+
+**Why MinTRL is NOT a leg** (decided 2026-08-12, user call; it *was* one until
+then). The sleeves called it with ``target_sr`` equal to an annualized Sharpe of
+**1.0**, so it asked "can I confirm Sharpe >= 1?" and returned ``inf`` for any
+sample at or below that target — no amount of data confirms a hypothesis the
+sample contradicts. As a pass condition it imposed an *undeclared* bar far above
+the declared ``GATE_SHARPE = 0.7``:
 
 ===========  ==========================================
 ``n_obs``    effective annualized-Sharpe bar from MinTRL
@@ -36,20 +40,28 @@ the declared one:
 3000         1.478
 ===========  ==========================================
 
-At wifey's daily depth (~2000 observations) the real bar is **~1.585**, not the
-``GATE_SHARPE = 0.7`` the sleeves declare as "pre-registered". A cell scoring
-between 0.7 and 1.58 clears every bar the code names and is rejected by one it
-does not. :data:`DEPLOY_SHARPE` (1.0) is inert for the same reason: it is only
-ever consulted on a cell that already passed, and a passing cell is already
-above 1.58.
+At wifey's daily depth (~2000 observations) the real bar was **~1.585**. A cell
+scoring 0.7–1.58 cleared every threshold the code named and was rejected by one
+it did not, and :data:`DEPLOY_SHARPE` (1.0) could never discriminate, since it is
+only consulted on a cell that already passed.
 
-**Nothing here changes that composition.** The gate is read on four committed
-cells (``xsmom``'s residual grid, ``lowvol``, ``xasset``, ``pead``; ``forecast``
-computes ``min_trl`` and applies no gate), and each already fails on DSR, PBO,
-``boot_lo`` or the Sharpe leg — all of which bind before MinTRL. So no verdict
-recorded in ``CLAUDE.md`` rests on it: this is preventive, not a repair.
-It is documented rather than removed because dropping a leg changes what a
-recorded verdict means, and that is a research decision, not a refactor.
+**Re-targeting to ``target_sr = 0`` was considered and REJECTED as a no-op, not
+adopted.** MinTRL round-trips with PSR (``mintrl.py``'s own docstring), so
+``min_trl(0) <= n_obs`` is exactly ``PSR(benchmark=0) >= 0.95``; and
+:func:`~analytics.research_guards.deflated_sharpe_ratio` *is* PSR with the
+benchmark set to the expected-max Sharpe, which is never negative. So
+``DSR >= 0.95`` strictly implies ``min_trl(0) <= n_obs`` — the leg could never
+bind. Measured over 300,000 random draws: of the 124,882 clearing DSR, **zero**
+would have been blocked. A guard that cannot fire is worse than no guard,
+because it reads as protection.
+
+**This change is verdict-neutral on every recorded result.** The gate is read on
+four committed cells (``forecast`` computes ``min_trl`` and applies no gate), and
+each fails on two or more of the remaining legs — see
+``tests/test_research_guards_gate.py::TestRecordedVerdictsAreUnchanged``, which
+pins that against the published per-sleeve numbers. Dropping the leg also
+*revives* :data:`DEPLOY_SHARPE`: with the effective bar back at 0.7, the 1.0 tier
+annotation discriminates again.
 """
 
 from __future__ import annotations
@@ -65,15 +77,16 @@ GATE_PBO = 0.5
 GATE_SHARPE = 0.7
 """Pre-registered net-of-cost annualized Sharpe bar for a sleeve's committed cell.
 
-Declared by all four equity sleeves. See the module docstring: the MinTRL leg in
-:func:`passes_sleeve_gate` makes the *effective* bar ~1.585 at n=2000.
+Declared by all four equity sleeves, and since 2026-08-12 this is also the
+**effective** bar — the MinTRL leg that used to raise it to ~1.585 was dropped.
 """
 
 DEPLOY_SHARPE = 1.0
 """Deploy-grade tier annotation — **not** the pass/fail line.
 
-Consulted only on a cell that already passed :func:`passes_sleeve_gate`, which
-is why it currently cannot discriminate anything.
+Consulted only on a cell that already passed :func:`passes_sleeve_gate`. That
+made it inert while the MinTRL leg held the effective bar at ~1.585; with the
+bar back at :data:`GATE_SHARPE` it discriminates again.
 """
 
 
@@ -98,12 +111,10 @@ def passes_sleeve_gate(
     dsr: float,
     pbo: float,
     boot_lo: float,
-    n_obs: float,
-    min_trl: float,
     sharpe_annual: float,
     gate_sharpe: float = GATE_SHARPE,
 ) -> bool:
-    """wifey's five-leg sleeve gate: :func:`passes_gate` plus MinTRL and Sharpe.
+    """wifey's four-leg sleeve gate: :func:`passes_gate` plus the Sharpe bar.
 
     One definition for all four equity sleeves, which previously inlined this
     expression identically four times (and a fifth time inside a test, which is
@@ -113,9 +124,13 @@ def passes_sleeve_gate(
     ever pre-registers a different bar states it at the call site instead of
     shadowing the shared name.
 
-    Read the module docstring before changing the leg set: ``min_trl`` imposes
-    an undeclared Sharpe bar far above ``gate_sharpe``.
+    **``min_trl`` and ``n_obs`` are deliberately NOT arguments.** MinTRL is a
+    reported stamp, not a leg — read the module docstring before re-adding it;
+    at ``target_sr`` = Sharpe 1.0 it silently raised the bar to ~1.585, and at
+    ``target_sr`` = 0 it is strictly implied by ``dsr`` and can never fire.
+    Dropping the parameters rather than ignoring them is what makes a re-add a
+    deliberate act: every call site would have to change again.
     """
     if not passes_gate(dsr, pbo, boot_lo):
         return False
-    return n_obs >= min_trl and sharpe_annual >= gate_sharpe
+    return sharpe_annual >= gate_sharpe

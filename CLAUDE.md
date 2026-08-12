@@ -343,14 +343,20 @@ no amount of data confirms a hypothesis the sample contradicts. The real bar is 
 at n=500, ~**1.585** at n=2000, ~**1.478** at n=3000 — the whole 0.7–1.58 band clears every
 threshold the code *names* and is rejected by one it does not. `_DEPLOY_SHARPE = 1.0` is inert for
 the same reason: it is only consulted on a cell that already passed, and a passing cell is already
-above 1.58. **No recorded verdict rests on this**: the gate is read on **four** committed cells
+above 1.58. **No recorded verdict rested on this**: the gate is read on **four** committed cells
 (`xsmom`'s residual grid, `lowvol`, `xasset`, `pead` — `forecast` computes `min_trl` and applies
 no gate at all), and per the sleeve table above each of the four already fails on DSR, PBO,
-`boot_lo`, or the 0.7 Sharpe leg, all of which bind before MinTRL. That is why #165 documented
-the divergence in `analytics/research_guards/gate.py`
-rather than dropping the leg: removing a leg changes what a recorded verdict *means*, and that is
-a research decision, not a refactor. The parent excludes `min_trl` from its gate on purpose and
-calls the four-leg form *"a documented recurring error"*. Three transferable rules: **a gate is
+`boot_lo`, or the 0.7 Sharpe leg, all of which bind before MinTRL. #165 extracted the gate and
+documented the divergence; **#166 DROPPED the MinTRL leg** (user call), so `GATE_SHARPE = 0.7`
+is now both the declared and the effective bar, and `DEPLOY_SHARPE` discriminates again.
+**Re-targeting to `target_sr = 0` was considered and rejected as a NO-OP, not adopted** — and
+that is the sharper half of the lesson. MinTRL round-trips with PSR, and `deflated_sharpe_ratio`
+*is* PSR with the benchmark at the expected-max Sharpe, which is never negative; so `DSR ≥ 0.95`
+**strictly implies** `min_trl(0) ≤ n_obs` and the leg could never fire. Measured: of 124,882
+DSR-passing draws out of 300,000, **zero** would have been blocked. **A "fix" that turns a
+mis-calibrated guard into an unfirable one is not a fix** — check whether a proposed threshold is
+already implied by a leg you kept. The parent excludes `min_trl` for the same reason and calls
+the four-leg form *"a documented recurring error"*. Three further transferable rules: **a gate is
 identified by its full leg set, not by the constant with a name** — quoting `GATE_SHARPE` as "our
 bar" was true of the constant and false of the gate; **when a threshold is a function of the data
 (`min_trl` moves with `n_obs`), the bar is not a number and cannot be read off the source** — solve
@@ -358,9 +364,15 @@ for it, which took one bisection; and **the duplication is what let the divergen
 expression was inlined four times in production plus a fifth time inside
 `tests/test_xsmom_residual_report.py`, which re-derived it to build its own expected value and so
 passed against any implementation. Extraction to one definition is what made the leg set legible
-at all. Equivalence of the extraction was proven over 2,985,984 exhaustive combinations
-(including NaN/±inf) plus 200k random draws, 0 mismatches. Script (reproduces every number
-here, by calling the production functions rather than restating their arithmetic):
+at all. #165's extraction was proven verdict-neutral over 2,985,984 exhaustive combinations
+(including NaN/±inf) plus 200k random draws, 0 mismatches; #166's removal is neutral by a
+**monotonicity** argument instead — dropping a conjunct can only turn `False` into `True`, so the
+only cells at risk are ones blocked *solely* by MinTRL, and
+`TestRecordedVerdictsAreUnchanged` pins that none of the four recorded cells is one (each fails
+on ≥2 surviving legs). **`min_trl` and `n_obs` are no longer PARAMETERS** of
+`passes_sleeve_gate`, so re-adding the leg has to touch every call site — deliberate, not a
+default that creeps back. Script (reproduces every number here by calling the production
+functions rather than restating their arithmetic):
 `docs/plans/scripts/sleeve_gate_mintrl_bar.py`.
 
 **A statistic can report a value it was DEFINED to report, and a cohort median is where that hides.**
