@@ -34,13 +34,29 @@ from analytics.signal._common import parse_timeframe_secs
 logger = logging.getLogger(__name__)
 
 
-# Sensible defaults — roughly the median hold horizon per TF observed in
-# `backtest_trades`. Override per-TF via the `[outcome_backfill]` TOML block.
+# Hold caps in BARS — never in calendar time. Each sits near the p85–p90 of the
+# hold actually observed in `backtest_trades` (4,000-row sample, 2026-08-12:
+# `4h` p50 3 / p90 27, `1d` p50 2 / p90 24.5), so the cap bites the tail rather
+# than the body. The values are equity-measured and fine; it is the day-
+# equivalents that were inherited from crypto and are wrong.
+#
+# READ THESE AS BARS. US-equity RTH does not have six `4h` bars in a day — it
+# has TWO — so the old "5d" annotation understated the real window by 3×.
+# Counting a row's age in calendar days against that annotation is how a
+# correctly-open row looks overdue: on 2026-08-12 all 31 open ledger rows were
+# simply starved of bars (`backfill_outcomes` returned `open: 31`, nothing
+# resolvable), while the calendar reading manufactured a phantom "23 rows past
+# their hold window".
+#
+# Override per-TF via `backfill_outcomes(..., max_hold_bars_by_tf=...)`. That is
+# a FUNCTION parameter only — there is no `[outcome_backfill]` TOML block, and
+# `signal_runner` passes no override, so on the production path these defaults
+# are always the effective values.
 DEFAULT_MAX_HOLD_BARS: dict[str, int] = {
-    "15m": 96,  # 24h
-    "1h": 48,  # 2d
-    "4h": 30,  # 5d
-    "1d": 14,  # 2w
+    "15m": 96,  # 96 bars — no live rows
+    "1h": 48,  # 48 bars — no live rows
+    "4h": 30,  # 30 bars = ~15 RTH trading days (~3 calendar weeks), NOT 5 days
+    "1d": 14,  # 14 bars = 14 trading days (~20 calendar days), NOT 2 weeks
 }
 
 
@@ -170,6 +186,13 @@ def backfill_outcomes(
             counts["no_ohlcv"] += len(tf_rows)
             continue
 
+        # NOTE: the fallback is the LARGEST entry, i.e. the most permissive
+        # window, so an unlisted TF gets the loosest cap rather than the safest.
+        # `1wk` is unlisted and would take the `15m` value — 96 bars = 96 WEEKS.
+        # Latent only (no `1wk` row has ever reached this table and `1wk` is not
+        # live), and picking a real value is calibration, so it is a user call
+        # rather than a drive-by fix. Measured for whoever makes it: observed
+        # `1wk` hold is p50 0 / p90 7 / p99 23 bars, max 30.
         max_hold = hold_map.get(tf, max(hold_map.values()))
         updates: list[tuple[str, float, int, str]] = []
 
