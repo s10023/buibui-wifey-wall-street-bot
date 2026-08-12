@@ -82,6 +82,20 @@ Forked from the parent `buibui-moon-trader-bot` (crypto / Binance Futures); the 
   horizons in NYSE sessions and resolves overnight gaps, not a copy of the parent's
   24/7-tape scorer.
 
+- `/ingest-feed` *(Claude Code skill)* — poll a personal YouTube follow list for new
+  uploads and hand the picked videos to `/ingest-video`, so discovery stops being manual
+  URL-pasting. `tools/yt_feed.py` reads each channel's uploads playlist through the
+  YouTube Data API v3 (`YOUTUBE_API_KEY` in `.env`; ~2–3 quota units per channel per day,
+  and it never calls the expensive `search.list`), plus `backfill` for a channel's deep
+  back-catalogue, `resolve` to turn an `@handle` into a config block, and `hint` to feed
+  `/ingest-video` a channel's per-video knobs. The follow list is
+  `config/youtube_channels.toml` (gitignored — a follow list is personal; see the
+  committed `.example`), and state lives in `docs/plans/yt-feed-state.json`.
+  **`poll` and `backfill` write nothing**: consumption is stamped only by `mark`, and only
+  after the review gate has routed the batch — an aborted run can therefore never
+  permanently eat a video, which is the same watermark-on-send defect this repo fixed in
+  #68. Ported from parent #515 at parent HEAD, so its six follow-up fixes land with it.
+
 ---
 
 ## Risk Rules

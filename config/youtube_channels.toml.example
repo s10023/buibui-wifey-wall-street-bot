@@ -1,0 +1,118 @@
+# YouTube channel follow list for /ingest-feed (ST10).
+# Copy to config/youtube_channels.toml (gitignored — a follow list is personal).
+# Resolve a channel id from a handle:
+#   PYTHONPATH=. poetry run python tools/yt_feed.py resolve <handle>
+# Ported from parent #515 (+ #516/#529/#535/#558/#582/#585). The upstream design spec
+# stayed in the parent; `.claude/context/tools.md` carries the wifey-side reference.
+#
+# SUBJECT ROUTING — this is an EQUITIES repo. Follow US-equities / macro / gold / oil /
+# DXY / bonds channels here; a crypto channel belongs in the moon parent's follow list.
+# A both-subject channel legitimately appears in both, and /ingest-video routes its
+# items by subject (see that skill's sibling-repo check).
+#
+# Per-channel keys:
+#   id             UC… channel id. The poll path keys on this.
+#   name           display name, for humans and for the poll table.
+#   handle         @handle. REQUIRED for `intro_recap_s` to do anything, because
+#                  /ingest-video only ever sees the video's `meta.author` (an @handle),
+#                  which matches neither `id` nor a CJK `name`. Without it the lookup
+#                  silently returns nothing and the rule never fires.
+#   title_include  keep only titles containing one of these (empty = keep all).
+#   title_exclude  drop titles containing any of these; wins over include.
+#   min_duration_s drop shorter uploads.
+#   lang           hint only.
+#   intro_recap_s  seconds of opening recap/teaser that are NOT a fresh call. 0 = off.
+#   item_cap       max items /ingest-video keeps from ONE video of this channel.
+#                  Default = tools/video_marks.py::ITEM_CAP, currently 12 HERE (the
+#                  parent's is 5 — wifey raised it in #128 and added a
+#                  MIN_ITEM_SPECIFICITY floor). **Usable range is 13..13; see the
+#                  ceiling warning below before setting it at all.**
+#   paused         true = skip this channel in `poll`. Default false.
+#
+# On `intro_recap_s` — why it exists, so nobody deletes it as noise:
+# some channels open EVERY upload by replaying prior positions ("在開始視頻之前還是回顧
+# 一下我上週的策略") before saying anything new. A `setup` extracted from that window is a
+# past call stamped with today's `call_ts_utc`, which scores the author on a trade that
+# was already resolved — or, as seen on 2026-08-03, on an entry that never even filled.
+# Set it to the timestamp where genuinely new content starts; err high, since the cost of
+# a few seconds of over-trimming is one lost candidate, while the cost of under-trimming
+# is a corrupted ledger row that nothing downstream can detect.
+#
+# On `item_cap` — raise it for AGGREGATOR channels that relay several traders per upload.
+# A roundup relaying eight people can still lose most of them to the cap, and the
+# survivors are not necessarily the best ones: the cap keeps the top `item_cap` by
+# `specificity`, which has mis-ranked in two measured rounds upstream — promoting relays
+# over the host's own calls in round 1, and retrospectives over forward calls in round 2.
+# So on a roundup the cap does not trim a tail, it discards payload.
+#
+# WIFEY DELTA — this knob is much less load-bearing here than upstream. The parent's
+# global default is 5 and this override is how it copes; wifey's is 12 with a
+# specificity floor (#128), adopted after the cap bound on ALL FOUR @fenggemeigu videos
+# in one 2026-08-05 batch and dropped both GOOGL items plus an NVDA setup from a video
+# whose own title named them. Read a thin Stream C yield from a dense video as a cap
+# artifact before concluding the video made no calls — that failure mode is the reason
+# for both repos' fixes, and neither makes it loud.
+#
+# On `paused` — the non-destructive way to quiet a channel you are not ready to ingest.
+# Without it the only options were `mark --skipped`, which burns the watermark PERMANENTLY,
+# or deferring, which re-presents the identical candidates at every poll (a 13-video
+# backlog re-asked the operator on every run, forever). `paused` suppresses ONLY `poll`:
+# `backfill` still reaches the channel — it is the diagnostic that tells a genuinely quiet
+# channel apart from a broken one — and a hand-pasted URL still resolves this row, so
+# item_cap / intro_recap_s keep applying. Paused channels are PRINTED on every poll rather
+# than silently omitted, for the same reason.
+
+[feed]
+cold_start_days = 14   # bounds the daily poll only; old videos stay reachable via `backfill`
+
+# Resolved live 2026-08-12 via `yt_feed.py resolve @fenggemeigu`. Weekly CN-language
+# US-equities channel, already queued for /ingest-video. It publishes ZERO captions, so
+# every video takes the Groq whisper path — GROQ_API_KEY is required for this one, not
+# optional. Its BTC segments route to the moon parent, not here.
+[[channel]]
+id = "UCU9IMxpKGtyPd3nkJ4qBpPw"
+name = "美股峰哥"
+handle = "@fenggemeigu"
+title_include = []
+title_exclude = ["#shorts"]
+min_duration_s = 180
+lang = "zh"
+intro_recap_s = 0
+
+# Example of a channel that DOES open with a recap block every time.
+# [[channel]]
+# id = "UCkSCETUQ-oPbVccY9Z7vZZg"
+# name = "大漂亮的K线日记"
+# handle = "@GiantCutie-K"
+# title_include = []
+# title_exclude = ["#shorts"]
+# min_duration_s = 180
+# lang = "zh"
+# intro_recap_s = 75
+
+# Example of an AGGREGATOR channel relaying several traders per upload.
+#
+# ⚠⚠ THE USABLE RANGE HERE IS 13..13 — this knob is nearly inert in wifey, and setting it
+# too high fails SILENTLY. `/ingest-video` requires
+# `item_cap + len(TAIL_OFFSETS_S) <= FRAME_CAP`, i.e. `item_cap <= 15 - 2 = 13`; past that
+# ceiling kept items stop getting their own frame and silently degrade to
+# `vision_confidence: "low"`. **`yt_feed.py` does NOT validate this** — it imports
+# FRAME_CAP only to estimate tokens — so an over-large value is accepted and quietly
+# costs you vision. The parent has 8 of headroom (its default is 5, ceiling 13) and its
+# own example uses 12; wifey already spent that headroom in #128, so a value below 13 is
+# a no-op and a value above 13 is harmful. Raise the GLOBAL constants instead if a
+# roundup channel genuinely needs more.
+#
+# ⚠ Relay attribution (#558) needs `config/pundit_roster.toml`, which is parent #557 and
+# is NOT PORTED yet: until it is, a relayed call cannot resolve the originating trader and
+# `x_route`'s `unattributable` flag drops it rather than crediting the relaying channel.
+# So this block is documentation, not a working configuration.
+# [[channel]]
+# id = "UCxxxxxxxxxxxxxxxxxxxxxx"
+# name = "example roundup channel"
+# handle = "@exampleroundup"
+# title_include = []
+# title_exclude = ["#shorts"]
+# min_duration_s = 180
+# lang = "zh"
+# item_cap = 13   # the ceiling; 12 (the default) is a no-op, >13 silently costs vision
