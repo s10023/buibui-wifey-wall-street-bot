@@ -1,0 +1,49 @@
+[Unit]
+# Verified local snapshot of analytics.db + the whole docs/plans research tree.
+# Type=oneshot, driven by the .timer beside this file.
+#
+# This is the LIKELY-failure leg only (fat-finger delete, `git clean -xdf`, a bad
+# script, a tool bug). It does NOT survive disk death or a lost laptop -- that
+# needs an rclone of $WIFEY_BACKUP_ROOT to a remote, deliberately left as a
+# separate step.
+#
+# NAMED wifey-*, NOT buibui-*. The crypto parent's buibui-backup.service and
+# .timer are already installed in this user's systemd instance; reusing the name
+# would have one repo's unit silently shadow the other's.
+Description=wifey local backup (verified analytics.db snapshot + research tree)
+Documentation=file:///home/kng/repo/buibui-wifey-wall-street-bot/deploy/backup-analytics.sh
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/kng/repo/buibui-wifey-wall-street-bot
+
+# Only needed by the OnFailure alert below, which sends Telegram. Leading `-`
+# keeps a missing .env from failing the unit -- a backup must still run for an
+# operator who has never configured alerting.
+EnvironmentFile=-/home/kng/repo/buibui-wifey-wall-street-bot/.env
+
+# User units get a minimal PATH. The script itself only needs coreutils, but
+# naming the path explicitly keeps `date`/`find`/`du` resolution off the default.
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+
+# Without this, journald tags output with the EXECUTABLE name
+# (backup-analytics.sh) and the entries lose unit attribution -- `journalctl -u`
+# then reads NOTHING while the lines sit in the journal under another identity.
+SyslogIdentifier=wifey-backup
+
+# --weekly-if-due, not a Sunday timer: on a laptop that is frequently off, a
+# fixed weekday silently skips the parquet export forever. The script asks
+# whether the newest export is >=7 days old instead.
+ExecStart=/home/kng/repo/buibui-wifey-wall-street-bot/deploy/backup-analytics.sh --weekly-if-due
+
+# A backup that fails silently is the failure mode this whole unit exists to
+# prevent, one level up. There is no healthchecks.io wiring in this fork, so the
+# alert is the only signal an operator gets.
+OnFailure=wifey-backup-alert.service
+
+# Measured 2.7s for snapshot + parquet export on the real 153MB file. The
+# generous ceiling covers the lock-retry path: WIFEY_LOCK_RETRIES x
+# WIFEY_LOCK_SLEEP defaults to 10 x 30s = 5 minutes of waiting out a writer.
+TimeoutStartSec=900
+Nice=15
+IOSchedulingClass=idle

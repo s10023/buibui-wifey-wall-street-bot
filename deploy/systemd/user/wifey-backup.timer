@@ -1,0 +1,28 @@
+[Unit]
+Description=Run the wifey local backup twice daily
+
+[Timer]
+# 08:10 and 13:10 UTC = 16:10 and 21:10 MYT -- both inside normal waking hours
+# for the operator, so a laptop that is only on in the evening still gets a
+# snapshot. Two fires is not redundancy theatre: a same-day rerun refreshes the
+# same dated directory (2.7s, atomic rename), so the second fire costs almost
+# nothing and roughly doubles the odds of capturing any given day.
+#
+# Offset 30 minutes from the crypto parent's buibui-backup.timer (07:40/12:40
+# UTC), which is installed in the same user systemd instance. The two read
+# different databases so they cannot deadlock, but they would otherwise run two
+# multi-hundred-MB DuckDB exports concurrently on one laptop.
+#
+# There is deliberately no quarter-hour dodge here: unlike the parent, this repo
+# has NO signal-watch timer to collide with -- dispatch is the manual one-shot
+# `make go-live`.
+OnCalendar=*-*-* 08:10:00 UTC
+OnCalendar=*-*-* 13:10:00 UTC
+
+# The whole point on a laptop: after suspend/shutdown, systemd runs the fire it
+# missed once on resume (not once per missed slot).
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

@@ -32,6 +32,16 @@ For UI / API changes: `make web-build` (production bundle) or `make web-dev` (Vi
 
 For routine DB refresh after backtest/strategy changes: `make db-update` (= `db-update-backtest` → `db-update-recalibrate` → `regression-update` → `check-dead-surfaces`). The last step reports `(strategy × timeframe)` cells where declaration and output disagree in **either** direction — declared-but-dead (detector never fires, so a dead surface can't hide behind rows that merely exist) and rated-but-undeclared (a `confidence_ratings` row outliving the config that produced it). It never blocks the refresh, but the completion banner is **conditional on it**: a failure prints a warning instead of `✅`. Run `make check-dead-surfaces` alone for a non-zero exit.
 
+To snapshot the irreplaceable state: `make backup` (`make backup-dry-run` to see what it
+would capture). It writes a **verified** copy of `analytics.db` plus the whole of
+`docs/plans/` to `~/backups/wifey`. Both trees are gitignored and single-copy —
+`git ls-files docs/plans/ | wc -l` returns **0**, so `git clean -xdf` deletes the entire
+research pipeline's output with no prompt, and `analytics.db.bak` is an undated unverified
+byte copy, not a backup. Coverage is a **denylist over a wholesale copy**, deliberately not
+the parent's allowlist: an allowlist over a single-copy tree defaults to UNCOVERED, and the
+parent's own script records its list being found short twice. Full rationale, restore
+procedure, and the opt-in timer: `deploy/README.md`.
+
 ## CLI
 
 `wifey.py` is the single CLI entry point with subcommands:
@@ -67,6 +77,7 @@ behind a pointer is not a guard rail.
 | `tests/` | pytest suite; tests import from lib modules and pass mock dependencies directly | — |
 | `migrations/` | One-shot DB migration scripts, run by hand. Only `001_day_filter_text.py` (fork-era, 2026-05-14); routine schema changes go through `analytics/store/schema.py`'s migration list instead | — |
 | `config/` | `stocks.json` (gitignored 13-symbol live watchlist), `universe.json` (committed 505-member research breadth universe), `strategy_params.toml` (shared base inherited via `extends`) | `context/config.md` |
+| `deploy/` | `backup-analytics.sh` (verified local snapshot of `analytics.db` + the whole gitignored `docs/plans/` tree), `notify-failure.sh`, and **opt-in** `wifey-*` systemd user units. Nothing installs them; there is still no wifey daemon | `deploy/README.md` |
 
 ### Sleeve verdicts — do NOT rebuild a shelved sleeve
 

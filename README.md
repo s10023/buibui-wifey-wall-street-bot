@@ -148,6 +148,7 @@ each module does, because a second copy of the module map is what rotted the fir
 | `tests/` | pytest suite; tests import from lib modules and pass mock dependencies directly | — |
 | `migrations/` | One-shot DB migration scripts, run by hand — routine schema changes go through `analytics/store/schema.py` instead | — |
 | `trade/` | Empty placeholder package marking the Phase B seam (both files are 0 bytes) — the fork's Binance order opener was stripped. Phase B fills it with an equities broker adapter | — |
+| `deploy/` | Verified local backup of `analytics.db` + the gitignored `docs/plans/` research tree, plus **opt-in** `wifey-*` systemd user units (nothing installs them) | `deploy/README.md` |
 
 Repo-root files: `Makefile` (dev & run commands), `Dockerfile` / `docker-compose.yml`,
 `pyproject.toml` (Poetry), `.env.example`, and `.github/workflows/` (`lint.yaml` CI,
@@ -716,6 +717,37 @@ candle boundary — keep it alive with tmux / systemd), drop the once flag:
 make wifey-signal-watch CONFIG=config/signal_watch.toml TELEGRAM=1
 ```
 
+### Backup — Snapshot the Irreplaceable State
+
+Two trees in this repo are gitignored **and** single-copy, so git protects neither:
+
+- `analytics.db` (~153MB) holds `signal_alert_outcomes`, the live out-of-sample ledger.
+  yfinance will not re-serve a historical signal fire, and restarting the ledger yields a
+  differently-*biased* sample rather than an equivalent one.
+- `docs/plans/` (~1MB) holds the entire research pipeline's output — pundit ledger, routing
+  watermark, Streams A/B, video notes, parent-sync triage, measurement scripts, the handoff.
+
+`.gitignore` excludes `docs/plans/` wholesale, so `git ls-files docs/plans/ | wc -l` returns
+**0** and a `git clean -xdf` deletes all of it with no prompt. `analytics.db.bak` in the repo
+root is an undated, unverified byte copy — it is not a backup.
+
+```bash
+make backup           # verified snapshot → ~/backups/wifey (weekly parquet if >=7 days old)
+make backup-dry-run   # report what would be captured, write nothing
+```
+
+The snapshot is row-count verified against the source, re-opened standalone to prove it
+restores, refused outright if `signal_alert_outcomes` comes back empty, and published by
+atomic rename so a snapshot at the final path is never half-written. If something else holds
+the database it retries, then falls back to a lock-free byte copy — it never kills the
+process holding the lock.
+
+This is the **likely-failure** leg only (fat-finger delete, `git clean`, a bad script). It
+does not survive disk death or a lost laptop; that leg is deliberately left as an `rclone
+sync` of one directory. An **opt-in** systemd user timer is documented — nothing installs it,
+and there is still no wifey daemon. Full rationale, coverage policy, and restore procedure:
+[`deploy/README.md`](deploy/README.md).
+
 ### Signal Test — Fire a Test Alert From Historical Data
 
 Runs a detector against real historical OHLCV data and prints (or sends) the formatted alert.
@@ -858,6 +890,13 @@ make typecheck      # Type check with mypy
 ```bash
 make poetry-install
 make poetry-update
+```
+
+**Backup:**
+
+```bash
+make backup          # Verified snapshot of analytics.db + docs/plans → ~/backups/wifey
+make backup-dry-run  # Report what would be captured; writes nothing
 ```
 
 **Analytics:**

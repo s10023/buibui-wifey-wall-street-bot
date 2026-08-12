@@ -11,7 +11,7 @@ DEV_PORT ?= 5173
 PYTHON_FILES = $(shell find . -name "*.py" -not -path "./venv/*" -not -path "./.venv/*")
 DOCKER_IMAGE = wifey-bot
 
-.PHONY: lint lint-md lint-md-fix lint-py-check lint-py typecheck test test-cov test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-universe-backfill universe-coverage wifey-forecast-audit wifey-xsmom-audit wifey-xsmom-residual-audit wifey-lowvol-audit wifey-xasset-audit wifey-xasset-backfill wifey-pead-audit wifey-pead-backfill wifey-exit-audit wifey-pundit-score wifey-check-levels wifey-route-dedup-seed wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent check-dead-surfaces check-orphan-tests wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
+.PHONY: lint lint-md lint-md-fix lint-py-check lint-py typecheck test test-cov test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-universe-backfill universe-coverage wifey-forecast-audit wifey-xsmom-audit wifey-xsmom-residual-audit wifey-lowvol-audit wifey-xasset-audit wifey-xasset-backfill wifey-pead-audit wifey-pead-backfill wifey-exit-audit wifey-pundit-score wifey-check-levels wifey-route-dedup-seed wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep backup backup-dry-run wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent check-dead-surfaces check-orphan-tests wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
 
 lint: lint-md lint-py
 
@@ -351,6 +351,20 @@ go-live:
 	@echo "🚀 Go-live (single cycle): $(GO_LIVE_CONFIG) — Telegram ON"
 	-$(MAKE) wifey-analytics-sync TIMEFRAMES=1h
 	$(MAKE) wifey-signal-watch CONFIG=$(GO_LIVE_CONFIG) TELEGRAM=1 ONCE=1 $(if $(CATCH_UP),CATCH_UP=1,)
+
+## --- Backup (verified local snapshot) — see deploy/README.md ---
+# Snapshots analytics.db + the whole gitignored docs/plans research tree to
+# $WIFEY_BACKUP_ROOT (default ~/backups/wifey). Verified and atomically
+# published, so a snapshot at the final path is always restorable.
+# This is the LIKELY-failure leg only — it does not survive disk loss.
+backup:
+	@echo "💾 Verified local backup → $${WIFEY_BACKUP_ROOT:-$$HOME/backups/wifey}"
+	./deploy/backup-analytics.sh --weekly-if-due
+
+# Report what would be captured; writes nothing. Use this after adding anything
+# to docs/plans to confirm the file count moved.
+backup-dry-run:
+	./deploy/backup-analytics.sh --dry-run
 
 docker-signal-watch:
 	@echo "🔍 Running signal detection daemon in Docker..."
