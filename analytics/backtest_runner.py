@@ -49,6 +49,7 @@ from analytics.data_store import (
     upsert_combo_run,
     upsert_cross_tf_combo_run,
 )
+from analytics.db_retry import connect_with_retry
 from analytics.digest_lib import run_digest
 from analytics.perf_timer import timed
 from analytics.signal.gates import _is_adr_exempt, effective_adr_threshold
@@ -651,8 +652,8 @@ def run_backtest_sweep(
 
     single_run_mode = not tp_sweep_mode and not atr_sweep_mode
     sweep_id = str(uuid.uuid4()) if cfg.save_results and single_run_mode else None
-    conn: duckdb.DuckDBPyConnection = duckdb.connect(
-        str(db_path), read_only=not (cfg.save_results and single_run_mode)
+    conn: duckdb.DuckDBPyConnection = connect_with_retry(
+        db_path, read_only=not (cfg.save_results and single_run_mode)
     )
 
     try:
@@ -850,8 +851,8 @@ def run_backtest_cmd(
     universe = load_universe_policy()
     print(universe.describe())
 
-    conn: duckdb.DuckDBPyConnection = duckdb.connect(
-        str(db_path), read_only=not save_results
+    conn: duckdb.DuckDBPyConnection = connect_with_retry(
+        db_path, read_only=not save_results
     )
     try:
         ohlcv = get_ohlcv(conn, symbol, timeframe, start_ms, end_ms)
@@ -1159,7 +1160,7 @@ def run_combo_backtest_cmd(
 
     # DB writes happen in the main process — avoids concurrent write contention.
     if save_results and combo_results:
-        conn: duckdb.DuckDBPyConnection = duckdb.connect(str(db_path), read_only=False)
+        conn: duckdb.DuckDBPyConnection = connect_with_retry(db_path, read_only=False)
         try:
             for c in combo_results:
                 if len(c.result.closed_trades) >= min_trades:
@@ -1407,9 +1408,7 @@ def run_cross_tf_combo_backtest_cmd(
 
     # DB writes in main process — avoid concurrent write contention.
     if save_results and combo_results:
-        conn_w: duckdb.DuckDBPyConnection = duckdb.connect(
-            str(db_path), read_only=False
-        )
+        conn_w: duckdb.DuckDBPyConnection = connect_with_retry(db_path, read_only=False)
         init_schema(conn_w)
         try:
             for c in combo_results:

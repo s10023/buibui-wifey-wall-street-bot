@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from analytics.data_store import DEFAULT_DB_PATH, init_schema
+from analytics.db_retry import connect_with_retry, is_lock_conflict
 from web.api.routers import (
     backtest,
     config,
@@ -74,13 +75,23 @@ def _load_active_config(config_path: str) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Open DB (brief RW for schema, then read-only) on startup."""
-    # Brief RW open to ensure schema is initialised. Skip gracefully if the
-    # signal-watch daemon already holds the write lock (schema must exist).
+    # Brief RW open to ensure schema is initialised, waiting out whatever else
+    # holds the lock (`make go-live`, `make db-update`) rather than skipping.
+    #
+    # The old comment blamed "the signal-watch daemon" — there is no such daemon
+    # in this fork; those units belong to the crypto parent. Worse, the bare
+    # `except duckdb.IOException: pass` swallowed EVERY I/O error, so a missing
+    # or unreadable database started the API with no schema and no complaint.
+    # Only a lock conflict is survivable here; anything else must surface.
     try:
-        with duckdb.connect(str(DEFAULT_DB_PATH)) as rw_conn:
+        with connect_with_retry(DEFAULT_DB_PATH) as rw_conn:
             init_schema(rw_conn)
-    except duckdb.IOException:
-        pass
+    except duckdb.IOException as e:
+        if not is_lock_conflict(e):
+            raise
+        logging.warning(
+            "analytics.db is locked; starting read-only without a schema check"
+        )
 
     app.state.db_path = str(DEFAULT_DB_PATH)
     app.state.config_name = None

@@ -68,7 +68,7 @@ behind a pointer is not a guard rail.
 | Package | What it is | Deep reference |
 | --- | --- | --- |
 | `wifey.py` · `cli/` | Thin CLI entry shim delegating to `cli.main:main`; argparse subcommand package (`signal` / `analytics` / `backtest` / `digest` / `param` / `recalibrate` / `web`) with `_common.py` helpers | — |
-| `analytics/` | Analytics data layer (DuckDB): `store/`, `strategies/` (18 detector modules, **16** registered for dispatch), `backtest/`, `signal/`, `stats/`, `research_guards/`, `sweep_guard.py`, `audit_guard.py`, plus the data-ingest + quality + calendar layer | `context/analytics.md` |
+| `analytics/` | Analytics data layer (DuckDB): `store/`, `strategies/` (18 detector modules, **16** registered for dispatch), `backtest/`, `signal/`, `stats/`, `research_guards/`, `sweep_guard.py`, `audit_guard.py`, `db_retry.py`, plus the data-ingest + quality + calendar layer | `context/analytics.md` |
 | `analytics/{forecast,xsmom,lowvol,xasset,pead,exits}/` | The P2/P3 research sleeves and the exit diagnostic — **verdicts below** | `context/analytics.md` |
 | `signals/` · `utils/` | Alerting + dedup daemon (detection lives in `analytics/`); shared Telegram / yfinance / EDGAR clients and the two config-universe loaders | `context/signals.md` |
 | `web/` | FastAPI backend + Svelte 5 / Vite UI | `context/web.md` |
@@ -104,6 +104,22 @@ its own neutrality precondition, so that cell is not evidence about the underlyi
 **CRITICAL — `analytics/store/_common.py::_upsert`** uses explicit `conn.register` /
 `conn.unregister` in try/finally. Never switch to the implicit replacement scan (it causes malloc
 heap corruption) and never drop the try/finally.
+
+**`read_only=True` does NOT let a second PROCESS in — and a bare `except duckdb.IOException` is
+therefore a trap.** On duckdb 1.5.5 only reader-vs-reader shares; a writer refuses a read-only
+opener with the *identical* `Conflicting lock` message (verified 2026-08-12 by holding a
+connection from a child process). Two consequences. **Open through
+`analytics/db_retry.py::connect_with_retry`, not `duckdb.connect`, at every write site in
+`analytics/` and `web/` — with one deliberate exception**: `web/api/routers/stats.py`'s cache
+write is on the request path, where a ~52s retry would block the response the cache exists to
+speed up. And **narrow every `except duckdb.IOException` with `is_lock_conflict`**: DuckDB
+raises that one class for *all* I/O failures, so the two `web/` handlers were reporting a
+missing or corrupt database as "busy, try again in a few seconds" — advice that can never come
+true — and `main.py`'s `except: pass` started the API with no schema and no complaint. Both
+also blamed "the signal-watch daemon", which **this fork does not have**. The retry itself is
+**preventive, not a repair** (upstream's premise is colliding systemd timers; wifey has no
+daemon), and its budget deliberately does *not* outlast a `make db-update` sweep — a job that
+collides with one should fail loudly, not hang.
 
 **`DEFAULT_DB_PATH` lives in `analytics/store/_common.py`** (re-exported via `analytics.store` and
 `analytics.data_store`) — import from either re-export, never redefine it in a runner.

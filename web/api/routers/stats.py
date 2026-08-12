@@ -252,7 +252,13 @@ def get_stats(
 
     response = _bundle_to_response(bundle)
 
-    # Write to cache via a brief RW connection (shared db param is read-only)
+    # Write to cache via a brief RW connection (shared db param is read-only).
+    #
+    # Deliberately left on plain `duckdb.connect` — the only write site not moved
+    # to `connect_with_retry`. This runs on the REQUEST path, so a ~52s retry
+    # would block the response the cache exists to speed up. A lost cache write
+    # costs one recomputation; the `except Exception: pass` below already makes
+    # that explicit. Do not "finish the sweep" by wiring retry in here.
     try:
         with duckdb.connect(str(DEFAULT_DB_PATH)) as rw_conn:
             upsert_stats_cache(
