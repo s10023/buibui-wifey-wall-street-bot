@@ -119,6 +119,21 @@ Config schema validation and the two universe loaders.
 
 - `telegram.py` — low-level Telegram message sending (single channel, with retry); takes explicit
   `bot_token` / `chat_id` or falls back to `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` env.
+  Two things it does that are easy to undo by accident (both ported from parent #579, and the
+  first extends it):
+  - **Every exception is logged through `_redact(exc, bot_token)`, at all THREE sites.**
+    `requests` embeds the request URL in the exception string and that URL is
+    `/bot<TOKEN>/sendMessage`, so logging a bare exception writes a live credential to the
+    terminal or journal. Upstream redacts only the two `HTTPError` sites; the generic
+    `except Exception` branch leaks identically (a `ConnectionError` renders the same URL) and
+    is redacted here too. Never log a raw exception from this module.
+  - **A 400 drops `parse_mode` and retries as plain text**, because a 400 is a *rejected
+    payload* — resending the identical body can never succeed. The usual trigger is HTML: a
+    traceback's `line 33, in <module>` reads as an unclosed tag, which made failure alerts fail
+    on precisely the crashes they exist to report. Scoped to 400 deliberately — a 500 IS
+    transient and its retry stays faithful to the original payload. The payload is rebuilt per
+    attempt rather than mutated, so dropping it cannot retroactively rewrite what earlier
+    attempts sent.
 - `telegram_router.py` — dual-channel dispatcher (Task D, 2026-05-20).
   `Channel = Literal["primary","wife"]`; `dispatch_to_channel(text, channel)` resolves env creds
   (`TELEGRAM_BOT_TOKEN_2` / `TELEGRAM_CHAT_ID_2` for wife), honours `TELEGRAM_WIFE_DRY_RUN=1`
