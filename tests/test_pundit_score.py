@@ -176,6 +176,59 @@ class TestParseLevelField:
         assert (57900.0, 58200.0) in p.zones
         assert 58254.0 in p.numbers
 
+    def test_leading_negation_with_incidental_number_is_unspecified(self) -> None:
+        """A field whose head says NO level was given carries no level.
+
+        The trailing number is incidental context -- a resistance reference, a fib
+        ratio, a historical-analog decade. Harvesting it fabricates a precise call
+        the pundit never made, and the sanity gate cannot catch the worst form
+        because the phantom number IS the reference close.
+
+        The first three strings are verbatim from this repo's
+        ``docs/plans/pundit-calls.jsonl``; the rest are the upstream forms
+        (parent #589) kept so a shared regex is not narrowed by a small ledger.
+        """
+        for text in (
+            "not stated (implied ~454 resistance)",
+            "not stated (verbal call, no explicit price given)",
+            "not stated (qualitative; 1970s analog chops sideways a year or two)",
+            "Not specified -- the video gives no explicit entry (~64,017.6)",
+            "unspecified (~58,872, already broke below consolidation)",
+            "unspecified (implied above consolidation range ~80,000)",
+            "No explicit target given; implied continuation toward 66,500-66,900",
+            "not given (roughly 64k)",
+            "n/a (describes the trigger itself); the 63,000-63,500 zone IS it",
+        ):
+            p = parse_level_field(text)
+            assert p.unspecified, repr(text)
+            assert p.numbers == (), repr(text)
+            assert p.zones == (), repr(text)
+
+    def test_leading_negation_drops_scenario_indices(self) -> None:
+        """'scenario 1 / scenario 2' harvested as prices 1.0 and 4.0."""
+        p = parse_level_field(
+            "none yet - scenario 1: 4h MSB at 60.9 then plan entry; scenario 2: fr"
+        )
+        assert p.unspecified
+        assert p.numbers == ()
+
+    def test_trailing_hedge_keeps_the_level_but_marks_it_hedged(self) -> None:
+        """A stated level with a hedged PROVENANCE note is still a real level.
+
+        Distinct from the leading-negation class: here the negation qualifies
+        where the level came from, not whether one exists. Dropping it would lose
+        a genuine call, so the level survives and is flagged instead. Verbatim
+        from this repo's ledger (the `luckychartape` TSLA entry).
+        """
+        p = parse_level_field("~420 (current market, no explicit entry stated)")
+        assert not p.unspecified
+        assert 420.0 in p.numbers
+        assert p.hedged
+
+    def test_plain_level_is_not_hedged(self) -> None:
+        assert not parse_level_field("$61,696.80").hedged
+        assert not parse_level_field("57,900-58,200").hedged
+
 
 class TestSessionHelpers:
     """Equity divergence 6 groundwork: bars and windows are anchored to NY sessions."""
@@ -528,6 +581,51 @@ class TestResolveLevels:
         """
         lv = resolve_levels(_call(entry="7,434-7,438"), None, 660.0)
         assert lv.entry_is_thesis and lv.entry_px == 660.0
+
+    def test_hedged_entry_near_ref_close_is_a_thesis_not_a_precise_call(self) -> None:
+        """The upstream 8a defect, at the layer where it does harm.
+
+        The phantom number IS the reference close, so the sanity gate passes it
+        and the entry price barely moves -- but the CONFIDENCE label is the whole
+        point: 'ok' asserts the pundit named 58,010, 'fallback' says we scored a
+        thesis from the reference close. Only the second is true.
+        """
+        lv = resolve_levels(
+            _call(entry="unspecified (~58,010 at post)", stop="", target=""),
+            None,
+            self.REF,
+        )
+        assert lv.entry_is_thesis and lv.entry_px == self.REF
+        assert lv.parse_confidence == "fallback"
+
+    def test_hedged_stop_and_target_are_dropped_not_invented(self) -> None:
+        """Here the numeric effect is large, not cosmetic.
+
+        This is the shape that scored on this repo's own ledger: the
+        `luckychartape` TSLA short carried a stop of 454.00 harvested out of
+        "not stated (implied ~454 resistance)", at `parse_confidence = ok`.
+        """
+        lv = resolve_levels(
+            _call(
+                entry="58,000",
+                stop="not stated (implied ~59,000 resistance)",
+                target="No explicit target given; implied toward 60,500-60,900",
+            ),
+            None,
+            self.REF,
+        )
+        assert lv.stop_px is None
+        assert lv.target_px is None
+
+    def test_hedged_provenance_keeps_level_at_low_confidence(self) -> None:
+        lv = resolve_levels(
+            _call(entry="58,100 (not stated in text, read off the chart)"),
+            None,
+            self.REF,
+        )
+        assert lv.entry_px == 58100.0
+        assert not lv.entry_is_thesis
+        assert lv.parse_confidence == "low"
 
 
 class TestTagFamily:

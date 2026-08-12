@@ -40,10 +40,15 @@ make wifey-sync-parent                 # incremental from the state pointer
 make wifey-sync-parent FULL=1          # full fork -> HEAD audit
 make wifey-sync-parent NO_FETCH=1      # local refs only (offline)
 make wifey-sync-parent FROM=<hash>     # override start point
-make wifey-sync-parent BUMP_TO=<hash>  # advance the pointer, no scan
+make wifey-sync-parent BUMP_TO=<hash>  # DO NOT USE — see Workflow step 5
 ```
 
 Direct: `PYTHONPATH=. poetry run python tools/sync_parent.py [flags]`.
+
+**`BUMP_TO=` rewrites `project_parent_sync_state.md` to a stub and wipes the
+triage body.** Advance the pointer by hand-editing `last_synced_hash` in that
+file's frontmatter instead. The flag is documented here only so it is recognised
+and refused.
 
 ## Output
 
@@ -68,15 +73,41 @@ Direct: `PYTHONPATH=. poetry run python tools/sync_parent.py [flags]`.
 1. Run `make wifey-sync-parent`. If it reports a fail-fast error (parent missing,
    no readable `origin/main`, malformed state), **surface it to the user and stop**
    — do not auto-clone, auto-fetch, or auto-bump.
-2. Read `docs/plans/parent-sync/parent-sync-<date>.md`. Summarise the
-   **Workstreams** table (the major multi-PR campaigns) and the bucket counts for
-   the user.
-3. For each **PORT** / **EVALUATE** candidate the user wants: open a fresh Claude
+2. **Run BOTH portability filters, and say which findings came from which.**
+   They have opposite blind spots, so either one alone produces a shortlist that
+   silently omits a whole class:
+   - **File-existence** (the report's own bucketing): does the parent's changed
+     path exist here? Kills false ports; scores every **greenfield** port ~0,
+     because a new file cannot exist in wifey yet.
+   - **Import-dependency**: `PYTHONPATH=. .venv/bin/python docs/plans/scripts/missed_ports.py`
+     — does the new module's import set resolve against wifey? Finds greenfield
+     ports; silent on modify-only PRs. **Update its `PORTED` set from
+     `memory/project_parent_sync_state.md` first**, or already-ported work
+     re-surfaces as a candidate.
+
+   Do **not** stop at the Workstreams table and the bucket counts. At a wide range
+   they carry almost no signal — the 2026-08-11 scan bucketed 156 PRs as
+   **0 SKIP / 39 PORT / 107 EVALUATE / 10 ALREADY-APPLIED**, because the classifier
+   defaults to EVALUATE whenever a path resolves. Following that step as it used to
+   be written is what produced a shortlist blind to every greenfield port,
+   `/ingest-feed` (#515) among them, through **two** consecutive syncs.
+3. **Neither filter is evidence the defect exists here — that is a third
+   question.** Before writing any code, enumerate the upstream fix's
+   **preconditions** one at a time and check each against wifey. Parent #580 was
+   the range's highest-overlap candidate (9 of 11 files present), correct upstream,
+   and **inert here**: all three of its preconditions failed. Where the port is
+   warranted, re-derive its measured impact **on this repo's data** — an upstream
+   count is never wifey's, and "preventive, not a repair" is a legitimate finding.
+4. For each **PORT** / **EVALUATE** candidate the user wants: open a fresh Claude
    session, paste the PR number + the parent MEMORY excerpt from the report, and
    do the actual port work there (this skill does not edit code).
-4. Once the user confirms every PR in the range has been decided, advance the
-   pointer: `make wifey-sync-parent BUMP_TO=<to_hash>` (the exact command is
-   printed at the end of the report).
+5. Once the user confirms every PR in the range has been decided, advance the
+   pointer. **Bump by hand-editing the `last_synced_hash` in
+   `memory/project_parent_sync_state.md`'s frontmatter — never
+   `BUMP_TO=` / `--bump-to`**, which rewrites the file to a stub and **wipes the
+   triage body**. And never bump while PRs in the range are still undecided:
+   the next scan starts from the pointer, so an early bump drops them from view
+   permanently.
 
 ## Notes
 
