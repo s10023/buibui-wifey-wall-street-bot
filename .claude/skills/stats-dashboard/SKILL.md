@@ -36,7 +36,7 @@ web/ui/src/api.ts               ← getStats(symbol, days) typed client
 | P1/P2 Daily | `compute_p1p2_daily` | `p1p2` | overall + per-DOW bars; `p1_strong_pct` = fraction where P1-direction wick < 20% range; Low First = green, High First = red |
 | Average Daily Range | `compute_adr` | `adr` | ADR(14), ADR(30) + `adr_14_median`/`adr_30_median` rendered `avg / med` at **2dp** (1dp collapses the pair — AAPL 30d ties at 2.19%), today_range_pct, today_consumed_pct (**÷ ADR14 MEAN — never the median**; `test_today_consumed_still_divides_by_the_MEAN` guards it), today_move_up |
 | Hourly Extreme Distribution | `compute_hourly_extremes` | `hourly_extremes` | 24 bars, MYT; `peak_high/low_hour_by_dow` per-DOW MODE |
-| Day-of-Week Patterns | `compute_dow_patterns` | `dow_patterns` | avg_range_pct, bull_pct, avg_return_pct + `median_return_pct` + `return_stderr_pct`, `strong_high_pct`/`strong_low_pct` (Str H/L = rejection wick < 20% range) per DOW. **Both return columns DIM when the mean sits inside `2.576 × SE`** — see the noise rule below |
+| Day-of-Week Patterns | `compute_dow_patterns` | `dow_patterns` | avg_range_pct + `median_range_pct` (rendered `Avg Range` / `Med Range`, both **2dp** so a mean/median gap is not a rounding artifact), bull_pct, avg_return_pct + `median_return_pct` + `return_stderr_pct`, `strong_high_pct`/`strong_low_pct` (Str H/L = rejection wick < 20% range) per DOW. **Both return columns DIM when the mean sits inside `2.576 × SE`** — see the noise rule below. **Med Range is never dimmed**: range is unsigned, so the false-direction failure mode the SE guards cannot occur |
 | Session Breakdown | `compute_session_breakdown` | `sessions` | Asia (08–13 MYT)/London (14–21)/NY (20–03); 04–07 dead zone; London/NY overlap double-counted |
 | Weekly P1/P2 | `compute_weekly_p1p2` | `weekly_p1p2` | raw DOW distribution (not cumulative); use P2 Timing for "is extreme in yet?" |
 | Weekly P2 Timing | `compute_weekly_p2_timing` + `compute_weekly_flip_risk_conditioned` | `weekly_p2_timing` + `weekly_flip_risk_conditioned` | All: unconditional still-ahead % + flip risk; Bullish/Bearish P1 toggle: P(P2 still ahead \| p1_direction, DOW); live "This week" banner |
@@ -113,3 +113,19 @@ Load `/frontend-design` before any CSS/layout changes.
 - Accent values: `color: var(--accent)`. Green/red: `var(--green)` / `var(--red)`
 - Help button: small `?` circle, toggles inline `help-panel` below card title
 - Wide cards (full row): add class `card-wide` (`grid-column: 1 / -1`)
+- **A colour-only utility class on a table cell needs `.stat-table td.<class>`, not
+  `.<class>`.** `.stat-table td` sets `color: var(--text)` at specificity (0,1,1); a
+  bare class is (0,1,0) and **loses silently** — the cell renders at full weight,
+  which looks exactly like the class never being applied. Found 2026-08-12 by
+  rendering: `.med-range-cell`, `.val-muted` and the colour half of `.val-noise` were
+  all dead. **Check how old the defect is with `git log -S`, not by assuming it came
+  in with the feature you are looking at**: `.val-noise` dates to #161, but
+  `.val-muted` goes back to **#209**, the original stats engine — so the N column had
+  never once been dimmed. `.val-noise` *looked* fine only because its `opacity` had no
+  competitor. Two rules follow. **Raising specificity on a SHARED utility class is
+  only safe as an addition** — keep the bare selector too, since `.val-muted` is also
+  applied to **15 non-`td` elements** (12 spans, 1 div, 2 inline spans), where nothing
+  competes and the qualified selector would not match. And **a dimming rule is
+  unfalsifiable by unit test or API payload**: assert it with
+  `getComputedStyle(cell).color` in a rendered page, and check the served bundle hash
+  matches the one you just built before believing the result.

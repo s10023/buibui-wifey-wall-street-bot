@@ -325,7 +325,7 @@ Retired parent API this replaced (`cme_gap_lib.py`, kept here for historical ref
 - `compute_p1p2_daily` → `P1P2Result` (incl. `p1_strong_pct`)
 - `compute_hourly_extremes` (incl. `peak_high/low_hour_by_dow` per-DOW MODE)
 - `compute_adr` → `ADRResult(adr_14, adr_30, today_range_pct, today_consumed_pct, today_move_up: bool | None)`
-- `compute_dow_patterns` (incl. `avg_return_pct`, `strong_high/low_pct`)
+- `compute_dow_patterns` (incl. `avg_return_pct`, `median_range_pct`, `strong_high/low_pct`)
 - `compute_session_breakdown`, `compute_weekly_p1p2`, `compute_weekly_p2_timing` → `WeeklyP2Timing`
 - `compute_weekly_flip_risk_conditioned` → `WeeklyFlipRiskConditioned`; p1_direction="low"=bullish, "high"=bearish
 - `compute_path_cone` → `PathConeBundle` (M5 daily cone: 18 direction × Mon–Fri combos over complete 7-bar RTH sessions, ADR14-normalized; all-history, ignores `days`)

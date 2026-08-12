@@ -454,6 +454,7 @@
             <tr>
               <th>Day</th>
               <th>Avg Range</th>
+              <th title="Median (high-low)/open for this weekday. Read beside Avg Range: a mean well above the median means one violent day is carrying the average, not that the day is typically wide. Never dimmed — range is unsigned, so there is no direction to falsely imply.">Med Range</th>
               <th>Direction</th>
               <th title="Mean (close-open)/open for this weekday. DIMMED when the mean sits inside 2.576 standard errors of zero — Bonferroni-corrected for reading all five weekdays at once. Measured across SPY/QQQ/NVDA/AAPL/MSFT at 365d, that is every cell, all 25 of 25. Dimmed means 'no direction', not 'small direction'.">Avg Return</th>
               <th title="Median (close-open)/open. Robust to the single gap day that can flip a weekday's mean on its own — mean and median disagree on sign in 5 of those same 25 cells.">Med Return</th>
@@ -488,9 +489,17 @@
                     <div class="range-mini">
                       <div class="range-mini-fill" style="width: {(row.avg_range_pct / maxDOWRange * 100).toFixed(0)}%"></div>
                     </div>
-                    <span>{formatPct(row.avg_range_pct)}</span>
+                    <!-- 2dp to match Med Range beside it: comparing a mean and a
+                         median rendered at different precision invites reading a
+                         rounding artifact as a mean/median gap. -->
+                    <span>{formatPct2(row.avg_range_pct)}</span>
                   </div>
                 </td>
+                <!-- No mini-bar here on purpose: two bars side by side read as a
+                     comparison between the columns rather than each against the
+                     week, and the median's job is to be compared with the mean in
+                     the same ROW. -->
+                <td class="med-range-cell">{formatPct2(row.median_range_pct)}</td>
                 <td>
                   <div class="bias-cell">
                     <div class="bias-split">
@@ -1057,7 +1066,19 @@
   .val-green { color: var(--green, #4caf81); }
   .val-red { color: var(--red, #e05c5c); }
   .val-amber { color: #d4a843; }
-  .val-muted { color: var(--text-dim); }
+  /* BOTH selectors are required — see the note on `.val-noise` for why the
+     qualified one exists. The bare one must STAY: `.val-muted` is applied to
+     ~15 `<span>`/`<div>` elements outside any table (the weekly-cone cards),
+     where nothing competes and dropping it would silently un-dim all of them.
+     Raising specificity on a shared utility class is only safe as an ADDITION. */
+  .val-muted,
+  .stat-table td.val-muted { color: var(--text-dim); }
+
+  /* Dimmer than Avg Range so the mean stays the primary read and the median is
+     the reference you glance at, not a second headline competing with it. */
+  .stat-table td.med-range-cell {
+    color: var(--text-dim);
+  }
 
   /* P1/P2 + Weekly DOW bars */
   .dow-bars { display: flex; flex-direction: column; gap: 5px; }
@@ -1145,7 +1166,12 @@
      re-introduce exactly the false read this is here to remove. Opacity rather
      than a third colour token keeps it legible in both themes without adding a
      palette entry that means "ignore me". */
-  .val-noise {
+  /* `.stat-table td` sets `color: var(--text)` at specificity (0,1,1); a bare
+     `.val-noise` is (0,1,0) and LOSES. Rendered 2026-08-12: the colour half of
+     this rule had never applied — the column only looked dimmed because of the
+     `opacity` below, which has no competing declaration. Qualifying with the
+     table restores the token. Same defect exists upstream (identical rule). */
+  .stat-table td.val-noise {
     color: var(--muted);
     opacity: 0.75;
   }
