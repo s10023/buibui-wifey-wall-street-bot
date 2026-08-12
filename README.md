@@ -39,7 +39,11 @@ Forked from the parent `buibui-moon-trader-bot` (crypto / Binance Futures); the 
   consolidated review digest and one approval — routes into three gitignored research
   streams: hypotheses (`docs/plans/thesis-inbox.md`), mechanics
   (`docs/plans/mechanics-backlog.md`), and pundit setups
-  (`docs/plans/pundit-calls.jsonl`). Ported from parent #466/#467. Every setup row is
+  (`docs/plans/pundit-calls.jsonl`). Ported from parent #466/#467. A post inside a
+  thread is recovered upward to its root (`--thread`): the syndication endpoint exposes
+  the reply-to chain but has no replies/children field, so **bookmark the LAST post of a
+  thread, never the parent**. Posts carrying video are handed to `/ingest-video` rather
+  than skipped (parent #591). Every setup row is
   sign-checked before it is written (`make wifey-check-levels`, or
   `tools/x_route.py --check-levels`): a long must satisfy `stop < entry < target` and a
   short `target < entry < stop`. The check warns and never drops — it exists because an
