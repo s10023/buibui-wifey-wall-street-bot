@@ -283,6 +283,21 @@ was **never alive**: it had zero NULL rows for its entire history, and post-fix 
 match within a config, because the executed threshold is a pure function of `(strategy, timeframe)`.
 Audit: `migrations/002_adr_threshold_executed.py` docstring.
 
+**`INSERT OR REPLACE` with a PARTIAL row silently blanks every column the caller omitted.** This is
+the sibling of #148 — there the key collided, here the *row* is right and the payload is short.
+`upsert_signal_outcome` took a 16-column row and the scanner (its only production caller) passes no
+`outcome` / `outcome_r` / `outcome_filled_at_ms` key, so `row.get(col)` → NULL and **every
+re-detection erased a resolved label** (13 rows re-stamped in one cycle on 2026-08-11, oldest a
+7-week-old `loss`). Fixed 2026-08-12 with `ON CONFLICT … DO UPDATE` + `COALESCE(excluded.x, x)` on
+the three outcome columns. Three transferable rules: **a writer that owns only SOME columns of a
+table must not use a whole-row replace** — ask what the other writers set (`backfill_outcomes`
+issues a direct `UPDATE`, so it never collided and the damage was invisible from its side); **a
+defect masked by ordering is still a defect** — `signal_runner.py:350` re-derives the label right
+after the scan, so the loss only shows up if the backfill throws, and that call is wrapped in a
+"logged but never blocks the cycle" try/except; and **when you fix a preserve-on-NULL bug, test the
+OTHER direction too** — "never update outcome" passes the obvious test and silently breaks every
+caller that legitimately sets one.
+
 **A statistic can report a value it was DEFINED to report, and a cohort median is where that hides.**
 `exits/`'s MFE for a loss comes from `fav[:-1]` — every held bar except the exit bar, the deliberate
 adverse-first anti-bias rule — so **a loss resolved on its first held bar has `mfe_r == 0.0` by

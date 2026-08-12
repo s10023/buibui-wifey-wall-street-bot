@@ -289,6 +289,69 @@ class TestUpsertSignalOutcome:
         assert row[0] == "win"
         assert abs(row[1] - 1.8) < 1e-9
 
+    def test_redetection_preserves_a_resolved_outcome(
+        self, conn: duckdb.DuckDBPyConnection
+    ) -> None:
+        """A re-fire must not erase a label the backfill already resolved.
+
+        This is the live shape, not a hypothetical: `scanner.py` writes the
+        alert row on EVERY scan that still detects the signal (the write is
+        unconditional — only dispatch is watermarked), and it passes no
+        outcome / outcome_r / outcome_filled_at_ms key at all. Measured
+        2026-08-11: 13 rows re-stamped in one cycle, the oldest a signal from
+        7 weeks earlier that was already booked as a loss.
+        """
+        upsert_signal_outcome(conn, dict(_OUTCOME_ROW))
+        # Backfill resolves it — a direct UPDATE, which is what
+        # `outcome_backfill.py` actually issues.
+        conn.execute(
+            "UPDATE signal_alert_outcomes SET outcome = 'loss', outcome_r = -1.0, "
+            "outcome_filled_at_ms = 1700000900000 WHERE signal_id = ?",
+            [_OUTCOME_ROW["signal_id"]],
+        )
+        # The scanner re-detects the same signal: same identity, no outcome keys.
+        redetect = {
+            k: v
+            for k, v in _OUTCOME_ROW.items()
+            if k not in {"outcome", "outcome_r", "outcome_filled_at_ms"}
+        }
+        redetect["fired_at_ms"] = 1_700_009_999_000
+        upsert_signal_outcome(conn, redetect)
+
+        row = _one(
+            conn,
+            "SELECT outcome, outcome_r, outcome_filled_at_ms, fired_at_ms "
+            "FROM signal_alert_outcomes",
+        )
+        assert row[0] == "loss", "re-detection erased the resolved outcome"
+        assert abs(row[1] - (-1.0)) < 1e-9
+        assert row[2] == 1_700_000_900_000
+        # The re-fire still refreshes the non-outcome columns.
+        assert row[3] == 1_700_009_999_000
+
+    def test_explicit_outcome_still_overwrites_on_conflict(
+        self, conn: duckdb.DuckDBPyConnection
+    ) -> None:
+        """Preserving must not become ignoring — a supplied value still wins.
+
+        Guards the other direction of the same change: if the preserve rule
+        were written as "never update outcome", the backfill's own re-resolve
+        path and every fixture that seeds an outcome would silently stop
+        working.
+        """
+        upsert_signal_outcome(conn, dict(_OUTCOME_ROW))
+        conn.execute(
+            "UPDATE signal_alert_outcomes SET outcome = 'loss', outcome_r = -1.0 "
+            "WHERE signal_id = ?",
+            [_OUTCOME_ROW["signal_id"]],
+        )
+        upsert_signal_outcome(
+            conn, {**_OUTCOME_ROW, "outcome": "win", "outcome_r": 2.5}
+        )
+        row = _one(conn, "SELECT outcome, outcome_r FROM signal_alert_outcomes")
+        assert row[0] == "win"
+        assert abs(row[1] - 2.5) < 1e-9
+
     def test_missing_optional_fields_default_to_null(
         self, conn: duckdb.DuckDBPyConnection
     ) -> None:
