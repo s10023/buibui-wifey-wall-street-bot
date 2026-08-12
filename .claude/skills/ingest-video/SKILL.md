@@ -165,7 +165,58 @@ it:
 - `meta.publish_ts_utc`, `meta.author`, `meta.lang` — **context only**, for resolving a
   relative stated date ("last Monday") and inferring a speaker's timezone from channel
   locale. It must NOT compute a final call time itself — that happens in code, step 4.
+- the channel's `intro_recap_s` and `item_cap` (see below) — numbers, not rules to
+  re-derive
 - the inline classification rubric (below)
+
+**First, ask the config for this channel's two per-video knobs** (added with
+`/ingest-feed`, parent #515/#535/#558):
+
+```bash
+PYTHONPATH=. poetry run python tools/yt_feed.py hint --author "<meta.author>" || true
+```
+
+Pure local config read — no API key, no network — so a hand-pasted URL resolves the same
+way a polled one does. Returns `{"matched": …, "intro_recap_s": N, "item_cap": N, …}`.
+Run it per video; a batch can span channels.
+
+⚠ **`hint` EXITS 1 if `config/youtube_channels.toml` does not exist** (measured
+2026-08-12 — `load_feed_config` raises `SystemExit`, it does not return `matched: false`).
+That file is gitignored and **may legitimately not exist here**, since `/ingest-video`'s
+primary mode in this repo is a hand-pasted URL with no follow list at all. **A missing
+config is NOT an error condition for this step** — treat it exactly like `matched: false`,
+take both defaults, and carry on. Hence the `|| true`; do not let it abort the batch.
+
+Both knobs otherwise degrade **quietly** to a default: `matched: false` or
+`intro_recap_s: 0` means no recap rule and nothing changes, and `item_cap` falls back to
+`video_marks.ITEM_CAP` (**12 here**, not the parent's 5).
+
+**`item_cap` is applied by the pass-1 PROMPT, not by code — so a value fetched here and
+not passed on does nothing.** Carry it into the ranking rule as a literal. This shipped
+broken upstream: #558 added the key to the config, `tools/yt_feed.py`, its tests and the
+context doc, but left their skill document saying the cap was always 5, so the first run
+after it merged fetched `item_cap: 12` and discarded it. **A cap plumbed everywhere
+except its one consumer is not plumbed.**
+
+Note this keys on `meta.author` (an @handle), which matches neither the `UC…` id the poll
+path uses nor a CJK display `name` — that is why `config/youtube_channels.toml` carries a
+`handle` field. **A channel with no `handle` never matches, and then BOTH knobs silently
+take their defaults.** Neither degradation raises anything; the run just quietly keeps
+less.
+
+⚠ **In this repo the `item_cap` override is nearly inert**: `ITEM_CAP` is already 12 and
+`item_cap + len(TAIL_OFFSETS_S) <= FRAME_CAP` caps it at **13**, so the usable range is
+13..13 and a larger value silently degrades kept items to `vision_confidence: "low"`.
+`yt_feed.py` does not validate it. Treat a channel needing more as a reason to revisit
+the global constants, not to set this key.
+
+**If `intro_recap_s` came back non-zero**, set `is_intro_recap: true` on every candidate
+with `ts < intro_recap_s`. For a `setup`, ALSO set `retrospective: true` — a call lifted
+from a recap block is a *past* call that would otherwise be stamped with today's
+`call_ts_utc` and score the author on an already-resolved trade. For a `claim` or
+`mechanic`, set `is_intro_recap` and **keep** the candidate: an idea stays portable
+regardless of when in the video it was said, and `x_route`'s `retrospective` drop is
+setup-only.
 
 It must NOT read any repo, SoT, or memory file — the rubric is self-contained. Instruct
 it to return ONLY this JSON:
@@ -177,10 +228,15 @@ it to return ONLY this JSON:
   "stated_date_only": false,
   "stated_ts_raw": "verbatim quote or empty",
   "candidates": [
-    {"ts": 252.0, "content_type": "setup|claim|mechanic", "specificity": 1-5, "gist": "..."}
+    {"ts": 252.0, "content_type": "setup|claim|mechanic", "specificity": 1-5,
+     "is_intro_recap": false, "retrospective": false, "gist": "..."}
   ]
 }
 ```
+
+`is_intro_recap` / `retrospective` default to `false` and are only ever set by the
+`intro_recap_s` rule above — a channel with no `handle`, or `intro_recap_s: 0`, leaves
+both false and nothing changes.
 
 **`stated_ts_utc` must carry an explicit UTC offset (e.g. `2026-07-14T08:00:00+08:00`),
 or be `null` — never a bare local time.** `tools/video_calltime.py` rejects a naive
@@ -210,6 +266,10 @@ PY
 `item_ts` feeds step 5. Carry `dropped` (with its `drop_reason`) into the digest and the
 note verbatim — a dropped call must stay visible, because a silently lost call is
 indistinguishable from a video that never made one.
+
+**Rank by `specificity` descending and keep the top `item_cap`** — the number `hint`
+returned for THIS channel, written into the prompt as a literal, falling back to
+`ITEM_CAP` (12) when `matched: false`.
 
 **Know which way the tie-break leans before you read a thin result.** `keep_items` ranks
 by specificity desc, then **`ts` asc** — so a tie at `ITEM_CAP` resolves in favour of

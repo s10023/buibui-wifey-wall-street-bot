@@ -6,6 +6,8 @@ __pycache__/
 
 # Ignore config/stocks.json (Phase A personal watchlist — ship .example instead)
 config/stocks.json
+# Personal YouTube follow list for /ingest-feed (example is committed)
+config/youtube_channels.toml
 
 # But don't ignore other files in config/
 !config/

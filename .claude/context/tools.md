@@ -494,6 +494,48 @@ describes ingest lag, not the pundit's.
 
 **Run:** `PYTHONPATH=. poetry run python tools/video_calltime.py --publish <iso> [--stated <iso>] [--date-only] --stated-raw "<quote>" [--ingested <iso>]`
 
+## yt_feed.py — YouTube channel auto-feed backing `/ingest-feed`
+
+Ported from parent #515, taken at **parent HEAD** rather than at #515's merge commit, so
+six follow-ups (#516, #529, #535, #558, #582, #585) land with it (724 → 894 lines).
+**#516 is the one that matters operationally** — it added `load_dotenv()`, without which
+`YOUTUBE_API_KEY`
+in `.env` is invisible and every API subcommand fails; porting #515 literally would have
+shipped a feed that could not authenticate.
+
+Read-only `poll` of each configured channel's uploads playlist (Data API v3,
+`YOUTUBE_API_KEY`, ~2–3 units/channel/day, **never `search.list`**) + `backfill` deep pager
+(floor ignored, ledger respected). **`poll --since` NARROWS the floor only**
+(`max(floor, since)`, shared `_parse_since` with `backfill`): the floor records what the
+operator already declined, so honouring an earlier `--since` would resurface it — reaching
+below the floor stays `backfill`'s job, and that asymmetry is the whole difference between
+the two subcommands. `mark` is the **ONLY** writer, stamped post-review-gate, so the
+wifey-#68 watermark-on-send defect class is structurally impossible: no fetch-time writes,
+no moving watermark, static per-channel `floor_ts`. Plus `resolve` (handle → ready-to-paste
+TOML block) and `hint` (pure local config read; resolves **ahead of** the API-key gate, so
+it needs no `YOUTUBE_API_KEY`).
+
+Config is the gitignored `config/youtube_channels.toml` (committed `.example`). State is
+`docs/plans/yt-feed-state.json` (gitignored, atomic writes, loud-abort on malformed).
+Injected HTTP `get` → network-free request-shape tests (70 of them).
+
+**Two wifey-specific divergences, both re-derived here rather than inherited:**
+
+- **`item_cap` is nearly inert in this repo.** It defaults to `video_marks.ITEM_CAP`,
+  imported not re-literalled — so it correctly picks up wifey's **12** (the parent's is
+  5, raised here in #128 alongside a `MIN_ITEM_SPECIFICITY` floor). But `/ingest-video`
+  requires `item_cap + len(TAIL_OFFSETS_S) <= FRAME_CAP`, i.e. **≤ 13**, so the usable
+  range is 13..13. **`yt_feed.py` does not validate this** — it imports `FRAME_CAP` only
+  to estimate tokens — and a larger value silently degrades kept items to
+  `vision_confidence: "low"`. The parent has 8 of headroom and never hit the ceiling.
+- **`hint` EXITS 1 when `config/youtube_channels.toml` is absent** (`load_feed_config`
+  raises `SystemExit`; it does not return `matched: false`). That file may legitimately
+  not exist here, since `/ingest-video`'s primary mode in this repo is a hand-pasted URL
+  with no follow list — so its step-3 call is guarded with `|| true` and a missing config
+  is treated as `matched: false`, not as an error.
+
+**Run:** `PYTHONPATH=. poetry run python tools/yt_feed.py poll|backfill|mark|resolve|hint`
+
 ## video_fetch.py — read-only YouTube/X video fetcher
 
 Read-only YouTube/X video fetcher: every yt-dlp call goes through
