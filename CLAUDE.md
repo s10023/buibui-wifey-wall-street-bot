@@ -286,17 +286,25 @@ Audit: `migrations/002_adr_threshold_executed.py` docstring.
 **`INSERT OR REPLACE` with a PARTIAL row silently blanks every column the caller omitted.** This is
 the sibling of #148 — there the key collided, here the *row* is right and the payload is short.
 `upsert_signal_outcome` took a 16-column row and the scanner (its only production caller) passes no
-`outcome` / `outcome_r` / `outcome_filled_at_ms` key, so `row.get(col)` → NULL and **every
-re-detection erased a resolved label** (13 rows re-stamped in one cycle on 2026-08-11, oldest a
-7-week-old `loss`). Fixed 2026-08-12 with `ON CONFLICT … DO UPDATE` + `COALESCE(excluded.x, x)` on
-the three outcome columns. Three transferable rules: **a writer that owns only SOME columns of a
-table must not use a whole-row replace** — ask what the other writers set (`backfill_outcomes`
-issues a direct `UPDATE`, so it never collided and the damage was invisible from its side); **a
-defect masked by ordering is still a defect** — `signal_runner.py:350` re-derives the label right
-after the scan, so the loss only shows up if the backfill throws, and that call is wrapped in a
-"logged but never blocks the cycle" try/except; and **when you fix a preserve-on-NULL bug, test the
-OTHER direction too** — "never update outcome" passes the obvious test and silently breaks every
-caller that legitimately sets one.
+`outcome` / `outcome_r` / `outcome_filled_at_ms` key, so `row.get(col)` → NULL and **a re-detection
+erased a resolved label**. Fixed 2026-08-12 with `ON CONFLICT … DO UPDATE` +
+`COALESCE(excluded.x, x)` on the three outcome columns — **preventive, not a repair**: measured
+across all 295 events, exactly **one** re-write has ever occurred (`ADBE-1d-eqh_eql`, 31 minutes
+after first detection on 2026-06-05, while still unresolved), so no resolved label is known to have
+been destroyed. Four transferable rules. **A writer that owns only SOME columns of a table must not
+use a whole-row replace** — ask what the other writers set (`backfill_outcomes` issues a direct
+`UPDATE`, so it never collided and the damage was invisible from its side). **A defect masked by
+ordering is still a defect** — `signal_runner.py:350` re-derives the label right after the scan, so
+a loss surfaces only if the backfill throws, and that call sits in a "logged but never blocks the
+cycle" try/except. **When you fix a preserve-on-NULL bug, test the OTHER direction too** — "never
+update outcome" passes the obvious test and silently breaks every caller that legitimately sets
+one. And the one that cost a retraction: **two writers on the same event with OPPOSITE conflict
+policies give you a free audit** — `signals` is `INSERT OR IGNORE` (first write wins) while the
+ledger was `INSERT OR REPLACE` (last write wins), so `signals.fired_at <> outcomes.fired_at` is a
+*proof* that a re-write happened. Before that join, 13 ledger rows stamped 2026-08-11 were read as
+re-detections; they were **first inserts in both tables** — a catch-up scan discovering historical
+signals and resolving them in the same cycle. **Find the query that DISCRIMINATES before quoting a
+count as evidence of a mechanism.**
 
 **A statistic can report a value it was DEFINED to report, and a cohort median is where that hides.**
 `exits/`'s MFE for a loss comes from `fav[:-1]` — every held bar except the exit bar, the deliberate

@@ -155,9 +155,24 @@ is an operator action.
 `upsert_signal_outcome` is `INSERT OR REPLACE` over all 16 columns, and the
 scanner's call at `:1029` passes **no** `outcome` / `outcome_r` /
 `outcome_filled_at_ms` key — `row.get(col)` yields NULL for all three. So whenever a
-scan re-detects a signal it has already recorded (which demonstrably happens: 13
-rows re-stamped on 2026-08-11, the oldest a 2026-06-25 candle), **the resolved label
-is erased and rewritten as NULL**.
+scan re-detects a signal it has already recorded, **the resolved label is erased and
+rewritten as NULL**.
+
+> **Correction (2026-08-12, same day).** This section first cited *"13 rows
+> re-stamped on 2026-08-11, the oldest a 2026-06-25 candle"* as evidence the path
+> fires in production. **That was wrong**, and the discriminating query is a join
+> this audit had not yet run: `signals` is written with `INSERT OR IGNORE`, so its
+> `fired_at` is the **first** write, while the ledger's was `INSERT OR REPLACE` and
+> records the **latest** — a divergence therefore *proves* a re-write. Across all
+> **295** events there is exactly **one** (`ADBE-1d-eqh_eql`, 31 minutes after first
+> detection on 2026-06-05, **while still unresolved**). The 13 rows were **first
+> inserts in both tables** — a catch-up scan discovering historical signals and
+> resolving them in the same cycle, which also explains how a row inserted on 08-11
+> already carried a 06-30 `outcome_filled_at_ms` (that field is a **bar** time).
+> The defect is real and test-proven; its production incidence is **zero resolved
+> labels destroyed**. Fixed as **preventive** in PR #157 — the same posture as #578.
+> The general lesson is in CLAUDE.md → Footguns: *find the query that DISCRIMINATES
+> before quoting a count as evidence of a mechanism.*
 
 It survives today only because `backfill_outcomes` runs downstream in the same cycle
 and re-derives the same answer — deterministically, and more so since #578 bounded
