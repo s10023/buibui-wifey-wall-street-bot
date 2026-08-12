@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 
 from analytics.forecast.config import ForecastConfig
+from analytics.research_guards import passes_sleeve_gate
 from analytics.xsmom.book import XSBookResult
 from analytics.xsmom.report import evaluate_residual_grid
 
@@ -33,13 +34,16 @@ def test_evaluate_residual_grid_reads_committed_cell() -> None:
     assert rep.committed_key == "broad_residual_skip"
     assert set(rep.cells) == set(books)
     assert isinstance(rep.passed, bool)
-    # the gate reads the committed cell only
+    # The gate reads the committed cell only. Call the shared gate rather than
+    # restating its expression: an inline copy of the code under test cannot
+    # falsify it, which is why this assertion passed against any gate for as
+    # long as it existed. Leg-by-leg coverage lives in test_research_guards_gate.
     c = rep.cells["broad_residual_skip"]
-    expected = (
-        c.dsr >= 0.95
-        and c.pbo <= 0.5
-        and c.boot_lo > 0.0
-        and c.n_obs >= c.min_trl
-        and c.sharpe_annual >= 0.7
+    assert rep.passed == passes_sleeve_gate(
+        dsr=c.dsr,
+        pbo=c.pbo,
+        boot_lo=c.boot_lo,
+        n_obs=c.n_obs,
+        min_trl=c.min_trl,
+        sharpe_annual=c.sharpe_annual,
     )
-    assert rep.passed == expected

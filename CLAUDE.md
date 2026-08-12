@@ -333,6 +333,36 @@ re-detections; they were **first inserts in both tables** — a catch-up scan di
 signals and resolving them in the same cycle. **Find the query that DISCRIMINATES before quoting a
 count as evidence of a mechanism.**
 
+**A DECLARED threshold is not the EFFECTIVE threshold when a second leg of the same gate is
+stricter, and the stricter leg is usually the one nobody wrote down.** All four equity sleeves
+(`xsmom`, `lowvol`, `xasset`, `pead`) declare `_GATE_SHARPE = 0.7` as their *"pre-registered
+net-of-cost bar"* — and then AND it with `n_obs >= min_trl`, where `min_track_record_length` is
+called with `target_sr` equal to an **annualized Sharpe of 1.0**. MinTRL against a non-zero target
+asks *"can I confirm Sharpe ≥ 1?"*, so it returns **`inf`** for any sample at or below that target:
+no amount of data confirms a hypothesis the sample contradicts. The real bar is therefore ~**2.174**
+at n=500, ~**1.585** at n=2000, ~**1.478** at n=3000 — the whole 0.7–1.58 band clears every
+threshold the code *names* and is rejected by one it does not. `_DEPLOY_SHARPE = 1.0` is inert for
+the same reason: it is only consulted on a cell that already passed, and a passing cell is already
+above 1.58. **No recorded verdict rests on this**: the gate is read on **four** committed cells
+(`xsmom`'s residual grid, `lowvol`, `xasset`, `pead` — `forecast` computes `min_trl` and applies
+no gate at all), and per the sleeve table above each of the four already fails on DSR, PBO,
+`boot_lo`, or the 0.7 Sharpe leg, all of which bind before MinTRL. That is why #165 documented
+the divergence in `analytics/research_guards/gate.py`
+rather than dropping the leg: removing a leg changes what a recorded verdict *means*, and that is
+a research decision, not a refactor. The parent excludes `min_trl` from its gate on purpose and
+calls the four-leg form *"a documented recurring error"*. Three transferable rules: **a gate is
+identified by its full leg set, not by the constant with a name** — quoting `GATE_SHARPE` as "our
+bar" was true of the constant and false of the gate; **when a threshold is a function of the data
+(`min_trl` moves with `n_obs`), the bar is not a number and cannot be read off the source** — solve
+for it, which took one bisection; and **the duplication is what let the divergence hide** — the
+expression was inlined four times in production plus a fifth time inside
+`tests/test_xsmom_residual_report.py`, which re-derived it to build its own expected value and so
+passed against any implementation. Extraction to one definition is what made the leg set legible
+at all. Equivalence of the extraction was proven over 2,985,984 exhaustive combinations
+(including NaN/±inf) plus 200k random draws, 0 mismatches. Script (reproduces every number
+here, by calling the production functions rather than restating their arithmetic):
+`docs/plans/scripts/sleeve_gate_mintrl_bar.py`.
+
 **A statistic can report a value it was DEFINED to report, and a cohort median is where that hides.**
 `exits/`'s MFE for a loss comes from `fav[:-1]` — every held bar except the exit bar, the deliberate
 adverse-first anti-bias rule — so **a loss resolved on its first held bar has `mfe_r == 0.0` by

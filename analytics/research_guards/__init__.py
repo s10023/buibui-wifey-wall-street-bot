@@ -15,13 +15,25 @@ from analytics.research_guards.dsr import (
     deflated_sharpe_ratio,
     expected_max_sharpe,
 )
+from analytics.research_guards.gate import (
+    DEPLOY_SHARPE,
+    GATE_DSR,
+    GATE_PBO,
+    GATE_SHARPE,
+    passes_gate,
+    passes_sleeve_gate,
+)
 from analytics.research_guards.haircut import HaircutResult, haircut_sharpe
 from analytics.research_guards.mintrl import min_track_record_length
 from analytics.research_guards.pbo import PBOResult, cscv_pbo
 from analytics.research_guards.psr import probabilistic_sharpe_ratio
 
 __all__ = [
+    "DEPLOY_SHARPE",
     "EULER_MASCHERONI",
+    "GATE_DSR",
+    "GATE_PBO",
+    "GATE_SHARPE",
     "BootstrapCI",
     "HaircutResult",
     "PBOResult",
@@ -31,5 +43,7 @@ __all__ = [
     "expected_max_sharpe",
     "haircut_sharpe",
     "min_track_record_length",
+    "passes_gate",
+    "passes_sleeve_gate",
     "probabilistic_sharpe_ratio",
 ]
