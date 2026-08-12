@@ -237,6 +237,44 @@ in this fork reads that sidecar yet, so a future Brief/Card port must join on th
 key. No scored number changed: the committed 19-row ledger produces a byte-identical report
 apart from the author column.
 
+### The level-negation guard (parent #589, ported 2026-08-12)
+
+`parse_level_field` drops **all** candidates when a field's *head* negates the level
+(`_NEGATION_HEAD_RE`). `_UNSPECIFIED_MARKERS` cannot catch this on its own — it matches the
+**whole stripped string**, so bare `not specified` was caught while
+`"not stated (implied ~454 resistance)"` fell through to `_NUM_RE` and returned the
+parenthetical as the level.
+
+**The sanity gate is no backstop and cannot be made into one.** Its window is
+`0.2×–5.0× ref_close`, and the worst form of the phantom number *is* a level near
+`ref_close` — it passes, and with exactly one sane candidate `select_level` returned it at
+`low_confidence = False`, so a fabricated call was indistinguishable from a real one at the
+highest confidence label the scorer has.
+
+**Anchored at the head deliberately.** A negation that *trails* a stated level qualifies its
+**provenance**, not its existence — `"~420 (current market, no explicit entry stated)"` is a
+real level. Those keep their candidates and set `ParsedField.hedged`, which `select_level`
+ORs into `low_confidence`, downgrading rather than deleting a genuine call. An
+"anywhere in the text" match — the obvious first design — destroys that second class.
+
+Measured on this repo's **19-row / 33 populated-level-field** ledger (script:
+`docs/plans/scripts/pundit_negation_impact.py`; **do not import the parent's 603-field
+counts as wifey's**): **2 fields stop fabricating a level, 1 keeps its level at reduced
+confidence, 30 unchanged.** Only **one** of the two reaches a published number, and the
+discriminating check is why — a parse-layer count is not a scorer-layer count:
+
+| row | field | before | after |
+| --- | --- | --- | --- |
+| `luckychartape` TSLA short | stop `"not stated (implied ~454 resistance)"` | `454.00`, conf **ok**, **R +3.27** | dropped, conf **low**, R — (ATR-R 6.36) |
+| `benjaminjcowen` SLV long | target `"not stated (qualitative; 1970s analog…)"` | `1970` **already rejected** by the gate — ~**38×** SLV's 52.16 reference close, against a 5.0× ceiling | no published change |
+
+`other/short` therefore flips **+1.13 → −1.00 avg R**, and that +3.27 was the ledger's *largest*
+positive-R win (the only other is `fenggemeigu` MSFT at +1.35) and the only one that rested on a
+fabricated level. **`fenggemeigu` — the one author with a rankable `n` — does not move at all**
+(−0.41 either way), which settles the same question it settled upstream: the negative floor on
+the only rankable author is real, not a parsing artifact. **Any `pundit-priors.json` generated
+before 2026-08-12 carries the fabricated record — regenerate rather than reasoning from it.**
+
 ### Nine documented divergences
 
 (1)–(8) cover everything that touches the tape, because equities are a sessioned market, and

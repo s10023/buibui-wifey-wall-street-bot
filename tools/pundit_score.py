@@ -130,6 +130,42 @@ SANITY_LO = 0.2
 SANITY_HI = 5.0
 
 _UNSPECIFIED_MARKERS = {"", "unspecified", "none", "n/a", "not specified"}
+
+# A field whose HEAD says no level was given carries no level, however many
+# numbers trail it. Those numbers are incidental context -- a spot-price
+# reference, a fib ratio, a historical-analog decade -- and harvesting them
+# fabricates a precise call the pundit never made. `_UNSPECIFIED_MARKERS` alone
+# cannot catch this: it matches the whole stripped string, so bare "not specified"
+# was caught while "not stated (implied ~454 resistance)" fell through to
+# `_NUM_RE` and returned the parenthetical as the level. The sanity gate in
+# `select_level` is no backstop either, because the worst form of the phantom
+# number IS the reference close.
+#
+# Anchored at the head ON PURPOSE. A negation that trails a stated level
+# qualifies its PROVENANCE, not its existence -- "~420 (current market, no
+# explicit entry stated)" is a real level, and dropping it would delete a genuine
+# call. Those are flagged `hedged` instead.
+_NEGATION_HEAD_RE = re.compile(
+    r"^\W*(?:"
+    r"un(?:specified|clear)\b"
+    r"|not\s+(?:specified|stated|given|provided)\b"
+    r"|no\s+(?:explicit|stated|specific|clear)\b"
+    r"|none\b"
+    r"|n/?a\b"
+    r")",
+    re.IGNORECASE,
+)
+# Hedged provenance anywhere in the field: the level stands, but it is the
+# extractor's reading rather than the author's words, so it must not present as
+# an exact quote. Feeds `low_confidence`, never a drop.
+_HEDGE_RE = re.compile(
+    r"not\s+(?:specified|stated|given|provided)"
+    r"|no\s+explicit"
+    r"|un(?:specified|clear)"
+    r"|illustrative"
+    r"|implied",
+    re.IGNORECASE,
+)
 #: A Stream-C row with no resolved ticker is unscoreable. Today this rule lives only as
 #: prose in `.claude/skills/ingest-video/SKILL.md` ("never route a setup item with
 #: symbol: null"); without a guard here a JSON `null` stringifies to "None" and silently
@@ -191,13 +227,24 @@ class ParsedField:
     zones: tuple[tuple[float, float], ...]
     numbers: tuple[float, ...]
     unspecified: bool
+    hedged: bool = False
 
 
 def parse_level_field(text: str | None) -> ParsedField:
-    """Extract zone and single-number candidates from a ledger level field."""
+    """Extract zone and single-number candidates from a ledger level field.
+
+    Fields whose head negates the level (see `_NEGATION_HEAD_RE`) yield no
+    candidates at all -- the pundit stated no level, so scoring one against them
+    would invent a call. Fields carrying a hedged provenance note keep their
+    candidates and set `hedged`, which downgrades confidence rather than dropping
+    a real level.
+    """
     if text is None or str(text).strip().lower() in _UNSPECIFIED_MARKERS:
         return ParsedField(zones=(), numbers=(), unspecified=True)
-    cleaned = _MONTH_YEAR_RE.sub(" ", str(text).replace("$", "").replace("~", ""))
+    raw = str(text)
+    if _NEGATION_HEAD_RE.match(raw):
+        return ParsedField(zones=(), numbers=(), unspecified=True)
+    cleaned = _MONTH_YEAR_RE.sub(" ", raw.replace("$", "").replace("~", ""))
     zones: list[tuple[float, float]] = []
     for zm in _ZONE_RE.finditer(cleaned):
         a = _expand(zm.group(1), zm.group(2))
@@ -206,7 +253,12 @@ def parse_level_field(text: str | None) -> ParsedField:
     numbers = tuple(
         _expand(nm.group(1), nm.group(2)) for nm in _NUM_RE.finditer(cleaned)
     )
-    return ParsedField(zones=tuple(zones), numbers=numbers, unspecified=False)
+    return ParsedField(
+        zones=tuple(zones),
+        numbers=numbers,
+        unspecified=False,
+        hedged=bool(_HEDGE_RE.search(raw)),
+    )
 
 
 @dataclass(frozen=True)
@@ -347,7 +399,8 @@ def select_level(
     Zone first (both edges must pass the sanity gate): entry -> mid, stop -> far
     edge, target -> near edge. Else the first single number passing the gate;
     multiple distinct sane numbers flag low confidence. Candidates present but all
-    rejected also flag low confidence.
+    rejected also flag low confidence, as does a hedged provenance note -- the
+    level is the extractor's reading of a chart, not the author's stated number.
     """
 
     def sane(x: float) -> bool:
@@ -356,13 +409,13 @@ def select_level(
     for lo, hi in parsed.zones:
         if sane(lo) and sane(hi):
             if role == "entry":
-                return (lo + hi) / 2.0, False
+                return (lo + hi) / 2.0, parsed.hedged
             # stop: far edge (long stops sit below -> lo; short stops above -> hi)
             # target: near edge (long targets above -> lo is nearest; short -> hi)
-            return (lo if direction == "long" else hi), False
+            return (lo if direction == "long" else hi), parsed.hedged
     sane_nums = [x for x in parsed.numbers if sane(x)]
     if sane_nums:
-        return sane_nums[0], len(set(sane_nums)) > 1
+        return sane_nums[0], parsed.hedged or len(set(sane_nums)) > 1
     return None, bool(parsed.numbers or parsed.zones)
 
 
