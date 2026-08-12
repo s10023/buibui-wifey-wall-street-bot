@@ -275,6 +275,39 @@ fabricated level. **`fenggemeigu` — the one author with a rankable `n` — doe
 the only rankable author is real, not a parsing artifact. **Any `pundit-priors.json` generated
 before 2026-08-12 carries the fabricated record — regenerate rather than reasoning from it.**
 
+### `avg R` ships its own denominator (parent #602, ported 2026-08-12)
+
+**`avg_r` and `n` are different populations, and the report used to print them adjacent.**
+`r` needs a stated stop (`score_call`: `if risk is not None and risk > 0`), so a call that
+stopped out necessarily has one while a win scored against a target often does not —
+`avg_r` describes a loss-enriched subsample while `n` / `resolved` describe the whole cell.
+
+Measured here 2026-08-12 (19 calls, 8 resolved; script:
+`docs/plans/scripts/pundit_r_coverage.py`, which calls the production scorer — **do not carry
+the parent's 43%/79% across**, that is a 203-row crypto ledger sharing no rows with this one):
+
+| cohort | resolved | with `r` | coverage |
+| --- | --- | --- | --- |
+| WIN | 3 | 1 | **33%** |
+| LOSS | 5 | 5 | **100%** |
+
+**The censoring is worse here than upstream and it inverts the headline.** Every loss carries
+an `r`; a third of wins do. `fenggemeigu` reads `avg R` **−0.41** over `r_n=6` while the
+complete `atr_r` sample over all 7 resolved calls is **+0.80** — the two disagree in **sign**,
+where the parent's only disagreed in significance. `luckychartape` is the mechanism in one
+row: a WIN whose stop was the fabricated level dropped by #589, so it now contributes
+`ATR-R 6.36` and **nothing at all** to `avg R` (`— (0/1)`).
+
+The fix is disclosure, not a new statistic: `CellStats.r_coverage`, a
+`avg R (r_n/resolved)` cell in both report tables, and `r_n` / `r_coverage` / `atr_r_n` in the
+priors JSON. **`avg ATR-R` now leads `avg R` in the column order** because it is the complete
+sample. Nothing in this fork reads the sidecar yet, so this is free to re-key.
+
+**Transferable rule: a mean and a count printed side by side assert a shared denominator.**
+When they do not share one, the disclosure belongs *in the cell*, not in a footnote — a reader
+comparing two authors' `avg R` is comparing two different populations and nothing on the row
+says so.
+
 ### Nine documented divergences
 
 (1)–(8) cover everything that touches the tape, because equities are a sessioned market, and

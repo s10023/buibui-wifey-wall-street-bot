@@ -21,9 +21,12 @@ from analytics.store.market_data import upsert_ohlcv
 from analytics.store.schema import init_schema
 from analytics.trading_calendar import nyse_sessions
 from tools.pundit_score import (
+    CellStats,
     LedgerCall,
     Override,
     ScoredCall,
+    _cell_dict,
+    _cell_table,
     aggregate,
     bar_close_ms,
     bar_outcome,
@@ -989,9 +992,12 @@ class TestAggregateAndOutputs:
         assert "OPEN" in report and "WIN" in report and "LOSS" in report
         assert "⚠" in report
         assert "NYSE sessions" in report  # equity window policy is stated in the header
+        # ATR-R leads avg R from 2026-08-12: it is the COMPLETE resolved sample,
+        # where avg R is computed only over calls that stated a stop and so
+        # carries its own (r_n/resolved) denominator. See CellStats.r_coverage.
         assert (
             "| author | n | trig | open | resolved | wins | losses "
-            "| hit% | avg R | avg ATR-R | |" in report
+            "| hit% | avg ATR-R | avg R (cov) | |" in report
         )
         assert "| A | 2 | 2 | 1 | 1 | 1 | 0 |" in report
         assert "| B | 1 | 1 | 0 | 1 | 0 | 1 |" in report
@@ -1067,3 +1073,96 @@ class TestDbAndCli:
     def test_parse_as_of(self) -> None:
         args = build_parser().parse_args(["--as-of", "2026-08-04T00:00:00Z"])
         assert args.as_of == "2026-08-04T00:00:00Z"
+
+
+def _cov_sc(state: str, r: float | None, atr_r: float | None, win: bool) -> ScoredCall:
+    """ScoredCall carrying only what a cell roll-up reads. Reuses `_call`."""
+    return ScoredCall(
+        call=_call(),
+        levels=None,
+        family="other",
+        state=state,
+        r=r,
+        atr_r=atr_r,
+        win=win,
+    )
+
+
+class TestRCoverageDisclosure:
+    """`avg_r` is computed only over calls that stated a stop, and WINNERS are
+    the ones that disproportionately lack one — so `avg_r` silently describes a
+    loss-enriched subsample while `n` describes the whole cell.
+
+    Measured on this repo's own ledger 2026-08-12 (19 calls, 8 resolved): WIN
+    r-coverage **1/3 = 33%** against LOSS **5/5 = 100%**, severe enough to
+    invert the headline — `@fenggemeigu` reads avg_r **-0.41** where the
+    complete atr_r sample is **+0.80**. Reproduce with
+    `docs/plans/scripts/pundit_r_coverage.py`.
+
+    Every fixture here is deliberately ASYMMETRIC (a win with no R beside a loss
+    with one). A fixture where every call carries an R would make these
+    assertions pass against the censored code too.
+    """
+
+    @staticmethod
+    def _censored_cell() -> CellStats:
+        c = CellStats()
+        c.add(_cov_sc("WIN", None, 2.0, True))  # the dropped winner
+        c.add(_cov_sc("LOSS", -1.0, -0.5, False))
+        c.add(_cov_sc("WIN", 1.0, 1.0, True))
+        return c
+
+    def test_coverage_is_below_one_when_a_winner_lacks_a_stop(self) -> None:
+        c = self._censored_cell()
+        assert c.resolved == 3
+        assert c.r_n == 2
+        assert c.r_coverage == pytest.approx(2 / 3)
+
+    def test_censoring_moves_avg_r_away_from_avg_atr_r(self) -> None:
+        """The defect made visible: same three calls, two different answers."""
+        c = self._censored_cell()
+        avg_r, avg_atr_r = c.avg_r, c.avg_atr_r
+        assert avg_r is not None and avg_atr_r is not None
+        assert avg_r == pytest.approx(0.0)  # (-1.0 + 1.0) / 2
+        assert avg_atr_r == pytest.approx((2.0 - 0.5 + 1.0) / 3)
+        assert avg_r < avg_atr_r  # censoring biases avg_r DOWN
+
+    def test_full_coverage_reports_one(self) -> None:
+        c = CellStats()
+        c.add(_cov_sc("WIN", 1.0, 1.0, True))
+        c.add(_cov_sc("LOSS", -1.0, -1.0, False))
+        assert c.r_coverage == pytest.approx(1.0)
+
+    def test_coverage_is_none_with_nothing_resolved(self) -> None:
+        c = CellStats()
+        c.add(_cov_sc("OPEN", None, None, False))
+        assert c.r_coverage is None
+
+    def test_cell_dict_publishes_the_denominator(self) -> None:
+        d = _cell_dict(self._censored_cell())
+        assert d["r_n"] == 2
+        assert d["resolved"] == 3
+        assert d["r_coverage"] == pytest.approx(2 / 3)
+        assert d["atr_r_n"] == 3
+
+    def test_cell_table_shows_coverage_beside_avg_r(self) -> None:
+        rows = _cell_table({"A": self._censored_cell()}, "author", min_n=1)
+        body = rows[-1]
+        assert "(2/3)" in body, f"coverage not disclosed in report row: {body}"
+
+    def test_priors_json_carries_coverage(self) -> None:
+        priors = build_priors(
+            [
+                _cov_sc("WIN", None, 2.0, True),
+                _cov_sc("LOSS", -1.0, -0.5, False),
+            ],
+            "2026-08-12T00:00:00Z",
+            "2026-08-12T00:00:00Z",
+            min_n=1,
+        )
+        authors = priors["authors"]
+        assert isinstance(authors, dict)
+        cell = authors["A"]
+        assert isinstance(cell, dict)
+        assert cell["r_coverage"] == pytest.approx(0.5)
+        assert cell["r_n"] == 1
