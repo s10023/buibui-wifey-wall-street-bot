@@ -10,6 +10,7 @@ import duckdb
 
 from analytics.data_store import DEFAULT_DB_PATH, init_schema
 from analytics.data_sync import backfill, sync
+from analytics.db_retry import connect_with_retry
 from utils.config_validation import (
     load_research_universe,
     load_stocks_config,
@@ -43,7 +44,10 @@ def _resolve_symbols(
 
 @contextmanager
 def _open_session(db_path: Path) -> Generator[duckdb.DuckDBPyConnection]:
-    conn: duckdb.DuckDBPyConnection = duckdb.connect(str(db_path))
+    # Waits out a concurrent writer rather than dying on it. `make go-live`
+    # runs `wifey-analytics-sync` before the scan, so this is the first thing
+    # to hit the lock when a web UI or a db-update happens to be running.
+    conn: duckdb.DuckDBPyConnection = connect_with_retry(db_path)
     try:
         init_schema(conn)
         yield conn

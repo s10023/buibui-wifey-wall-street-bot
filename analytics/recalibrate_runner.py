@@ -9,6 +9,7 @@ from pathlib import Path
 import duckdb
 
 from analytics.data_store import DEFAULT_DB_PATH, init_schema
+from analytics.db_retry import connect_with_retry
 from analytics.recalibrate_lib import (
     compute_directional_ratings,
     compute_recalibrated_ratings,
@@ -53,7 +54,10 @@ def run(
         adr_suppress_threshold = watch_cfg.bias.adr_suppress_threshold
         declared = declared_cells(watch_cfg)
 
-    conn: duckdb.DuckDBPyConnection = duckdb.connect(str(db_path))
+    # `make db-update` runs the sweep and this back to back, and the web UI is
+    # often up alongside — so wait the lock out rather than losing the ratings
+    # refresh to a collision the operator cannot see.
+    conn: duckdb.DuckDBPyConnection = connect_with_retry(db_path)
     try:
         init_schema(conn)
         win_rates = get_backtest_win_rates(

@@ -5,7 +5,18 @@ Detailed reference for `web/`. Load this when working on the FastAPI backend or 
 ## Backend — `web/api/`
 
 - `main.py` — app + StaticFiles mount; reads `WIFEY_CONFIG` env var (set by `wifey web --config <toml>`); stores `app.state.config_name` + `app.state.active_config`
-- `deps.py` — `get_db` (per-request read-only DuckDB conn) + `require_token` (Bearer auth)
+- `deps.py` — `get_db` (per-request read-only DuckDB conn) + `require_token` (Bearer auth).
+  `get_db` returns **503** on a lock conflict and **re-raises anything else** (#162's port of
+  parent #593). It stays fail-fast on purpose: `connect_with_retry`'s ~52s budget on a
+  per-request path would hang the UI and exhaust the worker pool, so the browser retries
+  instead. Two things were wrong before and are worth not reintroducing — the bare
+  `except duckdb.IOException` reported a *missing or corrupt* database as "busy, try again in
+  a few seconds", advice that can never come true; and the message named "signal-watch", **a
+  daemon this fork does not have** (those units are the crypto parent's). The real holders are
+  `make go-live`, `make db-update` and `make backup`.
+- `main.py` lifespan — the startup RW open for `init_schema` now retries instead of silently
+  `pass`ing, and only a lock conflict is survivable. A bare `except: pass` there started the
+  API with no schema and no complaint when the database was missing.
 - `routers/` — config, ohlcv, fib, signals, backtest, stats, zones (T16-full removed the Binance-Futures-only `positions` / `prices` / `stream` routers; Phase B will re-introduce per the equities broker)
 - `models/` — Pydantic models per router; `active_config.py` → `ActiveConfigResponse` + `StrategyParamsModel` + `UniversePolicyResponse`; `zones.py` → `ZoneBox`, `ZoneLine`, `SwingPoint`, `ZonesResponse`
 

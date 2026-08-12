@@ -23,7 +23,10 @@ def _no_auth_client() -> Generator[TestClient]:
     app.dependency_overrides[require_token] = lambda: None
 
     with (
-        patch("web.api.main.duckdb.connect", return_value=mock_conn),
+        # `connect_with_retry`, not `duckdb.connect` — the lifespan stopped
+        # calling the latter when the retry landed, and an unpatched lifespan
+        # opens the REAL analytics.db from the test suite.
+        patch("web.api.main.connect_with_retry", return_value=mock_conn),
         patch("web.api.main.init_schema"),
         TestClient(app, raise_server_exceptions=False) as client,
     ):
@@ -32,16 +35,34 @@ def _no_auth_client() -> Generator[TestClient]:
     app.dependency_overrides.clear()
 
 
+# The real message DuckDB 1.5.5 raises, captured in this repo 2026-08-12.
+#
+# The previous fixture said only "Could not set lock on file" — an INVENTED
+# truncation. `is_lock_conflict` matches on "Conflicting lock", the substring
+# that actually discriminates, so the shortened wording sailed through this test
+# while failing the guard. That is the failure mode a substring match always
+# has: a test that writes its own version of an external system's message can
+# pass while the code under test never fires.
+#
+# Matching the longer "Could not set lock" instead would be wrong, not just
+# looser: a permissions failure produces that prefix too, and retrying it six
+# times buys nothing.
+LOCK_MSG = (
+    'IO Error: Could not set lock on file "analytics.db": '
+    "Conflicting lock is held in /usr/bin/python3.13 (PID 3364232) by user kng."
+)
+
+
 def test_get_db_busy_returns_503(_no_auth_client: TestClient) -> None:
-    """When DuckDB is locked (signal-watch writing), get_db raises 503."""
+    """A genuine lock conflict is transient, so get_db answers 503."""
     with patch(
         "web.api.deps.duckdb.connect",
-        side_effect=duckdb.IOException("Could not set lock on file"),
+        side_effect=duckdb.IOException(LOCK_MSG),
     ):
         resp = _no_auth_client.get(
             "/api/ohlcv",
             params={
-                "symbol": "BTCUSDT",
+                "symbol": "SPY",
                 "timeframe": "1h",
                 "start_ms": 0,
                 "end_ms": 1,
@@ -50,3 +71,31 @@ def test_get_db_busy_returns_503(_no_auth_client: TestClient) -> None:
 
     assert resp.status_code == 503
     assert "busy" in resp.json()["detail"].lower()
+
+
+def test_get_db_does_not_report_a_missing_db_as_busy(
+    _no_auth_client: TestClient,
+) -> None:
+    """A non-lock IOException must NOT be dressed up as a transient 503.
+
+    DuckDB raises one exception class for every I/O failure, so the old blanket
+    `except duckdb.IOException` told a user whose database was missing or
+    corrupt to "try again in a few seconds" — advice that can never come true.
+    This is the control that keeps the handler narrow.
+    """
+    with patch(
+        "web.api.deps.duckdb.connect",
+        side_effect=duckdb.IOException("IO Error: No such file or directory"),
+    ):
+        resp = _no_auth_client.get(
+            "/api/ohlcv",
+            params={
+                "symbol": "SPY",
+                "timeframe": "1h",
+                "start_ms": 0,
+                "end_ms": 1,
+            },
+        )
+
+    assert resp.status_code == 500
+    assert resp.status_code != 503

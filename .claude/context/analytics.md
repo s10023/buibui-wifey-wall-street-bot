@@ -28,6 +28,34 @@ Detailed API reference for `analytics/`. Load this when working on any analytics
 - `data_fetcher.py` — yfinance-backed OHLCV fetch (T3, since 2026-05-14). `fetch_bars(symbol, interval, start_ms, limit=BARS_MAX_LIMIT)` wraps `utils.yfinance_client.fetch_history`; supports `1h | 4h | 1d | 1wk` (4h synthesised by resampling 1h anchored to 13:30 UTC). `OHLCV_COLUMNS` no longer carries `taker_buy_volume`. T5 still owes `data_sync.py` rewire — that debt was later paid, see the `data_sync.py` / `analytics_runner.py` bullets above.
 - `data_sync.py` / `analytics_runner.py` — yfinance-backed orchestration (T5, since 2026-05-15). `backfill(conn, symbol, timeframe, start_ms)` is a single `fetch_bars` call (no client param, no pagination loop — yfinance returns the full configured period in one shot), now gated on the `data_quality.py` monitor between fetch and upsert (Phase 0.5): hard-corrupt rows are quarantined before storage, soft anomalies logged. `sync(conn, symbol, timeframe)` re-fetches from the latest stored `open_time` (delegates to `backfill`, so it inherits the gate). `sync_funding_rates` / `sync_open_interest` removed. `analytics_runner.py` resolves symbols via `utils.config_validation.load_stocks_config` (Phase A watchlist) by default; passing `--universe` to `wifey analytics backfill`/`sync` (threaded through `run_backfill`/`run_sync` → `_resolve_symbols(use_universe=True)`) instead resolves the active members of the **research breadth universe** (`config/universe.json`, N3) — default (no flag) is byte-identical.
 
+## db_retry.py — retrying DuckDB connect for the write jobs (parent #593 port)
+
+- `connect_with_retry(db_path, *, read_only=False, attempts=6, sleep=time.sleep)` opens the DB,
+  waiting out a conflicting writer with a `(2, 5, 10, 15, 20)`s backoff (~52s total), then
+  re-raises the underlying `duckdb.IOException` so a lock that never clears still fails loudly.
+  `sleep` is injected so tests do not pay the backoff.
+- `is_lock_conflict(exc)` matches on the message, because DuckDB raises a bare `IOException`
+  for **every** I/O failure — a missing path and a busy lock are the same class. Retrying a bad
+  path would turn an instant accurate failure into the same failure a minute later.
+- **On duckdb 1.5.5 a second PROCESS is refused even with `read_only=True`** — only
+  reader-vs-reader shares. Verified in this repo 2026-08-12: the *identical* `Conflicting lock`
+  message comes back for both flags. So "open read-only to dodge the writer" is not an
+  alternative, and read-only batch opens are wired through this too.
+- **Wired at every write open in `analytics/` and `web/` except one.** `signal_runner` (8
+  opens per cycle — it writes the irreplaceable ledger, and a `--once` cron run has no next
+  cycle to recover an aborted one), `analytics_runner`, `recalibrate_runner`, `backtest_runner`
+  (4), and `web/api/main.py`'s startup schema init. **`web/api/routers/stats.py`'s cache write
+  is deliberately excluded** — it is on the request path, where a ~52s retry would block the
+  response the cache exists to speed up; a lost cache write costs one recomputation. Do not
+  "finish the sweep" there.
+- **This is preventive, not a repair.** Upstream's premise is unattended systemd timers
+  catching up simultaneously after a resume from suspend; this fork has **no daemon at all**,
+  so nothing here is on record dying of a lock conflict. The realistic collisions are operator
+  paced: a `make wifey-web` session up while `make go-live` or `make db-update` runs.
+- The budget covers a brief RW open and **deliberately does not cover a `make db-update`
+  sweep**, which holds for minutes and is meant to fail loudly rather than hang a cycle.
+  `TestBudgetIsSizedForThisRepo` pins both ends so nobody inflates it into an effective hang.
+
 ## data_quality.py — OHLCV ingest integrity monitor (Phase 0.5)
 
 Pure detection + quarantine helper for OHLCV frames. No DB, no network, no side effects. Wired into `data_sync.backfill` between `fetch_bars` and `upsert_ohlcv`; additive — clean data is a pass-through, so behaviour (and regression goldens) are unchanged on good data.
