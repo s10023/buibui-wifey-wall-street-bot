@@ -14,12 +14,10 @@ import numpy.typing as npt
 import pandas as pd
 
 from analytics.forecast.config import ForecastConfig
+from analytics.research_guards import DEPLOY_SHARPE, GATE_SHARPE, passes_sleeve_gate
 from analytics.xsmom.book import XSBookResult
 from analytics.xsmom.diagnostics import BetaAttribution, beta_attribution
 from analytics.xsmom.report import XSReport, evaluate_xs
-
-_GATE_SHARPE = 0.7  # pre-registered net-of-cost equity beta-neutral bar
-_DEPLOY_SHARPE = 1.0  # deploy-grade tier annotation (NOT the pass/fail line)
 
 
 @dataclass(frozen=True)
@@ -65,18 +63,17 @@ def evaluate_bab_grid(
         attribution[key] = beta_attribution(r[live], m[live], cfg.annualization_days)
 
     c = cells[committed_key]
-    passed = bool(
-        c.dsr >= 0.95
-        and c.pbo <= 0.5
-        and c.boot_lo > 0.0
-        and c.n_obs >= c.min_trl
-        and c.sharpe_annual >= _GATE_SHARPE
+    passed = passes_sleeve_gate(
+        dsr=c.dsr,
+        pbo=c.pbo,
+        boot_lo=c.boot_lo,
+        n_obs=c.n_obs,
+        min_trl=c.min_trl,
+        sharpe_annual=c.sharpe_annual,
     )
     lo = cells[long_only_key]
     deploy_grade = bool(
-        passed
-        and c.sharpe_annual >= _DEPLOY_SHARPE
-        and lo.sharpe_annual >= _GATE_SHARPE
+        passed and c.sharpe_annual >= DEPLOY_SHARPE and lo.sharpe_annual >= GATE_SHARPE
     )
     return BabGridReport(
         cells=cells,

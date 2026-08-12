@@ -23,6 +23,7 @@ from analytics.research_guards import (
     cscv_pbo,
     deflated_sharpe_ratio,
     min_track_record_length,
+    passes_sleeve_gate,
 )
 from analytics.xsmom.book import XSBookResult, equity_curve
 
@@ -151,9 +152,6 @@ class ResidualGridReport:
     passed: bool
 
 
-_GATE_SHARPE = 0.7  # pre-registered equity long-short momentum bar
-
-
 def evaluate_residual_grid(
     books: dict[str, XSBookResult],
     cfg: ForecastConfig,
@@ -179,11 +177,12 @@ def evaluate_residual_grid(
             trend_returns=trend_by_universe[universe],
         )
     c = cells[committed_key]
-    passed = bool(
-        c.dsr >= 0.95
-        and c.pbo <= 0.5
-        and c.boot_lo > 0.0
-        and c.n_obs >= c.min_trl
-        and c.sharpe_annual >= _GATE_SHARPE
+    passed = passes_sleeve_gate(
+        dsr=c.dsr,
+        pbo=c.pbo,
+        boot_lo=c.boot_lo,
+        n_obs=c.n_obs,
+        min_trl=c.min_trl,
+        sharpe_annual=c.sharpe_annual,
     )
     return ResidualGridReport(cells=cells, committed_key=committed_key, passed=passed)

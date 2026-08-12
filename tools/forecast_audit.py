@@ -37,6 +37,7 @@ from analytics.forecast.replay import (
 )
 from analytics.forecast.report import evaluate
 from analytics.forecast.weights import candidate_schemes
+from analytics.research_guards import passes_gate
 from analytics.store import DEFAULT_DB_PATH
 from utils.config_validation import load_research_universe
 
@@ -102,7 +103,7 @@ def build_weight_study(
     rows: list[dict[str, object]] = []
     for name, res in results.items():
         rep = evaluate(res, cfg, trial_returns=dsr_family, pbo_returns=pbo_family)
-        clears = bool(rep.dsr >= 0.95 and rep.pbo <= 0.5 and rep.boot_lo > 0.0)
+        clears = passes_gate(rep.dsr, rep.pbo, rep.boot_lo)
         rows.append(
             {
                 "scheme": name,
