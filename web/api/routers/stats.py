@@ -95,6 +95,8 @@ def _bundle_to_response(bundle: StatsBundle) -> StatsResponse:
     adr_resp = ADRResponse(
         adr_14=bundle.adr.adr_14,
         adr_30=bundle.adr.adr_30,
+        adr_14_median=bundle.adr.adr_14_median,
+        adr_30_median=bundle.adr.adr_30_median,
         today_range_pct=bundle.adr.today_range_pct,
         today_consumed_pct=bundle.adr.today_consumed_pct,
     )
@@ -107,6 +109,8 @@ def _bundle_to_response(bundle: StatsBundle) -> StatsResponse:
             bull_pct=row.bull_pct,
             sample_days=row.sample_days,
             avg_return_pct=row.avg_return_pct,
+            median_return_pct=row.median_return_pct,
+            return_stderr_pct=row.return_stderr_pct,
             strong_high_pct=row.strong_high_pct,
             strong_low_pct=row.strong_low_pct,
         )

@@ -131,6 +131,32 @@
   }
 
   const formatPct = (v: number) => (v * 100).toFixed(1) + "%";
+  // Paired mean/median values only. At 1dp the pair that motivates showing both
+  // collapses: SPY ADR(14) 1.03% and 0.97% still separate, but QQQ 30d reads
+  // 1.65% vs 1.58% and AAPL 30d is a dead heat at 2.19% — at 1dp those become
+  // one number and the median looks redundant exactly when it is telling you the
+  // distribution is tight. Kept separate from formatPct so the P1/P2, session and
+  // weekly cards do not move.
+  const formatPct2 = (v: number) => (v * 100).toFixed(2) + "%";
+
+  // Standard errors below which a DOW return renders as "no direction".
+  // Bonferroni for the FIVE weekdays shown at once: alpha 0.05 / 5 = 0.01,
+  // two-sided, so the tail is 0.005 and z = 2.576. US equities have no weekend
+  // sessions, so this table is always 5 rows — the crypto parent's 2.69 is the
+  // k=7 constant and does NOT apply here. An uncorrected ~2 SE bar is wrong for
+  // this card either way, because the reader scans every cell at once and reacts
+  // to whichever is largest, which is the multiple-comparison setup exactly.
+  const DOW_NOISE_SE = 2.576;
+
+  // Signed 1dp percent that will not emit "-0.0%". A minus sign on a value that
+  // rounds to nothing asserts a downward direction the number does not carry —
+  // in the one column whose whole job is to stop implying direction. Seen live on
+  // SPY/365d, where Wed's median and Fri's mean both round to zero from below.
+  const fmtSignedPct1 = (v: number) => {
+    const pct = v * 100;
+    const rounded = pct.toFixed(1);
+    return (Number(rounded) === 0 ? "0.0" : (pct >= 0 ? "+" : "") + rounded) + "%";
+  };
   const fmtHour = (h: number) => String(h).padStart(2, "0") + ":00";
 
   async function loadStats(): Promise<void> {
@@ -312,13 +338,30 @@
           </div>
         {/if}
         <div class="adr-rows">
+          <!-- Mean and median together: daily range is right-skewed, so a mean
+               well above the median says the average rests on a few violent days.
+               Each value sits in its own element and .adr-vals spaces them with
+               `gap`, never with whitespace — Svelte collapses whitespace between
+               an expression and an adjacent element. -->
           <div class="adr-row">
             <span class="adr-label">ADR(14) <span class="adr-sublabel">2-week</span></span>
-            <span class="val-accent">{formatPct(stats.adr.adr_14)}</span>
+            <span class="adr-vals">
+              <span class="val-accent">{formatPct2(stats.adr.adr_14)}</span>
+              <span class="adr-unit">avg</span>
+              <span class="adr-unit">/</span>
+              <span class="val-accent">{formatPct2(stats.adr.adr_14_median)}</span>
+              <span class="adr-unit">med</span>
+            </span>
           </div>
           <div class="adr-row">
             <span class="adr-label">ADR(30) <span class="adr-sublabel">monthly</span></span>
-            <span class="val-accent">{formatPct(stats.adr.adr_30)}</span>
+            <span class="adr-vals">
+              <span class="val-accent">{formatPct2(stats.adr.adr_30)}</span>
+              <span class="adr-unit">avg</span>
+              <span class="adr-unit">/</span>
+              <span class="val-accent">{formatPct2(stats.adr.adr_30_median)}</span>
+              <span class="adr-unit">med</span>
+            </span>
           </div>
           {#if stats.adr.today_range_pct !== null}
             <div class="adr-row">
@@ -412,7 +455,8 @@
               <th>Day</th>
               <th>Avg Range</th>
               <th>Direction</th>
-              <th>Avg Return</th>
+              <th title="Mean (close-open)/open for this weekday. DIMMED when the mean sits inside 2.576 standard errors of zero — Bonferroni-corrected for reading all five weekdays at once. Measured across SPY/QQQ/NVDA/AAPL/MSFT at 365d, that is every cell, all 25 of 25. Dimmed means 'no direction', not 'small direction'.">Avg Return</th>
+              <th title="Median (close-open)/open. Robust to the single gap day that can flip a weekday's mean on its own — mean and median disagree on sign in 5 of those same 25 cells.">Med Return</th>
               <th title="Strong high: close in bottom 20% of range — high strongly rejected, likely to hold">Str H</th>
               <th title="Strong low: close in top 20% of range — low strongly rejected, likely to hold">Str L</th>
               <th title="Number of that weekday in the lookback window">N</th>
@@ -422,6 +466,21 @@
             {#each stats.dow_patterns as row}
               {@const ret = row.avg_return_pct}
               {@const isPos = ret >= 0}
+              <!-- A mean inside its own error bar is not a small direction, it is
+                   no direction. Rendering it green or red gave noise the same
+                   visual weight as the range column, which is real signal. null
+                   stderr (n<2) dims too: unknown is not significant.
+
+                   Still a DISPLAY threshold, not a significance test — nothing
+                   gates on it. On this repo's data no cell survives it: measured
+                   2026-08-12 over five megacaps at 365d, all 25 of 25 fell inside
+                   the bar and the largest |t| anywhere was 1.76. So the honest
+                   reading of this column today is "the weekday tells you nothing",
+                   and the dimming is what makes that visible rather than leaving a
+                   grid of confident greens and reds.
+                   Script: docs/plans/scripts/dow_return_noise.py -->
+              {@const se = row.return_stderr_pct}
+              {@const retIsNoise = se === null || Math.abs(ret) < DOW_NOISE_SE * se}
               <tr class:today-row={row.dow === todayDOW}>
                 <td class="dow-name">{row.dow}</td>
                 <td>
@@ -443,8 +502,18 @@
                     </span>
                   </div>
                 </td>
-                <td class:val-green={isPos} class:val-red={!isPos}>
-                  {isPos ? "+" : ""}{(ret * 100).toFixed(1)}%
+                <td
+                  class:val-green={isPos && !retIsNoise}
+                  class:val-red={!isPos && !retIsNoise}
+                  class:val-noise={retIsNoise}
+                  title={se === null
+                    ? "Too few samples to estimate an error bar"
+                    : `±${(se * 100).toFixed(2)}% SE (n=${row.sample_days}), ${(Math.abs(ret) / se).toFixed(2)} SE from zero — ${retIsNoise ? `inside the ${DOW_NOISE_SE} bar, treat as no direction` : `outside the ${DOW_NOISE_SE} bar`}`}
+                >
+                  {fmtSignedPct1(ret)}
+                </td>
+                <td class:val-noise={retIsNoise} class:val-muted={!retIsNoise}>
+                  {fmtSignedPct1(row.median_return_pct)}
                 </td>
                 <td class="strong-cell" class:strong-hi={row.strong_high_pct >= 0.6} class:strong-lo-dim={row.strong_high_pct < 0.4}>
                   {(row.strong_high_pct * 100).toFixed(0)}%
@@ -1056,6 +1125,29 @@
     color: var(--muted);
     font-style: normal;
     margin-left: 4px;
+  }
+
+  /* `gap` rather than whitespace, so the values cannot run together if Svelte
+     collapses the text nodes between them. */
+  .adr-vals {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+
+  .adr-unit {
+    font-size: 9px;
+    color: var(--muted);
+  }
+
+  /* Deliberately the SAME grey for a dimmed + and a dimmed − : the sign of a
+     value inside its own error bar carries no information, so colouring it would
+     re-introduce exactly the false read this is here to remove. Opacity rather
+     than a third colour token keeps it legible in both themes without adding a
+     palette entry that means "ignore me". */
+  .val-noise {
+    color: var(--muted);
+    opacity: 0.75;
   }
 
   .adr-gauge-track {

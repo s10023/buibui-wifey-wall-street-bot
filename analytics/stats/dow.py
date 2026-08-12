@@ -16,13 +16,41 @@ class DOWRow:
     bull_pct: float  # % days close > open
     sample_days: int
     avg_return_pct: float = 0.0  # avg (close-open)/open — directional return
+    median_return_pct: float = 0.0  # median of the same — robust to fat tails
+    # Standard error of avg_return_pct: stddev/sqrt(n). Exists so a CONSUMER can tell
+    # a directional read from noise without re-deriving dispersion.
+    #
+    # On US equities this column is noise, and not marginally. Measured 2026-08-12
+    # over SPY/QQQ/NVDA/AAPL/MSFT at 365d (script
+    # `docs/plans/scripts/dow_return_noise.py`, which calls THIS function rather
+    # than reading 1d bars — the two sources disagree): **all 25 of 25 cells** fall
+    # inside the band, the largest |t| across every symbol and weekday is **1.76**
+    # (SPY Tue), and mean and median disagree on SIGN in **5 of 25**. None of that
+    # was visible while the mean was rendered alone in green or red.
+    #
+    # The Stats tab dims both return values inside **2.576** SE — Bonferroni for the
+    # **5** weekdays read at once (0.05/5 = 0.01 two-sided). **This is NOT the
+    # parent's 2.69**, which is Bonferroni over **7**: crypto trades weekends and US
+    # equities do not, so the DOW table here has 5 rows, never 7. Re-derive the
+    # constant if the row count ever changes.
+    #
+    # Not a gate, just the honest error bar. None when n < 2, where sample stddev is
+    # undefined — treat that as "cannot claim a direction", never as "significant".
+    return_stderr_pct: float | None = None
     strong_high_pct: float = 0.0  # fraction of days where upper wick < 20% of range
     strong_low_pct: float = 0.0  # fraction of days where lower wick < 20% of range
 
 
 @dataclass
 class DOWResult:
-    """Day-of-week patterns for all 7 days."""
+    """Day-of-week patterns, Mon-first.
+
+    **Five rows on US equities, not seven** — the ordering below still lists Sat/Sun
+    so the type stays shared with the crypto parent, but RTH produces no weekend
+    sessions, so they are filtered out and never appear. Any constant derived from
+    "the number of weekdays read at once" (see `DOWRow.return_stderr_pct`) must use
+    5 here.
+    """
 
     rows: list[DOWRow]
 
@@ -57,6 +85,9 @@ def compute_dow_patterns(
             SUM(CASE WHEN day_close > day_open THEN 1 ELSE 0 END)::DOUBLE / COUNT(*) AS bull_pct,
             COUNT(*) AS sample_days,
             AVG((day_close - day_open) / day_open) AS avg_return_pct,
+            MEDIAN((day_close - day_open) / day_open) AS median_return_pct,
+            STDDEV_SAMP((day_close - day_open) / day_open)
+                / SQRT(COUNT(*)) AS return_stderr_pct,
             AVG(CASE
                 WHEN (day_high - day_low) > 0 AND
                      (day_close - day_low) / (day_high - day_low) < 0.20
@@ -79,7 +110,17 @@ def compute_dow_patterns(
         raise ValueError(f"No OHLCV data for {symbol}")
 
     dow_map: dict[str, DOWRow] = {}
-    for dow_full, avg_range, bull_pct, n, avg_return, strong_high, strong_low in rows:
+    for (
+        dow_full,
+        avg_range,
+        bull_pct,
+        n,
+        avg_return,
+        median_return,
+        return_stderr,
+        strong_high,
+        strong_low,
+    ) in rows:
         short = _DOW_SHORT.get(str(dow_full), str(dow_full)[:3])
         dow_map[short] = DOWRow(
             dow=short,
@@ -87,6 +128,11 @@ def compute_dow_patterns(
             bull_pct=float(bull_pct),
             sample_days=int(n),
             avg_return_pct=float(avg_return),
+            median_return_pct=float(median_return),
+            # NULL at n < 2 (sample stddev undefined) — kept as None rather than
+            # coerced to 0.0, which would read as a zero-width error bar and make a
+            # single day look infinitely significant.
+            return_stderr_pct=None if return_stderr is None else float(return_stderr),
             strong_high_pct=float(strong_high),
             strong_low_pct=float(strong_low),
         )

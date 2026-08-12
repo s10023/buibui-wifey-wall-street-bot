@@ -390,6 +390,8 @@ export interface HourlyExtremeRow {
 export interface ADRResponse {
   adr_14: number;
   adr_30: number;
+  adr_14_median: number;
+  adr_30_median: number;
   today_range_pct: number | null;
   today_consumed_pct: number | null;
 }
@@ -400,6 +402,10 @@ export interface DOWPatternRow {
   bull_pct: number;
   sample_days: number;
   avg_return_pct: number;
+  median_return_pct: number;
+  /** stddev/sqrt(n). null at n < 2. Both dim when |mean| < 2.576 SE
+   *  (Bonferroni, k=5 equity weekdays — NOT the parent's 2.69 for k=7). */
+  return_stderr_pct: number | null;
   strong_high_pct: number;
   strong_low_pct: number;
 }

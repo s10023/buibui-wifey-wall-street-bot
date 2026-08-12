@@ -25,6 +25,10 @@ class HourlyExtremeRow(BaseModel):
 class ADRResponse(BaseModel):
     adr_14: float
     adr_30: float
+    # Display-only companions to the means above — nothing sizes off them.
+    # today_consumed_pct still divides by adr_14. See analytics/stats/adr.py.
+    adr_14_median: float
+    adr_30_median: float
     today_range_pct: float | None
     today_consumed_pct: float | None
 
@@ -35,6 +39,12 @@ class DOWPatternRow(BaseModel):
     bull_pct: float
     sample_days: int
     avg_return_pct: float
+    median_return_pct: float = 0.0
+    # stddev/sqrt(n) for avg_return_pct. The Stats tab dims BOTH return values when
+    # |mean| < 2.576 SE (Bonferroni over the **5** equity weekdays — NOT the parent's
+    # 2.69, which is for 7), so the column stops rendering noise. None at n < 2 — the
+    # UI treats that as "cannot claim a direction", i.e. also dimmed.
+    return_stderr_pct: float | None = None
     strong_high_pct: float = 0.0
     strong_low_pct: float = 0.0
 
