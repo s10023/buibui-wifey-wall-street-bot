@@ -131,8 +131,41 @@ def backfill_outcomes(
     for (symbol, tf), tf_rows in by_tf.items():
         earliest_candle = min(r[4] for r in tf_rows)
         tf_secs = parse_timeframe_secs(tf)
-        # Pull bars from one TF-bar after the earliest signal up to now.
-        bars = get_ohlcv(conn, symbol, tf, earliest_candle + tf_secs * 1000, now_ms)
+        # Pull bars from one TF-bar after the earliest signal up to the last
+        # CLOSED bar.
+        #
+        # Admitting the still-forming bar is permanent damage. `get_ohlcv`
+        # filters on `open_time`, so passing `now_ms` lets the current candle
+        # through: its open_time has passed, but its OHLC is provisional and
+        # `upsert_ohlcv` replaces it on the next sync. Two things then go wrong
+        # at once — the bar count is inflated by one, so a hold window can be
+        # declared complete a bar early, and the "expired" mark-to-market reads
+        # a `close` that is really "wherever price is right now". Because this
+        # module only revisits rows where `outcome IS NULL`, a label written off
+        # a provisional bar is never corrected.
+        #
+        # `data_fetcher` does NOT already prevent this: it drops forming bars
+        # only when yfinance hands them back with NaN OHLCV (the intermittent
+        # case). A partial bar carrying real prices — the normal in-session
+        # shape, and every `_resample_to_4h` bucket built from the 1h bars so
+        # far — is upserted like any other.
+        #
+        # Measured on the wifey ledger 2026-08-11: 0 of 264 resolved rows
+        # currently disagree with what the completed bars produce, so this is
+        # preventive rather than a repair — but 29 of them (11%) resolved ON the
+        # last bar of their hold window, which is the exposed shape. What the
+        # bound really buys is that the answer stops depending on WHEN the
+        # resolver was run; `make go-live` is a manual command documented for
+        # after the US close, and nothing enforces that.
+        #
+        # A bar opening at T closes at T + tf_secs*1000, so this bound admits
+        # exactly the bars whose close is already in the past. Rows that would
+        # have resolved off the forming bar simply stay NULL and resolve on the
+        # next cycle — which is what "open" already means here.
+        last_closed_open_ms = now_ms - tf_secs * 1000
+        bars = get_ohlcv(
+            conn, symbol, tf, earliest_candle + tf_secs * 1000, last_closed_open_ms
+        )
         if bars.empty:
             counts["no_ohlcv"] += len(tf_rows)
             continue

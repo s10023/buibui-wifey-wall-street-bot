@@ -380,3 +380,90 @@ class TestBackfillBatching:
         loss_row = _fetch_one(conn, "s_loss")
         assert win_row[0] == "win"
         assert loss_row[0] == "loss"
+
+
+class TestStillFormingFinalBar:
+    """The resolver must never book an outcome off a bar that has not closed.
+
+    `get_ohlcv` filters on `open_time`, so an unbounded `now_ms` admits the
+    current candle: its open_time has passed but its OHLC is provisional and the
+    next sync replaces it. Since `backfill_outcomes` only ever revisits rows
+    where `outcome IS NULL`, anything written off that bar is frozen wrong
+    forever.
+
+    Each test below is paired with the SAME fixture one bar later, because an
+    assertion that "nothing resolved" passes trivially if nothing *could* have
+    resolved.
+    """
+
+    @staticmethod
+    def _two_bar_setup(second_bar: dict[str, float | int]) -> duckdb.DuckDBPyConnection:
+        conn = duckdb.connect(":memory:")
+        init_schema(conn)
+        _insert_signal(conn, candle_ts_ms=0, entry=100.0, sl=95.0, tp=110.0, rr=2.0)
+        _insert_ohlcv(
+            conn,
+            "BTCUSDT",
+            "1h",
+            [
+                {"open_time": _HOUR, "high": 102.0, "low": 99.0, "close": 101.0},
+                second_bar,
+            ],
+        )
+        return conn
+
+    def test_expiry_mark_waits_for_the_final_bar_to_close(self) -> None:
+        # Hold window is 2 bars. The 2nd bar has OPENED (now is 1ms into it)
+        # but closes at 3h, so the window is not really complete yet.
+        conn = self._two_bar_setup(
+            {"open_time": 2 * _HOUR, "high": 103.0, "low": 98.0, "close": 102.0}
+        )
+        counts = backfill_outcomes(
+            conn, now_ms=2 * _HOUR + 1, max_hold_bars_by_tf={"1h": 2}
+        )
+        assert counts["open"] == 1
+        assert counts["expired"] == 0
+        outcome, outcome_r, _ = _fetch_one(conn, "sig1")
+        assert outcome is None
+        assert outcome_r is None
+
+    def test_expiry_mark_lands_once_that_bar_has_closed(self) -> None:
+        # POSITIVE CONTROL for the test above: identical fixture, clock moved
+        # past the 2nd bar's close. If this did not resolve, the assertion
+        # above would be vacuous.
+        conn = self._two_bar_setup(
+            {"open_time": 2 * _HOUR, "high": 103.0, "low": 98.0, "close": 102.0}
+        )
+        counts = backfill_outcomes(
+            conn, now_ms=3 * _HOUR, max_hold_bars_by_tf={"1h": 2}
+        )
+        assert counts["expired"] == 1
+        outcome, outcome_r, _ = _fetch_one(conn, "sig1")
+        assert outcome == "expired"
+        # mark-to-market at the closed bar: (102 - 100) / (100 - 95) = +0.4R
+        assert outcome_r == pytest.approx(0.4)
+
+    def test_win_is_not_booked_off_a_forming_bar(self) -> None:
+        # The provisional bar's high already pierces TP. That touch is real,
+        # but the bar can still be rewritten by the next sync, so the row must
+        # wait rather than resolve early.
+        conn = self._two_bar_setup(
+            {"open_time": 2 * _HOUR, "high": 111.0, "low": 100.0, "close": 110.5}
+        )
+        counts = backfill_outcomes(
+            conn, now_ms=2 * _HOUR + 1, max_hold_bars_by_tf={"1h": 2}
+        )
+        assert counts["win"] == 0
+        assert counts["open"] == 1
+        assert _fetch_one(conn, "sig1")[0] is None
+
+    def test_win_is_booked_once_that_bar_has_closed(self) -> None:
+        # POSITIVE CONTROL for the test above.
+        conn = self._two_bar_setup(
+            {"open_time": 2 * _HOUR, "high": 111.0, "low": 100.0, "close": 110.5}
+        )
+        counts = backfill_outcomes(
+            conn, now_ms=3 * _HOUR, max_hold_bars_by_tf={"1h": 2}
+        )
+        assert counts["win"] == 1
+        assert _fetch_one(conn, "sig1")[0] == "win"
