@@ -82,7 +82,7 @@ do not start a new free-data hunt without an explicit user go.
 | `lowvol/` low-beta / BAB (edge-hunt #2, PR #100) | **FAIL** — committed cell Sharpe −0.069 @2bps, DSR ~0.03. The realized-beta guardrail **FIRED** (β +3.9, not ≈0) → a fail of *this construction's neutrality*, not a clean BAB-premium test |
 | `xasset/` cross-asset TSMOM (edge-hunt #3, PR #102) | **FAIL (clean)** — `broad_ls` +0.41 cost-free / +0.36 @2bps, never ≥0.7; PBO ~0.79. The equity-β guardrail **held** (β −0.083), so the construction diversified as designed and the premium is simply too weak in free-ETF proxies |
 | `pead/` PEAD-lite (edge-hunt #4, PR #104) | **FAIL** — `broad_ls` +0.10 @2bps, DSR 0.20. The β guardrail **FIRED** (β ≈ +113, governor saturation on sparse daily cohorts); the controlled mega arm (β −0.40) showed *negative* drift (−0.53) |
-| `exits/` MFE-MAE diagnostic (PR #96) | **INCONCLUSIVE** — the instrument works (22/22 resolved alerts scored, 0 skipped) but the live ledger is too young (n=22) for an exit-fixable-vs-entry-broken call. Re-run as it matures |
+| `exits/` MFE-MAE diagnostic (PR #96) | **EXIT-FIXABLE at the cohort level** (re-run 2026-08-12, n=264, 264/264 scored). Supersedes the n=22 INCONCLUSIVE call **and reverses its direction**: of the 157 losses that could show excursion, **43.9%** reached ≥1R before stopping (CI 36.4–51.8%), vs the 13.3% that produced the earlier "entry-broken" read. Still blocked per-edge (0 of 30 loss cells reach n=30) and the whole ledger is **pre-#151**. Audit: `docs/audits/2026-08-12-exit-mfe-mae-diagnostic-rerun.md` |
 
 **The TA detector book is frozen** — no new boolean detectors, no tp_r / gate / threshold sweeps
 (inherited category verdict). A guardrail firing (`lowvol`, `pead`) means the *construction* failed
@@ -282,6 +282,24 @@ why the migration is provably rating-neutral (all 6 rating surfaces byte-identic
 was **never alive**: it had zero NULL rows for its entire history, and post-fix its join still cannot
 match within a config, because the executed threshold is a pure function of `(strategy, timeframe)`.
 Audit: `migrations/002_adr_threshold_executed.py` docstring.
+
+**A statistic can report a value it was DEFINED to report, and a cohort median is where that hides.**
+`exits/`'s MFE for a loss comes from `fav[:-1]` — every held bar except the exit bar, the deliberate
+adverse-first anti-bias rule — so **a loss resolved on its first held bar has `mfe_r == 0.0` by
+construction, not by observation**. The 2026-06-20 audit measured `mfe_p50 = 0.0` at
+`bars_held_p50 = 1.0` and published *"the median loss never traded green before stopping"* — the
+entry-broken verdict — when the median row was structurally incapable of any other value. At n=264
+the same cell reads +0.560, and conditioning on the 157 losses that *could* show excursion gives
+**43.9% reaching ≥1R** against the 13.3% originally reported: the verdict was wrong in **direction**,
+not magnitude, and stood for ~2 months. Three transferable rules: **check whether a metric's floor
+or ceiling is reachable by every row in the cohort before quoting its median** — a conservative
+convention is anti-bias for the row and can still be a systematic bias for the aggregate; **when a
+denominator-like quantity moves between runs, the statistic may be measuring it and not the effect**
+(`bars_held_p50` went 1 → 4 across the two runs, which is the entire story); and **a subgroup chosen
+to remove one bias usually introduces its own** — surviving bar 1 is selection on favorable movement,
+so ≥2-bar rows are biased *up* exactly as the pooled row is biased *down*, and the honest claim is
+the bracket, not either endpoint. Audit: `docs/audits/2026-08-12-exit-mfe-mae-diagnostic-rerun.md`.
+Scripts: `docs/plans/scripts/exit_audit_cohort_depth.py`, `exit_audit_gate_era_split.py`.
 
 **Ingest level-parsing fails SILENTLY, and every instance so far was found by running the code, not
 by reading it.** Full narratives in `context/tools.md`; the standing rules:
