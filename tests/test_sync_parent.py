@@ -308,6 +308,90 @@ class TestAlreadyApplied:
         assert c == sp.Confidence.LOW
 
 
+class TestModifiedSymbolIsNotEvidence:
+    """The #521 miss: a signature-only change re-emits its own ``def`` line.
+
+    Parent #521 added two suppressor kwargs to an existing ``route_target``. The
+    resolver read ``+def route_target(`` as an addition, grepped the bare name,
+    matched wifey's *old* two-arg copy and returned HIGH — scoring a missing port
+    as ALREADY-APPLIED. Reproduced against the real commit (148496e) before the
+    fix; these tests pin the fix in both directions.
+    """
+
+    def _diff(self) -> str:
+        return (
+            Path(__file__).parent
+            / "fixtures"
+            / "sync_parent"
+            / "modified_symbol_diff.txt"
+        ).read_text()
+
+    def test_modified_symbol_is_not_counted_as_added(self) -> None:
+        ch = sp.extract_symbol_changes(self._diff())
+        assert ch.added == []
+        assert "route_target" in ch.modified
+
+    def test_new_kwargs_are_captured_as_new_identifiers(self) -> None:
+        ch = sp.extract_symbol_changes(self._diff())
+        assert "retrospective" in ch.new_identifiers
+        assert "rejected" in ch.new_identifiers
+
+    def test_unchanged_symbol_name_is_not_new_evidence(self) -> None:
+        # The bare name sits on BOTH sides, so it must never be admitted as the
+        # thing that proves the port landed.
+        ch = sp.extract_symbol_changes(self._diff())
+        assert "route_target" not in ch.new_identifiers
+
+    def test_name_present_but_payload_missing_is_not_high(self) -> None:
+        """The exact #521 world: wifey HAS route_target, lacks the kwargs."""
+        ch = sp.extract_symbol_changes(self._diff())
+        c = sp.resolve_confidence(ch, grep=lambda s: s == "route_target")
+        assert c == sp.Confidence.LOW
+
+    def test_payload_present_is_high(self) -> None:
+        """Positive control — a genuinely applied port must still read HIGH."""
+        ch = sp.extract_symbol_changes(self._diff())
+        c = sp.resolve_confidence(ch, grep=lambda _s: True)
+        assert c == sp.Confidence.HIGH
+
+    def test_added_symbol_still_uses_its_name_as_evidence(self) -> None:
+        """A greenfield addition is unaffected by the fix."""
+        added_diff = (
+            Path(__file__).parent / "fixtures" / "sync_parent" / "sample_diff.txt"
+        ).read_text()
+        ch = sp.extract_symbol_changes(added_diff)
+        assert "classify_regime_v2" in ch.added
+        assert ch.modified == []
+        assert sp.resolve_confidence(ch, grep=lambda _s: True) == sp.Confidence.HIGH
+
+    def test_modify_only_with_no_new_identifier_is_unknown(self) -> None:
+        """Cannot tell != applied. Reports UNKNOWN rather than guessing."""
+        ch = sp.SymbolChanges(added=[], modified=["foo"], new_identifiers=[])
+        assert sp.resolve_confidence(ch, grep=lambda _s: True) == sp.Confidence.UNKNOWN
+
+    def test_commit_message_prose_is_not_read_as_context(self) -> None:
+        """`git show` without `--format=` prepends the message; it must be ignored.
+
+        Caught while validating against the real commit: the message described
+        the new kwargs, so parsing its lines as context subtracted `retrospective`
+        and `rejected` from the evidence — leaving the resolver to discriminate on
+        docstring words instead of the payload. Right verdict, wrong reason.
+        """
+        body = self._diff()
+        with_message = (
+            "commit 148496e\n"
+            "Author: someone <s@example.com>\n\n"
+            "    fix(ingest): stop scoring pundits on declined calls (#521)\n\n"
+            "    route_target now takes retrospective= / rejected= keyword-only.\n\n"
+        ) + body
+        assert sp.extract_symbol_changes(with_message) == sp.extract_symbol_changes(
+            body
+        )
+        ch = sp.extract_symbol_changes(with_message)
+        assert "retrospective" in ch.new_identifiers
+        assert "rejected" in ch.new_identifiers
+
+
 class TestMemoryExtract:
     """extract_memory_entry finds the paragraph referencing a PR number."""
 
