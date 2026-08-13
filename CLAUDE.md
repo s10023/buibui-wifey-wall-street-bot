@@ -71,6 +71,16 @@ only path a session has to it — follow them before working in an area.** Verdi
 HERE on purpose: they are the guard rail against re-litigating settled research, and a guard rail
 behind a pointer is not a guard rail.
 
+**What a footgun entry holds, and what it does not** (convention set 2026-08-13). This file is
+auto-loaded on **every** session, so its size is a per-conversation tax. Each entry therefore keeps
+only what a session must know *before it acts*: the **rule**, the **enforcing mechanism** (the
+required kwarg, the refusing loader, the asserting test), any **operational constant** still in
+force, and the **transferable lesson**. The discovery narrative — how it was found, the full
+measured impact, the rejected alternatives — belongs in the linked **committed** audit, and was
+moved there for the nine entries that have one. **Do not re-expand a narrative here**, and **do not
+compress an entry whose only home is `docs/plans/` — that tree is gitignored and single-copy**, so
+the text would simply be destroyed. If a footgun has no committed audit, write one first.
+
 | Package | What it is | Deep reference |
 | --- | --- | --- |
 | `wifey.py` · `cli/` | Thin CLI entry shim delegating to `cli.main:main`; argparse subcommand package (`signal` / `analytics` / `backtest` / `digest` / `param` / `recalibrate` / `web`) with `_common.py` helpers | — |
@@ -138,183 +148,101 @@ leak (`bos` read a centered swing window but stamped the signal at the swing bar
 16 detectors pass.
 
 **Two filters that are each individually sane can cancel each other out, and nothing will say so.**
-`[bias] adr_suppress_threshold` keeps quiet small-range bars; `volume_suppress` keeps ≥1.5×-volume
-bars; range and volume correlate at **+0.65**, so declaring both without `adr_exempt = true` discards
-~99% of a strategy's signals. Until 2026-08-06 this ran `doji × 1d` at **0** signals against 1,247
-raw detector fires, `orb × 4h` at n=1, and **inverted the measured sign** on `engulfing × 1d` and
-`bos × 1d`. `load_signal_config::voided_volume_gates` now refuses the pairing (sibling of #139's
-`dead_timeframes`). Two transferable rules: a per-strategy flag whose correctness depends on a
-second flag must live in the **shared base**, not one day-filter config (`bos`'s `adr_exempt` was
-config-local, so weekdays never inherited it); and **a test that asserts a config value PARSED can
-never detect that the parsed value produces nothing** — the pre-existing
-`test_signal_watch_toml_volume_suppress_flags` asserted `doji`'s flag was `True` and passed for
-months while the cell was empty. Audit: `docs/audits/2026-08-06-adr-volume-gate-conjunction.md`.
+`[bias] adr_suppress_threshold` (quiet small-range bars) and `volume_suppress` (≥1.5× volume
+bars) select on quantities correlated at **+0.65**, so declaring both without `adr_exempt = true`
+discards ~99% of a strategy's signals — it ran `doji × 1d` at **0** signals against 1,247 raw
+fires. **Enforced**: `load_signal_config::voided_volume_gates` now refuses the pairing.
+**Rule**: a per-strategy flag whose correctness depends on a second flag must live in the
+**shared base**, not one day-filter config — and *a test that asserts a config value PARSED can
+never detect that the parsed value produces nothing*.
+Audit: `docs/audits/2026-08-06-adr-volume-gate-conjunction.md`.
 
-**A gate can be undefined on a timeframe and still look like it is working.** The ADR gate's premise
-— `consumed_ratio = (cumulative intraday range UP TO this candle) / 14-day ADR` — needs **>1 bar per
-calendar day**. `1d` and `1wk` have exactly one, so the "cumulative" range is the whole day's range
-and the ratio silently stops measuring exhaustion, becoming a *high-range-day* filter instead (it is
-not pinned at 1.0 — it stays dispersed, p25 0.71 / p75 1.21, which is why it reads as functional).
-Its direction guard degenerates identically: `move_up` reduces to "closed in the upper half of its
-own bar", the same quantity `doji` / `ema` / `trend_day` derive direction from, so `chasing` is true
-**by construction** and drops **100%** of their above-threshold signals (`bos` 48% and `eqh_eql` 76%
-are the controls — their direction comes from prior structure). Cost: 28–82% of every strategy's
-signals on every timeframe either config scans, to buy an effect that survives Benjamini–Hochberg in
-**1 of 17 cells**. Fixed 2026-08-06 by `adr_gate_applies(timeframe)` — intraday only, unknown
-timeframes fall closed, and `timeframe` is a **required** arg so mypy forces every call site to state
-it. Three transferable rules: the live path (`analytics/stats/adr.py`, `1h`-derived, **not**
-degenerate) and the backtest path were never running the same gate, so *parity by shared function
-name is not parity*; `4h` on US-equity RTH is **2** bars/day, not the 6 the crypto-era 0.80 threshold
-assumes, so **re-derive a crypto-inherited constant against equity bar counts before trusting it**;
-and the parity test passed for months because its fixture built *"a single 24h day"* — **a green test
-proves the code matches the fixture, never that the fixture matches production**. `check-dead-surfaces`
-cannot see this class: it finds exact zeros, and a 77–82% haircut leaves the cell non-empty.
+**A gate can be undefined on a timeframe and still look like it is working.** The ADR gate needs
+**>1 bar per calendar day**; `1d`/`1wk` have exactly one, so the ratio silently stops measuring
+exhaustion and its direction guard makes `chasing` true **by construction**, dropping 100% of
+`doji`/`ema`/`trend_day` signals above threshold. It stays dispersed (p25 0.71 / p75 1.21), which
+is why it reads as functional. **Enforced**: `adr_gate_applies(timeframe)` — intraday only,
+unknown timeframes fall closed, and `timeframe` is a **required** arg so mypy forces every call
+site to state it. **Rules**: parity by shared function *name* is not parity (live is `1h`-derived
+and was never degenerate); re-derive a crypto-inherited constant against equity bar counts (`4h`
+RTH is **2** bars/day, not 6); and a green test proves the code matches the fixture, never that
+the fixture matches production. `check-dead-surfaces` cannot see this class — it finds exact
+zeros, and a 77–82% haircut leaves the cell non-empty.
 Audit: `docs/audits/2026-08-06-adr-gate-timeframe-degeneracy.md`.
 
 **A gate that fails open has no loud failure mode, and a config value that is RECORDED is more
 dangerous than one that is ignored.** `[backtest] days = 365` reached neither the OHLCV cache nor
-`run_scan_cycle` — the daemon took the **90**-day signature default — while `scanner.py:1232` wrote
-**365** into `backtest_runs.days`, so the audit trail actively corroborated the wrong window.
-`passes_ev_gate` (now in `analytics/signal/gates.py`) returns `True` below `min_trades`, so the
-narrow window never failed; it silently made the hard gate a no-op on **71%** of direction-legs
-(`signal_watch`; 62% on weekdays), and on
-both configs the median cell sat *below its own `min_trades`*. Four of the five `bos × 1d` alerts
-dispatched 2026-08-05 sit at avg_r ≈ **−1.0** over 365 days and were never evaluated at all. Two
-transferable rules: cross-check a recorded parameter against a recorded **observable** —
-`data_end_ms - data_start_ms` found this in one query (94 live rows declaring 365 over exactly
-**90.0** days, against 3,117 sweep rows declaring 365 over 365.0); and when a value reaches its
-consumer **through a cache, fixing the consumer's argument fixes nothing** — `run_scan_cycle`
-prefers a populated `ohlcv_cache` over its own read, so `days=365` alone would have widened the
-label and the cache key while the DataFrame stayed 90 days. Find who populates the cache first.
-Fixed 2026-08-06 by a single `bt_days` feeding both surfaces. Audit:
-`docs/audits/2026-08-06-live-ev-gate-window.md`.
+`run_scan_cycle` (both took the **90**-day default) while the writer recorded 365, so the audit
+trail corroborated the wrong window; `passes_ev_gate` returns `True` below `min_trades`, so the
+narrow window never failed and the hard gate was a no-op on **71%** of direction-legs.
+**Enforced**: a single `bt_days` feeds both surfaces. **Rules**: cross-check a recorded parameter
+against a recorded **observable** (`data_end_ms - data_start_ms` found this in one query); and
+when a value reaches its consumer **through a cache, fixing the consumer's argument fixes
+nothing** — find who populates the cache first.
+Audit: `docs/audits/2026-08-06-live-ev-gate-window.md`.
 
 **A row key derived from PARAMETERS does not identify a MEASUREMENT, and `INSERT OR REPLACE` turns
-that into silent data loss.** `backtest_runs` has **four** writers; `_backtest_run_id` hashed only
-the param tuple, and the live EV gate (`scanner.py:1229`) passes the config's real `days` **and**
-`day_filter` — so for any cell the daemon evaluated its run_id was **identical** to the sweep's and
-the daemon's single-strategy row *replaced* the competed sweep row in place, flipping `sweep_id` to
-NULL. The write's own comment says it accumulates "passively"; it did not accumulate, it replaced.
-The runner produced **312** rows for `signal_watch` (24 cells × 13 symbols, 0 skipped) and the table
-held **263** — 17 of 24 cells short, `trend_day × 4h` rated on **3 of 13** symbols. This also
-undercut #146: `sweep_id IS NOT NULL` cannot recover an overwritten row, it only **drops** it, and
-`weekdays` looked healthy (468 = 36 × 13 exactly) purely because it never runs live. Fixed
-2026-08-07 by an `origin` discriminator naming the *writer*; `"sweep"` adds no suffix so every
-historical run_id is unchanged, and `origin` is a **required** kwarg on `upsert_backtest_run` so
-mypy forces each call site to declare itself (same enforcement as `adr_gate_applies`). Three
-transferable rules: when a table has more than one writer the writer belongs in the **key**, since a
-provenance *column* cannot help if the loser is deleted before any query runs; **check a producer's
-output count against what the consumer stored** — every one of those 263 rows held correct values,
-only the count was wrong; and `backtest_cache` / `backtest_cross_tf_combos` were checked and have
-one writer each, so verify the blast radius rather than assuming it. Audit:
-`docs/audits/2026-08-07-backtest-runs-writer-collision.md`.
+that into silent data loss.** `backtest_runs` has **four** writers; when the key hashed only the
+param tuple, the daemon's single-strategy row *replaced* the competed sweep row in place and
+flipped `sweep_id` to NULL — the runner produced **312** rows and the table held **263**.
+**Enforced**: an `origin` discriminator naming the *writer*, a **required** kwarg on
+`upsert_backtest_run` (`"sweep"` is unsuffixed so historical run_ids still resolve).
+**Rules**: when a table has more than one writer the writer belongs in the **key**, since a
+provenance *column* cannot help if the loser is deleted before any query runs; and check a
+producer's output count against what the consumer stored — all 263 rows held correct values, only
+the count was wrong. Audit: `docs/audits/2026-08-07-backtest-runs-writer-collision.md`.
 
 **`conflict_resolver` is the ONE live-parity gate the sweep must never run, and that is
-load-bearing, not an oversight.** Until 2026-08-07 the sweep behind the star ratings ran with
-**every** gate off — T6 (2026-05-26) shipped `LiveParityConfig` default-off to keep goldens
-byte-identical during the port, no config declared `[backtest.live_parity]`, and
-`make wifey-backtest` passes no `--live-parity` — so `confidence_ratings` measured the **raw**
-population while the daemon gates dispatch with all six, and the committed `tp_r` values were
-calibrated under *ad-hoc* `--live-parity` against a population the routine sweep never produced.
-Five gates are now **on** in `config/strategy_params.toml` (the **shared base**, deliberately not a
-Makefile flag — a flag is how the two surfaces diverged unnoticed for ~2.5 months). But
-`conflict_resolver` **reads `confidence_ratings`**, so switching it on inside the sweep that
-*produces* them closes a loop: sweep resolves ties → drops a side → `backtest_runs` changes →
-recalibrate writes different ratings. Measured over three consecutive full `backtest + recalibrate`
-passes with all six on: **108 → 66** rows differing (18 → 8 star changes) — damping but **not
-converged**, with cells still oscillating at iteration 3 (`pin_bar × 1d` long 2★ +0.10 → **4★
-+0.76** while `pin_bar × 1wk` long went 4★ → 2★). **`make db-update` must be deterministic or a
-real rating change is indistinguishable from a re-run artifact.** With five gates it is: two
-consecutive passes differ on **0 of 160** rows, closed trades fall **−33.4%** / **−34.8%** (~4/5 of
-the full effect), **no cell loses its rating**, and 52 of 160 rows change stars. Two transferable
-rules: **a gate that reads a table its own pipeline writes is not a gate, it is a fixed-point
-iteration** — check data-flow direction before enabling one in the producer of its own input; and
-**"it converges" needs three points, not two** (1→2 alone looks like transient re-seeding; only
-2→3 shows the decay rate, and aggregate decay hides per-cell oscillation). The live path is
-unaffected — it reads ratings already written and never feeds its own output back in-cycle. Audit:
-`docs/audits/2026-08-07-live-parity-ratings-sweep.md`. Scripts:
-`docs/plans/scripts/live_parity_sweep_diff.py`, `live_parity_rating_fallout.py`.
+load-bearing, not an oversight.** It **reads `confidence_ratings`**, so switching it on inside the
+sweep that *produces* them closes a loop: measured over three consecutive passes it went 108 → 66
+rows differing — damping but **not converged**, with cells still oscillating at iteration 3.
+Five gates are on in `config/strategy_params.toml` (the **shared base**, deliberately not a
+Makefile flag — a flag is how the two surfaces diverged unnoticed for ~2.5 months); with five,
+two consecutive passes differ on **0 of 160** rows. **Enforced**: `TestSharedBaseGateState`.
+**Rules**: a gate that reads a table its own pipeline writes is not a gate, it is a fixed-point
+iteration — check data-flow direction before enabling one in the producer of its own input; and
+"it converges" needs three points, not two. The live path is unaffected — it reads ratings already
+written. Audit: `docs/audits/2026-08-07-live-parity-ratings-sweep.md`.
 
 **A sample-size guard that counts a different population than the one it tests is not a weak guard,
 it is not a guard.** The live EV gate compared the **combined** closed-trade count against
-`min_trades` (`scanner.py:752`) and then tested a **directional** `avg_r` (`:757`), so a long
-verdict could rest entirely on short trades. Measured over the declared 365d window: **53 of 260**
-blocked legs on `signal_watch` (20%) and **45 of 429** on weekdays (10%) had fewer trades in the
-tested direction than the config demands, and **19** / **68** rested on a *single* one, where
-dispersion is undefined (`doji × 1d` GOOGL short: n_cmb=3, n_dir=1, avg_r −1.011). **No `min_trades`
-value fixes this** — raising it to 10 still admits an n_dir=1 block whenever the opposite direction
-carries the count. The cost is not alert volume: a blocked leg is dropped from `passing_events` at
-`scanner.py:777` while the outcome writer runs downstream at `:1048`, so it never reaches
-`signal_alert_outcomes` — under option (d) ("bank correctness, let the ledgers mature") the gate was
-**deleting observations** using non-evidence. `README.md` documented the directional semantics all
-along and the ladder was *"calibrated from DB p25 directional counts"* — **the doc was right and the
-code was wrong**, so the fix restores the calibrated behaviour rather than choosing a new one.
-Fixed 2026-08-07 by counting `long_closed_trades` / `short_closed_trades`; strictly permissive, zero
-cells newly blocked. Three transferable rules: **a gate that fails open inverts the meaning of
-"stricter"** — at `min_trades = 20` the `1wk` gate reaches **100%** bypass, i.e. the safest-sounding
-change switches it *off*; **a test that re-implements the code under test can never falsify it** —
-`_passes_ev_gate` was a closure inside `run_scan_cycle` so no test could call it, every `TestEvGate`
-test copied the comparison inline, and `test_insufficient_trades_passes` asserted
-`len(result.closed_trades) < effective_min_trades()`, writing the defect down as the expectation
-(all five passed against any implementation, so extraction is a *prerequisite* for the fix, not
-scope creep); and **suppression upstream of the recorder destroys evidence, not just output** —
-check where a filter sits relative to the persistence call before judging its cost. Audit:
-`docs/audits/2026-08-07-ev-gate-directional-sample-guard.md`. Script:
-`docs/plans/scripts/ev_gate_min_trades_diff.py`.
+`min_trades` and then tested a **directional** `avg_r`, so a long verdict could rest entirely on
+short trades — **53 of 260** blocked legs had fewer trades in the tested direction than the config
+demands, **19** of them a single one. No `min_trades` value fixes it. **Enforced**: the gate counts
+`long_closed_trades` / `short_closed_trades`; `README.md` had documented the directional semantics
+all along, so the fix *restored* a calibration rather than choosing a new one.
+**Rules**: a gate that fails open inverts the meaning of "stricter" (at `min_trades = 20` the `1wk`
+gate reaches **100%** bypass); a test that re-implements the code under test can never falsify it
+(all five `TestEvGate` tests copied the comparison inline and passed against any implementation, so
+**extraction is a prerequisite for the fix**); and suppression upstream of the recorder destroys
+evidence, not just output — a blocked leg never reaches `signal_alert_outcomes`.
+Audit: `docs/audits/2026-08-07-ev-gate-directional-sample-guard.md`.
 
 **A threshold applied to a POINT ESTIMATE is a coin flip with extra steps.** `min_avg_r = 0.0`
-made the live EV gate suppress any negative directional `avg_r` regardless of dispersion: measured
-with the real per-cell, per-direction sd, **84 of 207** blocked `signal_watch` legs (41%) and
-**141 of 384** on weekdays sat at **|t| < 1** — indistinguishable from zero. A cell at −0.006R was
-blocked exactly as hard as one at −1.01R, and since a blocked leg never reaches
-`signal_alert_outcomes`, each was a destroyed ledger row. Fixed 2026-08-07 by `min_avg_r_z`
-(default **1.64**, one-sided 95%): the shortfall must be that many standard errors below the
-threshold. `min_avg_r` itself is unchanged, which is why this is *correctness* and not the frozen
-threshold-selection — it changes the decision RULE, not the line. Blocks **207 → 101** and
-**384 → 158**, **zero** newly blocked. Three transferable rules: **multiplicity correction belongs
-where SELECTION happens** — BH is right for the sweep (#142 ran 17 cells, 1 survived; #143 ran 5,
-2 did) and wrong for a per-leg operational gate, since Bonferroni over ~300 cells gives z ≈ 3.5, at
-which a **fail-open** gate blocks almost nothing and the "correction" silently disables the thing
-it was meant to sharpen (an earlier draft of this very fix recommended BH; it was withdrawn before
-implementation); **measure the cheap alternative against a bar you wrote down FIRST** — recovering
-sd from win rate under a two-point payoff looked plausible and failed at median **10.6%** error,
-p90 **100%**, flipping **28.5%** of gate verdicts, which is why `backtest_cache` took the schema
-change instead; and **when a cached type shadows a computed one, a new statistic must be added to
-BOTH** — `BacktestSnapshot` is the *normal* steady-state path (cache hit on the same closed
-candle), so omitting it would have degraded the gate on the hot path with no error, leaving
-suppression dependent on cache state. Audit:
-`docs/audits/2026-08-07-ev-gate-significance-test.md`. Scripts:
-`docs/plans/scripts/ev_gate_significance_impact.py`, `sd_approx_check.py`.
+suppressed any negative directional `avg_r` regardless of dispersion: **84 of 207** blocked legs
+sat at **|t| < 1**, and a cell at −0.006R was blocked exactly as hard as one at −1.01R.
+**Enforced**: `min_avg_r_z` (default **1.64**, one-sided 95%) — the shortfall must be that many
+standard errors below the threshold. `min_avg_r` itself is unchanged, so this changed the decision
+RULE, not the line, which is why it is correctness and not the frozen threshold-selection.
+**Rules**: multiplicity correction belongs where SELECTION happens — BH is right for a sweep and
+wrong for a per-leg operational gate, where Bonferroni z ≈ 3.5 would silently disable a fail-open
+gate; measure the cheap alternative against a bar you wrote down FIRST (recovering sd from win rate
+failed at median **10.6%** error and flipped **28.5%** of verdicts); and when a cached type shadows
+a computed one, a new statistic must be added to **both** — `BacktestSnapshot` is the hot path.
+Audit: `docs/audits/2026-08-07-ev-gate-significance-test.md`.
 
-**A provenance column that records what was DECLARED is not provenance, and when that column is
-part of the row-identity hash, fixing the writer without migrating history MANUFACTURES evidence.**
-`backtest_runs.adr_suppress_threshold` stored `cfg.adr_suppress_threshold` flat at both writers
-that set it, so **2,091 of 3,246 rows (64.4%)** claimed a gate that never touched them. The
-proportions invert the obvious framing: **1,974 were purely the timeframe** (`adr_gate_applies` is
-intraday-only since #142), only **117** were `adr_exempt` (`bos`, `eqh_eql`). Two of the four
-writers (`web`, `single_run`) were already correct — neither wires `bias_cfg` into `run_backtest`,
-so no gate can run there, and their NULL was truth rather than omission. Fixed 2026-08-11 by
-`effective_adr_threshold(declared, timeframe, adr_exempt=…)` as a **required** kwarg on
-`upsert_backtest_run`. Four transferable rules. **`mypy` cannot enforce a required kwarg through a
-`**dict` splat** — the explicit call site failed type-check immediately while **12** sites passing
-`**_BT_PARAMS` type-checked clean and blew up at runtime, so a green mypy is not evidence that a
-required-argument change is covered; run the suite. **A column in the identity hash cannot be
-corrected in place without a migration** — flipping a value changes `run_id`, so
-`INSERT OR REPLACE` writes a *new* row and leaves the old one, and the two then satisfy
-`digest QUERY=adr_ab`'s join as a fake gated-vs-ungated pair: **661** of them, comparing a June
-measurement against an August one. The fix needs a matching-window clause
-(`data_start_ms`/`data_end_ms`); `days` cannot stand in, since **every row in the table declares
-365** while the oldest were measured over 90. **A migration must respect CODE ERAS** — before #142
-`_filter_signals_by_adr` had no timeframe guard, so on `1d`/`1wk` the gate really did run
-(degenerately), and #141 had not yet moved `adr_exempt` into the shared base; reconstructing
-"executed" for those rows from today's config would replace one false claim with another, so only
-the **518** post-#142 rows were rewritten. **Check whether the consumer already assumed the correct
-semantics** — `recalibrate_lib` matched `= threshold OR IS NULL` with a comment about "exempt-strategy
-runs (NULL)", i.e. the reader was written against semantics the writer never implemented, which is
-why the migration is provably rating-neutral (all 6 rating surfaces byte-identical). `adr_ab` itself
-was **never alive**: it had zero NULL rows for its entire history, and post-fix its join still cannot
-match within a config, because the executed threshold is a pure function of `(strategy, timeframe)`.
-Audit: `migrations/002_adr_threshold_executed.py` docstring.
+**A provenance column that records what was DECLARED is not provenance, and when that column is part
+of the row-identity hash, fixing the writer without migrating history MANUFACTURES evidence.**
+`backtest_runs.adr_suppress_threshold` stored the declared value flat, so **2,091 of 3,246 rows
+(64.4%)** claimed a gate that never touched them — **1,974** purely by timeframe, only **117** by
+`adr_exempt`. **Enforced**: `effective_adr_threshold(declared, timeframe, adr_exempt=…)` as a
+**required** kwarg on `upsert_backtest_run`. **Rules**: mypy cannot enforce a required kwarg
+through a `**dict` splat (12 sites type-checked clean and blew up at runtime — run the suite); a
+column in the identity hash cannot be corrected in place without a migration, since flipping the
+value changes `run_id` and leaves the old row behind as a fake gated-vs-ungated pair; a migration
+must respect **code eras** (only the **518** post-#142 rows were rewritten); and check whether the
+consumer already assumed the correct semantics — `recalibrate_lib` did, which is why the migration
+is provably rating-neutral. Full narrative: `migrations/002_adr_threshold_executed.py` docstring.
 
 **`INSERT OR REPLACE` with a PARTIAL row silently blanks every column the caller omitted.** This is
 the sibling of #148 — there the key collided, here the *row* is right and the payload is short.
@@ -382,22 +310,16 @@ functions rather than restating their arithmetic):
 `docs/plans/scripts/sleeve_gate_mintrl_bar.py`.
 
 **A statistic can report a value it was DEFINED to report, and a cohort median is where that hides.**
-`exits/`'s MFE for a loss comes from `fav[:-1]` — every held bar except the exit bar, the deliberate
-adverse-first anti-bias rule — so **a loss resolved on its first held bar has `mfe_r == 0.0` by
-construction, not by observation**. The 2026-06-20 audit measured `mfe_p50 = 0.0` at
-`bars_held_p50 = 1.0` and published *"the median loss never traded green before stopping"* — the
-entry-broken verdict — when the median row was structurally incapable of any other value. At n=264
-the same cell reads +0.560, and conditioning on the 157 losses that *could* show excursion gives
-**43.9% reaching ≥1R** against the 13.3% originally reported: the verdict was wrong in **direction**,
-not magnitude, and stood for ~2 months. Three transferable rules: **check whether a metric's floor
-or ceiling is reachable by every row in the cohort before quoting its median** — a conservative
-convention is anti-bias for the row and can still be a systematic bias for the aggregate; **when a
-denominator-like quantity moves between runs, the statistic may be measuring it and not the effect**
-(`bars_held_p50` went 1 → 4 across the two runs, which is the entire story); and **a subgroup chosen
-to remove one bias usually introduces its own** — surviving bar 1 is selection on favorable movement,
-so ≥2-bar rows are biased *up* exactly as the pooled row is biased *down*, and the honest claim is
-the bracket, not either endpoint. Audit: `docs/audits/2026-08-12-exit-mfe-mae-diagnostic-rerun.md`.
-Scripts: `docs/plans/scripts/exit_audit_cohort_depth.py`, `exit_audit_gate_era_split.py`.
+`exits/`'s MFE for a loss comes from `fav[:-1]`, so **a loss resolved on its first held bar has
+`mfe_r == 0.0` by construction, not by observation**. The 2026-06-20 audit read `mfe_p50 = 0.0` at
+`bars_held_p50 = 1.0` as *"the median loss never traded green"* when the median row was incapable
+of any other value; at n=264 the same cell reads +0.560 and **43.9%** of the 157 losses that could
+show excursion reached ≥1R — the verdict was wrong in **direction**, and stood ~2 months.
+**Rules**: check whether a metric's floor is reachable by every row in the cohort before quoting
+its median; when a denominator-like quantity moves between runs the statistic may be measuring it
+(`bars_held_p50` went 1 → 4, which is the entire story); and a subgroup chosen to remove one bias
+usually introduces its own, so the honest claim is the bracket, not either endpoint.
+Audit: `docs/audits/2026-08-12-exit-mfe-mae-diagnostic-rerun.md`.
 
 **An AVERAGE OF AVERAGES beside a SUM OF COUNTS is two denominators in one row, and the count is
 the one that looks authoritative.** `get_backtest_win_rates` summed `closed_trades` across a cell's
