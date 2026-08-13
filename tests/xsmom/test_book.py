@@ -73,19 +73,42 @@ def test_xs_leverage_sign_long_strong_short_weak() -> None:
 def test_xs_leverage_is_causal_no_lookahead() -> None:
     from analytics.xsmom.book import xs_leverage
 
+    cfg = ForecastConfig()
     closes = _closes()
-    base = xs_leverage(closes, ForecastConfig())
+    base = xs_leverage(closes, cfg)
 
     # Perturb a MIDDLE bar of ONE instrument. Leverage at index k is sized from
     # demeaned forecasts through k-1, so close[k] must not affect leverage[:k+1]
     # for ANY column (the cross-sectional demean couples instruments).
+    #
+    # BUMP `FLAT`, NOT `STRONG` — this is the whole test. STRONG is a monotone ramp
+    # whose EWMAC forecast is PINNED AT THE +20 CAP, so a 1.5x bump cannot move the
+    # demeaned forecast at all: measured delta at k was exactly 0.0, and deleting
+    # `demeaned.shift(1)` in analytics/xsmom/book.py left this test PASSING. FLAT is
+    # the seeded random walk the fixture keeps deliberately sub-cap (forecast -3.30
+    # at k), and bumping it moves leverage at k by ~5.7e+01, which DOES catch the
+    # missing shift.
     k = 250
     bumped = {s: c.copy() for s, c in closes.items()}
-    bumped["STRONG"].iloc[k] *= 1.5
-    after = xs_leverage(bumped, ForecastConfig())
+    bumped["FLAT"].iloc[k] *= 1.5
+    after = xs_leverage(bumped, cfg)
 
     pd.testing.assert_frame_equal(
         base.iloc[: k + 1], after.iloc[: k + 1], check_names=False
+    )
+
+    # Positive control on the GUARDED CHANNEL. A control on leverage[k+1] alone
+    # would be FALSE here: leverage also depends on `ew_return_vol(close)`, whose
+    # own causal shift means the bump reaches k+1 through the vol path whether or
+    # not the forecast shift exists (measured: STRONG's k+1 delta was 2.4e+02 while
+    # its k delta was 0.0). The shift under test guards the demeaned-forecast
+    # input, so assert THAT moved at k.
+    base_f = xs_demeaned_forecasts(closes, cfg)
+    after_f = xs_demeaned_forecasts(bumped, cfg)
+    moved = float((after_f.iloc[k] - base_f.iloc[k]).abs().max())
+    assert np.isfinite(moved) and moved > 1e-9, (
+        "the bumped bar never moved the demeaned forecast at k — the causality "
+        "assertion above is vacuous and would pass with the shift removed"
     )
 
 
@@ -170,10 +193,22 @@ def test_xs_leverage_dollar_neutral_is_causal_no_lookahead() -> None:
     base = xs_leverage(closes, cfg)
     k = 250
     bumped = {s: c.copy() for s, c in closes.items()}
-    bumped["STRONG"].iloc[k] *= 1.5
+    # `FLAT`, not `STRONG` — see the sibling test: STRONG's forecast is pinned at
+    # the +20 cap, so bumping it moves the guarded input by exactly 0.0.
+    bumped["FLAT"].iloc[k] *= 1.5
     after = xs_leverage(bumped, cfg)
     # Row k itself is included (`: k + 1`): leverage at k is sized from demeaned
     # forecasts through k-1 (the `.shift(1)`), so close[k] cannot affect it.
     pd.testing.assert_frame_equal(
         base.iloc[: k + 1], after.iloc[: k + 1], check_names=False
+    )
+
+    # Positive control on the guarded channel (see the sibling test for why a
+    # control on leverage[k+1] would be false here).
+    base_f = xs_demeaned_forecasts(closes, cfg)
+    after_f = xs_demeaned_forecasts(bumped, cfg)
+    moved = float((after_f.iloc[k] - base_f.iloc[k]).abs().max())
+    assert np.isfinite(moved) and moved > 1e-9, (
+        "the bumped bar never moved the demeaned forecast at k — the causality "
+        "assertion above is vacuous and would pass with the shift removed"
     )

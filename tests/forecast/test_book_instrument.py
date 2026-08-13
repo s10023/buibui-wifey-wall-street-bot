@@ -23,16 +23,43 @@ def test_zero_funding_means_zero_funding_cost() -> None:
 
 
 def test_position_is_causal_no_lookahead() -> None:
-    # perturbing the LAST close must not change any earlier leverage value
+    # Perturb a MIDDLE bar: leverage at index k is sized from info <= k-1, so
+    # close[k] must not affect leverage[:k+1].
+    #
+    # This bumped the LAST bar until 2026-08-13, which made the test VACUOUS:
+    # with the last bar bumped there is no k+1 to observe, so the assertion could
+    # only ever say "earlier values are unchanged" — and that is equally true when
+    # the causal shift is absent. Measured: deleting `forecast = forecast.shift(1)`
+    # in analytics/forecast/book.py left the old assertion PASSING.
     close = _close()
     cfg = ForecastConfig()
-    base = instrument_returns(close, pd.Series(0.0, index=close.index), cfg)
+    funding = pd.Series(0.0, index=close.index)
+    base = instrument_returns(close, funding, cfg)
+
+    k = len(close) // 2
     bumped = close.copy()
-    bumped.iloc[-1] *= 1.10
-    after = instrument_returns(bumped, pd.Series(0.0, index=bumped.index), cfg)
+    bumped.iloc[k] *= 1.5
+    after = instrument_returns(bumped, funding, cfg)
+
     assert np.allclose(
-        base["leverage"].iloc[:-1].fillna(0.0),
-        after["leverage"].iloc[:-1].fillna(0.0),
+        base["leverage"].iloc[: k + 1].fillna(0.0),
+        after["leverage"].iloc[: k + 1].fillna(0.0),
+    )
+
+    # Positive control. The assertion above is a "did NOT change" claim, which is
+    # satisfied both by "the invariant holds" and by "the bump never reached the
+    # sizing" — so assert the stimulus is live. Measured on THIS fixture (a seeded
+    # random walk, not the parent's ramp): leverage[k+1] moves 0.1974 -> 0.1414,
+    # delta ~5.6e-02, and neither value is near a cap (leverage spans -2.02..2.37).
+    # NaN would satisfy a bare `!=`, so require finite first.
+    lev_base = float(base["leverage"].iloc[k + 1])
+    lev_after = float(after["leverage"].iloc[k + 1])
+    assert np.isfinite(lev_base) and np.isfinite(lev_after), (
+        "leverage[k+1] must be warmed up for the control to mean anything"
+    )
+    assert abs(lev_after - lev_base) > 1e-9, (
+        "perturbation never propagated to leverage[k+1] — the causality "
+        "assertion above is vacuous and would pass with the causal shift removed"
     )
 
 
