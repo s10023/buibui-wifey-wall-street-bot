@@ -430,11 +430,30 @@ to know the answer, and they still do.
   ```bash
   # every module this branch ADDS vs. what the context docs actually document
   git diff main...HEAD --diff-filter=A --name-only -- '*.py' | while read -r f; do
-    case $f in tests/*|docs/*|migrations/*) continue;; esac
-    grep -rqs -e "$f" -e "$(basename "$f" .py)" .claude/context/ \
+    case $f in tests/*|docs/*) continue;; esac
+    grep -rqsw -e "$f" -e "$(basename "$f" .py)" .claude/context/ \
       || echo "UNDOCUMENTED: $f"
   done
   ```
+
+  **The `-w` is load-bearing — do not drop it back to a bare substring match**
+  (ported from parent #581). Without it the check has the blind spot it was
+  written to fix, in the other direction: a bare grep for `docs_index` also
+  matches inside any longer identifier, so a module can report "documented" on
+  a hit that has nothing to do with it. **A false-positive presence check is
+  worse than none, because it reports covered.** `-w` works here for a
+  non-obvious reason: `_` is a word-constituent character, so a truncated probe
+  has no word boundary, while a real module path does (`/` and `.` are
+  boundaries). Re-verified against wifey's own docs tree — `ocs_index`,
+  `ombo_health`, `tamp_universe` and `niverse_coverage` all report COVERED under
+  a bare `grep` and MISSING under `-w` (4 for 4), while `docs_index`,
+  `combo_health` and `universe_coverage` stay COVERED. **If you re-verify this,
+  pick a probe that can still fail** — a module that is now documented no longer
+  discriminates.
+
+  `migrations/` was in this skip list until 2026-08-13 and is no longer: it is
+  documented at `.claude/context/migrations.md` (wifey #179), so a new migration
+  script should be checked like any other module.
 
   Renames need the same treatment — swap `--diff-filter=A` for `--diff-filter=R`
   and check the new path. A hit here is a prompt to judge, not an automatic
@@ -500,8 +519,17 @@ Regardless of the behaviour gate, **always update MEMORY.md's "Current
 State"** at the end of every session. This is project policy (CLAUDE.md
 "Session Memory Protocol"):
 
-- Set "Last session" entry to today's date + branch name + one-line summary
-- Move the previous "Last session" entry to "Previous session"
+- Rewrite the "Last session" bullet to today's date + branch name + a one-line
+  summary of what changed
+- **There is no "Previous session" bullet, and there has not been one.** This
+  step said *"move the previous 'Last session' entry to 'Previous session'"*
+  until 2026-08-13 (ported from parent #581, which hit the same defect). That
+  described a protocol `MEMORY.md` does not implement, so every run silently
+  worked around it by hand. **A step that is wrong every run and correct never
+  is worse than no step.** The oldest bullet is rolled into the month's session
+  log, not into a second bullet. The authority is CLAUDE.md's "Session Memory
+  Protocol"; if the two ever disagree, CLAUDE.md wins and this text is the side
+  to fix
 - Convert any relative dates ("Thursday") to absolute (`2026-05-01`)
 - Update / remove open questions in `memory/project_open_questions.md`
 

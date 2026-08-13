@@ -161,7 +161,11 @@ The `/ingest-x` fields are unchanged. Four are added:
 | `raw_quote_en` | English translation; `raw_quote` stays in the original language |
 
 Where pass 2 reads a number off the chart that contradicts the transcript, the chart wins and the
-item records `corrected_from`.
+item records `corrected_from` — but **only when the chart value is DRAWN** (line, annotation,
+printed label, measured readout). A value inferred from where the live price ticker happens to sit
+is not a correction: it goes in `chart_read` while the spoken value stays in
+`entry`/`stop`/`target`. `corrected_from` carries chart-vs-transcript corrections only, never a
+symbol normalisation.
 
 ### Stream C line (`docs/plans/pundit-calls.jsonl`)
 
@@ -270,7 +274,7 @@ claim passes the human digest. Three cheap layers instead of one expensive one:
 | No captions and no ASR available | Skipped with a health note naming the reason |
 | Audio > Groq's 25 MB cap | Chunked. Low-bitrate opus keeps roughly three hours under the cap |
 | No chart on screen | Pass 2 returns `chart_present: false`; the note records it, so you learn which channels are worth frames |
-| Transcript contradicts chart | Chart wins; item records `corrected_from` — treated as evidence, not silently overwritten |
+| Transcript contradicts chart | Chart wins **on a DRAWN value only**; item records `corrected_from` — treated as evidence, not silently overwritten. A ticker-inferred reading goes in `chart_read`, not `corrected_from` |
 
 ## Testing
 
