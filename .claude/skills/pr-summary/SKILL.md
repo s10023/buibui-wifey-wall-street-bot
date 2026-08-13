@@ -113,9 +113,12 @@ Two repo-specific rules apply to every `gh` invocation here:
   default repo points at the crypto parent on purpose, so a bare `gh pr create`
   targets the wrong repo. This is a preference, not a bug — never "fix" it with
   `gh repo set-default`.
-- If `gh` fails with "Could not resolve to a Repository", that is the account,
-  not the permission: run `gh auth switch --user s10023`. Don't debug `gh`
-  config past that, and leave the active account on `s10023` afterwards.
+- **Never run `gh auth switch`** (user, 2026-08-13, reversing the earlier rule). The
+  active account stays on the work account permanently; reach s10023 by prefixing the
+  token instead, which attributes correctly on its own:
+  `GH_TOKEN=$(gh auth token --user s10023) gh <cmd> --repo s10023/buibui-wifey-wall-street-bot`.
+  If `gh` fails with "Could not resolve to a Repository", that is the account — add the
+  `GH_TOKEN` prefix rather than switching. Don't debug `gh` config past that.
 
 ## Conventional commit types for PR titles
 

@@ -114,6 +114,10 @@ Config schema validation and the two universe loaders.
   `days` of history as of the fixed `membership_as_of` snapshot. Pure (no DB), reproducible,
   identity for `days ≤ 0`, untagged members always kept; default-off (`None`) keeps every member
   byte-identically. Forward-prep for the G1-gated XS-momentum sleeve's uniform lookback.
+  **"Untagged members always kept" is why the seam fails open**: it was tagged on 3 of 505 by hand
+  until 2026-08-13, so a 1-year floor dropped **0** members. Now **26**, stamped from the DB by
+  `tools/stamp_universe_listed.py` (`make universe-stamp-listed`) — re-run it after any membership
+  or backfill change, since a new constituent arrives untagged. → `context/tools.md`
 
 ### telegram.py / telegram_router.py
 

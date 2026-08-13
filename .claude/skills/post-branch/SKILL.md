@@ -916,6 +916,25 @@ blocks stop being read at all, which costs more than the deleted content ever
 would. **Report the before/after line count** when you rewrite it, so the trend
 is visible rather than discovered.
 
+**The stamp is ONE line, and it lives in the handoff itself** — near the top, so
+the next run sees the trend before it starts adding. Read the old count first
+(`wc -l < docs/plans/next-conversation-prompt.md`), write the new file, then
+overwrite that one line in place with the new count:
+
+```markdown
+Line count: <new> (prev <n-1>, <n-2>, <n-3>, <n-4>) — <one clause: why up or down>.
+```
+
+Keep the history to four priors; drop the oldest. **One line in, one line out** —
+the stamp is line-neutral, so it converges in a single pass and its own count
+never invalidates the number it just reported.
+
+**Do not reflow it into a paragraph.** A multi-line stamp cannot describe the
+file that contains it: adding lines changes the count, so the figure is stale the
+moment it is written and the next run "corrects" it into a different wrong
+number. That is not hypothetical — it was wrong **eleven runs running** (through
+2026-08-13) for exactly this reason, and the fix is the shape, not more care.
+
 ### Operator actions: verify the command resolves in THIS repo
 
 When writing an operator action into the handoff, **name the exact command,

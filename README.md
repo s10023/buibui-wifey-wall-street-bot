@@ -134,12 +134,20 @@ date. Membership is **point-in-time-bounded, not scraped**: for mega-caps
 in-sample delisting is ≈ 0, so the universe declares the selection bias rather
 than chasing paywalled delisted-price history. For pooled cross-sectional studies
 that need a uniform lookback, `load_research_universe(min_history_days=…)`
-excludes short-history names (e.g. GEV/PLTR/UBER) via that `listed` seam.
+excludes short-history names via that `listed` seam — carried by all **26**
+members that list after the backfill floor (first NYSE session at/after
+`SINCE`, i.e. 2018-01-02), stamped from DB first-1d-bar ground truth by
+`make universe-stamp-listed`. A first bar *on* the floor is shared by 477
+truncated survivors and so is deliberately left unstamped. Because an absent
+`listed` reads as "full-history", **re-run the stamper after any membership or
+backfill change** — a new constituent arrives unstamped.
 
 ```bash
 make wifey-universe-backfill      # ingest the breadth universe OHLCV (4h/1d/1wk)
 make universe-coverage            # read-only coverage report (bars + date range,
                                   # missing-symbol roll-up, lifecycle-bias header)
+make universe-stamp-listed        # reconcile the `listed` history seam against the
+                                  # DB (report-only; WRITE=1 rewrites the file)
 # or directly:
 poetry run python wifey.py analytics backfill --universe --timeframes 4h 1d 1wk
 ```

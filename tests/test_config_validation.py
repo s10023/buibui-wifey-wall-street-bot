@@ -608,34 +608,93 @@ class TestShippedUniverseFile:
         assert "survivorship" in uni.policy.survivorship_note.lower()
 
     def test_shipped_short_history_names_are_tagged(self) -> None:
-        # the post-2018 listings carry a `listed` date; everyone else is None
+        """Every post-floor listing carries its first-1d-bar date.
+
+        Stamped from DB ground truth by ``tools/stamp_universe_listed.py``. Until
+        2026-08-13 only **3 of 505** members were tagged (GEV/PLTR/UBER, by hand),
+        so ``min_history_days`` filtered almost nothing — FDXF cleared an 8-year
+        floor on 17 bars, because an absent ``listed`` means "full-history
+        survivor". The tool reproduced all three hand-stamped dates exactly and
+        added the other 23.
+        """
         uni = load_research_universe(Path("config/universe.json"))
         listed = {m.symbol: m.listed for m in uni.members if m.listed is not None}
         assert listed == {
+            "VRT": "2018-08-02",
+            "MRNA": "2018-12-07",
+            "FOXA": "2019-03-12",
+            "DOW": "2019-03-20",
             "UBER": "2019-05-10",
+            "CTVA": "2019-05-24",
+            "CRWD": "2019-06-12",
+            "DDOG": "2019-09-19",
+            "CARR": "2020-03-19",
+            "OTIS": "2020-03-19",
             "PLTR": "2020-09-30",
+            "DASH": "2020-12-09",
+            "ABNB": "2020-12-10",
+            "EXE": "2021-02-10",
+            "COIN": "2021-04-14",
+            "APP": "2021-04-15",
+            "HOOD": "2021-07-29",
+            "CEG": "2022-01-19",
+            "GEHC": "2022-12-15",
+            "KVUE": "2023-05-04",
+            "VLTO": "2023-10-04",
+            "SOLV": "2024-03-26",
             "GEV": "2024-03-27",
+            "SNDK": "2025-02-13",
+            "Q": "2025-10-27",
+            "FDXF": "2026-05-27",
         }
 
+    def test_no_shipped_listed_date_sits_at_the_truncation_floor(self) -> None:
+        """A ``listed`` date at/below the backfill floor is a truncation artifact.
+
+        Our 1d history starts at the universe backfill's ``--since`` (2018-01-01 →
+        first NYSE session 2018-01-02), so 477 survivors share that first bar and
+        it carries no listing information. Stamping it would assert a listing date
+        the sample cannot evidence and would make ``with_min_history`` drop
+        full-history names. No DB is reachable from the suite, so this is the
+        invariant that can be checked here — it fails if the stamper's floor rule
+        is ever loosened.
+        """
+        uni = load_research_universe(Path("config/universe.json"))
+        floor = "2018-01-02"
+        at_or_below = sorted(
+            m.symbol for m in uni.members if m.listed is not None and m.listed <= floor
+        )
+        assert not at_or_below, (
+            f"listed <= backfill floor {floor} for {at_or_below} — a truncated "
+            "survivor stamped as a listing"
+        )
+
     def test_shipped_min_history_filter_drops_recent_listings(self) -> None:
-        # as of membership_as_of (2026-06-16) the three tagged names carry
-        # 2594 (UBER) / 2085 (PLTR) / 811 (GEV) days of history.
-        full = load_research_universe(Path("config/universe.json"))
-        # a ~3yr floor drops only GEV (PLTR/UBER comfortably clear it)
-        three_yr = load_research_universe(
-            Path("config/universe.json"), min_history_days=365 * 3
-        )
-        assert set(full.symbols()) - set(three_yr.symbols()) == {"GEV"}
-        # a ~6yr floor additionally drops PLTR; UBER (≈7.1yr) survives
-        six_yr = load_research_universe(
-            Path("config/universe.json"), min_history_days=365 * 6
-        )
-        assert set(full.symbols()) - set(six_yr.symbols()) == {"PLTR", "GEV"}
-        # an ~8yr floor drops all three post-2018 listings
-        strict = load_research_universe(
-            Path("config/universe.json"), min_history_days=365 * 8
-        )
-        assert set(full.symbols()) - set(strict.symbols()) == {"UBER", "PLTR", "GEV"}
+        """The filter must actually bite — the point of the N3 residual fix.
+
+        Anchored to ``membership_as_of`` (2026-06-16), not today. Before the
+        2026-08-13 restamp a 1-year floor dropped **nothing** at all; the counts
+        below are the whole reason the seam exists.
+        """
+        path = Path("config/universe.json")
+        full = load_research_universe(path)
+        dropped = {
+            days: set(full.symbols())
+            - set(load_research_universe(path, min_history_days=days).symbols())
+            for days in (365, 365 * 3, 365 * 6, 365 * 8)
+        }
+        # a 1yr floor drops the two shortest histories (FDXF has 17 bars, Q 162)
+        assert dropped[365] == {"FDXF", "Q"}
+        # each wider floor is a superset of the narrower one, and all 26 tagged
+        # names fall out by ~8yr (only the 2018-01-02 floor cohort + the two
+        # deeper-history ETFs survive)
+        assert dropped[365] < dropped[365 * 3] < dropped[365 * 6] < dropped[365 * 8]
+        assert len(dropped[365 * 3]) == 6
+        assert len(dropped[365 * 6]) == 16
+        assert dropped[365 * 8] == {
+            m.symbol for m in full.members if m.listed is not None
+        }
+        assert len(dropped[365 * 8]) == 26
 
     def test_note_states_the_true_member_counts(self) -> None:
         """The self-description must match the file, or it is provenance fiction.
