@@ -161,8 +161,10 @@ the table the sweep writes) and is settled — see CLAUDE.md.
 ## When NOT to use
 
 - For a single-combo or one-off backtest, use `/backtest-run` or
-  `make wifey-backtest` directly. `db-update` always touches all 3 configs and
-  rewrites every golden file — overkill for a single-strategy investigation.
+  `make wifey-backtest` directly. `db-update` always touches both signal_watch
+  configs (`signal_watch.toml` + `signal_watch_weekdays.toml` — `strategy_params.toml`
+  is the shared base they inherit, not a third run) and rewrites every golden file —
+  overkill for a single-strategy investigation.
 - For a tp_r refresh on one config, use `/wfo-sweep` (per-config WFO chain) —
   it's the trusted production path for tp_r tuning.
 

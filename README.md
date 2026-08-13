@@ -901,7 +901,12 @@ The Makefile provides easy commands for all major actions:
 make lint           # Lint Markdown and Python (excludes venv)
 make lint-py        # Lint + format Python with ruff
 make typecheck      # Type check with mypy
+make docs-index     # Regenerate the audit + spec indexes
 ```
+
+`docs/audits/INDEX.md` and `docs/superpowers/specs/INDEX.md` are **generated** —
+edit the docs, then run `make docs-index`. `tests/test_docs_index.py` fails when a
+new audit or spec lands unindexed, so the indexes cannot drift silently.
 
 **Install/Update dependencies:**
 

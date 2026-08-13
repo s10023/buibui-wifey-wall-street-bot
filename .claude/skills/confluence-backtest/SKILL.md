@@ -82,7 +82,7 @@ search for an HTF signal), `--workers N`, `--day-filter`, `--min-trades`,
 
 ## Post-run health check
 
-After any `SAVE=1` run — and especially after refreshing all three configs —
+After any `SAVE=1` run — and especially after refreshing both signal_watch configs —
 spot-check the resulting tables before drawing conclusions:
 
 ```bash

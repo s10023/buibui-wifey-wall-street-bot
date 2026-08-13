@@ -28,6 +28,12 @@ make test           # full pytest suite (no coverage; use `make test-cov` for th
 
 For Markdown changes: `make lint-md` — this covers `.claude/` (skills and context) as of 2026-08-05, so a skill edit lints like any other file and CI fails on a violation. No special invocation is needed; do not re-add a `!.claude` exclusion to `.markdownlint-cli2.jsonc` (the tree accumulated 245 issues while it was excluded, and the excluded-tree failure mode is silent — see `/post-branch` step 4).
 
+After adding or renaming a file in `docs/audits/` or `docs/superpowers/specs/`: `make docs-index`.
+Both `INDEX.md` files are **generated** (`tools/docs_index.py`) and
+`tests/test_docs_index.py` regenerates them and compares byte-for-byte, so an unindexed
+audit or spec **fails the suite** rather than rotting quietly. `make docs-index-check`
+verifies without writing.
+
 For UI / API changes: `make web-build` (production bundle) or `make web-dev` (Vite dev server).
 
 For routine DB refresh after backtest/strategy changes: `make db-update` (= `db-update-backtest` → `db-update-recalibrate` → `regression-update` → `check-dead-surfaces`). The last step reports `(strategy × timeframe)` cells where declaration and output disagree in **either** direction — declared-but-dead (detector never fires, so a dead surface can't hide behind rows that merely exist) and rated-but-undeclared (a `confidence_ratings` row outliving the config that produced it). It never blocks the refresh, but the completion banner is **conditional on it**: a failure prints a warning instead of `✅`. Run `make check-dead-surfaces` alone for a non-zero exit.

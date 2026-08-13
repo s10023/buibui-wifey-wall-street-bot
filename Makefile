@@ -11,13 +11,21 @@ DEV_PORT ?= 5173
 PYTHON_FILES = $(shell find . -name "*.py" -not -path "./venv/*" -not -path "./.venv/*")
 DOCKER_IMAGE = wifey-bot
 
-.PHONY: lint lint-md lint-md-fix lint-py-check lint-py typecheck test test-cov test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-universe-backfill universe-coverage wifey-forecast-audit wifey-xsmom-audit wifey-xsmom-residual-audit wifey-lowvol-audit wifey-xasset-audit wifey-xasset-backfill wifey-pead-audit wifey-pead-backfill wifey-exit-audit wifey-pundit-score wifey-check-levels wifey-route-dedup-seed wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep backup backup-dry-run wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent check-dead-surfaces check-orphan-tests wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
+.PHONY: lint lint-md lint-md-fix docs-index docs-index-check lint-py-check lint-py typecheck test test-cov test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-universe-backfill universe-coverage wifey-forecast-audit wifey-xsmom-audit wifey-xsmom-residual-audit wifey-lowvol-audit wifey-xasset-audit wifey-xasset-backfill wifey-pead-audit wifey-pead-backfill wifey-exit-audit wifey-pundit-score wifey-check-levels wifey-route-dedup-seed wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep backup backup-dry-run wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent check-dead-surfaces check-orphan-tests wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
 
 lint: lint-md lint-py
 
 lint-md:
 	@echo "🔍 Running markdownlint on all Markdown files..."
 	npx markdownlint-cli2
+
+docs-index:
+	@echo "📚 Regenerating the audit + spec indexes..."
+	poetry run python tools/docs_index.py
+
+docs-index-check:
+	@echo "📚 Checking the audit + spec indexes are current..."
+	poetry run python tools/docs_index.py --check
 
 lint-md-fix:
 	@echo "🔍 Running markdownlint on all Markdown files..."
@@ -338,7 +346,12 @@ go-live-prep:
 
 # Run ONE signal-alert scan cycle (sync → scan → alert → outcome backfill), then exit.
 # Telegram ON. Built for once-a-day manual / cron use — no long-running daemon.
-# Run it after the US market close on trading days. Override config:
+# Run it PRE-OPEN (before 13:30 UTC) on trading days — NOT after the US close.
+# yfinance stamps a 1d bar at 04:00 UTC (05:00 under EST) and it forms for a full
+# tf_ms, so Tuesday's daily bar does not close until Wed 04:00/05:00 UTC: at the
+# 20:00/21:00 UTC close it is still forming and that session's 1d signals cannot
+# alert. The last 4h RTH bar (17:30 UTC) closes at 21:30 UTC, also after the bell.
+# A pre-open run is safely past both. Override config:
 #   make go-live GO_LIVE_CONFIG=config/signal_watch_weekdays.toml
 # To run as a continuous daemon instead (self-syncs + sleeps to candle boundaries),
 # drop the once flag: make wifey-signal-watch CONFIG=... TELEGRAM=1

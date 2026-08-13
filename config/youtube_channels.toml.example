@@ -103,10 +103,13 @@ intro_recap_s = 0
 # a no-op and a value above 13 is harmful. Raise the GLOBAL constants instead if a
 # roundup channel genuinely needs more.
 #
-# ⚠ Relay attribution (#558) needs `config/pundit_roster.toml`, which is parent #557 and
-# is NOT PORTED yet: until it is, a relayed call cannot resolve the originating trader and
-# `x_route`'s `unattributable` flag drops it rather than crediting the relaying channel.
-# So this block is documentation, not a working configuration.
+# ⚠ Relay attribution is NOT PORTED — neither half. `config/pundit_roster.toml` is parent
+# #557 and the routing side is parent #558; wifey's `route_target(content_type, verdict)`
+# takes two params and has no attribution flags at all, so there is nothing here to drop a
+# relayed call OR to credit the relaying channel — the distinction simply does not exist
+# yet. (The `unattributable` flag named in the parent's copy of this file is the parent's;
+# `grep -rn unattributable tools/` returns nothing here.) Port #557 and #558 together or
+# neither. So this block is documentation, not a working configuration.
 # [[channel]]
 # id = "UCxxxxxxxxxxxxxxxxxxxxxx"
 # name = "example roundup channel"
