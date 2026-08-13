@@ -402,6 +402,34 @@ refreshed", not "refresh failed".
 **Run:** `PYTHONPATH=. poetry run python tools/combo_health.py [--db PATH] [--fresh-hours N]`
 after `make wifey-combo-backtest` / `make wifey-cross-tf-backtest` (both `SAVE=1`).
 
+## warning_value_audit.py — do the W1–W8 alert warnings predict avg_r?
+
+Ported from parent #492. **This is the tool that WIRED `analytics/audit_guard.py`** — the guard
+sat hostless through Phase N2 because the obvious host (`tools/gate_audit.py`) needs
+`low_volume`/`volume_spike` on `backtest_trades`, columns wifey never had, and skipping that
+migration fails **silently** via `fillna(False)`. This audit needs neither: it re-derives its
+flags from OHLCV. Closing that gap closed SoT N2.
+
+Regenerates each historical trade's six candle-warning flags through `analytics/warning_audit.py`
+(which imports the live `alert_formatter` helpers rather than reimplementing them) and emits a
+pre-committed SUPPRESS-CANDIDATE / REVERSE / COSMETIC / INSUFFICIENT verdict per
+(warning × direction) — bootstrap CI clearing ±`bar` **and** a Holm-adjusted p, one family per
+source. `backtest_trades` is primary and deduped across saved runs on
+`(symbol, tf, strategy, direction, signal_time)`; `signal_alert_outcomes` is corroboration only.
+Read-only.
+
+**`_tf_ms` delegates to `parse_timeframe_secs` — do not "simplify" it back to a literal map.**
+Upstream's map spells the weekly timeframe `1w`; every equity surface here uses `1wk`, which
+carries 497 signals, so a verbatim copy raises `KeyError` on the first real run.
+`TestTimeframeLength` pins this and was mutation-checked in both directions.
+
+**First run (2026-08-13): 11 of 12 backtest cells COSMETIC, one SUPPRESS-CANDIDATE —
+`w5_wick_rejection`/long** (n=316 warned at −0.315R vs −0.037R clean; Holm p=0.002; sign holds on
+all three timeframes and on 5 of 6 strategies). **Not shipped as a gate** — the live substrate has
+n=1 for that cell. Verdict + caveats: `docs/audits/2026-08-13-warning-value-audit.md`.
+
+**Run:** `make wifey-warning-value-audit` (`ARGS="--source live|backtest|both --min-n N --out PATH"`).
+
 ## pundit_score.py — read-only scorer for the Stream-C pundit ledger
 
 Ported from the parent. Resolves every `docs/plans/pundit-calls.jsonl` call against stored
