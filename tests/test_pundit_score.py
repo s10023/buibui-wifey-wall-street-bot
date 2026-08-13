@@ -21,6 +21,7 @@ from analytics.store.market_data import upsert_ohlcv
 from analytics.store.schema import init_schema
 from analytics.trading_calendar import nyse_sessions
 from tools.pundit_score import (
+    AUDIT_ELIGIBLE_N,
     CellStats,
     LedgerCall,
     Override,
@@ -28,6 +29,7 @@ from tools.pundit_score import (
     _cell_dict,
     _cell_table,
     aggregate,
+    audit_eligible_cells,
     bar_close_ms,
     bar_outcome,
     build_parser,
@@ -980,6 +982,37 @@ class TestAggregateAndOutputs:
         assert a.hit_rate == 1.0 and a.avg_r == 2.0
         assert (b.n, b.resolved, b.wins) == (1, 1, 0)
         assert b.avg_r == -1.0
+
+    def test_audit_eligible_cells_is_inclusive_at_the_threshold(self) -> None:
+        # `>=`, not `>`. The whole point is to notice the crossing, and an
+        # off-by-one here would delay the notice by one observation forever.
+        cells = {
+            "under": CellStats(n=AUDIT_ELIGIBLE_N - 1),
+            "at": CellStats(n=AUDIT_ELIGIBLE_N),
+            "over": CellStats(n=AUDIT_ELIGIBLE_N + 5),
+        }
+        assert audit_eligible_cells(cells) == ["at", "over"]
+
+    def test_audit_eligible_cells_empty_when_nothing_qualifies(self) -> None:
+        assert audit_eligible_cells({"a": CellStats(n=1)}) == []
+
+    def test_report_notes_the_crossing_and_says_no_gate_fires(self) -> None:
+        # 15 copies of the fixture puts author A at n=30 -- exactly the boundary
+        # (the fixture is [A, B, A], so each copy adds 2 to A).
+        scored = _scored_fixture() * 15
+        report = render_report(scored, [], "2026-08-04T00:00:00Z", 5)
+        assert f"n≥{AUDIT_ELIGIBLE_N}" in report
+        # It must say plainly that nothing fires. This notice replaced a
+        # docstring that implied a live n>=30 gate; restating the same false
+        # promise in the report would just move the defect.
+        assert "No gate is implemented here and none fires" in report
+        assert "A" in report
+
+    def test_report_is_silent_when_no_cell_has_crossed(self) -> None:
+        # Negative control: without this, a NOTE printed unconditionally would
+        # pass the test above while telling the operator nothing.
+        report = render_report(_scored_fixture(), [], "2026-08-04T00:00:00Z", 5)
+        assert f"n≥{AUDIT_ELIGIBLE_N}" not in report
 
     def test_render_report_sections_and_audit_trail(self) -> None:
         report = render_report(

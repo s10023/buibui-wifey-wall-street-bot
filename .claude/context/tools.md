@@ -434,9 +434,22 @@ n=1 for that cell. Verdict + caveats: `docs/audits/2026-08-13-warning-value-audi
 
 Ported from the parent. Resolves every `docs/plans/pundit-calls.jsonl` call against stored
 OHLCV → hit-rate + R proxies per author × setup-family × direction, plus a machine-readable
-`docs/plans/pundit-priors.json` sidecar. **Descriptive priors only — no ENABLE/DISABLE gating**
-(the parent defers that until a cell earns n≥30). Level parsing, family tagging, roll-up and
+`docs/plans/pundit-priors.json` sidecar. Level parsing, family tagging, roll-up and
 output shape are byte-identical to the parent so the two ledgers stay comparable.
+
+**Descriptive priors only — NO gate is implemented, and the docstring used to imply one**
+(parent #582's A7, ported 2026-08-13). It read *"audit_guard gates come later, only if a
+cell earns n>=30"*, which reads as a live threshold; the only implemented construct is
+`--min-n` (default 5), which renders a `⚠` marker and changes no output. **Nothing happened
+when a cell crossed 30.** The claim is wrong a second and worse way here than upstream:
+wifey *does* have a wired `audit_guard` since #183 (`analytics/warning_audit.py`), but it
+scores the **W1–W8 signal warnings** and no code path joins it to pundit cells — so the
+sentence read as a forward reference to something that had since arrived. `AUDIT_ELIGIBLE_N
+= 30` does **not** restore a gate: `audit_eligible_cells()` returns cell *keys*, and
+`render_report` prints a NOTE saying in words that none fires, so the crossing stops being
+silent. **Deciding what a pundit prior should gate is an open research question** — do not
+wire this to anything without answering it. Preventive today: the largest author cell is
+**n=13** of 19 ledger rows, so the NOTE fires on **zero** cells (`make wifey-pundit-score`).
 
 `load_ledger` enforces three field domains at the read boundary via the pure
 `analytics/pundit_{direction,horizon,authors}.py` guards (parent #560/#561/#555 — see
