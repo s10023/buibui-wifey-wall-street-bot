@@ -628,24 +628,34 @@ parent #466/#467; spec `docs/superpowers/specs/2026-06-30-x-post-ingest-design.m
 ## x_route.py — routing decision and shared level sign-check
 
 Pure routing decision **and** the shared level sign-check for the ingest skills.
-`route_target(content_type, verdict) -> str | None` is the content-type gate
+`route_target(content_type, verdict, *, retrospective=False, rejected=False) -> str | None`
+is the content-type gate
 setup/mechanic/claim → the research pipeline's 4-bucket verdict taxonomy on the claim path →
 Stream A `thesis-inbox.md` / B `mechanics-backlog.md` / C `pundit-calls.jsonl`, or drop.
 
-**The only thing that can drop a `setup` here is the CONTENT-TYPE gate — there are no
-suppressor arguments** (2026-08-13). The parent's signature carries three keyword-only
-flags (`retrospective`, `rejected`, `unattributable`) and returns `None` for a `setup`
-with any of them set; wifey's takes **none** of the three, and `x_route.py` contains the
-string `retrospective` **zero** times against **3** upstream. Consequences, both live:
-`/ingest-video`'s pass 1 *does* emit `retrospective` / `is_intro_recap`, so a call lifted
-from a channel's recap block routes to `pundit-calls.jsonl` anyway, carrying **today's**
-`call_ts_utc` — scoring the author on an already-resolved trade, which is precisely what
-the upstream suppressor exists to prevent. And a `setup` the speaker walked through and
-then argued **against** routes identically (upstream's `rejected`; it shipped there once
-and was caught only by a human reading the digest). **The step-7 digest is wifey's entire
-control** — which is why `/ingest-video` 7c prints both flags. `unattributable` is a
-separate matter: it belongs to the relay-attribution work (parent #558), deliberately not
-ported. Restoring the other two is a code change, not a doc fix.
+**Two keyword-only suppressors drop a `setup`** — `retrospective` and `rejected`, both
+defaulting to `False` (parent #521, ported 2026-08-13). A `setup` with either returns
+`None`; a `mechanic`/`claim` is unaffected on purpose, since neither has an entry to
+decline and honouring the flag there would let one mis-set field delete a routable item.
+
+**They were missing here for 13 days and the gap was invisible.** wifey ported this file
+on 2026-07-31 (#123); the parent added the suppressors on 2026-08-01 (#521) — a timing
+artifact, not an equity divergence. What hid it: **wifey's #130 cites `#518/#521` in its
+own title** while porting only #521's `route_dedup` half, so the PR number reads as
+"already applied" to any check keyed on citations. **A PR cited in a port commit is not
+evidence that every half of it landed** — #521 touched `x_route.py` *and*
+`tests/test_x_route.py`, and #130 touched the first by 14 lines and the second not at all.
+
+Live consequence while it was missing: `/ingest-video`'s pass 1 *does* set `retrospective`
+on a setup lifted from a channel's intro recap, and nothing read it — so the call routed
+to `pundit-calls.jsonl` carrying **today's** `call_ts_utc` and was scored on an
+already-resolved trade. **Zero rows were actually damaged** (all 19 ledger rows predate
+the flags and none carries either field), so this is preventive.
+
+**`unattributable` is the parent's third suppressor and is deliberately absent** — it
+belongs to the relay-attribution work (#558), which this fork has refused. **Callers must
+pass the flags explicitly**; defaulting to `False` means a forgetful call site fails open
+and silently, which is exactly how the original gap survived.
 
 `check_level_order(direction, *, entry, stop, target) -> str` (2026-08-04) is the sign-check: a
 long must satisfy `stop < entry < target`, a short `target < entry < stop`; every pair whose
