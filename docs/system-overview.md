@@ -12,12 +12,18 @@ last revised 2026-05-13, one day before the fork, and are still largely the cryp
 parent's** — read them as history, not as this repo's state.
 
 > **⚠ Provenance warning — this doc is a hybrid.** It was inherited from
-> `buibui-moon-trader-bot` and only patched twice since (PR #143's gate row, and §1
-> here). Concretely known wrong below §1, measured 2026-08-13:
+> `buibui-moon-trader-bot` and has been touched **four times since the fork** (#3, #22,
+> #35, #143) — never by more than 3 lines at once, **8 added lines in total**
+> (`git log --numstat --follow -- docs/system-overview.md`). Its last substantive
+> revision is the parent's. That is why the `buibui → wifey` rename in #3 left §1 still
+> printing `buibui analytics backfill` until today. Concretely known wrong below §1,
+> measured 2026-08-13:
 >
 > - **`liquidity_sweep` does not exist in this fork** (`ls analytics/strategies/`), so
 >   the old headline "measured live edge +0.089R on `liquidity_sweep 1h`" describes the
->   parent, not wifey. Same for `smt_divergence` / `cvd_divergence` / `funding_extreme`.
+>   parent, not wifey. `smt_divergence` and `cvd_divergence` are likewise absent.
+>   `funding_extreme.py` is the opposite trap — the **module is still here**, but it is
+>   in neither registry and funding rates do not exist for equities.
 > - **"20 strategies registered; 16 enabled"** — the real counts are **18 detector
 >   modules, 17 in `STRATEGY_REGISTRY`, 16 in `DETECTOR_REGISTRY`** (dispatch;
 >   `seasonality` is excluded because it returns stats, not signals).
