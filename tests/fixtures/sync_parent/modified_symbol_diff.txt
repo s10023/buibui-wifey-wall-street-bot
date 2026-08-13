@@ -1,0 +1,17 @@
+diff --git a/tools/x_route.py b/tools/x_route.py
+index 3333333..4444444 100644
+--- a/tools/x_route.py
++++ b/tools/x_route.py
+@@ -40,7 +40,15 @@ ROUTE_MAP = {}
+-def route_target(content_type: str, verdict: str) -> str | None:
++def route_target(
++    content_type: str,
++    verdict: str,
++    *,
++    retrospective: bool = False,
++    rejected: bool = False,
++) -> str | None:
+     """Route a classified item to its stream."""
++    if content_type == "setup" and (retrospective or rejected):
++        return None
+     return ROUTE_MAP.get(verdict)

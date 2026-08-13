@@ -384,19 +384,177 @@ def classify_pr(pr: PR, wifey_paths: list[WifeyPath]) -> Bucket:
 _ADDED_DEF_RE = re.compile(r"^\+\s*(?:async\s+)?def\s+([A-Za-z_]\w+)")
 _ADDED_CLASS_RE = re.compile(r"^\+\s*class\s+([A-Za-z_]\w+)")
 _ADDED_CONST_RE = re.compile(r"^\+([A-Z_][A-Z0-9_]{3,})\s*[:=]")
+_REMOVED_DEF_RE = re.compile(r"^-\s*(?:async\s+)?def\s+([A-Za-z_]\w+)")
+_REMOVED_CLASS_RE = re.compile(r"^-\s*class\s+([A-Za-z_]\w+)")
+_REMOVED_CONST_RE = re.compile(r"^-([A-Z_][A-Z0-9_]{3,})\s*[:=]")
+
+# Only tokens used SYNTACTICALLY — a parameter, kwarg, assignment target, call or
+# subscript. A plain `\w+` sweep also harvests docstring prose ("already",
+# "behaviour"), and since the wifey grep is repo-wide those English words match
+# *something* almost always, which inflates the ladder back to HIGH — the very
+# failure this resolver exists to prevent.
+_IDENTIFIER_RE = re.compile(r"([A-Za-z_]\w{2,})\s*(?=[=(,:)\[\]])")
+
+# Tokens that carry no porting signal: language keywords, common builtins and
+# typing names. Without this the identifier set fills with `str`/`None`/`return`
+# and the confidence ladder is pinned at MEDIUM whatever the truth is.
+_NOISE_TOKENS = frozenset(
+    [
+        "and",
+        "any",
+        "anyway",
+        "are",
+        "async",
+        "await",
+        "bool",
+        "break",
+        "callable",
+        "class",
+        "continue",
+        "def",
+        "del",
+        "dict",
+        "elif",
+        "else",
+        "except",
+        "False",
+        "finally",
+        "float",
+        "for",
+        "from",
+        "global",
+        "has",
+        "if",
+        "import",
+        "in",
+        "int",
+        "is",
+        "lambda",
+        "list",
+        "len",
+        "None",
+        "nonlocal",
+        "not",
+        "or",
+        "pass",
+        "raise",
+        "return",
+        "self",
+        "set",
+        "str",
+        "the",
+        "True",
+        "try",
+        "tuple",
+        "type",
+        "while",
+        "with",
+        "yield",
+        "Any",
+        "Callable",
+        "Dict",
+        "Iterable",
+        "List",
+        "Optional",
+        "Sequence",
+        "Union",
+        "cls",
+        "args",
+        "kwargs",
+    ]
+)
+
+
+@dataclass(frozen=True)
+class SymbolChanges:
+    """What a diff did to top-level symbols — added vs merely modified.
+
+    The distinction is the whole point. A NEW symbol's name is real evidence: if
+    wifey has it, the port landed. A MODIFIED symbol's name is **no evidence at
+    all** — a signature change re-emits the ``def`` line, so the name sits on
+    both sides and a name-presence grep matches the *old* version.
+    ``new_identifiers`` carries what the modification actually introduced.
+    """
+
+    added: list[str]
+    modified: list[str]
+    new_identifiers: list[str]
+
+
+def _match_first(patterns: tuple[re.Pattern[str], ...], line: str) -> str | None:
+    for pattern in patterns:
+        m = pattern.match(line)
+        if m:
+            return m.group(1)
+    return None
+
+
+def extract_symbol_changes(diff_text: str) -> SymbolChanges:
+    """Split a unified diff's top-level symbols into added vs modified.
+
+    A symbol touched on BOTH sides (``-def foo`` and ``+def foo``) was modified,
+    not added. Verified against parent #521, whose whole payload was two new
+    kwargs on an existing ``route_target``: the old resolver read
+    ``+def route_target(`` as an addition, grepped the bare name, found wifey's
+    two-arg version and returned HIGH — a false ALREADY-APPLIED on a port that
+    was in fact missing. The removed-side hunk was in the diff the whole time.
+    """
+    added_pats = (_ADDED_DEF_RE, _ADDED_CLASS_RE, _ADDED_CONST_RE)
+    removed_pats = (_REMOVED_DEF_RE, _REMOVED_CLASS_RE, _REMOVED_CONST_RE)
+    plus_syms: list[str] = []
+    minus_syms: set[str] = set()
+    plus_tokens: set[str] = set()
+    seen_elsewhere: set[str] = set()
+
+    in_hunk = False
+    for line in diff_text.splitlines():
+        # Only parse inside hunks. `git show` without `--format=` prepends the
+        # commit message, whose prose lines carry no diff prefix and would
+        # otherwise read as context — silently subtracting the very identifiers
+        # the change introduced whenever the message describes them.
+        if line.startswith("diff --git"):
+            in_hunk = False
+            continue
+        if line.startswith("@@"):
+            in_hunk = True
+            continue
+        if not in_hunk or line.startswith(("+++", "---")):
+            continue
+        if line.startswith("+"):
+            sym = _match_first(added_pats, line)
+            if sym and sym not in plus_syms:
+                plus_syms.append(sym)
+            if not line[1:].lstrip().startswith("#"):
+                plus_tokens.update(_IDENTIFIER_RE.findall(line))
+        elif line.startswith("-"):
+            sym = _match_first(removed_pats, line)
+            if sym:
+                minus_syms.add(sym)
+            seen_elsewhere.update(_IDENTIFIER_RE.findall(line))
+        else:
+            # Context line: unchanged code, so every token on it already existed.
+            seen_elsewhere.update(_IDENTIFIER_RE.findall(line))
+
+    added = [s for s in plus_syms if s not in minus_syms]
+    modified = [s for s in plus_syms if s in minus_syms]
+    # Identifiers the change INTRODUCED: on the added side, absent from both the
+    # removed and the context lines, not a symbol name, and not pure noise.
+    new_identifiers = sorted(
+        t
+        for t in plus_tokens - seen_elsewhere - set(plus_syms)
+        if t not in _NOISE_TOKENS
+    )
+    return SymbolChanges(
+        added=added, modified=modified, new_identifiers=new_identifiers
+    )
 
 
 def extract_added_symbols(diff_text: str) -> list[str]:
-    """Pull added function / class / module-constant names from a unified diff."""
-    symbols: list[str] = []
-    for line in diff_text.splitlines():
-        if line.startswith("+++") or not line.startswith("+"):
-            continue
-        for pattern in (_ADDED_DEF_RE, _ADDED_CLASS_RE, _ADDED_CONST_RE):
-            m = pattern.match(line)
-            if m and m.group(1) not in symbols:
-                symbols.append(m.group(1))
-    return symbols
+    """Pull **genuinely new** function / class / module-constant names from a diff.
+
+    Modified symbols are deliberately excluded — see ``extract_symbol_changes``.
+    """
+    return extract_symbol_changes(diff_text).added
 
 
 def _wifey_grep(symbol: str) -> bool:
@@ -431,6 +589,26 @@ def detect_already_applied(
     if matched == len(symbols):
         return Confidence.HIGH
     return Confidence.MEDIUM
+
+
+def resolve_confidence(
+    changes: SymbolChanges,
+    grep: Callable[[str], bool] = _wifey_grep,
+) -> Confidence:
+    """Decide WHICH symbols are admissible evidence, then run the ladder.
+
+    A new symbol's name is evidence. A modified symbol's name is not, so the
+    evidence becomes the identifiers the modification introduced. A PR that only
+    modifies existing symbols and introduces no new identifier is **UNKNOWN** —
+    this reports "cannot tell" rather than guessing, because guessing here is
+    what produced the #521 miss.
+    """
+    evidence = list(changes.added)
+    if changes.modified:
+        evidence.extend(changes.new_identifiers)
+    if not evidence:
+        return Confidence.UNKNOWN
+    return detect_already_applied(evidence, grep=grep)
 
 
 # --------------------------------------------------------------------------- #
@@ -691,10 +869,24 @@ def run_pipeline(prs: list[PR], memory_text: str) -> list[PRReport]:
         wifey_paths = translate_paths(pr.files)
         bucket = classify_pr(pr, wifey_paths)
         excerpt = extract_memory_entry(pr.number, memory_text) if pr.number else None
-        symbols: list[str] = []
+        added: list[str] = []
+        modified: list[str] = []
+        new_identifiers: list[str] = []
         for commit in pr.commits:
-            symbols.extend(extract_added_symbols(_commit_diff(commit.sha)))
-        confidence = detect_already_applied(symbols) if symbols else Confidence.UNKNOWN
+            ch = extract_symbol_changes(_commit_diff(commit.sha))
+            added.extend(s for s in ch.added if s not in added)
+            modified.extend(s for s in ch.modified if s not in modified)
+            new_identifiers.extend(
+                s for s in ch.new_identifiers if s not in new_identifiers
+            )
+        # A symbol added by one commit and modified by a later one in the same PR
+        # is still an addition from the fork's point of view.
+        modified = [s for s in modified if s not in added]
+        confidence = resolve_confidence(
+            SymbolChanges(
+                added=added, modified=modified, new_identifiers=new_identifiers
+            )
+        )
         approach = suggest_approach(bucket, confidence, wifey_paths)
         reports.append(PRReport(pr, bucket, confidence, wifey_paths, excerpt, approach))
     return reports

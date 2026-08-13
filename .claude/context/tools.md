@@ -971,7 +971,20 @@ file over days; it has to outlive a reboot.
 parent working tree, so the only real precondition is that `origin/main` resolves. A
 checked-out-branch guard blocked scans outright on 2026-06-17 and 2026-08-11 and was removed.
 
-**Two limits to know before trusting a bucket.** The classifier defaults to EVALUATE whenever a
+**ALREADY-APPLIED reads SYMBOLS, and a MODIFIED symbol's name is not evidence** (fixed
+2026-08-13q). A signature-only change re-emits its own `def` line, so the name sits on both
+sides of the diff and a name-presence grep matches wifey's *old* copy. Parent **#521** is the
+worked example — its entire payload was two kwargs on an existing `route_target`, and the
+resolver returned **HIGH / ALREADY-APPLIED** while wifey had only the two-arg version, a real
+missed port that stood until #186 closed it by hand. `extract_symbol_changes` now splits
+`added` from `modified`; a modified symbol's evidence is the **identifiers the change
+introduced** (restricted to syntactically-used tokens, since a bare `\w+` sweep harvests
+docstring prose and the wifey grep is repo-wide), and modify-only with no new identifier
+reports **UNKNOWN** — "cannot tell", never "applied". Parsing is hunk-scoped: `git show`
+without `--format=` prepends the commit message, whose prose has no diff prefix and otherwise
+reads as context, subtracting the very identifiers the change introduced.
+
+**Two further limits to know before trusting a bucket.** The classifier defaults to EVALUATE whenever a
 path resolves, so at a wide range the counts degrade (2026-08-11: 0 SKIP / 39 PORT / 107
 EVALUATE over 156 PRs). And **buckets cannot see portability** — a mechanical check of whether
 the touched files exist in wifey is the cheap filter, and it inverts the parent's own ranking:

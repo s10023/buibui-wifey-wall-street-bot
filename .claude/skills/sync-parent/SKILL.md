@@ -168,5 +168,17 @@ and refused.
 - The parent squash-merges every PR (one commit, `(#N)` suffix) — there are no
   merge commits, which is why the tool groups by subject, not `git log --merges`.
 - ALREADY-APPLIED is a confidence flag, never an auto-removal. Always verify.
+- **A MODIFIED symbol's name is not evidence the port landed.** A signature-only change
+  re-emits its own `def` line, so the name sits on both sides of the diff and a
+  name-presence grep matches the *old* copy. Parent **#521** is the worked example: its
+  entire payload was two kwargs on an existing `route_target`, and the resolver returned
+  **HIGH / ALREADY-APPLIED** while wifey had only the two-arg version — a real missed port
+  (closed a year later by #186). Since 2026-08-13q `extract_symbol_changes` splits
+  `added` from `modified`, and for a modified symbol the evidence becomes the
+  **identifiers the change introduced**, not the name. A modify-only PR that introduces no
+  new identifier reports **UNKNOWN** — "cannot tell", never "applied".
+- **A citation is not evidence either.** wifey's #130 cites `#518/#521` in its own title
+  while porting only the `route_dedup` half, so any check keyed on PR numbers scores #521
+  applied with its `x_route` half missing. Key on files and symbols, never on the number.
 - Sweep findings (`tp_r`, ATR multipliers) land in EVALUATE: methodology may
   transfer, values won't (equity cohort ≠ crypto cohort).
