@@ -215,8 +215,16 @@ with `ts < intro_recap_s`. For a `setup`, ALSO set `retrospective: true` — a c
 from a recap block is a *past* call that would otherwise be stamped with today's
 `call_ts_utc` and score the author on an already-resolved trade. For a `claim` or
 `mechanic`, set `is_intro_recap` and **keep** the candidate: an idea stays portable
-regardless of when in the video it was said, and `x_route`'s `retrospective` drop is
-setup-only.
+regardless of when in the video it was said.
+
+**⚠ NO CODE HERE ACTS ON EITHER FLAG — the human reading the step-7 digest is the ENTIRE
+mechanism.** wifey's `route_target(content_type, verdict)` takes **no suppressor
+arguments** (verified 2026-08-13: `tools/x_route.py` contains `retrospective` **zero**
+times, against **3** in the parent's). Upstream drops a `retrospective` or `rejected`
+**setup** by returning `None`; here that setup routes to `pundit-calls.jsonl` anyway,
+carries today's `call_ts_utc`, and scores the author on an already-resolved trade. This
+skill claimed "`x_route`'s `retrospective` drop is setup-only" until 2026-08-13 — true of
+the parent, never of wifey. **That is why 7c prints both flags.**
 
 Instruct it not to read any repo, SoT, or memory file — the rubric below is written to
 stand alone. **That bounds what it READS, not what it KNOWS; see the isolation warning
@@ -501,11 +509,57 @@ across every source, instead of silently mixing two incompatible populations.
 
 ### 7. ONE consolidated digest for the whole batch
 
-Print a single table — one row per kept item across every video: video (title) · author ·
-`call_ts_utc` (`call_ts_source`) · `ts` · `content_type` · `verdict` · proposed routing ·
-`vision_confidence`. Below the table, per video: the pass-1 `summary`, the dropped
-candidates with their reasons, the `chart_present` flag, and `backlog` when `true`. List
-any shape-1 / shape-2 videos separately with their skip reason. **Write nothing yet.**
+The digest has **three parts, in this order**. The order is load-bearing, not cosmetic —
+see "Why summaries come first" below.
+
+**7a — What each pundit said. The pass-1 `summary` per video, ABOVE the table.** One
+short paragraph each, in the operator's reading order (freshest first is fine). Do not
+bury these under the table and do not compress them to a clause: this is the part of the
+digest a human reads to *learn what was said*, and it is the only place the unroutable
+substance of a video survives at all.
+
+**7b — The board view. Cross-video synthesis, in prose, 3-6 sentences.** Streams A/B/C
+are per-item sinks, so agreement and disagreement *between* pundits exist only in the
+relationship between rows and are recorded nowhere. Surface at minimum:
+
+- who is directionally long / short / neutral, and who is already **positioned** (a
+  pundit managing an open trade is not a neutral observer of it);
+- **levels two or more of them name independently** — the strongest signal the batch
+  carries, and invisible per-item;
+- where they read the *same* structure and draw opposite conclusions;
+- a short "dropped but worth knowing" list: items cut for being unscoreable or below the
+  `ITEM_CAP` specificity cut are frequently the most informative in the batch, and the
+  drop reason says nothing about how interesting they were.
+
+Build this yourself from data already in hand — **no extra subagent, no extra tokens.**
+
+**The board view is READ-ONLY and strictly outside the routing path.** It must not write
+to a sink, must not influence `content_type` / `verdict` / dedup, and must not feed
+anything downstream (wifey has no daily Brief; the constraint is forward-looking). A
+narrative digest of pundit opinion is exactly the thing that can become a trading input
+without ever earning a track record, which is what `tools/pundit_score.py` exists to
+prevent. It is **information, not evidence** — say so if it is ever quoted back as a
+reason to take a trade.
+
+**7c — The routing table.** One row per kept item across every video: video (title) ·
+author · `call_ts_utc` (`call_ts_source`) · `ts` · `content_type` · `retrospective` ·
+`is_intro_recap` · `verdict` · proposed routing · `vision_confidence`.
+
+**Both flags must be visible in this table**, since no code here acts on either (step 3):
+a `retrospective` setup is NOT dropped in wifey, so the human is the only thing standing
+between a recap-block call and a ledger row scored on an already-resolved trade.
+Below the table, per video: the dropped candidates with their reasons, the `chart_present`
+flag, and `backlog` when `true`. List any shape-1 / shape-2 videos separately with their
+skip reason. **Write nothing yet.**
+
+**Why summaries come first (upstream 2026-08-04, operator).** Part of the reason this
+pipeline exists is to **receive what is in a video without watching it**. The routing
+streams do not serve that goal by themselves — they capture only what can be *scored or
+tested*, so everything else is dropped, and an operator reading a routing table alone
+"will never learn anything that cannot be scored". The worked example is the **parent's**
+round 9, not one of wifey's: four pundits, one shared pivot zone named independently by
+three of them, two reading the same head-and-shoulders bottom and disagreeing on whether
+it completes — and not one stream recorded that shape.
 
 **For any video where `call_ts_source == "stated"`, also print `stated_ts_raw`,
 `publish_ts_utc`, and the delta between the stated and publish times (e.g. "stated

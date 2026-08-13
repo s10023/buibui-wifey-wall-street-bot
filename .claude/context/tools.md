@@ -619,6 +619,21 @@ Pure routing decision **and** the shared level sign-check for the ingest skills.
 setup/mechanic/claim → the research pipeline's 4-bucket verdict taxonomy on the claim path →
 Stream A `thesis-inbox.md` / B `mechanics-backlog.md` / C `pundit-calls.jsonl`, or drop.
 
+**The only thing that can drop a `setup` here is the CONTENT-TYPE gate — there are no
+suppressor arguments** (2026-08-13). The parent's signature carries three keyword-only
+flags (`retrospective`, `rejected`, `unattributable`) and returns `None` for a `setup`
+with any of them set; wifey's takes **none** of the three, and `x_route.py` contains the
+string `retrospective` **zero** times against **3** upstream. Consequences, both live:
+`/ingest-video`'s pass 1 *does* emit `retrospective` / `is_intro_recap`, so a call lifted
+from a channel's recap block routes to `pundit-calls.jsonl` anyway, carrying **today's**
+`call_ts_utc` — scoring the author on an already-resolved trade, which is precisely what
+the upstream suppressor exists to prevent. And a `setup` the speaker walked through and
+then argued **against** routes identically (upstream's `rejected`; it shipped there once
+and was caught only by a human reading the digest). **The step-7 digest is wifey's entire
+control** — which is why `/ingest-video` 7c prints both flags. `unattributable` is a
+separate matter: it belongs to the relay-attribution work (parent #558), deliberately not
+ported. Restoring the other two is a code change, not a doc fix.
+
 `check_level_order(direction, *, entry, stop, target) -> str` (2026-08-04) is the sign-check: a
 long must satisfy `stop < entry < target`, a short `target < entry < stop`; every pair whose
 legs are both present is judged, equality counts as a violation (zero risk / zero reward), and
