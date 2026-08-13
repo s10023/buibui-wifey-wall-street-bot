@@ -692,6 +692,33 @@ class TestGetWinRateByStrategy:
         df = get_win_rate_by_strategy(conn)
         assert df.empty
 
+    def test_mean_avg_r_is_pooled_over_trades_not_averaged_over_runs(
+        self, conn: duckdb.DuckDBPyConnection
+    ) -> None:
+        """`mean_avg_r` sits beside a pooled count and a pooled win_rate_pct.
+
+        40 trades @ -0.10R and 25 trades @ +1.50R:
+            average over runs  = (-0.10 + 1.50) / 2       = +0.700
+            pooled over trades = (40*-0.1 + 25*1.5) / 65  = +0.515
+        Both runs clear the query's own closed_trades >= 20 gate.
+        """
+        for symbol, closed, wins, avg_r in [
+            ("SPY", 40, 10, -0.10),
+            ("QQQ", 25, 20, 1.50),
+        ]:
+            conn.execute(
+                f"INSERT INTO backtest_runs VALUES ('{symbol}-bos', '{symbol}', "
+                "'4h', 'bos', 1690000000000, 1700000000000, 90, 0.02, 2.0, 0.0, "
+                f"'off', {closed}, {closed}, {wins}, {closed - wins}, "
+                f"{wins / closed}, {avg_r}, 0.0, 3.0, 1700000001000, NULL, "
+                "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "
+                "NULL, NULL, NULL, NULL, NULL)"
+            )
+        df = get_win_rate_by_strategy(conn)
+        assert len(df) == 1
+        assert abs(float(df.iloc[0]["mean_avg_r"]) - 0.515) < 0.001
+        assert int(df.iloc[0]["total_closed"]) == 65
+
 
 class TestConfidenceRatings:
     def test_upsert_and_get_roundtrip(self, conn: duckdb.DuckDBPyConnection) -> None:

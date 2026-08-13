@@ -399,6 +399,31 @@ so ≥2-bar rows are biased *up* exactly as the pooled row is biased *down*, and
 the bracket, not either endpoint. Audit: `docs/audits/2026-08-12-exit-mfe-mae-diagnostic-rerun.md`.
 Scripts: `docs/plans/scripts/exit_audit_cohort_depth.py`, `exit_audit_gate_era_split.py`.
 
+**An AVERAGE OF AVERAGES beside a SUM OF COUNTS is two denominators in one row, and the count is
+the one that looks authoritative.** `get_backtest_win_rates` summed `closed_trades` across a cell's
+symbols but took a plain `mean()` of `avg_r`, so a 1-trade symbol moved the star rating exactly as
+far as a 50-trade one — while `min_trades` guarded the *pooled* count. Same shape as #150 (a
+sample-size guard counting a different population than the statistic it tests) and #169 (a mean
+published without its denominator). Fixed 2026-08-13: **38 of 160 `confidence_ratings` rows changed
+stars, 21 crossed zero** (22 star moves on `signal_watch`, 16 on weekdays), coverage unchanged.
+Ratings drive alert stars **and** which direction leg dispatches when both fire
+(`analytics/signal/gates.py:150`), so the sign flips are operational. Four transferable rules.
+**The tell is inside the row, not outside it** — `win_rate` was already `SUM(win_count)/SUM(trades)`,
+so one row disagreed with itself about its denominator; when two aggregates sit side by side, check
+they pool the same way before trusting either. **A "correct" idiom already in the file does not
+propagate** — `query_strategy` / `query_tf` in `digest_lib.py` had used
+`SUM(avg_r * closed_trades) / SUM(closed_trades)` all along while four sibling queries drifted to
+`AVG(avg_r)`; the expression is now `digest_lib::_pooled`, defined once for all six, because
+inlining is what let them diverge (the #165 lesson again). **Mask numerator and denominator
+together** — a directional average is NULL exactly when that direction has no trades, and counting
+those trades in the divisor alone invents them at R=0 (preventive here: 0 of 3,268 rows have
+`n > 0 AND avg_r IS NULL`). And **a fix confined to a producer needs its consumers re-derived, not
+re-run**: this could not move `backtest_runs` or the regression goldens because
+`_build_confidence_ratings_map` returns `None` while `conflict_resolver` is off, so
+`make db-update-recalibrate` alone was sufficient — verify the feedback path before assuming a full
+`db-update`. No fixture in either test file had put two symbols in one cell, so the entire
+cross-symbol path was untested; 17 tests added, each mutation-checked in both directions.
+
 **Ingest level-parsing fails SILENTLY, and every instance so far was found by running the code, not
 by reading it.** Full narratives in `context/tools.md`; the standing rules:
 

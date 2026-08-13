@@ -18,7 +18,9 @@ the live signal filter's quality gate.
 
 ## What recalibration does
 
-1. Reads `backtest_runs` table — aggregates avg_r per `(strategy, timeframe)` across all symbols
+1. Reads `backtest_runs` table — pools avg_r per `(strategy, timeframe)` across all symbols,
+   **weighted by each symbol's closed-trade count** (`sum(avg_r × n) / sum(n)`), so a 1-trade
+   symbol cannot move a star as far as a 50-trade one
 2. Maps avg_r → 1–5 stars (see thresholds below) — combined, long, and short directions
 3. Dry-run (default): prints a diff of old vs new ratings
 4. `--apply` with `--config`: writes combined + directional (long/short) stars to `confidence_ratings` DB table, keyed by `(config_name, strategy, tf, direction)`, and **prunes rows for cells the config no longer declares**

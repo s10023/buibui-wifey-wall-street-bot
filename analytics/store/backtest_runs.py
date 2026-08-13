@@ -291,6 +291,13 @@ def get_win_rate_by_strategy(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
 
     Only includes combos with at least 20 closed trades (same gate as sweep table).
     Ordered by win_rate_pct descending.
+
+    `mean_avg_r` is pooled over trades, not averaged over runs — it sits beside
+    `SUM(closed_trades)` and a `win_rate_pct` that is already pooled, so an
+    `AVG(avg_r)` here would report a mean and a count with different
+    denominators. See `analytics/digest_lib.py::_pooled` for the full rationale;
+    the expression is repeated rather than imported to keep `store/` (the DB
+    layer) from depending on a reporting module above it.
     """
     return conn.execute("""
         SELECT
@@ -298,7 +305,9 @@ def get_win_rate_by_strategy(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
             SUM(closed_trades)                                                  AS total_closed,
             SUM(win_count)                                                      AS total_wins,
             ROUND(SUM(win_count) * 100.0 / NULLIF(SUM(closed_trades), 0), 1)   AS win_rate_pct,
-            ROUND(AVG(avg_r), 3)                                                AS mean_avg_r,
+            ROUND(SUM(avg_r * closed_trades)
+                  / NULLIF(SUM(closed_trades) FILTER (WHERE avg_r IS NOT NULL), 0), 3)
+                                                                                AS mean_avg_r,
             COUNT(*)                                                            AS combos_run
         FROM backtest_runs
         WHERE closed_trades >= 20

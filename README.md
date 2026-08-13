@@ -441,7 +441,9 @@ NVDA          1wk   bos                  54.1%      85  +1.42R
 ### Recalibrate — Update Confidence Star Ratings
 
 Reads `backtest_runs` from `analytics.db` and maps real avg R per strategy to 1–5 star
-confidence ratings. Each signal-watch TOML config gets its own set of ratings stored in the
+confidence ratings. Avg R is **pooled over trades** across symbols
+(`sum(avg_r × closed_trades) / sum(closed_trades)`), matching the win rate beside it — a
+symbol with 1 trade cannot move a star as far as one with 50. Each signal-watch TOML config gets its own set of ratings stored in the
 `confidence_ratings` DB table — stars are no longer shared globals baked into source code.
 
 ```bash
