@@ -163,6 +163,29 @@ pasted, then run the flow once over the whole set.
    {"source":"twitter","author":"<handle>","url":"<url>","call_ts_utc":"<post_ts_utc>","symbol":"<symbol>","direction":"<direction>","entry":"<entry>","stop":"<stop>","target":"<target>","horizon":"<horizon>","confidence":"<verbatim hedging or empty>","raw_quote":"<raw_quote>"}
    ```
 
+   **⚠ `target` and `entry` are MACHINE-PARSED — the format is a contract, not
+   prose** (parent #616, re-derived here). `tools/pundit_score.py` resolves ONE
+   number per field, and **a hyphenated range anywhere in the string creates a
+   zone that OVERRIDES the `/`-separated ladder**. Write `target` as a bare
+   ladder — `640 / 660 / 690` — and put ranges in `raw_quote` instead. **A
+   clarifying parenthetical re-breaks it**: the constraint is on the whole field,
+   not its leading number.
+
+   Measured against wifey's own `parse_level_field` + `select_level`
+   (`ref_close=64,000`, `role="target"`): `67,000 / 70,362.23 / 82,000` resolves
+   to **67,000**, and appending `(or 65k-68k)` moves it to **65,000** on a long
+   and **68,000** on a short. **Correcting the upstream note, which says the error
+   "only ever pushes the target further away":** the zone resolves to whichever
+   edge price reaches *first*, so on a **long** it lands nearer and manufactures
+   an optimistic WIN, and on a short it lands further and strands the row OPEN.
+   The error runs in **both** directions and neither is safe. `entry` degrades
+   gently — a `60.0K-61.2K` box is a zone by intent — but the same override
+   applies.
+
+   **Run `make wifey-pundit-score` as the last action of the round** — reading
+   the row back does not show you the parse, and at round-end every row is still
+   OPEN, so a bad parse is free to fix then and invisible later.
+
    **Sign-check every Stream C row before you append it** — do not eyeball this:
 
    ```bash

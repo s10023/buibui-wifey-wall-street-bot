@@ -421,6 +421,21 @@ in this fork reads that sidecar yet, so a future Brief/Card port must join on th
 key. No scored number changed: the committed 19-row ledger produces a byte-identical report
 apart from the author column.
 
+### A hyphenated range OVERRIDES a `/`-ladder (measured 2026-08-13)
+
+`parse_level_field` emits `zones` and `numbers` separately, and `select_level` prefers a
+zone. So **any** hyphenated range in a `target` field — including a clarifying
+parenthetical after a valid ladder — replaces the intended level. Reproduced against the
+production functions at `ref_close=64,000`, `role="target"`: `67,000 / 70,362.23 / 82,000`
+→ **67,000**, and the same string plus `(or 65k-68k)` → **65,000** long / **68,000** short.
+
+The zone resolves to whichever edge price reaches **first**, so the error runs in *both*
+directions: a long lands nearer (manufacturing an optimistic WIN) and a short lands further
+(stranding the row OPEN). **This corrects the upstream note in parent #616**, which states
+the error "only ever pushes the target further away" — true of its short example, not of
+the mechanism. Write-side rule and the `make wifey-pundit-score` round-end check live in
+`/ingest-video` step 8 and `/ingest-x` step 5.
+
 ### The level-negation guard (parent #589, ported 2026-08-12)
 
 `parse_level_field` drops **all** candidates when a field's *head* negates the level
