@@ -398,6 +398,29 @@ from a dense video as a cap artifact before concluding the video made no calls.
 
 When changes affect project structure, CLI commands, features, or behavior, update `README.md` to stay in sync.
 
+## Where knowledge goes (the five surfaces)
+
+**The rule that decides "always-loaded" vs "on-demand": if a session would not KNOW to go look
+it up, it must be always-loaded. If it would, it belongs on demand.** Always-loaded content is
+paid on every conversation whether relevant or not (~25k tokens standing as of 2026-08-13, see
+[[project_context_budget]]), so that cost has to be earned by content whose *absence* causes
+silent damage — a footgun you would violate without knowing to ask, a verdict you would
+re-litigate without knowing it was settled.
+
+| Surface | Loaded | Committed? | Holds |
+| --- | --- | --- | --- |
+| `CLAUDE.md` | **always** | yes — shared with anyone who clones | Rules binding on *any* session here regardless of task: commands, conventions, footguns, sleeve verdicts. No personal preferences. |
+| `MEMORY.md` index | **always** | no (`~/.claude-personal/`) | A **routing table** — one line per memory, plus Current State. Enough to decide whether to open a file, never the content itself. |
+| `memory/*.md` topics | on demand | no | The detail behind an index line: user preferences, feedback + the *why*, project history, references. |
+| `.claude/context/*.md` | on demand | yes | Long-form module references, reached via the Project Structure pointers. |
+| `docs/plans/next-conversation-prompt.md` | session start | no (gitignored, in-repo) | Live state: what is in flight, queued, or just decided. Pruned every run. |
+
+Two corollaries worth stating, because both were violated before they were written down: a
+**footgun keeps its rule inline and its narrative in the linked committed audit** (see Project
+Structure above); and **the index is a router, not a store** — content that grows without bound
+belongs in a topic file with a one-line pointer, which is why open questions and session logs
+were split out.
+
 ## Session Memory Protocol
 
 At the end of every session where anything changed (features, bug fixes, refactors, decisions), automatically update the **Current State** section in `~/.claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot/memory/MEMORY.md`. Do not wait to be asked.
@@ -491,6 +514,25 @@ Skills live in `.claude/skills/<name>/SKILL.md` (project-specific, committed to 
   GH_TOKEN=$(gh auth token --user s10023) gh repo edit s10023/buibui-wifey-wall-street-bot \
     --visibility private --accept-visibility-change-consequences
   ```
+
+  **A DOCS-ONLY PR does not need the flip** (user decision, 2026-08-13). Three of the five
+  checks sit behind `dorny/paths-filter` on `**/*.py` / `web/ui/**`, so on a `.md`-only diff
+  `lint-typecheck-test`, `Regression tests` and `frontend-check` execute **zero steps** —
+  measured at 4–7s on #173 and #174. `make lint-md` reproduces CI's `markdownlint`
+  **exactly**, so the only check you actually forgo is **Trivy's secret scan**, which has no
+  path filter and gates on purpose ("a committed secret is a property of THIS diff"). Read any
+  *externally pasted* content in a doc before committing it — this repo had a real PII leak,
+  fixed in #145.
+
+  **CI's markdownlint glob is NOT wider than local's, despite the workflow appearing to say
+  so** (re-derived 2026-08-13, correcting a standing claim). The job passes
+  `globs: **/*.md !venv`, but markdownlint-cli2 still applies the `!` negations in
+  `.markdownlint-cli2.jsonc`. The falsifier is arithmetic, not the YAML: **99** tracked `.md`
+  files, CI reports **`Linting: 98 files`**, and the one omitted is
+  `.github/pull_request_template.md` — which carries a live **MD041** error, so had CI linted
+  it the check would have failed rather than passed. Local's 99 is the same 98 plus untracked
+  `.pytest_cache/README.md`, i.e. local is a **superset**. Do not "fix" a divergence here
+  without re-running that count.
 
   **Know what the window costs, because flipping back does not undo it.** wifey is not a
   GitHub fork — its history was *copied* — so **389 of 541 commits** are the still-private
