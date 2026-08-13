@@ -225,15 +225,27 @@ from analytics.data_fetcher import _INTERVAL_CONFIG
 targets = set(re.findall(r'^([a-zA-Z][\w-]*):', pathlib.Path('Makefile').read_text(), re.M))
 strats, tfs = set(STRATEGY_REGISTRY), set(_INTERVAL_CONFIG)
 syms = set(json.load(open('config/stocks.json')))
-PROSE = {'sense', 'this', 'network'}          # "make sense", "make this ..." etc.
+# Only CODE-FORMATTED invocations count: a backtick, a `$ ` prompt, or line start.
+# Bare prose ("make sense", "make money", "make it visible") is not a claim about a
+# make target and produced 6 of 7 hits when the scope widened past `.claude/` (#174).
+MAKE_RE = re.compile(r'(?:^|`|\$ )make ([a-z][a-z0-9-]+)', re.M)
+PROSE = {'target'}   # a sentence that wrapped onto a new line ("...there is no\nmake target.")
 # These two files quote the anti-patterns in order to hunt for them.
 SELF = {'sanity-check/SKILL.md', 'post-branch/SKILL.md'}
+# Scope = every CURRENT-STATE surface, not just `.claude/`. Dated trees
+# (docs/audits, docs/redesign, docs/superpowers, docs/plans) are deliberately
+# absent: a past-tense claim there is correct by construction. `.claude`-only
+# scope is how docs/system-overview.md kept saying "Binance Futures" for three
+# months across four post-fork commits (#174).
+SURFACES = sorted(pathlib.Path('.claude').rglob('*.md')) + [
+    pathlib.Path(p) for p in ('CLAUDE.md', 'README.md', 'docs/system-overview.md')
+]
 bad = []
-for f in sorted(pathlib.Path('.claude').rglob('*.md')):
-    if any(str(f).endswith(s) for s in SELF):
+for f in SURFACES:
+    if any(str(f).endswith(s) for s in SELF) or not f.exists():
         continue
     t = f.read_text()
-    for m in re.finditer(r'make ([a-z][a-z0-9-]+)', t):
+    for m in MAKE_RE.finditer(t):
         # a trailing '-' means a glob/placeholder ("make wifey-*", "make wifey-<name>")
         if m.group(1).endswith('-') or m.group(1) in PROSE or m.group(1) in targets:
             continue
@@ -257,20 +269,42 @@ PY
 git grep -nE 'buibui-moon-trader-bot|`buibui |make buibui-|coins\.json|~/\.claude/skills' -- .claude \
   | grep -vE 'sync-parent/SKILL\.md|ingest-video/SKILL\.md|post-branch/SKILL\.md|sanity-check/SKILL\.md|context/'
 
-# Referenced repo paths that no longer exist
-git grep -ohE '`(analytics|signals|utils|web|tools|tests|cli|config|migrations)/[A-Za-z0-9_/.]+`' -- .claude \
+# Referenced repo paths that no longer exist (same widened scope as the block above)
+git grep -ohE '`(analytics|signals|utils|web|tools|tests|cli|config|migrations)/[A-Za-z0-9_/.]+`' \
+  -- .claude CLAUDE.md README.md docs/system-overview.md \
   | tr -d '`' | sort -u | while read -r p; do [ -e "$p" ] || echo "MISSING $p"; done
 ```
 
-Expected: `0 bad refs`, no leakage hits, and the only `MISSING` paths are deliberate —
-template placeholders (`tests/test_my_strategy.py`, `web/ui/src/pages/Foo.svelte`) and
-files named *because* they are gone or were never ported (`analytics/indicators_lib.py`,
-`utils/binance_client.py`, `config/coins.json`, the parent's `tools/gate_audit.py`).
-Anything else is drift.
+Expected: `0 bad refs`, no leakage hits, and **exactly these ten** `MISSING` paths, all
+deliberate — template placeholders (`tests/test_my_strategy.py`,
+`web/ui/src/pages/Foo.svelte`); files named *because* they are gone
+(`analytics/indicators_lib.py`, `utils/binance_client.py`, `config/coins.json`); files
+named *because they were never ported* (the parent's `tools/gate_audit.py`, `cli/card.py`,
+`config/pundit_roster.toml`); and `config/youtube_channels.toml`, which is gitignored by
+design (only `.example` is committed). Anything else is drift.
 
 Keep the exclusion lists tight. They exist so the sweep stays silent when clean — a
 check that reports known-good noise gets skimmed, which is how the drift it looks for
 accumulated in the first place.
+
+**Two traps, both hit while extending this sweep in #174.**
+
+**`git grep -- $VAR` silently matches NOTHING in zsh.** This shell does not word-split
+unquoted parameter expansions, so a pathspec list held in a variable arrives as one
+bogus path and the command exits 0 with no output — indistinguishable from clean. It
+produced a false "0 hits" that briefly passed as proof the tree was clean. **Write
+pathspecs literally**, or `${=VAR}` if you must use one, and sanity-check any zero by
+running the same pattern against a commit you know is dirty (`git grep … main -- …`).
+
+**A prose-marker grep for `binance|BTCUSDT|liquidity_sweep|…` was BUILT, MEASURED, and
+REJECTED — do not add one.** Over the current-state surfaces it returns ~40 hits and
+**almost all are correct history**: TOML changelog comments recording *why*
+`liquidity_sweep` was pruned, CLAUDE.md's fork-lineage paragraph, context docs naming a
+removed strategy as removed. The discriminating signal is not *mentions a crypto
+artifact* but *presents one as current* — which is semantic, and a grep cannot see it.
+Shipping it would have added 40 known-good lines to a check whose whole value is being
+silent when clean. The checks above stay keyed to **invocable** artifacts (make targets,
+timeframes, `--strategy`/`SYMBOL` flags, repo paths), which are falsifiable.
 
 ### 4b. Per-skill claim checks
 
