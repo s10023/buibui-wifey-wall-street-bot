@@ -4,13 +4,14 @@
 `make docs-index-check` (and `tests/test_docs_index.py`) fails when this file
 drifts from the corpus.
 
-**18 audits.** A verdict line is shown only where one could be read
-out of a Verdict heading as prose — that is **8 of 18**.
+**19 audits.** A verdict line is shown only where one could be read
+out of a Verdict heading as prose — that is **9 of 19**.
 An em dash means the doc states its verdict in a table, a blockquote or the body,
 **not** that it lacks one; open the file. Nothing here is keyword-guessed.
 
 | Date | Audit | Verdict (as written) | File |
 | --- | --- | --- | --- |
+| 2026-08-13 | Conflict-Resolver Gate Ordering — Measured and Declined | the briefed defect (EV gate ordered before the volume/bias gates) does not exist — reordering the EV gate is provably… | [2026-08-13-conflict-resolver-gate-ordering.md](2026-08-13-conflict-resolver-gate-ordering.md) |
 | 2026-08-12 | Exit MFE/MAE Diagnostic — Re-run at n=264 | the 2026-06-20 INCONCLUSIVE call is SUPERSEDED at the cohort level, and it resolved in the opposite direction to the thin read… | [2026-08-12-exit-mfe-mae-diagnostic-rerun.md](2026-08-12-exit-mfe-mae-diagnostic-rerun.md) |
 | 2026-08-07 | Enabling live-parity on the ratings sweep — and why the conflict resolver must stay off | — | [2026-08-07-live-parity-ratings-sweep.md](2026-08-07-live-parity-ratings-sweep.md) |
 | 2026-08-07 | The EV gate blocked on point estimates: half its suppressions were noise | — | [2026-08-07-ev-gate-significance-test.md](2026-08-07-ev-gate-significance-test.md) |
