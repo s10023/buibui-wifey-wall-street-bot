@@ -215,8 +215,16 @@ with `ts < intro_recap_s`. For a `setup`, ALSO set `retrospective: true` — a c
 from a recap block is a *past* call that would otherwise be stamped with today's
 `call_ts_utc` and score the author on an already-resolved trade. For a `claim` or
 `mechanic`, set `is_intro_recap` and **keep** the candidate: an idea stays portable
-regardless of when in the video it was said, and `x_route`'s `retrospective` drop is
-setup-only.
+regardless of when in the video it was said.
+
+**⚠ NO CODE HERE ACTS ON EITHER FLAG — the human reading the step-7 digest is the ENTIRE
+mechanism.** wifey's `route_target(content_type, verdict)` takes **no suppressor
+arguments** (verified 2026-08-13: `tools/x_route.py` contains `retrospective` **zero**
+times, against **3** in the parent's). Upstream drops a `retrospective` or `rejected`
+**setup** by returning `None`; here that setup routes to `pundit-calls.jsonl` anyway,
+carries today's `call_ts_utc`, and scores the author on an already-resolved trade. This
+skill claimed "`x_route`'s `retrospective` drop is setup-only" until 2026-08-13 — true of
+the parent, never of wifey. **That is why 7c prints both flags.**
 
 Instruct it not to read any repo, SoT, or memory file — the rubric below is written to
 stand alone. **That bounds what it READS, not what it KNOWS; see the isolation warning
@@ -537,8 +545,9 @@ reason to take a trade.
 author · `call_ts_utc` (`call_ts_source`) · `ts` · `content_type` · `retrospective` ·
 `is_intro_recap` · `verdict` · proposed routing · `vision_confidence`.
 
-**`is_intro_recap: true` on a `claim`/`mechanic` must be visible in this table**, since no
-code will drop it — the human deciding is the entire mechanism there (step 3, rule 1).
+**Both flags must be visible in this table**, since no code here acts on either (step 3):
+a `retrospective` setup is NOT dropped in wifey, so the human is the only thing standing
+between a recap-block call and a ledger row scored on an already-resolved trade.
 Below the table, per video: the dropped candidates with their reasons, the `chart_present`
 flag, and `backlog` when `true`. List any shape-1 / shape-2 videos separately with their
 skip reason. **Write nothing yet.**
