@@ -107,6 +107,12 @@ behavior_signal_globs:
   - "wifey.py"
   - "cli/**/*.py"
   - "Makefile"
+  - "deploy/**"                     # scripts + systemd units ARE operator-facing
+                                    # behaviour. Added 2026-08-13 (parent #583):
+                                    # wifey #162 shipped two scripts, three units
+                                    # and a README while this list had no deploy
+                                    # entry at all, so the gate saw no signal
+                                    # from that PR's largest change.
   - "docker-compose.yml"
   - ".github/workflows/**/*.yaml"   # NOT *.yml — every workflow here is .yaml
   - "pyproject.toml"
@@ -161,6 +167,7 @@ User-facing signals — **walk the docs** if any are present:
 - Behaviour change to an existing public command
 - New long-running daemon or one-shot tool (docker-compose)
 - **The diff touches `analytics/store/schema.py`** — see the DB-migration block below
+- **Anything on the notification-decision list below**
 
 ### DB migrations are operator-facing even when nothing else in the PR is
 
@@ -188,6 +195,48 @@ Also confirm the positional-INSERT guard still passes
 (`tests/test_schema_insert_arity.py`, in `make test`): adding a column to a
 table written by a bare `VALUES (?,…)` or an `INSERT … SELECT` requires updating
 that statement in the same PR.
+
+### Notification surface — decide it, never default to it
+
+**Telegram is an operator-facing output surface and belongs in this gate**, but
+it is not in the doc-surface list, so the decision gets made by whoever happens
+to think of it. Wifey has three notification paths and none of them is covered
+by any other step: the **personal** channel (long + short), the **wife** channel
+(BUY-only, a human audience), and `deploy/notify-failure.sh`.
+
+**Trigger — this PR needs an explicit notification decision if it adds or
+changes any of:**
+
+1. A **scheduled job** (timer/cron). Silence becomes ambiguous the moment nobody
+   is watching a terminal. *Wifey has none installed today* — the `wifey-*` units
+   under `deploy/systemd/user/` are opt-in and nothing installs them — so this
+   triggers when a PR adds a unit, not merely because one exists in the tree.
+2. An **irreversible or outward-facing action** — an alert dispatched, a message
+   sent to the wife channel, an order submitted (Phase B).
+3. A **latching state transition** — a gate flipping, a halt engaging or
+   clearing. The *transition* is the event, not the state.
+4. A **failure path visible only in a log** the operator does not read.
+5. A **periodic summary a human is meant to act on.**
+
+**Record one of four verdicts, and never leave it implicit:**
+
+| verdict | when |
+| --- | --- |
+| `always` | a human must act on every occurrence, or the channel needs a heartbeat |
+| `on-change` | only transitions matter; steady state is noise |
+| `on-failure-only` | correct for jobs nobody reads when healthy — the `notify-failure.sh` default |
+| `never` | **must state why**, in one line |
+
+**The generalisable rule:** *a channel whose only signal is failure is
+unfalsifiable.* You cannot tell "healthy" from "broken" without a positive
+heartbeat, and the delivery path then gets exercised for the first time on the
+day you most need it working. If a path is `on-failure-only`, confirm something
+else proves it is alive.
+
+**Volume is the counterweight.** Multiply by the schedule before choosing
+`always`. Wifey's dispatch is the manual one-shot `CATCH_UP=1 make go-live`, so
+the per-run volume question is really *per alert* — and the wife channel is a
+real person, not a log.
 
 Skip signals — **stop here** (after MEMORY.md update) if the PR is purely:
 
@@ -396,6 +445,19 @@ to know the answer, and they still do.
 
 - Every `wifey.py` subcommand has a `make wifey-<name>` target.
 - Every public daemon has a `docker-up` / `docker-down` line.
+- **Second half — the repo also wraps SCRIPTS, not only CLI subcommands**
+  (parent #583/#616). `backup` → `deploy/backup-analytics.sh` is the precedent,
+  and note it is **not** `wifey-backup`: the `wifey-*` prefix marks CLI wrappers,
+  script wrappers are bare. Check both surfaces:
+  - Every `deploy/*.sh` an operator runs by hand should have a wrapper, or none
+    of them should.
+  - **And `tools/*.py`, which is where most hand-run scripts actually live.**
+    The convention there is genuinely mixed — measured 2026-08-13: **17 of 32**
+    are wrapped (`docs_index.py`, `stamp_universe_listed.py`, `pundit_score.py`
+    are; `combo_health.py`, `expand_universe_sp500.py`, `video_fetch.py` are
+    not). So this bullet should prompt a **judgement, not assert a rule**: a tool
+    the operator invokes as part of a documented workflow wants a target; a tool
+    another tool calls does not.
 
 ### docker-compose.yml
 
@@ -459,9 +521,40 @@ to know the answer, and they still do.
   and check the new path. A hit here is a prompt to judge, not an automatic
   edit: a private helper module may legitimately not warrant a context entry.
 
-  Two top-level packages are knowingly absent and are **not** findings:
-  `trade/` (empty placeholder, both files 0 bytes) and `migrations/` (still
-  undocumented — it is carried debt, tracked in the handoff).
+  One top-level package is knowingly absent and is **not** a finding: `trade/`
+  (empty placeholder, both files 0 bytes). `migrations/` was the second until
+  2026-08-13 — see the note above; it is documented now.
+
+- **FOURTH INSTANCE — a NON-PYTHON file, in a directory a doc enumerates by
+  name** (ported from parent #583, re-derived). The parent's version of this was
+  about the check looping over top-level directories; **wifey already fixed that**
+  (see "Key it off the branch diff" above), so what is left here is narrower and
+  different: the presence check is filtered to `-- '*.py'` and greps only
+  `.claude/context/`. A new `deploy/*.sh`, a systemd unit, or a `config/*.example`
+  is therefore invisible to it in **both** directions — the filter drops the file,
+  and the grep looks in a tree that names **zero** `.sh` files. The enumerating doc
+  for those is `deploy/README.md`, which names all **five** of today's deploy
+  artifacts (both scripts, all three units — column-scanned 2026-08-13).
+
+  A mention-grep is no help either: grepping a brand-new basename returns zero
+  hits and reads as "no change needed", when the correct reading is "the doc has
+  never heard of this file". **Both checks report green on a directory whose
+  contents have changed.**
+
+  ```bash
+  # non-Python files this branch ADDS, vs every doc that enumerates by filename
+  git diff main...HEAD --diff-filter=A --name-only \
+    | grep -vE '^(tests|docs)/|\.py$' | while read -r f; do
+      grep -rqsw "$(basename "$f")" .claude/context/ deploy/README.md README.md \
+        || echo "UNDOCUMENTED FILE: $f"
+    done
+  ```
+
+  Same `-w` rule and the same deliberate over-reporting as above: not every added
+  file belongs in a doc, so a hit is a candidate to dismiss in seconds. The
+  asymmetry is the point — a false positive costs a glance, a silent miss ships a
+  doc that enumerates every sibling but one and reads as complete. **This fires for
+  real on the off-site backup task**, which adds a `deploy/` script.
 
 - **CLAUDE.md must not re-absorb this content.** The 2026-08-05 split left
   CLAUDE.md holding a package index plus verdicts and footguns, and the context
@@ -844,9 +937,18 @@ paste into the next conversation. Same shape as `/pr-summary` —
 If the user accepts, write to **`docs/plans/next-conversation-prompt.md`** —
 gitignored, but inside the repo and therefore durable. **Not `/tmp`:** the
 user deletes conversations, and a handoff that evaporates on reboot defeats
-the point. Overwrite the existing file rather than starting a new one; it is
+the point. Keep updating that same file rather than starting a new one; it is
 a standing document whose whole value is being current, and keeping it so is
-a final step of every task, not only of this skill. Structure:
+a final step of every task, not only of this skill.
+
+**Update it with targeted `Edit`s. NEVER `Write` the whole file** (parent #577).
+Its standing back half — groups A–D, the skill-fix queue, the NOT-queued list,
+the scripts index — is exactly what the template below does **not** reproduce, so
+a wholesale overwrite destroys it silently and the loss is invisible until a
+future session re-litigates something already ruled out. The template is the
+shape of the *front* half, not a replacement for the file.
+
+Structure:
 
 ```markdown
 # Next conversation — <one-line context>
@@ -895,16 +997,20 @@ ranking.>
 
 ### Standing blocks — carry forward, never regenerate
 
-This file is **overwritten** each run, so anything not in the template above is
-silently deleted. Some blocks are standing operational content that belongs to
-the project, not to this PR. **Before writing, read the existing
+The template above covers the front half only, so anything below it is content a
+`Write` would silently delete — which is the whole reason the rule above says to
+use targeted `Edit`s. Some blocks are standing operational content that belongs
+to the project, not to this PR. **Before writing, read the existing
 `docs/plans/next-conversation-prompt.md` and carry these forward verbatim**,
 refreshing only their dated "state at" lines:
 
 - **The standing guardrails** — the free-data-edge-arc honest exit ("do not
   start a #5 free-data hunt without an explicit user go"), the TA-detector
-  freeze, and the `gh` rules (verify `gh api user -q .login` is `s10023`;
-  always pass `--repo s10023/buibui-wifey-wall-street-bot`). These are
+  freeze, and the `gh` rules (**never `gh auth switch`** — the active account
+  stays on the work account and the token form attributes correctly on its own:
+  `GH_TOKEN=$(gh auth token --user s10023) gh <cmd> --repo
+  s10023/buibui-wifey-wall-street-bot`, and the `--repo` is always required
+  because the `gh` default repo points at the parent). These are
   standing decisions; a handoff that drops them invites a fresh session to
   redo work already ruled out.
 - **The daily operator check** (`CATCH_UP=1 make go-live`) whenever it is
@@ -939,15 +1045,38 @@ it do something wrong?"** If no, cut it. Anything worth keeping but not worth
 re-reading every session belongs in a memory topic file or an audit doc, linked
 by one line — not pasted here.
 
+**Read a closed section before deleting it — live rules hide inside blocks headed
+"DONE" or "CLOSED"** (parent #577, measured there 2026-08-07 when an uncoded item
+sat inside a block titled "DONE. Do NOT redo"). The same shape is live here: the
+`steps: []` billing discriminator — worth more than the duration heuristic, and
+recorded in **no** committed file — arrived inside 3a's "DONE, PR #181 MERGED"
+block. Deleting on the header alone loses it. **Prune by MOVING to the durable
+home, never by deleting outright**; if the rule has no committed home yet, that
+is a signal to write one, not to keep the block.
+
 Left unpruned this file grows monotonically, and past ~500 lines the standing
 blocks stop being read at all, which costs more than the deleted content ever
 would. **Report the before/after line count** when you rewrite it, so the trend
 is visible rather than discovered.
 
 **The stamp is ONE line, and it lives in the handoff itself** — near the top, so
-the next run sees the trend before it starts adding. Read the old count first
-(`wc -l < docs/plans/next-conversation-prompt.md`), write the new file, then
-overwrite that one line in place with the new count:
+the next run sees the trend before it starts adding.
+
+**Write the stamp LAST — it is the final action of the rewrite, not part of it**
+(skill-fix filed 2026-08-13k, closed here). Reading `wc -l` first is necessary
+and **not sufficient**: a count is only true after the last edit, and one session
+got it wrong **twice in a single rewrite** (predicted 519, actual 582; then 589
+vs 599) because both figures were written while further edits were still pending.
+The order is fixed:
+
+1. `wc -l < docs/plans/next-conversation-prompt.md` — the *prev* number.
+2. Make every content edit. Leave the old stamp line untouched.
+3. `wc -l` again — the *new* number, now final.
+4. One last `Edit` replacing that single line. It is line-neutral, so it cannot
+   invalidate the figure it reports.
+
+Same class as "write derived numbers **after** producing the artifact", which has
+been wrong on first write ~13 runs running. The line:
 
 ```markdown
 Line count: <new> (prev <n-1>, <n-2>, <n-3>, <n-4>) — <one clause: why up or down>.

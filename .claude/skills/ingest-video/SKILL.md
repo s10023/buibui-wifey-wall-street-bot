@@ -218,8 +218,9 @@ from a recap block is a *past* call that would otherwise be stamped with today's
 regardless of when in the video it was said, and `x_route`'s `retrospective` drop is
 setup-only.
 
-It must NOT read any repo, SoT, or memory file — the rubric is self-contained. Instruct
-it to return ONLY this JSON:
+Instruct it not to read any repo, SoT, or memory file — the rubric below is written to
+stand alone. **That bounds what it READS, not what it KNOWS; see the isolation warning
+under pass 2.** Instruct it to return ONLY this JSON:
 
 ```json
 {
@@ -409,8 +410,24 @@ these pass-2 agents share it with any pass-1 agent still running). Give it: the
 `frame_paths` list (it Reads each one — vision), the `transcript_path` from step 1
 (**the path** — it Reads that file for context on what was said; do not paste
 `segments`), the kept items from step 3
-(`ts`, `content_type`, `gist`), and the item schema below. It must NOT read any repo,
-SoT, or memory file. Instruct it to return ONLY this JSON:
+(`ts`, `content_type`, `gist`), and the item schema below. Instruct it not to read any
+repo, SoT, or memory file.
+
+**⚠ That bounds what the agent READS; it does not make the agent context-free — and this
+doc used to claim "self-contained" as though it did.** Measured in the parent 2026-08-12g:
+a pass-2 agent cited four project-memory findings **without reading a file**, three of
+which live only in `MEMORY.md`, so "it inherits `CLAUDE.md`" does not explain the leak and
+**a dedicated agent type would not close it**.
+
+This matters even when what leaks is accurate: the rubric is deliberately a *distilled
+snapshot* so the extractor classifies against a frozen prior, and an agent silently seeing
+the live SoT is a different experiment from the documented one. **The vector has NOT been
+re-derived on wifey** — do that before building anything on top of the isolation claim:
+dispatch one throwaway subagent of each type (`general-purpose`, `Explore`, a
+`tools:`-restricted custom agent) and ask each what project context it can see without
+reading a file.
+
+Instruct it to return ONLY this JSON:
 
 ```json
 {
@@ -526,6 +543,18 @@ PYTHONPATH=. poetry run python tools/route_dedup.py check \
   Bare ones are dropped by `normalize_levels`, but a level written `2,050` is kept by
   design and two entries can share it coincidentally.
 
+**⚠ On Streams A and B, `all-entries` scope does NOT make an empty `candidates` list
+mean "not a duplicate" — read it as "nothing scored above threshold"** (parent #616).
+The bullet above covers the *scope* trap; this is the one underneath it. Both streams are
+`SEMANTIC_SINKS`, so `semantic_scope` (`tools/route_dedup.py:540`) already returns
+`all-entries` and `_comparable_entries` (`:550`) returns **every** entry in the file — so
+a near-verbatim restatement is *already in scope* and can still rank below threshold.
+That makes it a **lexical ranking** limit, which is why no flag is offered as a fix: the
+digest's human gate is doing the real work here. Two wifey-specific notes, both diverging
+from upstream: `route_dedup.py` here has **no `--author` flag at all**, so the upstream
+warning not to reach for one does not apply; and `mechanics-backlog.md` is currently
+**21 lines**, so a ranking miss is unlikely today and will get likelier as it fills.
+
 **Then run the intra-video pass, once per video that has two or more Stream-C-bound
 items.** `check` cannot catch these: every check runs *before* the approval that writes
 anything, so when a video's items are checked none of them are on disk yet — two legs of
@@ -609,6 +638,24 @@ URL).
 ```json
 {"source":"youtube","author":"<handle>","url":"<url, with the deep link above for youtube>","ts":252.0,"call_ts_utc":"<resolved call time>","call_ts_source":"stated|publish","publish_ts_utc":"<publish time>","stated_ts_raw":"<verbatim quote or empty>","ingested_ts_utc":"<now>","backlog":false,"symbol":"...","direction":"...","entry":"...","stop":"...","target":"...","horizon":"...","confidence":"","vision_confidence":"high|medium|low","raw_quote":"<original language>","raw_quote_en":"<english>","corrected_from":"<transcript's original value, or empty>"}
 ```
+
+**⚠ `target` and `entry` are MACHINE-PARSED — the format is a contract, not prose**
+(parent #616, re-derived here). `tools/pundit_score.py` resolves ONE number per field, and
+**a hyphenated range anywhere in the string creates a zone that OVERRIDES the
+`/`-separated ladder**. Write `target` as a bare ladder — `640 / 660 / 690` — with ranges
+in `raw_quote` instead; **a clarifying parenthetical re-breaks it**, because the constraint
+is on the whole field, not its leading number. Measured against wifey's own
+`parse_level_field` + `select_level` (`ref_close=64,000`, `role="target"`): the ladder
+`67,000 / 70,362.23 / 82,000` resolves to **67,000**, and appending `(or 65k-68k)` moves it
+to **65,000** on a long and **68,000** on a short. **Correcting the upstream note, which
+says the error "only ever pushes the target further away":** the zone resolves to whichever
+edge price reaches *first*, so a long lands nearer and manufactures an optimistic WIN while
+a short lands further and strands the row OPEN. Both directions, neither safe. This is the
+same rule `/ingest-x` step 5 states — both skills write this file, one parser scores both.
+
+**Run `make wifey-pundit-score` as the last action of the round** — reading the row back
+does not show you the parse, and at round-end every row is still OPEN, so a bad parse is
+free to fix then and invisible later.
 
 **Sign-check every Stream C row before you append it** — do not eyeball this:
 
