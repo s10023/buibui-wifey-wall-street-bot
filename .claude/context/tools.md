@@ -116,6 +116,60 @@ tree, where it isolates `TestEvGate` and names `_passes_ev_gate`; clean on HEAD.
 **Run:** `make check-orphan-tests` or
 `poetry run python tools/orphan_test_audit.py [--strict]`
 
+## docs_index.py — generated audit + spec indexes
+
+Generates `docs/audits/INDEX.md` (18 verdicts) and `docs/superpowers/specs/INDEX.md`
+(14 specs) — 32 documents that nothing indexed. CLAUDE.md cites 9 of the 18 audits
+inline; the other 9 and 13 of the 14 specs had no surface listing them at all. Ported
+from parent #600. `tests/test_docs_index.py` regenerates both and compares byte-for-byte,
+so a new audit or spec **fails CI until it is indexed** — the enforcement half, without
+which the index is the silent-surface class again. Output is deterministic (no
+generated-at timestamp) precisely so `--check` can compare bytes.
+
+**Nothing is guessed.** Date and title come from the filename prefix and the H1 (100%
+reliable across both corpora). A verdict line is emitted **only** where it reads as prose
+under a Verdict heading or in the inline `**Verdict: …**` form — **8 of 18** here — and
+every other row gets an em dash, with the index header stating that coverage out loud.
+Table rows, blockquotes, list items and `**Date:**` metadata lines each have a named
+negative test; the last is live in `2026-06-21-experiment-1-residual-xsmom.md`, whose H1
+matches the Verdict-heading pattern and is immediately followed by `**Date:**`.
+
+### Two divergences from parent #600
+
+**A wrapped verdict is read as a whole paragraph in BOTH forms.** Upstream joined
+paragraphs under a Verdict *heading* but left the inline form reading a single line. This
+corpus hard-wraps at ~80 columns, so on the first run **6 of the 8** readable verdicts
+published as mid-sentence fragments — and because the cut fell on a word boundary with no
+ellipsis, a fragment was **indistinguishable from a complete, shorter verdict**. The worst
+was `2026-08-12-exit-mfe-mae-diagnostic-rerun.md`, cut at *"…SUPERSEDED at the cohort
+level, and"* — dropping the clause that records the finding **reversed direction**, which
+is the whole point of that audit. The inline pattern also now consumes an `=` separator
+(`**Verdict = FAIL.**`), which otherwise leaked into the cell as a leading `= FAIL`.
+**The same defect is live upstream** (2 of its 4 inline verdicts) — raise it there.
+
+The join needed a stop rule, and the first version did not have one: several audits open
+with `**Date:** / **Verdict:** / **Audit:** / **Spec:**` on **consecutive lines with no
+blank between**, which markdown calls one paragraph, so joining onward merged the *Audit*
+field into the verdict and turned two clean one-line verdicts into run-on text crediting a
+make target. `_continues_paragraph` therefore stops at a bold field label (`_BOLD_FIELD`)
+as well as at a heading, table, blockquote or list — and **both** extraction paths share
+it, since the Verdict-heading path had the identical latent flaw. Stopping early costs a
+few words; not stopping fabricates a verdict out of adjacent metadata.
+
+**The reconcile column states its own floor.** `0 of N` renders identically whether the
+detector found nothing or could never fire, and those are different facts. This corpus has
+**zero** spec-reconcile audits, so 0 is the only reachable value; `spec_reconcile_audits()`
+is read separately from the per-spec join so the page can say *no reconcile has been
+written up* rather than publish a bare `0 of 14` that reads as *14 specs went
+unreconciled* — a claim about the specs the data cannot support. (Same class as the
+`exits/` MFE median: check the floor is reachable before quoting the number.) A spec counts
+as reconciled only when an audit naming its filename says so **in its own filename or H1** —
+keying on "reconcile" anywhere in the body mislabelled a doc reconciling two *findings*
+upstream, and that case is a regression test here.
+
+**Run:** `make docs-index` (write) / `make docs-index-check` (verify, writes nothing), or
+`poetry run python tools/docs_index.py [--check] [--audit-dir PATH] [--spec-dir PATH]`
+
 ## live_outcomes_report.py — read-only signal_alert_outcomes spot-check
 
 Read-only spot-check of `signal_alert_outcomes` after the T2 backfill worker runs; reports the
