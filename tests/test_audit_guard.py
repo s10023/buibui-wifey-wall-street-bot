@@ -166,3 +166,45 @@ class TestMethodOption:
             **_KW,  # type: ignore[arg-type]
         )
         assert v.decision == DECISION_ENABLE
+
+
+def test_powered_null_requires_the_ci_inside_the_bar() -> None:
+    """A powered null is CI CONTAINMENT, never ``n >= min_n``.
+
+    Both cells below have the SAME mean (0.0) and the SAME n (50, well past
+    ``min_n``), so any criterion keyed on sample size calls both "powered".
+    They differ only in dispersion, which is the thing that decides whether an
+    effect the size of the bar has actually been ruled out.
+    """
+    # NOT an alternating [+x, -x] sequence: every even-length block of one of
+    # those averages to exactly 0, so the circular block bootstrap returns
+    # CI [0, 0] however large x is, and the "wide" cell is not wide at all.
+    # Same shape for both, differing only by a factor of 100 in scale.
+    tight = audit_guard.AuditCell("tight", [-0.01] * 25 + [0.01] * 25)
+    wide = audit_guard.AuditCell("wide", [-1.0] * 25 + [1.0] * 25)
+
+    tv, wv = audit_guard.evaluate_audit_cells([tight, wide], bar=0.05)
+
+    # Positive control: the fixture must actually produce a wide CI, or the
+    # discrimination below is vacuous regardless of what the assertions say.
+    assert wv.ci_lo is not None and wv.ci_hi is not None
+    assert wv.ci_hi - wv.ci_lo > 0.05
+
+    # Neither clears the bar, so both are INSUFFICIENT decisions...
+    assert tv.decision == audit_guard.DECISION_INSUFFICIENT
+    assert wv.decision == audit_guard.DECISION_INSUFFICIENT
+    assert tv.n_supp == wv.n_supp == 50  # positive control: n cannot separate them
+
+    # ...but only the tight cell has ruled out an effect at the bar.
+    assert tv.powered_null is True
+    assert wv.powered_null is False
+
+
+def test_powered_null_is_false_when_the_cell_was_never_tested() -> None:
+    """Below ``min_n`` no CI is computed, so containment is unknowable."""
+    (v,) = audit_guard.evaluate_audit_cells(
+        [audit_guard.AuditCell("thin", [0.0] * 5)], bar=0.05, min_n=30
+    )
+    assert v.decision == audit_guard.DECISION_INSUFFICIENT
+    assert v.ci_lo is None
+    assert v.powered_null is False

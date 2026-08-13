@@ -321,6 +321,23 @@ its median; when a denominator-like quantity moves between runs the statistic ma
 usually introduces its own, so the honest claim is the bracket, not either endpoint.
 Audit: `docs/audits/2026-08-12-exit-mfe-mae-diagnostic-rerun.md`.
 
+**A SAMPLE-SIZE FLOOR IS NOT A POWER TEST, and a null result is a positive claim that needs its
+own evidence.** `warning_audit` awarded `COSMETIC` — *"this warning carries no information"* — on
+`n_supp >= min_n and n_kept >= min_n`. A floor says a test **ran**; it never says the test could
+have **seen** anything, so it cannot separate "the effect is smaller than the bar" from "the CI
+is five times the bar and we cannot tell". Measured here: **0 of 11** COSMETIC cells survived,
+**0 of 12** had a CI inside ±0.05R, half-width median **4.1×** the bar, and **4 of 11** point
+estimates *exceeded* the bar while printing "no gate-grade effect" (worst `w1_marubozu`/long at
+**+0.289R**, CI [−0.007, +0.615]). **Enforced**: `audit_guard.CellVerdict.powered_null` — the CI
+strictly inside ±`bar`, computed once and read by every consumer so the rule cannot drift;
+defaults `False`, so an untested cell establishes nothing. **Rules**: a verdict meaning *ruled
+out* must test CI **containment**, never n; `INSUFFICIENT` and a powered null are different
+states and collapsing them prints the confident one; **only negative labels can move** under this
+correction, which is why it cannot promote a cell; and **the printed legend was wrong in the same
+direction as the code** (`COSMETIC = well-powered`), so the output corroborated the defect instead
+of exposing it — check a tool's legend against its own predicate.
+Audit: `docs/audits/2026-08-13-warning-value-audit.md` (§Correction). Ported from parent #617.
+
 **An AVERAGE OF AVERAGES beside a SUM OF COUNTS is two denominators in one row, and the count is
 the one that looks authoritative.** `get_backtest_win_rates` summed `closed_trades` across a cell's
 symbols but took a plain `mean()` of `avg_r`, so a 1-trade symbol moved the star rating exactly as

@@ -205,8 +205,15 @@ def evaluate_warning_cells(
     hypothetical warning gate, so :mod:`analytics.audit_guard` semantics map
     directly: ENABLE (warned reliably ≤ −bar) → SUPPRESS-CANDIDATE; DISABLE
     (warned reliably ≥ +bar) → REVERSE; CONCENTRATE and tested-but-not-clearing
-    (both cohorts ≥ min_n) → COSMETIC; otherwise INSUFFICIENT. The two-sample
-    lift CI is a reported corroboration stamp, never gate-deciding.
+    (the CI ruled out an effect at the bar) → COSMETIC; otherwise
+    INSUFFICIENT. The two-sample lift CI is a reported corroboration stamp,
+    never gate-deciding.
+
+    ⚠ **The COSMETIC trigger was "both cohorts ≥ min_n" until 2026-08-13.**
+    That is a sample-size floor, not power: it let a cell whose CI was many
+    times the bar be published as "this warning carries no information".
+    COSMETIC is a positive claim about absence and needs ``powered_null``
+    (``audit_guard``: CI strictly inside ±bar).
     """
     specs = [(w, d) for w in WARNING_KEYS for d in ("long", "short")]
     warned_arrays: list[npt.NDArray[np.float64]] = []
@@ -235,11 +242,7 @@ def evaluate_warning_cells(
             verdict = VERDICT_SUPPRESS
         elif cv.decision == audit_guard.DECISION_DISABLE:
             verdict = VERDICT_REVERSE
-        elif (
-            cv.decision == audit_guard.DECISION_CONCENTRATE
-            or cv.n_supp >= min_n
-            and cv.n_kept >= min_n
-        ):
+        elif cv.decision == audit_guard.DECISION_CONCENTRATE or cv.powered_null:
             verdict = VERDICT_COSMETIC
         else:
             verdict = VERDICT_INSUFFICIENT
