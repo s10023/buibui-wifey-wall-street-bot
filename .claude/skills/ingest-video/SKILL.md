@@ -217,14 +217,16 @@ from a recap block is a *past* call that would otherwise be stamped with today's
 `mechanic`, set `is_intro_recap` and **keep** the candidate: an idea stays portable
 regardless of when in the video it was said.
 
-**⚠ NO CODE HERE ACTS ON EITHER FLAG — the human reading the step-7 digest is the ENTIRE
-mechanism.** wifey's `route_target(content_type, verdict)` takes **no suppressor
-arguments** (verified 2026-08-13: `tools/x_route.py` contains `retrospective` **zero**
-times, against **3** in the parent's). Upstream drops a `retrospective` or `rejected`
-**setup** by returning `None`; here that setup routes to `pundit-calls.jsonl` anyway,
-carries today's `call_ts_utc`, and scores the author on an already-resolved trade. This
-skill claimed "`x_route`'s `retrospective` drop is setup-only" until 2026-08-13 — true of
-the parent, never of wifey. **That is why 7c prints both flags.**
+**`retrospective` now DROPS a setup in code; `is_intro_recap` still does not.** Since
+2026-08-13 `route_target` takes `retrospective` and `rejected` keyword-only and returns
+`None` for a `setup` with either (parent #521, ported after #184 found the gap — for one
+day short of two weeks wifey set `retrospective` and nothing read it, so recap-block calls
+routed carrying **today's** `call_ts_utc` and were scored on already-resolved trades).
+
+**The flag only drops a `setup`.** A `claim`/`mechanic` marked `is_intro_recap` is still
+kept deliberately, and **no code drops it** — the human reading step 7 remains the entire
+mechanism there, which is why 7c prints both flags. **Step 8 must pass the suppressors
+explicitly**; they default to `False`, so forgetting them fails open and silently.
 
 Instruct it not to read any repo, SoT, or memory file — the rubric below is written to
 stand alone. **That bounds what it READS, not what it KNOWS; see the isolation warning
@@ -545,9 +547,10 @@ reason to take a trade.
 author · `call_ts_utc` (`call_ts_source`) · `ts` · `content_type` · `retrospective` ·
 `is_intro_recap` · `verdict` · proposed routing · `vision_confidence`.
 
-**Both flags must be visible in this table**, since no code here acts on either (step 3):
-a `retrospective` setup is NOT dropped in wifey, so the human is the only thing standing
-between a recap-block call and a ledger row scored on an already-resolved trade.
+**Both flags must be visible in this table** (step 3). `retrospective` is now enforced in
+code for a `setup`, so showing it lets the approver see *why* an item is about to be
+dropped rather than wondering where it went; `is_intro_recap` on a `claim`/`mechanic` is
+enforced by **nobody**, so there the human reading this table is still the only mechanism.
 Below the table, per video: the dropped candidates with their reasons, the `chart_present`
 flag, and `backlog` when `true`. List any shape-1 / shape-2 videos separately with their
 skip reason. **Write nothing yet.**
@@ -631,12 +634,23 @@ real data — so treat a hit as worth reading rather than as routine noise.
 ### 8. Route on a single approval
 
 After the user approves the batch, for each item compute the destination with
-`tools/x_route.py::route_target(content_type, verdict)` (same taxonomy, unchanged
-import — do not fork it) and append per this table, identical to `/ingest-x`:
+`tools/x_route.py::route_target` (same taxonomy, unchanged import — do not fork it) and
+append per this table, identical to `/ingest-x`:
+
+```python
+route_target(content_type, verdict,
+             retrospective=item.get("retrospective", False),
+             rejected=item.get("rejected", False))
+```
+
+**Pass both suppressors — they are the whole point of pass 1 setting them.** They are
+keyword-only and default to `False`, so omitting them silently restores the old
+route-everything behaviour with no error. A `setup` with either flag returns `None`.
 
 | content_type | verdict | Append to |
 | --- | --- | --- |
 | setup | — | `docs/plans/pundit-calls.jsonl` (one JSON line, schema below) |
+| setup | *`retrospective` or `rejected`* | **drop** — say which flag; write nothing |
 | mechanic | — | `docs/plans/mechanics-backlog.md` (a `-` list bullet) |
 | claim | NOVEL | `docs/plans/thesis-inbox.md` (a draft `H` row) |
 | claim | ALREADY-TESTED / FROZEN-CATEGORY / NOT-FALSIFIABLE | **drop** — state "seen, verdict X", write nothing |

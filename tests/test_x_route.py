@@ -33,6 +33,49 @@ def test_route_target_unroutable() -> None:
         route_target("claim", "BOGUS")
 
 
+# ---------------------------------------------------------------------------
+# Setup suppressors (parent #521, ported 2026-08-13). Both drops used to live only in
+# the skills' markdown routing table, so each depended on the orchestrator reading
+# prose correctly at the end of a long batch. `rejected` is here because upstream's
+# 2026-07-31 round 3 shipped one: a pundit walked through a short and then explicitly
+# argued AGAINST taking it, which is `setup` + `retrospective: false`, so the table
+# routed it to Stream C and pundit_score.py scored him on a trade he declined. Only
+# the digest reader caught it.
+#
+# In wifey the exposure was wider: `/ingest-video` pass 1 SETS `retrospective` on any
+# setup lifted from a channel's intro recap, and nothing read it — so a recap call
+# routed carrying today's `call_ts_utc` and was scored on an already-resolved trade.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("flag", ["retrospective", "rejected"])
+def test_a_suppressed_setup_is_dropped(flag: str) -> None:
+    assert route_target("setup", "NOVEL", **{flag: True}) is None
+
+
+def test_an_ordinary_setup_still_routes_to_stream_c() -> None:
+    assert route_target("setup", "NOVEL") == "docs/plans/pundit-calls.jsonl"
+
+
+# The flags describe a trade call. A mechanic or a claim has no entry to decline,
+# and both skills already pin them to false — honouring the flag there would let a
+# mis-set field silently delete a routable item.
+@pytest.mark.parametrize(
+    "content_type, expected",
+    [
+        ("mechanic", "docs/plans/mechanics-backlog.md"),
+        ("claim", "docs/plans/thesis-inbox.md"),
+    ],
+)
+def test_suppressors_do_not_apply_outside_setup(
+    content_type: str, expected: str
+) -> None:
+    assert (
+        route_target(content_type, "NOVEL", retrospective=True, rejected=True)
+        == expected
+    )
+
+
 class TestFirstLevel:
     @pytest.mark.parametrize(
         "text, expected",

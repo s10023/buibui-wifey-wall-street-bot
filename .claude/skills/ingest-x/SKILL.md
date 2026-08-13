@@ -230,6 +230,13 @@ pasted, then run the flow once over the whole set.
    authors, so collapsing those would delete signal. Stream C still gets the exact
    `already_routed` block.
 
+   `route_target` also takes `retrospective=` / `rejected=` keyword flags that drop a
+   `setup` (parent #521, ported 2026-08-13). **This pipeline extracts neither, so both
+   stay `False` and routing here is unchanged** — an X post has no intro-recap block to
+   lift a stale call from. See `/ingest-video`'s step 3 for what they mean. If a post
+   ever *does* show a pundit walking through a trade and then arguing against taking it,
+   that is `rejected` — routing it scores the author on a trade they declined.
+
 ## Inline classification rubric (self-contained — paste into the subagent prompt)
 
 > A distilled snapshot of the SoT's Frozen / Closed / Parked state so the subagent
