@@ -43,11 +43,12 @@ final tree either way. Practical consequence: **Step 6 composes the initial
 The steps below are numbered from when the sweep ran post-PR. The numbering is
 kept so existing references still resolve, but the running order is now:
 
-1. Steps 1–5c — behaviour gate, changed artifacts, doc walk, surface checks,
-   MEMORY.md, **SoT reconcile**, **claims audit**. All pure local work; no PR,
-   no `gh`, no network. Steps 5b and 5c write nothing to the repo (the SoT lives
-   outside it, and the claims audit edits prose the branch already has), so both
-   are free of CI either way.
+1. Steps 1–5d — behaviour gate, changed artifacts, doc walk, surface checks,
+   MEMORY.md, **SoT reconcile**, **claims audit**, **doc-index check**. All pure
+   local work; no PR, no `gh`, no network. Steps 5b and 5c write nothing to the
+   repo (the SoT lives outside it, and the claims audit edits prose the branch
+   already has), so both are free of CI either way. **5b, 5c and 5d run
+   regardless of the Step 1 gate.**
 2. **Step 7** — commit the doc edits and `git push -u origin <branch>`.
 3. **Step 6** — compose the "Documentation updates" section.
 4. `gh pr create --body …` with that section already **in** the initial body.
@@ -602,6 +603,31 @@ the session — that is what makes the next challenge cheap.
 
 ---
 
+## Step 5d — Generated doc indexes (always; before Step 7's commit)
+
+`docs/audits/INDEX.md` and `docs/superpowers/specs/INDEX.md` are **generated**
+(`tools/docs_index.py`). `tests/test_docs_index.py` regenerates both and compares
+byte-for-byte, so a branch that adds, renames, or deletes anything in either tree
+leaves a **red suite** — not a lint nit — until the indexes are refreshed:
+
+```bash
+make docs-index-check   # non-zero if either index is stale; writes nothing
+```
+
+Stale → `make docs-index`, then commit the regenerated files in Step 7. **Never
+hand-edit either `INDEX.md`.**
+
+**Why here and not in Step 10a.** 10a runs *after* `gh pr create`, so a failure
+caught there costs a second push and a second full five-check matrix — inside the
+public-flip window this repo pays for CI with. The check is local, offline and
+sub-second, so it belongs before the commit that opens the PR.
+
+**Why it ignores Step 1's behaviour gate**, like 5b and 5c: a PR whose only new
+prose is an audit doc can legitimately gate as *skip* (bug fix + regression test,
+no behaviour change), and that is precisely the PR this catches.
+
+---
+
 ## Step 6 — Write the "Documentation updates" section (runs AFTER Step 7)
 
 Once edits are approved, applied and **committed** (Step 7), compose a
@@ -706,6 +732,7 @@ MEMORY.md          — updated: Current State + <other>  (never committed)
 SoT reconcile      — <row> moved to Closed | <row> corrected | no SoT row affected
                      (never committed)
 claims audit       — <n> claims, each with its reproducing query | no new prose
+doc indexes        — current | regenerated (make docs-index) | no audit/spec change
 Makefile           — no change needed: no new CLI commands
 docker-compose.yml — no change needed: no new processes
 .claude/context/*  — updated: analytics.md (store/ paths) | no change needed
@@ -755,6 +782,8 @@ Flag, do not fix:
 - `mergeable: CONFLICTING` or `mergeStateStatus: DIRTY`
 - Failing required checks in `statusCheckRollup`
 - `reviewDecision: CHANGES_REQUESTED`
+- A stale generated doc index — reachable here only when the skill ran **late**,
+  on a branch whose PR already exists; normally Step 5d caught it pre-push
 
 **⚠ Before reporting ANY failing check, compute its runtime from
 `startedAt`/`completedAt` — that is why they are in the `--jq` above.**
