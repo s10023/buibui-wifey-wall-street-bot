@@ -914,3 +914,188 @@ class TestLiveGateRowsExcluded:
         conn.close()
         assert len(df) == 1
         assert int(df.iloc[0]["total_trades"]) == 25
+
+
+# ---------------------------------------------------------------------------
+# cross-symbol aggregation must be trade-weighted
+#
+# `get_backtest_win_rates` pools counts across symbols (`closed_trades` sum,
+# `win_count` sum) but took a plain `mean()` of `avg_r`, so a symbol with 1
+# trade moved the star rating exactly as far as a symbol with 50 — while
+# `min_trades` guarded the pooled count. The guard's population was not the
+# statistic's population (the #150 rule), and `win_rate` in the same row was
+# already pooled, so the two halves of one row disagreed about their
+# denominator (the #169 rule).
+#
+# No fixture in this file put two symbols in one (strategy, timeframe) cell,
+# so the whole cross-symbol path was untested. Measured on the real DB
+# (docs/plans/scripts/recalibrate_avg_r_weighting.py): 22 of 22 rated
+# `signal_watch` cells move a star, 16 of 32 on `signal_watch_weekdays`,
+# several across zero.
+# ---------------------------------------------------------------------------
+
+_BT_COLS = (
+    "run_id, symbol, timeframe, strategy, data_start_ms, data_end_ms, days, "
+    "sl_pct, tp_r, fee_pct, day_filter, total_signals, closed_trades, "
+    "win_count, loss_count, win_rate, avg_r, total_r, max_drawdown_r, "
+    "run_at_ms, sweep_id, long_closed_trades, long_win_count, long_win_rate, "
+    "long_avg_r, short_closed_trades, short_win_count, short_win_rate, "
+    "short_avg_r"
+)
+
+
+def _insert_directional_run(
+    conn: duckdb.DuckDBPyConnection,
+    run_id: str,
+    symbol: str,
+    closed_trades: int,
+    avg_r: float,
+    long_n: int | None = None,
+    long_avg_r: float | None = None,
+    short_n: int | None = None,
+    short_avg_r: float | None = None,
+    strategy: str = "orb",
+    timeframe: str = "4h",
+) -> None:
+    """Insert one sweep row for (strategy, timeframe, symbol) by column name.
+
+    Named columns, not positional — `tests/test_schema_insert_arity.py` ties
+    positional INSERTs to the live column list, and this fixture only cares
+    about the count/avg_r pairs.
+    """
+    conn.execute(
+        f"INSERT INTO backtest_runs ({_BT_COLS}) VALUES "
+        "(?, ?, ?, ?, 0, 1, 90, 0.02, 2.0, 0.0005, 'off', ?, ?, ?, 0, 0.5, ?, "
+        "0.0, 0.0, 1000, 'sweep-1', ?, 0, NULL, ?, ?, 0, NULL, ?)",
+        [
+            run_id,
+            symbol,
+            timeframe,
+            strategy,
+            closed_trades,
+            closed_trades,
+            closed_trades,
+            avg_r,
+            long_n,
+            long_avg_r,
+            short_n,
+            short_avg_r,
+        ],
+    )
+
+
+class TestCrossSymbolAggregationIsTradeWeighted:
+    def _make_conn(self) -> duckdb.DuckDBPyConnection:
+        conn = duckdb.connect(":memory:")
+        init_schema(conn)
+        return conn
+
+    def test_combined_avg_r_is_trade_weighted_not_a_symbol_mean(self) -> None:
+        """A 4-trade symbol must not outvote a 40-trade one.
+
+        symbol mean  = (-0.10 + 1.50) / 2                = +0.700  -> 4 stars
+        trade-weighted = (40*-0.10 + 4*1.50) / 44        = +0.045  -> 2 stars
+        """
+        conn = self._make_conn()
+        _insert_directional_run(conn, "a", "SPY", 40, -0.10)
+        _insert_directional_run(conn, "b", "AAPL", 4, 1.50)
+        df = get_backtest_win_rates(conn)
+        conn.close()
+        assert len(df) == 1
+        assert float(df.iloc[0]["avg_r"]) == 0.0455
+        assert int(df.iloc[0]["total_trades"]) == 44
+
+    def test_combined_star_rating_follows_the_weighted_value(self) -> None:
+        conn = self._make_conn()
+        _insert_directional_run(conn, "a", "SPY", 40, -0.10)
+        _insert_directional_run(conn, "b", "AAPL", 4, 1.50)
+        rated = compute_recalibrated_ratings(conn)
+        conn.close()
+        assert rated == {"orb": {"4h": 2}}
+
+    def test_directional_avg_r_is_trade_weighted(self) -> None:
+        """long: (30*-0.2 + 2*2.0) / 32 = -0.0625, not the symbol mean +0.900."""
+        conn = self._make_conn()
+        _insert_directional_run(conn, "a", "SPY", 40, -0.1, long_n=30, long_avg_r=-0.2)
+        _insert_directional_run(conn, "b", "AAPL", 4, 1.5, long_n=2, long_avg_r=2.0)
+        df = get_backtest_win_rates(conn)
+        conn.close()
+        assert float(df.iloc[0]["long_avg_r"]) == -0.0625
+        assert int(df.iloc[0]["long_total_trades"]) == 32
+
+    def test_directional_stars_follow_the_weighted_value(self) -> None:
+        conn = self._make_conn()
+        _insert_directional_run(conn, "a", "SPY", 40, -0.1, long_n=30, long_avg_r=-0.2)
+        _insert_directional_run(conn, "b", "AAPL", 4, 1.5, long_n=2, long_avg_r=2.0)
+        rated = compute_directional_ratings(conn)
+        conn.close()
+        assert rated == {"orb": {"4h": {"long": 1}}}
+
+    def test_a_direction_absent_on_one_symbol_does_not_dilute_the_other(
+        self,
+    ) -> None:
+        """`long_avg_r` is NULL exactly when `long_closed_trades` is 0.
+
+        Numerator and denominator must skip the same rows, or the untraded
+        symbol drags the mean toward zero.
+        """
+        conn = self._make_conn()
+        _insert_directional_run(conn, "a", "SPY", 10, 0.5, long_n=10, long_avg_r=0.5)
+        _insert_directional_run(conn, "b", "AAPL", 10, 0.5, long_n=0, long_avg_r=None)
+        df = get_backtest_win_rates(conn)
+        conn.close()
+        assert float(df.iloc[0]["long_avg_r"]) == 0.5
+        assert int(df.iloc[0]["long_total_trades"]) == 10
+
+    def test_a_row_with_trades_but_no_average_is_excluded_from_both_parts(
+        self,
+    ) -> None:
+        """Preventive — no such row exists in production (0 of 3,268, 2026-08-13).
+
+        The engine returns a directional avg_r of None exactly when that
+        direction has no closed trades, so `n > 0 AND avg_r IS NULL` is
+        unreachable today. Pinned anyway because the alternative — counting n in
+        the denominator with nothing in the numerator — silently invents n
+        trades at R=0, which is the same bias-toward-a-fiction this whole fix
+        removes. The previous test cannot catch it: there the absent direction's
+        n is 0, so an unmasked denominator adds nothing.
+        """
+        conn = self._make_conn()
+        _insert_directional_run(conn, "a", "SPY", 10, 0.5, long_n=10, long_avg_r=0.5)
+        _insert_directional_run(conn, "b", "AAPL", 6, 0.5, long_n=6, long_avg_r=None)
+        df = get_backtest_win_rates(conn)
+        conn.close()
+        assert float(df.iloc[0]["long_avg_r"]) == 0.5
+
+    def test_weighted_mean_shares_its_denominator_with_the_reported_count(
+        self,
+    ) -> None:
+        """total_r reconstructed from (avg_r x total_trades) must match the parts."""
+        conn = self._make_conn()
+        _insert_directional_run(conn, "a", "SPY", 40, -0.10)
+        _insert_directional_run(conn, "b", "AAPL", 4, 1.50)
+        _insert_directional_run(conn, "c", "QQQ", 6, 0.25)
+        df = get_backtest_win_rates(conn)
+        conn.close()
+        row = df.iloc[0]
+        expected_total_r = 40 * -0.10 + 4 * 1.50 + 6 * 0.25
+        assert int(row["total_trades"]) == 50
+        assert round(float(row["avg_r"]) * 50, 4) == round(expected_total_r, 4)
+
+    def test_single_symbol_cell_is_unchanged_by_weighting(self) -> None:
+        """Weighting is a no-op on one symbol — the existing fixtures must hold."""
+        conn = self._make_conn()
+        _insert_directional_run(conn, "a", "SPY", 20, 0.6, long_n=12, long_avg_r=0.8)
+        df = get_backtest_win_rates(conn)
+        conn.close()
+        assert float(df.iloc[0]["avg_r"]) == 0.6
+        assert float(df.iloc[0]["long_avg_r"]) == 0.8
+
+    def test_equal_trade_counts_reduce_to_the_plain_mean(self) -> None:
+        """The old and new estimators agree exactly when the counts are equal."""
+        conn = self._make_conn()
+        _insert_directional_run(conn, "a", "SPY", 10, -0.10)
+        _insert_directional_run(conn, "b", "AAPL", 10, 1.50)
+        df = get_backtest_win_rates(conn)
+        conn.close()
+        assert float(df.iloc[0]["avg_r"]) == 0.7

@@ -84,6 +84,32 @@ def _min_trades_expr(
     return expr, []
 
 
+def _pooled(avg_col: str, n_col: str = "closed_trades") -> str:
+    """SQL for a TRADE-WEIGHTED mean of a per-run average or rate.
+
+    `backtest_runs` holds one row per (strategy, timeframe, symbol) run, each
+    with its own average and its own trade count. `AVG(avg_r)` over those rows
+    lets a 1-trade run move the number exactly as far as a 50-trade one, while
+    the `SUM(closed_trades)` printed beside it reports the pooled count — a mean
+    and a count that do not share a denominator. Pool instead:
+    sum(avg_i x n_i) / sum(n_i), which for a rate column collapses to
+    sum(wins) / sum(trades).
+
+    The `FILTER` keeps numerator and denominator on the same rows: a directional
+    average is NULL when that direction has no trades, and `SUM(n)` would
+    otherwise count that row's trades against a numerator it contributed
+    nothing to, dragging the result toward zero.
+
+    Defined once on purpose. The expression was inlined at six sites and four of
+    them had drifted to the unweighted form while two stayed correct — the
+    duplication is what let the divergence hide (the #165 lesson).
+    """
+    return (
+        f"SUM({avg_col} * {n_col}) "
+        f"/ NULLIF(SUM({n_col}) FILTER (WHERE {avg_col} IS NOT NULL), 0)"
+    )
+
+
 QUERY_NAMES = [
     "symbol",
     "strategy",
@@ -126,7 +152,7 @@ def query_symbol(
         SELECT
             symbol,
             ROUND(SUM(total_r), 2)                      AS total_r,
-            ROUND(AVG(avg_r), 3)                        AS avg_avg_r,
+            ROUND({_pooled("avg_r")}, 3)                AS avg_avg_r,
             SUM(closed_trades)                          AS total_trades,
             COUNT(*)                                    AS run_count,
             MAX(CASE WHEN avg_r = max_avg_r THEN strategy END) AS best_strategy
@@ -161,14 +187,11 @@ def query_strategy(
         f"""
         SELECT
             strategy,
-            ROUND(
-                SUM(avg_r * closed_trades) / NULLIF(SUM(closed_trades), 0),
-                3
-            )                                           AS weighted_avg_r,
+            ROUND({_pooled("avg_r")}, 3)                AS weighted_avg_r,
             ROUND(SUM(total_r), 2)                      AS total_r,
             SUM(closed_trades)                          AS total_trades,
             COUNT(*)                                    AS run_count,
-            ROUND(AVG(win_rate) * 100, 1)               AS avg_win_pct
+            ROUND({_pooled("win_rate")} * 100, 1)       AS avg_win_pct
         FROM backtest_runs
         WHERE {mt_expr}{sc_sql}
         GROUP BY strategy
@@ -196,10 +219,7 @@ def query_tf(
         f"""
         SELECT
             timeframe,
-            ROUND(
-                SUM(avg_r * closed_trades) / NULLIF(SUM(closed_trades), 0),
-                3
-            )                                           AS weighted_avg_r,
+            ROUND({_pooled("avg_r")}, 3)                AS weighted_avg_r,
             ROUND(SUM(total_r), 2)                      AS total_r,
             SUM(closed_trades)                          AS total_trades,
             COUNT(*)                                    AS run_count
@@ -484,22 +504,26 @@ def query_direction_bias(
         scope, min_trades, col="short_closed_trades"
     )
     sc_sql, sc_params = _scope_clauses(scope)
+    long_r = _pooled("long_avg_r", "long_closed_trades")
+    short_r = _pooled("short_avg_r", "short_closed_trades")
+    long_wr = _pooled("long_win_rate", "long_closed_trades")
+    short_wr = _pooled("short_win_rate", "short_closed_trades")
     df = conn.execute(
         f"""
         SELECT
             strategy,
-            ROUND(AVG(long_avg_r), 3)                   AS long_avg_r,
-            ROUND(AVG(short_avg_r), 3)                  AS short_avg_r,
-            ROUND(AVG(long_avg_r) - AVG(short_avg_r), 3) AS long_minus_short,
+            ROUND({long_r}, 3)                          AS long_avg_r,
+            ROUND({short_r}, 3)                         AS short_avg_r,
+            ROUND({long_r} - {short_r}, 3)              AS long_minus_short,
             SUM(long_closed_trades)                     AS long_trades,
             SUM(short_closed_trades)                    AS short_trades,
-            ROUND(AVG(long_win_rate) * 100, 1)          AS long_win_pct,
-            ROUND(AVG(short_win_rate) * 100, 1)         AS short_win_pct
+            ROUND({long_wr} * 100, 1)                   AS long_win_pct,
+            ROUND({short_wr} * 100, 1)                  AS short_win_pct
         FROM backtest_runs
         WHERE {mt_expr}
           AND {mt_expr2}{sc_sql}
         GROUP BY strategy
-        ORDER BY ABS(AVG(long_avg_r) - AVG(short_avg_r)) DESC
+        ORDER BY ABS({long_r} - {short_r}) DESC
         """,
         mt_params + mt_params2 + sc_params,
     ).df()
@@ -530,7 +554,7 @@ def query_consistency(
                 / NULLIF(COUNT(*), 0),
                 1
             )                                          AS pct_profitable,
-            ROUND(AVG(avg_r), 3)                        AS overall_avg_r,
+            ROUND({_pooled("avg_r")}, 3)                AS overall_avg_r,
             SUM(closed_trades)                          AS total_trades
         FROM backtest_runs
         WHERE {mt_expr}{sc_sql}
@@ -562,7 +586,7 @@ def query_recovery_factor(
             ROUND(AVG(recovery_factor), 2)              AS avg_rf,
             ROUND(MAX(recovery_factor), 2)              AS best_rf,
             ROUND(AVG(max_drawdown_r), 3)               AS avg_max_dd_r,
-            ROUND(AVG(avg_r), 3)                        AS avg_r,
+            ROUND({_pooled("avg_r")}, 3)                AS avg_r,
             SUM(closed_trades)                          AS total_trades,
             COUNT(*)                                    AS run_count
         FROM backtest_runs

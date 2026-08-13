@@ -10,6 +10,15 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 
+# (per-symbol average, its trade count) — the pairs pooled trade-weighted by
+# get_backtest_win_rates. A directional average is NULL when that direction has
+# no trades, so each pair's numerator and denominator are masked together.
+_WEIGHTED_MEAN_COLS: list[tuple[str, str]] = [
+    ("avg_r", "closed_trades"),
+    ("long_avg_r", "long_closed_trades"),
+    ("short_avg_r", "short_closed_trades"),
+]
+
 
 def _empty_win_rates() -> pd.DataFrame:
     """Zero-row frame with the exact column set callers index into."""
@@ -136,22 +145,41 @@ def get_backtest_win_rates(
     raw = raw.sort_values("run_at_ms", ascending=False).drop_duplicates(
         subset=["strategy", "timeframe", "symbol"]
     )
-    # Aggregate across symbols
+    # Aggregate across symbols. Every statistic here is POOLED over trades, not
+    # averaged over symbols: `avg_r` is sum(R) / sum(trades), reconstructed as
+    # sum(avg_r_i x n_i) / sum(n_i). A plain `.mean()` of the per-symbol avg_r
+    # would let a 1-trade symbol move the star rating as far as a 50-trade one
+    # while `min_trades` guarded the pooled count — a sample-size guard counting
+    # a different population than the statistic it guards. `win_rate` on the
+    # same row was already pooled, so the two halves of one row disagreed about
+    # their denominator. Measured over the real DB when this was fixed: 22 of 22
+    # rated `signal_watch` cells moved a star, 16 of 32 on `signal_watch_weekdays`,
+    # several across zero.
+    for avg_col, n_col in _WEIGHTED_MEAN_COLS:
+        # `.where(present)` on BOTH parts so numerator and denominator skip the
+        # same rows: a directional avg_r is NULL exactly when that direction has
+        # no trades, and counting its 0 in the denominator alone would drag the
+        # mean toward zero.
+        present = raw[avg_col].notna()
+        raw[f"_num_{avg_col}"] = (raw[avg_col] * raw[n_col]).where(present)
+        raw[f"_den_{avg_col}"] = raw[n_col].where(present)
     agg = (
         raw.groupby(["strategy", "timeframe"], sort=True)
         .agg(
             total_trades=("closed_trades", "sum"),
             win_count_sum=("win_count", "sum"),
-            avg_r=("avg_r", "mean"),
             long_total_trades=("long_closed_trades", "sum"),
             long_win_count_sum=("long_win_count", "sum"),
-            long_avg_r=("long_avg_r", "mean"),
             short_total_trades=("short_closed_trades", "sum"),
             short_win_count_sum=("short_win_count", "sum"),
-            short_avg_r=("short_avg_r", "mean"),
+            **{f"_num_{c}": (f"_num_{c}", "sum") for c, _ in _WEIGHTED_MEAN_COLS},
+            **{f"_den_{c}": (f"_den_{c}", "sum") for c, _ in _WEIGHTED_MEAN_COLS},
         )
         .reset_index()
     )
+    for avg_col, _n_col in _WEIGHTED_MEAN_COLS:
+        den = agg.pop(f"_den_{avg_col}").replace(0, float("nan"))
+        agg[avg_col] = agg.pop(f"_num_{avg_col}") / den
     agg["win_rate"] = (agg["win_count_sum"] / agg["total_trades"]).round(4)
     agg["avg_r"] = agg["avg_r"].round(4)
     agg["total_trades"] = agg["total_trades"].astype(int)
