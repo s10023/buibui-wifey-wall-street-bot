@@ -11,7 +11,7 @@ An em dash means the doc states its verdict in a table, a blockquote or the body
 
 | Date | Audit | Verdict (as written) | File |
 | --- | --- | --- | --- |
-| 2026-08-13 | Warning-value audit — do the W1–W8 alert warnings predict avg_r? | COSMETIC on 11 of 12 cells; one SUPPRESS-CANDIDATE — `w5_wick_rejection` / long (backtest substrate). Not shipped as a gate: the… | [2026-08-13-warning-value-audit.md](2026-08-13-warning-value-audit.md) |
+| 2026-08-13 | Warning-value audit — do the W1–W8 alert warnings predict avg_r? | INSUFFICIENT on 11 of 12 cells — the audit could not rule anything out; one SUPPRESS-CANDIDATE — `w5_wick_rejection` / long… | [2026-08-13-warning-value-audit.md](2026-08-13-warning-value-audit.md) |
 | 2026-08-13 | Vacuous causality guards in the sleeve books | Two of three causality guards were vacuous — they passed with the causal shift they guard deleted. Fixed, and each is now… | [2026-08-13-vacuous-causality-guards.md](2026-08-13-vacuous-causality-guards.md) |
 | 2026-08-13 | HTF-EMA Population Parity — Measured and Declined as Net Harmful | the population mismatch is REAL and large — 40.1% of the EV gate's evidence is trades the live F8 HTF-EMA gate would never have… | [2026-08-13-htf-ema-population-parity.md](2026-08-13-htf-ema-population-parity.md) |
 | 2026-08-13 | Conflict-Resolver Gate Ordering — Measured and Declined | the briefed defect (EV gate ordered before the volume/bias gates) does not exist — reordering the EV gate is provably… | [2026-08-13-conflict-resolver-gate-ordering.md](2026-08-13-conflict-resolver-gate-ordering.md) |

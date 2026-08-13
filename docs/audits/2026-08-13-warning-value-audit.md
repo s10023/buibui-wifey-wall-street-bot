@@ -1,9 +1,10 @@
 # Warning-value audit — do the W1–W8 alert warnings predict avg_r?
 
-**Date:** 2026-08-13
-**Verdict:** COSMETIC on 11 of 12 cells; **one SUPPRESS-CANDIDATE — `w5_wick_rejection` /
-long** (backtest substrate). Not shipped as a gate: the finding is backtest-only and the live
-substrate cannot corroborate it at n=1.
+**Date:** 2026-08-13 (**CORRECTED 2026-08-13p — the COSMETIC half of the original verdict was
+an artifact; see "Correction" below**)
+**Verdict:** **INSUFFICIENT on 11 of 12 cells** — the audit could not rule anything out; **one
+SUPPRESS-CANDIDATE — `w5_wick_rejection` / long** (backtest substrate), unchanged. Not shipped
+as a gate: the finding is backtest-only and the live substrate cannot corroborate it at n=1.
 **Audit:** `tools/warning_value_audit.py` (`make wifey-warning-value-audit`), lib
 `analytics/warning_audit.py`
 **Ported from:** parent PR #492
@@ -30,7 +31,7 @@ them: doji beats marubozu, W5 is skipped on a doji, and a `<2`-bar window emits 
 
 Each (warning × direction) cell treats the **warned slice as the would-be-suppressed slice of a
 hypothetical warning gate**, which maps `audit_guard` semantics directly onto it: `ENABLE` →
-SUPPRESS-CANDIDATE, `DISABLE` → REVERSE, `CONCENTRATE` or tested-but-not-clearing → COSMETIC,
+SUPPRESS-CANDIDATE, `DISABLE` → REVERSE, `CONCENTRATE` or a **powered null** → COSMETIC,
 else INSUFFICIENT. One Holm family per source across all 12 cells. A cell must clear a ±0.05R
 bootstrap CI **and** its Holm-adjusted p < 0.05. The two-sample lift CI (warned − clean) is
 reported as corroboration and is **never gate-deciding**.
@@ -64,11 +65,50 @@ Three caveats that bound every number below:
 3. **Trades are non-iid.** Pooling across symbols and strategies means the effective sample is
    smaller than n suggests, so treat the CI as optimistic.
 
-## Result — 11 of 12 cells COSMETIC
+## Correction (2026-08-13p) — the COSMETIC half was an artifact
 
-Every cell except one is well-powered and shows no gate-grade effect. That is a real answer: it
-says the warnings are **decoration that does not mislead**, which is the outcome that justifies
-leaving them in the alert.
+**This section replaces the original "Result — 11 of 12 cells COSMETIC", which read:** *"Every
+cell except one is well-powered and shows no gate-grade effect. That is a real answer: it says
+the warnings are decoration that does not mislead, which is the outcome that justifies leaving
+them in the alert."* **That claim was false, and it was false in the direction that matters:**
+it published a positive claim about *absence* on cells that had ruled nothing out.
+
+The cause was in `audit_guard`, not in this audit's data. COSMETIC was awarded on
+`n_supp >= min_n and n_kept >= min_n` — **a sample-size floor, which says a test RAN but never
+that it could have SEEN anything.** Parent PR #617 replaced it with the only honest test,
+`CellVerdict.powered_null` (the bootstrap CI lying strictly inside ±bar). Re-derived on wifey's
+own substrate, every former COSMETIC cell fails it:
+
+| | value |
+| --- | --- |
+| former COSMETIC cells that survive as COSMETIC | **0 of 11** |
+| cells whose CI lies strictly inside ±0.05R | **0 of 12** |
+| CI half-width vs the 0.05R bar | median **4.1×**, range **1.8×–6.2×** |
+| point estimates that *exceed* the bar while printing "no gate-grade effect" | **4 of 11** |
+
+The worst case is `w1_marubozu` / long: **+0.289R** at n=221 with CI **[−0.007, +0.615]** — a
+point estimate 5.8× the bar and a CI 6.2× it, published as *"well-powered, no effect"*.
+
+**The honest reading of this audit is therefore "we cannot tell", not "the warnings are
+decoration".** Nothing about the warnings was established; the substrate is too noisy at ±0.05R.
+
+**What did NOT change:** `w5_wick_rejection` / long is still SUPPRESS-CANDIDATE on the identical
+numbers (`ENABLE`, CI [−0.475, −0.144], Holm p = 0.002). **Only negative labels moved** — the
+correction can never promote a cell, because ENABLE/DISABLE never consulted the proxy.
+
+Three transferable rules. **A sample-size floor is not a power test** — `n >= min_n` cannot
+distinguish "the effect is smaller than the bar" from "the CI is five times the bar and we
+cannot tell", so a verdict meaning *"ruled out"* must test CI **containment**. **A null result
+is a positive claim and needs its own evidence** — INSUFFICIENT and COSMETIC are different
+states, and collapsing them let the tool print the confident one. And **the legend was wrong in
+the same direction as the code**: the tool told the reader `COSMETIC = well-powered`, so the
+printed output corroborated the defect instead of exposing it.
+
+## Result — 11 of 12 cells INSUFFICIENT
+
+Eleven cells rule nothing out at the ±0.05R bar; one is a real finding (below). See the
+Correction above for why this is not the "decoration that does not mislead" answer originally
+filed.
 
 ## The exception — `w5_wick_rejection` / long
 

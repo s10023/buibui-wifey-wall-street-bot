@@ -25,6 +25,12 @@ rather than a local map, because equity timeframes are ``4h`` / ``1d`` /
 live substrate is expected to return ``INSUFFICIENT`` almost everywhere
 (267 resolved rows against ``min_n=30`` across 12 cells).
 
+Corrected 2026-08-13 (parent PR #617): COSMETIC now requires
+``audit_guard.CellVerdict.powered_null`` — the CI strictly inside ±bar —
+rather than the old ``n >= min_n`` proxy. A sample-size floor says a test
+*ran*, never that it could have *seen* anything, so the proxy published
+under-powered cells as "this warning carries no information".
+
 Run: ``PYTHONPATH=. poetry run python tools/warning_value_audit.py``
 (wrapped by ``make wifey-warning-value-audit``).
 """
@@ -225,8 +231,11 @@ def format_report(
         "slice of a hypothetical warning gate. SUPPRESS-CANDIDATE = warned "
         "trades reliably lose ≥ bar (audit_guard ENABLE: bootstrap CI + Holm). "
         "REVERSE = warned trades reliably win ≥ bar (DISABLE). COSMETIC = "
-        "well-powered, no gate-grade effect (CONCENTRATE detail kept in Raw). "
-        "INSUFFICIENT = under-powered. The two-sample lift CI (warned − clean) "
+        "the CI lies strictly inside ±bar, i.e. an effect worth acting on is "
+        "RULED OUT (CONCENTRATE detail kept in Raw). INSUFFICIENT = not "
+        "ruled out — either n below the floor or a CI wider than the bar; "
+        "these are different states and neither is a null result. "
+        "The two-sample lift CI (warned − clean) "
         "is corroboration only. Backtest = primary substrate; live = "
         "corroboration only."
     )

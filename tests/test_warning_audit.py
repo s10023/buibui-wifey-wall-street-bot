@@ -208,9 +208,17 @@ class TestTagTrades:
 
 
 def _block(
-    n: int, r_mean: float, flag: str | None, rng: np.random.Generator
+    n: int,
+    r_mean: float,
+    flag: str | None,
+    rng: np.random.Generator,
+    sd: float = 0.3,
 ) -> pd.DataFrame:
-    df = pd.DataFrame({"direction": ["long"] * n, "r": rng.normal(r_mean, 0.3, n)})
+    """``sd`` is exposed because a COSMETIC assertion needs the cell's CI to
+    fit INSIDE the ±0.05R bar, and the 0.3 default cannot at these n (at n=80
+    its CI half-width is ~0.066, i.e. wider than the bar it is tested against).
+    """
+    df = pd.DataFrame({"direction": ["long"] * n, "r": rng.normal(r_mean, sd, n)})
     for key in WARNING_KEYS:
         df[key] = key == flag
     return df
@@ -223,7 +231,10 @@ class TestEvaluateWarningCells:
             [
                 _block(80, -0.8, "w7_doji", rng),  # reliable loser
                 _block(80, 0.8, "w1_marubozu", rng),  # reliable winner
-                _block(80, 0.0, "w6_consecutive", rng),  # powered, no effect
+                # Powered null: sd tightened so the CI genuinely excludes an
+                # effect at the bar. At the 0.3 default it does NOT, and this
+                # line asserted COSMETIC anyway until 2026-08-13.
+                _block(80, 0.0, "w6_consecutive", rng, sd=0.1),
                 _block(5, -1.0, "w2_equal_levels", rng),  # under-powered
                 _block(300, 0.05, None, rng),  # clean bulk
             ]
@@ -254,6 +265,33 @@ class TestEvaluateWarningCells:
         v = by[("w8_inside_bar", "long")]
         assert v.raw_decision == "CONCENTRATE"
         assert v.verdict == "COSMETIC"
+
+    def test_wide_ci_is_insufficient_not_cosmetic(self) -> None:
+        """COSMETIC claims a warning carries no information. That needs the CI
+        to RULE OUT an effect at the bar, not merely both cohorts clearing a
+        sample-size floor.
+
+        Both cohorts here are far past ``min_n`` (so the old ``n >= min_n``
+        rule called this COSMETIC) while the noise is wide enough that an
+        effect the size of the bar is entirely consistent with the data.
+        """
+        rng = np.random.default_rng(23)
+        # sd=3.0 at n=60: CI half-width ~0.76, i.e. ~15x the 0.05R bar.
+        noisy = pd.DataFrame(
+            {"direction": ["long"] * 60, "r": rng.normal(0.0, 3.0, 60)}
+        )
+        for key in WARNING_KEYS:
+            noisy[key] = key == "w7_doji"
+        tagged = pd.concat([noisy, _block(300, 0.0, None, rng)]).reset_index(drop=True)
+
+        verdicts = evaluate_warning_cells(tagged, n_boot=500)
+        v = {(x.warning, x.direction): x for x in verdicts}[("w7_doji", "long")]
+
+        assert v.n_warned >= 30 and v.n_clean >= 30  # a size rule cannot help
+        # positive control: the CI really is wide
+        assert v.ci_lo is not None and v.ci_hi is not None
+        assert v.ci_hi - v.ci_lo > 0.10
+        assert v.verdict == "INSUFFICIENT"
 
     def test_single_holm_family(self) -> None:
         rng = np.random.default_rng(3)

@@ -423,10 +423,19 @@ Upstream's map spells the weekly timeframe `1w`; every equity surface here uses 
 carries 497 signals, so a verbatim copy raises `KeyError` on the first real run.
 `TestTimeframeLength` pins this and was mutation-checked in both directions.
 
-**First run (2026-08-13): 11 of 12 backtest cells COSMETIC, one SUPPRESS-CANDIDATE —
-`w5_wick_rejection`/long** (n=316 warned at −0.315R vs −0.037R clean; Holm p=0.002; sign holds on
-all three timeframes and on 5 of 6 strategies). **Not shipped as a gate** — the live substrate has
-n=1 for that cell. Verdict + caveats: `docs/audits/2026-08-13-warning-value-audit.md`.
+**Result (2026-08-13, CORRECTED same day): 11 of 12 backtest cells INSUFFICIENT, one
+SUPPRESS-CANDIDATE — `w5_wick_rejection`/long** (n=316 warned at −0.315R vs −0.037R clean; Holm
+p=0.002; sign holds on all three timeframes and on 5 of 6 strategies). **Not shipped as a gate** —
+the live substrate has n=1 for that cell.
+
+⚠ **The first run reported those 11 cells as COSMETIC and that was an artifact** (parent #617,
+ported 2026-08-13p). COSMETIC was awarded on `n >= min_n`, a sample-size floor that says a test
+*ran* but never that it could have *seen* anything. Under the honest test — `powered_null`, the
+CI strictly inside ±bar — **0 of 11 survive** and **0 of 12 cells** have a CI inside ±0.05R
+(half-width median **4.1×** the bar, range 1.8×–6.2×; **4 of 11** point estimates *exceed* the
+bar, worst `w1_marubozu`/long at **+0.289R**, CI [−0.007, +0.615]). The honest reading is **"we
+cannot tell"**, never "the warnings are decoration". The W5 lead is unchanged — only negative
+labels can move. Verdict + caveats: `docs/audits/2026-08-13-warning-value-audit.md`.
 
 **Run:** `make wifey-warning-value-audit` (`ARGS="--source live|backtest|both --min-n N --out PATH"`).
 
