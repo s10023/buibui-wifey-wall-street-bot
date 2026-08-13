@@ -73,6 +73,15 @@ and refused.
 1. Run `make wifey-sync-parent`. If it reports a fail-fast error (parent missing,
    no readable `origin/main`, malformed state), **surface it to the user and stop**
    — do not auto-clone, auto-fetch, or auto-bump.
+
+   **A carried shortlist is not the range — re-derive the range, and report how many
+   commits are UNDECIDED, not just which are shortlisted.** A handoff naming "the
+   remaining candidates" describes the parent as of the last scan, and the parent
+   keeps merging. On 2026-08-12 the handoff and the SoT both carried
+   `#557 / #600 / #586-part` as the whole remainder while the parent had merged **9
+   more PRs**, one of them (#602) a live defect in a tool wifey runs and on no
+   shortlist at all. It was found only because the range was re-derived. State the
+   count both ways every run: *"167 PRs in range, 74 undecided, 11 never triaged."*
 2. **Run BOTH portability filters, and say which findings came from which.**
    They have opposite blind spots, so either one alone produces a shortlist that
    silently omits a whole class:
@@ -84,6 +93,14 @@ and refused.
      ports; silent on modify-only PRs. **Update its `PORTED` set from
      `memory/project_parent_sync_state.md` first**, or already-ported work
      re-surfaces as a candidate.
+
+   Both filters share a **third** blind spot: a file with no imports at all scores
+   `SELF-CONTAINED` no matter what it wraps. On 2026-08-13 the import filter
+   promoted #488 (`/card` skill) as a ready greenfield port — a `SKILL.md` has no
+   Python imports — while `card/` and `cli/card.py` do not exist here, so the
+   skill would have been an orphan wrapper around nothing. **For a docs-only or
+   skill-only PR, check that its SUBJECT exists here, not its imports**: read the
+   commands and modules the prose invokes and confirm each resolves.
 
    Do **not** stop at the Workstreams table and the bucket counts. At a wide range
    they carry almost no signal — the 2026-08-11 scan bucketed 156 PRs as
@@ -100,7 +117,26 @@ and refused.
    count is never wifey's, and "preventive, not a repair" is a legitimate finding.
 4. For each **PORT** / **EVALUATE** candidate the user wants: open a fresh Claude
    session, paste the PR number + the parent MEMORY excerpt from the report, and
-   do the actual port work there (this skill does not edit code).
+   do the actual port work there (this skill does not edit code). Two rules the
+   report cannot express, because both are about the parent's state *now* rather
+   than at the merge commit:
+
+   - **When the target is greenfield, port at parent `HEAD`, not at the PR.** The
+     report names "PR #N", which reads as an instruction to take that commit — but
+     a new file keeps being fixed after it lands, and every one of those follow-ups
+     is greenfield too. Run `git log <merge>..origin/main -- <path>` first and take
+     the file at `HEAD`. #515's `yt_feed.py` had moved **724 → 894 lines** over six
+     follow-ups, and #516 among them adds the `load_dotenv()` without which the
+     `YOUTUBE_API_KEY` the operator just provisioned is invisible. **Re-check any
+     expired NOT-PORTABLE ruling in the same pass** — #535's was correct only while
+     there was no `yt_feed.py`, and porting #515 made it moot.
+   - **A ported doc inverts its cross-repo direction, and nothing mechanical
+     catches it.** Lint, tests, and path checks are all silent on prose that is
+     simply about the other repo. `/ingest-feed`'s SKILL arrived telling a wifey
+     session *"crypto → here"*, which is exactly backwards. Grep every ported doc
+     for `here` / `our` / `this repo` / `the sibling` — **and read the example
+     DATA**, which carries the same inversion (#515's example follow list was a
+     crypto channel).
 5. Once the user confirms every PR in the range has been decided, advance the
    pointer. **Bump by hand-editing the `last_synced_hash` in
    `memory/project_parent_sync_state.md`'s frontmatter — never
