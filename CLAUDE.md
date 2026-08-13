@@ -84,7 +84,7 @@ the text would simply be destroyed. If a footgun has no committed audit, write o
 | Package | What it is | Deep reference |
 | --- | --- | --- |
 | `wifey.py` · `cli/` | Thin CLI entry shim delegating to `cli.main:main`; argparse subcommand package (`signal` / `analytics` / `backtest` / `digest` / `param` / `recalibrate` / `web`) with `_common.py` helpers | — |
-| `analytics/` | Analytics data layer (DuckDB): `store/`, `strategies/` (18 detector modules, **16** registered for dispatch), `backtest/`, `signal/`, `stats/`, `research_guards/`, `sweep_guard.py`, `audit_guard.py`, `db_retry.py`, plus the data-ingest + quality + calendar layer | `context/analytics.md` |
+| `analytics/` | Analytics data layer (DuckDB): `store/`, `strategies/` (18 detector modules, **16** registered for dispatch), `backtest/`, `signal/`, `stats/`, `research_guards/`, `sweep_guard.py`, `audit_guard.py` (hosted by `warning_audit.py` since 2026-08-13), `db_retry.py`, plus the data-ingest + quality + calendar layer | `context/analytics.md` |
 | `analytics/{forecast,xsmom,lowvol,xasset,pead,exits}/` | The P2/P3 research sleeves and the exit diagnostic — **verdicts below** | `context/analytics.md` |
 | `signals/` · `utils/` | Alerting + dedup daemon (detection lives in `analytics/`); shared Telegram / yfinance / EDGAR clients and the two config-universe loaders | `context/signals.md` |
 | `web/` | FastAPI backend + Svelte 5 / Vite UI | `context/web.md` |
