@@ -53,16 +53,34 @@ artifact, intentionally distinct from the gitignored `stocks.json` live-alert wa
 survivors, and PIT membership is deliberately not scraped — selection bias is bounded, not
 eliminated.
 
-**History seam.** The three post-2018 listings — GEV / PLTR / UBER — carry an optional `listed`
-first-trading date sourced from actual DB first-1d-bar ground truth (GEV `2024-03-27`,
-PLTR `2020-09-30`, UBER `2019-05-10`), so `load_research_universe(min_history_days=…)` /
+**History seam.** All **26** post-floor listings carry an optional `listed` first-trading date
+sourced from DB first-1d-bar ground truth, so `load_research_universe(min_history_days=…)` /
 `ResearchUniverse.with_min_history(days)` can exclude short-history names from pooled
-cross-sectional studies.
+cross-sectional studies. Stamped by `tools/stamp_universe_listed.py`
+(`make universe-stamp-listed`, report-only unless `WRITE=1`); pinned by
+`TestShippedUniverseFile`.
+
+**An absent `listed` is the permissive value, so this seam fails silently.** It was stamped on
+**3 of 505** members by hand until 2026-08-13, and `min_history_days` therefore filtered almost
+nothing — `FDXF` cleared an 8-year floor on **17 bars**, because no date reads as
+"full-history survivor". A 1-year floor dropped **0** members before the restamp and drops
+`FDXF` + `Q` after it. A new constituent from `expand_universe_sp500.py` arrives unstamped,
+i.e. permissive: **re-run the stamper after any membership or backfill change.**
+
+**The floor is not observable, and that bounds what `listed` can mean.** 1d history starts at
+the backfill's `--since` (2018-01-01 → first NYSE session **2018-01-02**), and **477 of 505**
+members share that first bar, so a bar *on* the floor cannot distinguish a truncated survivor
+from a genuine listing that day. Only a first bar **strictly after** the floor is stamped; the
+2 members reaching 2007 (deeper `wifey-xasset-backfill` history) stay `None` too. Same
+"is this metric's floor reachable by every row?" trap as the 2026-08-12 exits audit.
+`test_no_shipped_listed_date_sits_at_the_truncation_floor` is the invariant, since the suite
+cannot reach the DB.
 
 **Run:** backfill with `wifey analytics backfill --universe` (or `make wifey-universe-backfill`,
-which defaults `SINCE=2018-01-01`); audit coverage with `make universe-coverage`. Re-expand or
-refresh membership via `tools/expand_universe_sp500.py` (default scrapes Wikipedia's S&P 500 list;
-`--from-csv` for a deterministic/offline run), then re-run the backfill.
+which defaults `SINCE=2018-01-01`); audit coverage with `make universe-coverage`; reconcile the
+history seam with `make universe-stamp-listed` (`WRITE=1` to apply). Re-expand or refresh
+membership via `tools/expand_universe_sp500.py` (default scrapes Wikipedia's S&P 500 list;
+`--from-csv` for a deterministic/offline run), then re-run the backfill **and the stamper**.
 
 ## config/strategy_params.toml
 

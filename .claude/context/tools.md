@@ -273,6 +273,34 @@ source: Wikipedia `pandas.read_html` by default (sends a browser UA; needs an HT
 
 **Run:** `PYTHONPATH=. poetry run python tools/expand_universe_sp500.py [--from-csv sp500.csv]`
 
+**Pair it with `stamp_universe_listed.py`** — merged constituents arrive with no `listed` key,
+which is the *permissive* value, so an unstamped expansion silently widens every
+`min_history_days` cohort.
+
+## stamp_universe_listed.py — `listed` history-seam stamper
+
+Reconciles `config/universe.json`'s optional `listed` date against DB first-1d-bar ground truth
+(N3 residual (a), 2026-08-13). `resolve_listed(members, first_bars, floor)` is the pure testable
+unit; `first_bar_dates` is the one DB read (read-only, one grouped query, same
+`statistics_propagation` workaround as `universe_coverage.py`). Report-only unless `--write`.
+
+**The floor is the whole design.** 1d history starts at the backfill's `--since` (2018-01-01 →
+first NYSE session **2018-01-02** via `analytics/trading_calendar.py`), and **477 of 505** members
+share that first bar, so a bar *on* it cannot distinguish a truncated survivor from a listing that
+day. Only a first bar **strictly after** the floor is stamped — the conservative bound README
+already documented. The 2 members reaching 2007 stay `None`. `LISTED_TIMEFRAME` is a constant, not
+a flag: stamping from `4h` (history starts 2024-05-16) would mark every survivor as a 2024 listing.
+
+**Why it existed as a defect:** `listed` was stamped on **3 of 505** members by hand, and an absent
+date reads as "full-history survivor", so `min_history_days` filtered almost nothing — a 1-year
+floor dropped **0** members while `FDXF` sat on **17 bars**. The 2026-08-13 run added **23**
+(0 corrections, 0 removals — it reproduced all three hand-stamped dates exactly, which is the
+check that validated the rule). A member with **no** 1d bars is left untouched and reported loudly
+rather than silently un-stamped.
+
+**Run:** `make universe-stamp-listed` (add `WRITE=1` to apply) or
+`PYTHONPATH=. poetry run python tools/stamp_universe_listed.py [--write] [--since YYYY-MM-DD]`
+
 ## exit_audit.py — exit MFE/MAE diagnostic
 
 Read-only **exit MFE/MAE diagnostic** for the `analytics/exits/` package (PR #96 / parent #433),

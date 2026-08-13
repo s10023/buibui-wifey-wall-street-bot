@@ -562,7 +562,8 @@
     "ABNB": {
       "sector": "Consumer Discretionary",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2020-12-10"
     },
     "AKAM": {
       "sector": "Information Technology",
@@ -662,7 +663,8 @@
     "APP": {
       "sector": "Information Technology",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2021-04-15"
     },
     "APTV": {
       "sector": "Consumer Discretionary",
@@ -842,7 +844,8 @@
     "CARR": {
       "sector": "Industrials",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2020-03-19"
     },
     "CVNA": {
       "sector": "Consumer Discretionary",
@@ -967,7 +970,8 @@
     "COIN": {
       "sector": "Financials",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2021-04-14"
     },
     "FIX": {
       "sector": "Industrials",
@@ -992,7 +996,8 @@
     "CEG": {
       "sector": "Utilities",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2022-01-19"
     },
     "COO": {
       "sector": "Health Care",
@@ -1017,7 +1022,8 @@
     "CTVA": {
       "sector": "Materials",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2019-05-24"
     },
     "CSGP": {
       "sector": "Real Estate",
@@ -1032,7 +1038,8 @@
     "CRWD": {
       "sector": "Information Technology",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2019-06-12"
     },
     "CCI": {
       "sector": "Real Estate",
@@ -1057,7 +1064,8 @@
     "DDOG": {
       "sector": "Information Technology",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2019-09-19"
     },
     "DVA": {
       "sector": "Health Care",
@@ -1122,7 +1130,8 @@
     "DASH": {
       "sector": "Consumer Discretionary",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2020-12-09"
     },
     "DOV": {
       "sector": "Industrials",
@@ -1132,7 +1141,8 @@
     "DOW": {
       "sector": "Materials",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2019-03-20"
     },
     "DHI": {
       "sector": "Consumer Discretionary",
@@ -1262,7 +1272,8 @@
     "EXE": {
       "sector": "Energy",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2021-02-10"
     },
     "EXPE": {
       "sector": "Consumer Discretionary",
@@ -1307,7 +1318,8 @@
     "FDXF": {
       "sector": "Industrials",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2026-05-27"
     },
     "FIS": {
       "sector": "Financials",
@@ -1357,7 +1369,8 @@
     "FOXA": {
       "sector": "Communication Services",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2019-03-12"
     },
     "BEN": {
       "sector": "Financials",
@@ -1382,7 +1395,8 @@
     "GEHC": {
       "sector": "Health Care",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2022-12-15"
     },
     "GEN": {
       "sector": "Information Technology",
@@ -1602,7 +1616,8 @@
     "KVUE": {
       "sector": "Consumer Staples",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2023-05-04"
     },
     "KDP": {
       "sector": "Consumer Staples",
@@ -1782,7 +1797,8 @@
     "MRNA": {
       "sector": "Health Care",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2018-12-07"
     },
     "TAP": {
       "sector": "Consumer Staples",
@@ -1922,7 +1938,8 @@
     "OTIS": {
       "sector": "Industrials",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2020-03-19"
     },
     "PCAR": {
       "sector": "Industrials",
@@ -2047,7 +2064,8 @@
     "Q": {
       "sector": "Information Technology",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2025-10-27"
     },
     "RL": {
       "sector": "Consumer Discretionary",
@@ -2097,7 +2115,8 @@
     "HOOD": {
       "sector": "Financials",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2021-07-29"
     },
     "ROK": {
       "sector": "Industrials",
@@ -2132,7 +2151,8 @@
     "SNDK": {
       "sector": "Information Technology",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2025-02-13"
     },
     "SBAC": {
       "sector": "Real Estate",
@@ -2182,7 +2202,8 @@
     "SOLV": {
       "sector": "Health Care",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2024-03-26"
     },
     "LUV": {
       "sector": "Industrials",
@@ -2382,7 +2403,8 @@
     "VLTO": {
       "sector": "Industrials",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2023-10-04"
     },
     "VRSN": {
       "sector": "Information Technology",
@@ -2402,7 +2424,8 @@
     "VRT": {
       "sector": "Industrials",
       "kind": "stock",
-      "delisted": false
+      "delisted": false,
+      "listed": "2018-08-02"
     },
     "VTRS": {
       "sector": "Health Care",
