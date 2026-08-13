@@ -151,15 +151,21 @@ Check these in parallel:
 
 ### README.md
 
-- Does `## Usage` reflect all current `wifey` subcommands? Verified set
-  (checked against `wifey.py --help`, 2026-08-05): `signal`, `analytics`,
-  `backtest`, `digest`, `param-sweep`, `param-audit`, `recalibrate`, `web`.
-  `signal` and `analytics` are groups (`wifey signal watch`,
-  `wifey signal test`, `wifey analytics backfill`, `wifey analytics sync`).
+- Does `## Usage` reflect all current `wifey` subcommands? **Do not trust the list below
+  — generate it.** The parent's equivalent list sat stale for months (parent #599), and a
+  written list is exactly the surface that rots silently:
+
+  ```bash
+  PYTHONPATH=. poetry run python wifey.py --help | sed -n '/{/,/}/p' | head -2
+  ```
+
+  As of 2026-08-13 that prints 8: `signal`, `analytics`, `backtest`, `digest`,
+  `param-sweep`, `param-audit`, `recalibrate`, `web`. `signal` and `analytics` are groups
+  (`wifey signal watch`, `wifey signal test`, `wifey analytics backfill`,
+  `wifey analytics sync`).
   **There is no `monitor` subcommand** — it and the entire `monitor/` package
   were removed in T16-partial (2026-05-15); equity price/position monitoring
-  lives in the web UI. Re-derive this set from `--help` rather than trusting
-  the list above.
+  lives in the web UI.
 - Does `## Directory Structure` list all current top-level modules?
 - Are any sections referencing removed features?
 

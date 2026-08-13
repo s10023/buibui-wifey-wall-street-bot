@@ -443,6 +443,21 @@ Rules for the subagent:
   chart wins: use the chart's value in `entry`/`stop`/`target`/`chart_read`, and record
   the transcript's original claim in `corrected_from`. When nothing was corrected, leave
   `corrected_from` empty.
+- **The chart wins only on a DRAWN value** — a line, annotation, printed label, or
+  measured readout placed on the chart. A value *inferred* from where the live price
+  ticker happens to sit is **not** a correction: put that reading in `chart_read`, keep
+  the spoken value in `entry`/`stop`/`target`, and leave `corrected_from` empty. A pundit
+  is scored on the level they **stated**. (Observed upstream, parent #551: a stated
+  61,000 pivot was proposed as 61,600–61,800 because the ticker sat at a drawn arc's
+  right anchor — ~700 points onto a level the speaker never said. The rule was
+  *followed*; it was applied to the wrong class of evidence, which is why the fix is a
+  conditional on an observable predicate — drawn vs ticker-inferred — not a prohibition.)
+- **`corrected_from` carries chart-vs-transcript corrections ONLY.** A symbol
+  normalisation is not one — normalise `symbol` and leave `corrected_from` empty. Here
+  that means an index call resolving to its index ticker (`S&P 500` → `^GSPC`, never an
+  ETF proxy) or a class-share form yfinance expects (`BRK.B` → `BRK-B`), so the scorer
+  resolves against the right bars. Same reason `confidence` and `vision_confidence` stay
+  separate — a field carrying two semantics can be queried for neither.
 - Anything the frames do **not** visually corroborate (no frame near that `ts`, or the
   nearest frame doesn't show what was said) gets `vision_confidence: "low"`. Reserve
   `"high"` for a frame that directly confirms the claim; `"medium"` for
