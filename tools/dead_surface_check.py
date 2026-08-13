@@ -29,6 +29,18 @@ merely cosmetic. Note the asymmetry with dead cells: a dead cell shows up as a
 zero and reads as absence, whereas an orphan shows up as a *number* and reads
 as evidence.
 
+Orphans are reported in **two tiers**, because the two live configs partition the
+calendar by `day_filter` and a cell can be undeclared by the config that rates it
+while the other config still declares it. Both are orphans *for that config* —
+that daemon will never scan the cell — but the fix differs: `declared by another
+config` is a rating filed under the wrong day filter, whereas `undeclared
+anywhere` means nothing scans it at all. The tier only labels a finding; it never
+suppresses one. Ported from the sister repo's PR #608, minus its direction-aware
+half: that exists upstream because all three of its configs carry
+`strategy_timeframes_long` / `_short` narrowing, and this repo declares no such
+key, so `declared_cells` is direction-agnostic here and a direction-aware check
+would report exactly the same set.
+
 Deliberately data-driven rather than static: `signal_config.dead_timeframes`
 already refuses the *structurally* impossible pairings it knows about (a day
 filter that excludes a fixed-open-weekday timeframe). This catches the ones
@@ -115,7 +127,7 @@ class DeadCell:
 
 @dataclass(frozen=True)
 class OrphanRating:
-    """A `confidence_ratings` row for a cell the config no longer declares."""
+    """A `confidence_ratings` row for a cell its own config no longer declares."""
 
     config: str
     strategy: str
@@ -123,12 +135,29 @@ class OrphanRating:
     direction: str
     stars: int
     avg_r: float | None
+    declared_elsewhere: bool = False
+
+    @property
+    def tier(self) -> str:
+        """Which of the two orphan diagnoses this row is.
+
+        Both mean the rating's own daemon will never scan the cell, so both are
+        orphans. They differ in the fix: a cell another config still declares is
+        a *config split* — the rating is attached to the wrong day filter — while
+        `undeclared anywhere` means nothing scans it at all and the stars are
+        pure residue.
+        """
+        return (
+            "declared by another config"
+            if self.declared_elsewhere
+            else "undeclared anywhere"
+        )
 
     def __str__(self) -> str:
         avg_r = "—" if self.avg_r is None else f"{self.avg_r:+.4f}"
         return (
             f"{self.strategy} × {self.timeframe} [{self.direction}] — "
-            f"{self.stars}★ avg_r={avg_r}, not declared by the config"
+            f"{self.stars}★ avg_r={avg_r}, {self.tier}"
         )
 
 
@@ -136,13 +165,20 @@ def find_orphan_ratings(
     conn: duckdb.DuckDBPyConnection,
     cfg: SignalWatchConfig,
     config_name: str,
+    elsewhere: set[tuple[str, str]] | None = None,
 ) -> list[OrphanRating]:
     """Rated cells the config does not declare, worst-first by displayed stars.
 
     `config_name` is the TOML stem (`signal_watch`), which is what
     `confidence_ratings.config_name` stores — not the path the CLI takes.
+
+    `elsewhere` is the union of the cells the *other* checked configs declare. It
+    only splits the findings into tiers; it never suppresses one. Passing `None`
+    reports every orphan as `undeclared anywhere`, which is right for a
+    single-config run because there is no other config to have declared it.
     """
     declared = set(declared_cells(cfg))
+    others = elsewhere or set()
     rows = conn.execute(
         "SELECT strategy, tf, direction, stars, avg_r FROM confidence_ratings "
         "WHERE config_name = ? ORDER BY stars DESC, avg_r DESC",
@@ -156,10 +192,27 @@ def find_orphan_ratings(
             direction=str(direction),
             stars=int(stars),
             avg_r=None if avg_r is None else float(avg_r),
+            declared_elsewhere=(str(strategy), str(tf)) in others,
         )
         for strategy, tf, direction, stars, avg_r in rows
         if (str(strategy), str(tf)) not in declared
     ]
+
+
+def cells_declared_elsewhere(
+    declared_by_config: dict[str, set[tuple[str, str]]],
+    config: str,
+) -> set[tuple[str, str]]:
+    """Every cell declared by a config OTHER than `config`.
+
+    Extracted from `main` rather than inlined so a test can reach it: the union
+    is the whole of the tier decision, and a defect here would silently downgrade
+    every orphan to one tier without changing the pass/fail outcome that the
+    end-to-end run asserts.
+    """
+    return set[tuple[str, str]]().union(
+        *(cells for name, cells in declared_by_config.items() if name != config)
+    )
 
 
 def find_dead_cells(
@@ -220,14 +273,20 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
+    # Load every config first: an orphan's tier is a statement about the OTHER
+    # configs, so it cannot be decided while walking them one at a time.
+    loaded = {config: load_signal_config(config) for config in configs}
+    declared_by_config = {c: set(declared_cells(cfg)) for c, cfg in loaded.items()}
+
     all_dead: list[DeadCell] = []
     all_orphans: list[OrphanRating] = []
     with duckdb.connect(str(db_path), read_only=True) as conn:
         for config in configs:
-            cfg = load_signal_config(config)
+            cfg = loaded[config]
+            elsewhere = cells_declared_elsewhere(declared_by_config, config)
             found = find_dead_cells(conn, cfg, config)
             all_dead.extend(found)
-            orphans = find_orphan_ratings(conn, cfg, Path(config).stem)
+            orphans = find_orphan_ratings(conn, cfg, Path(config).stem, elsewhere)
             all_orphans.extend(orphans)
             n_declared = len(declared_cells(cfg))
             print(
@@ -258,7 +317,12 @@ def main(argv: list[str] | None = None) -> int:
             "_KNOWN_DEAD_CELLS with a reason."
         )
     if all_orphans:
-        print(f"FAIL: {len(all_orphans)} orphaned confidence rating(s):")
+        nowhere = [o for o in all_orphans if not o.declared_elsewhere]
+        split = [o for o in all_orphans if o.declared_elsewhere]
+        print(
+            f"FAIL: {len(all_orphans)} orphaned confidence rating(s) "
+            f"({len(nowhere)} undeclared anywhere, {len(split)} declared by another config):"
+        )
         for orphan in all_orphans:
             print(f"  - {orphan.config}: {orphan}")
         print(
@@ -266,6 +330,12 @@ def main(argv: list[str] | None = None) -> int:
             "star line, and feeds the backtest conflict resolver, for a cell the daemon\n"
             "will never scan. Run `make db-update-recalibrate` to prune them."
         )
+        if split:
+            print(
+                "\nThe `declared by another config` rows are the milder tier: some daemon\n"
+                "still scans that cell, just not the one the rating is filed under. Check\n"
+                "the rating's day_filter before pruning."
+            )
     if failing or all_orphans:
         return 1
 

@@ -11,6 +11,8 @@ from analytics.signal_config import SignalWatchConfig
 from tools import dead_surface_check
 from tools.dead_surface_check import (
     DeadCell,
+    OrphanRating,
+    cells_declared_elsewhere,
     declared_cells,
     find_dead_cells,
     find_orphan_ratings,
@@ -263,3 +265,95 @@ class TestFindOrphanRatings:
         cfg = SignalWatchConfig(strategies=["bos"], timeframes=["4h"])
         orphans = find_orphan_ratings(conn, cfg, "signal_watch")
         assert [o.strategy for o in orphans] == ["loud", "quiet"]
+
+
+class TestOrphanTiers:
+    """`undeclared anywhere` vs `declared by another config` (sister PR #608).
+
+    The two live configs partition the calendar by `day_filter`, so a cell can be
+    undeclared by the config that rates it while the other still declares it.
+    Both are orphans for that config; only the first means nothing scans the cell.
+    """
+
+    def _orphan(self, elsewhere: set[tuple[str, str]] | None) -> OrphanRating:
+        conn = _conn_with_ratings(
+            [("signal_watch", "doji", "1wk", "combined", 4, 0.76)]
+        )
+        cfg = SignalWatchConfig(strategies=["bos"], timeframes=["1wk"])
+        orphans = find_orphan_ratings(conn, cfg, "signal_watch", elsewhere)
+        assert len(orphans) == 1
+        return orphans[0]
+
+    def test_cell_no_other_config_declares_is_undeclared_anywhere(self) -> None:
+        orphan = self._orphan({("ema", "1d")})
+        assert orphan.declared_elsewhere is False
+        assert orphan.tier == "undeclared anywhere"
+        assert "undeclared anywhere" in str(orphan)
+
+    def test_cell_another_config_declares_is_the_milder_tier(self) -> None:
+        orphan = self._orphan({("doji", "1wk")})
+        assert orphan.declared_elsewhere is True
+        assert orphan.tier == "declared by another config"
+        assert "declared by another config" in str(orphan)
+
+    def test_omitting_elsewhere_reports_undeclared_anywhere(self) -> None:
+        """A single-config run has no other config to have declared the cell."""
+        assert self._orphan(None).tier == "undeclared anywhere"
+
+    def test_tier_labels_but_never_suppresses(self) -> None:
+        """The milder tier is still a FAIL — it is a diagnosis, not an excuse."""
+        conn = _conn_with_ratings(
+            [
+                ("signal_watch", "doji", "1wk", "combined", 4, 0.76),
+                ("signal_watch", "ema", "1wk", "combined", 2, 0.10),
+            ]
+        )
+        cfg = SignalWatchConfig(strategies=["bos"], timeframes=["1wk"])
+        orphans = find_orphan_ratings(conn, cfg, "signal_watch", {("doji", "1wk")})
+        assert len(orphans) == 2
+        assert {o.strategy for o in orphans} == {"doji", "ema"}
+
+    def test_matching_needs_both_strategy_and_timeframe(self) -> None:
+        """A same-named strategy on a different timeframe is not the same cell."""
+        assert self._orphan({("doji", "1d")}).tier == "undeclared anywhere"
+
+
+class TestCellsDeclaredElsewhere:
+    """The union feeding the tier decision, extracted from `main` so it is reachable.
+
+    `main` has no test of its own, so an inlined union would have been the one
+    piece of tier logic nothing could falsify — and a defect in it downgrades
+    every orphan's tier without moving the pass/fail result an end-to-end run
+    checks.
+    """
+
+    def test_excludes_the_config_itself(self) -> None:
+        by_config = {"a.toml": {("bos", "4h")}, "b.toml": {("doji", "1d")}}
+        assert cells_declared_elsewhere(by_config, "a.toml") == {("doji", "1d")}
+
+    def test_unions_every_other_config(self) -> None:
+        by_config = {
+            "a.toml": {("bos", "4h")},
+            "b.toml": {("doji", "1d")},
+            "c.toml": {("ema", "1wk")},
+        }
+        assert cells_declared_elsewhere(by_config, "a.toml") == {
+            ("doji", "1d"),
+            ("ema", "1wk"),
+        }
+
+    def test_single_config_has_no_elsewhere(self) -> None:
+        """The empty union — a lone config cannot have been declared by another."""
+        assert cells_declared_elsewhere({"a.toml": {("bos", "4h")}}, "a.toml") == set()
+
+    def test_a_cell_both_configs_declare_is_still_elsewhere(self) -> None:
+        """Overlap is the common case: signal_watch's 22 cells are a subset of weekdays'."""
+        by_config = {"a.toml": {("bos", "4h")}, "b.toml": {("bos", "4h")}}
+        assert cells_declared_elsewhere(by_config, "a.toml") == {("bos", "4h")}
+
+    def test_unknown_config_name_unions_everything(self) -> None:
+        by_config = {"a.toml": {("bos", "4h")}, "b.toml": {("doji", "1d")}}
+        assert cells_declared_elsewhere(by_config, "nope.toml") == {
+            ("bos", "4h"),
+            ("doji", "1d"),
+        }

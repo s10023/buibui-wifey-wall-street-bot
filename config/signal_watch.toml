@@ -278,7 +278,10 @@ atr_sl_multiplier_1d = 2.5    # Task C-followup 13-sym: +0.16R, n=774
 # the [strategy_params.liquidity_sweep] block both stripped.
 
 # backtest and bias sections live in strategy_params.toml (base).
-# Uncomment below to override specific backtest options for this config:
+# Uncomment below to override specific backtest options for this config.
+# Uncomment the [backtest] header too — the key is read from that table, and a
+# top-level `save_results` is silently ignored. It defaults to true, so `false`
+# is the only override that changes anything.
 # [backtest]
-# save_results = true
+# save_results = false
 # volume_suppress = false

@@ -1028,11 +1028,20 @@ print(get_win_rate_by_strategy(conn))
 Only includes combos with ≥ 20 closed trades. Use this to compare against the
 current editorial star ratings in `SIGNAL_REGISTRY` and adjust `confidence` values.
 
-**TOML opt-in** — add to `config/signal_watch.toml`:
+**Persistence is opt-OUT, and currently ON.** `save_results` defaults to `True`
+(`analytics/signal_config.py`), and no config overrides it — so the live gate already
+writes a `backtest_runs` row on every scan. To disable it, add the key to the
+`[backtest]` table. It is read from `data["backtest"]`, so a **top-level key is silently
+ignored**:
 
 ```toml
-save_results = true
+[backtest]
+save_results = false
 ```
+
+Those live rows are safe to leave on: they carry `sweep_id IS NULL` and a separate
+`origin="live_gate"` `run_id` namespace, so they cannot overwrite a swept row, and
+`recalibrate` rates sweep rows only.
 
 **Web frontend:**
 

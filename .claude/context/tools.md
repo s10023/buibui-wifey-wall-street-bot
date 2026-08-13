@@ -44,6 +44,18 @@ whole `signal_watch` table — 2.5 months after the strategy left the config. No
 asymmetry that let it survive: a dead cell surfaces as a zero and reads as *absence*, an
 orphan surfaces as a number and reads as *evidence*.
 
+Orphans carry a **tier** (`OrphanRating.tier`, from sister PR #608): `undeclared anywhere`
+versus `declared by another config`. Both mean the rating's own daemon will never scan the
+cell, so the tier **labels a finding and never suppresses one** — but the fix differs, and
+the split is real here because `signal_watch`'s **22** declared cells are a strict subset of
+`signal_watch_weekdays`' **32**, leaving **10** that only one config declares. `main` decides
+the tier from `cells_declared_elsewhere(declared_by_config, config)`, which is extracted
+rather than inlined because `main` itself has no test — an inlined union would have been the
+one part of the tier decision nothing could falsify. The parent's direction-aware half was
+deliberately **not** ported: it exists upstream because all three of its configs carry
+`strategy_timeframes_long`/`_short` narrowing, and this repo declares no such key, so
+`declared_cells` is direction-agnostic and a direction-aware check reports the same set.
+
 The second case is the one that matters and the reason a plain "did it run?" check is not
 enough: `signal_watch.toml` held **338** `1wk`/`tue_thu` rows with zero closed trades for
 three months, so the surface *looked* covered (#139). Emptiness is indistinguishable from
