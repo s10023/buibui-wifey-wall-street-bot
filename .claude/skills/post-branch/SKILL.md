@@ -3,7 +3,8 @@ name: post-branch
 description: >
   Post-branch docs sweep + handoff — diff the branch's behaviour changes against
   the doc surfaces (CLAUDE.md, README.md, MEMORY.md, Makefile, docker-compose.yml,
-  .claude/context/*.md, .claude/skills/*/SKILL.md)
+  .claude/context/*.md, .claude/skills/*/SKILL.md,
+  docs/plans/next-conversation-prompt.md)
   and propose targeted edits where they've drifted, then run a pre-merge
   readiness check and offer a fresh-conversation handoff prompt. Use BEFORE
   `gh pr create`, while the branch is still local-only, and fold the resulting
@@ -101,6 +102,15 @@ surfaces:
     purpose: Workflow instructions that name tools, flags and file paths — they drift exactly like CLAUDE.md does
     scope: any_referencing_changed_artifact
     lint: manual   # see below
+
+  - id: handoff
+    path: docs/plans/next-conversation-prompt.md
+    purpose: >
+      The standing session handoff — group A ("Settled, do not re-litigate") is the
+      highest-authority surface in this repo. Gitignored, so it is never committed
+      and no reviewer ever sees its drift.
+    scope: any_referencing_changed_artifact
+    written_at: step_10b   # read here, written there — see Step 4
 
 # Files that, if changed, almost always require a doc walk:
 behavior_signal_globs:
@@ -604,6 +614,55 @@ to know the answer, and they still do.
   `MD013` (line length) fires on every prose line while a real violation hides
   in the noise.
 
+### `docs/plans/next-conversation-prompt.md` — the surface with no other check
+
+Every other surface here has a second line of defence: CI lints it, a reviewer
+reads it, or a test asserts it. The handoff has **none** — it is gitignored, so
+it never reaches a PR, and it is the one artifact that survives a session
+delete. Its group A is headed *"Settled — do not re-litigate"*, which means a
+stale line there does not merely misinform the next session, it **instructs**
+it.
+
+**The failure is proven, not hypothetical.** #184 wrote the group-A entry
+*"`route_target` HAS NO SUPPRESSORS HERE"*; **#186 falsified it two PRs
+later.** It was corrected only because the same session wrote both — a fresh
+session would have read a confident, dated, wrong rule under a heading telling
+it not to re-check. This skill could not have caught it: the handoff is written
+at **Step 10b** and, until now, was absent from `surfaces:`, so Step 3 never
+diffed it against the branch.
+
+**Read it at Step 3, fix it at Step 10b** (or inline — it is gitignored, so
+neither costs CI). 10b's PRUNE rules are about *size*; this check is about
+*truth*, and the two are not the same pass.
+
+Key the check off the branch's changed **symbols**, not only its filenames —
+`route_target` is a function, and no file-level grep would have surfaced the
+claim about it:
+
+```bash
+HANDOFF=docs/plans/next-conversation-prompt.md
+{ git diff main...HEAD --name-only | xargs -n1 basename | sed 's/\.py$//'
+  git diff main...HEAD -- '*.py' \
+    | grep -oE '^[+-][[:space:]]*(def|class)[[:space:]]+[A-Za-z_][A-Za-z0-9_]*' \
+    | awk '{print $NF}'
+} | sort -u | while read -r s; do
+    [ -z "$s" ] && continue
+    grep -nw -- "$s" "$HANDOFF" | sed "s|^|  $s → |"
+  done
+```
+
+Same `-w` rule as the context-doc presence check above, and the same
+deliberate over-reporting. Measured on this repo 2026-08-13: **11 hits** on the
+diff of #186 and **4** on that of #185 — bounded enough to read in full. The
+false-positive mode is a generic basename that appears in prose for unrelated
+reasons (`tools.md` accounts for 3 of the 4 on #185); dismiss those in seconds.
+
+**It earned its keep on its first run.** Against #186's own diff it surfaced
+`route_target` at group A *and* at §3f, where the handoff still read *"has
+**zero flags** (re-verified #171)"* — false since #186 gave it two kw-only
+suppressors. The file was contradicting itself, one section asserting what
+another denied, and nothing else in this skill was looking.
+
 ---
 
 ## Step 5 — MEMORY.md update (always)
@@ -858,6 +917,8 @@ Makefile           — no change needed: no new CLI commands
 docker-compose.yml — no change needed: no new processes
 .claude/context/*  — updated: analytics.md (store/ paths) | no change needed
 .claude/skills/*   — updated: <skill> | no change needed: <reason>
+handoff (group A)  — <n> symbol hits reviewed: <what was stale> | no change needed
+                     (never committed — gitignored)
 PR summary         — written to docs/plans/pr-<branch>.md   (slashes flattened to -)
 PR body            — "Documentation updates" folded into the initial --body (1 CI run)
 pre-merge          — clean | <blocker> (see Step 10a)
@@ -947,6 +1008,10 @@ the scripts index — is exactly what the template below does **not** reproduce,
 a wholesale overwrite destroys it silently and the loss is invisible until a
 future session re-litigates something already ruled out. The template is the
 shape of the *front* half, not a replacement for the file.
+
+**Step 3 has already swept this file for claims this branch falsified** (see its
+`next-conversation-prompt.md` subsection). Apply those corrections here — the
+PRUNE rules below decide what to *cut*, never what is still *true*.
 
 Structure:
 
