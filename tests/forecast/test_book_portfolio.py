@@ -51,13 +51,31 @@ def test_governor_is_causal() -> None:
     z = pd.Series(0.0, index=a.index)
     cfg = ForecastConfig()
     base = run_forecast_backtest({"AAA": a}, {"AAA": z}, cfg)
-    # k=100 is in an unclamped region (verified: governor[100] ≈ 0.656)
     k = 100
     bumped = a.copy()
     bumped.iloc[k] *= 3.0
     after = run_forecast_backtest({"AAA": bumped}, {"AAA": z}, cfg)
     np.testing.assert_allclose(
         base.governor[: k + 1], after.governor[: k + 1], equal_nan=True
+    )
+
+    # Positive control. Unlike its sibling in test_book_instrument.py this
+    # assertion is NOT vacuous — deleting the `.shift(1)` on the governor's
+    # trailing vol makes it fail (measured 2026-08-13) — but it carried a comment
+    # claiming "k=100 is in an unclamped region (verified: governor[100] ~ 0.656)"
+    # and that was FALSE: governor[100] is exactly 1.5, i.e. AT g_max. Since a
+    # clamped base can mask a stimulus, assert propagation explicitly.
+    # Measured: governor[k+1] 1.5 -> 0.5, delta 1.0. base sits at g_max, so only a
+    # DOWNWARD move is observable — which is the physical one, a 3x price spike
+    # raising trailing vol and shrinking the governor.
+    gov_base = float(base.governor[k + 1])
+    gov_after = float(after.governor[k + 1])
+    assert np.isfinite(gov_base) and np.isfinite(gov_after), (
+        "governor[k+1] must be warmed up for the control to mean anything"
+    )
+    assert abs(gov_after - gov_base) > 1e-9, (
+        "perturbation never propagated to governor[k+1] — the causality "
+        "assertion above would then hold for the wrong reason"
     )
 
 
