@@ -312,6 +312,96 @@ port).
 **Run:** `make wifey-exit-audit` or
 `PYTHONPATH=. poetry run python tools/exit_audit.py [--min-n N] [--csv PATH]`
 
+## The four gate-decision replays — and why none of them is runnable work today
+
+`bos_routing_audit.py`, `regime_gate_replay.py`, `regime_threshold_sweep.py` and
+`direction_filter_replay.py` all answer the same shape of question: *should a `[bias]` gate flip
+from `soft` to `hard`, or be re-routed?* That product is an ENABLE/DISABLE/threshold decision on a
+TA gate, which is **inside the frozen category** (CLAUDE.md → Sleeve verdicts). They are
+documented here as read-only diagnostics; **running one is fine, acting on it is a user ruling.**
+
+None is wired to a Makefile target — all four are hand-run.
+
+**Two live config blocks cite a PRE-FORK audit.** `[bias.regime.per_strategy] bos =
+["high_vol", "range"]` and the `[bias.direction_filter]` justification both quote
+`bos_routing_audit.py` at **2026-05-13, n=72,643**. The fork is dated **2026-05-14**, so that
+run happened in the parent on **crypto** data. Wifey's `backtest_trades` holds **1,342** `bos`
+rows today (24,238 total), so re-running here samples a different, ~54× smaller population.
+Neither block changes dispatch right now — both gates are `mode = "soft"` — but treat the cited
+avg_r figures as inherited, not measured here. → [[project_crypto_era_inherited_flags]]
+
+## bos_routing_audit.py — T2a full-sample routing probe for `bos`
+
+Re-segments existing `backtest_trades` history for `bos` across
+`timeframe × regime × session × volume_state × htf_alignment × direction`, answering "is there
+ANY cell with `n >= 30` where `bos` is net-positive?" Full-sample probe, **not** WFO — a positive
+cell is a candidate for WFO confirmation, never a promotion on its own. Reuses production helpers
+so cell labels match live gate semantics (`analytics.regime.classify_series`, the backtest
+`_is_low_volume`/`_is_volume_spike`, and a rolling 4h EMA-50 slope matching the
+`[bias.htf_ema]` default anchor). Writes a CSV; makes no DB writes.
+
+**Run:** `PYTHONPATH=. poetry run python tools/bos_routing_audit.py [--db PATH] [--out PATH]`
+(default `--out /tmp/bos_routing_audit.csv` — write it to `docs/plans/` instead if you want it
+to survive, `/tmp` is cleared).
+
+## regime_gate_replay.py — soft→hard flip evidence for `[bias.regime]`
+
+Replays the v2 Phase 2 regime gate against historical `backtest_trades`, computing `avg_r` on the
+subset hard mode would have suppressed vs the subset it would have kept. Deliberately the
+**empirical substitute for "wait 2 weeks in soft mode"** — same decision data from history rather
+than forward observation. Regime is classified off the most recent **CLOSED** 4h candle at entry
+(`_regime_at_entry`), mirroring the live drop-the-in-progress-bar rule.
+
+Its stated decision rule: suppressed `avg_r <= 0` at `n >= 100` justifies the flip; kept >
+suppressed means the gate concentrates edge; suppressed `avg_r > 0` at `n >= 100` means the gate
+drops winners. **A raw split like this is a point estimate** — pair it with a significance test
+before quoting a delta. → [[project_flag_deltas_need_significance_tests]]
+
+**Run:** `PYTHONPATH=. poetry run python tools/regime_gate_replay.py [--db PATH]`
+
+## regime_threshold_sweep.py — slope-threshold sensitivity for the regime classifier
+
+Re-runs `regime_gate_replay`'s annotation across a grid of candidate
+`_SLOPE_TREND_THRESHOLD` values in `analytics/regime.py`, reporting suppressed/kept `n` and
+`avg_r` plus `lift = kept_avg_r − suppressed_avg_r` per threshold. Tests whether the live 0.5%
+default mis-labels exhaustion as trend: if some threshold separates cleanly the §6 mapping is
+salvageable, and if none does, the mapping itself is the problem.
+
+**This is a threshold sweep in the literal frozen sense** — it selects a parameter value. Read it
+as diagnosis of the mapping, not as a source of a new constant.
+
+**Run:** `PYTHONPATH=. poetry run python tools/regime_threshold_sweep.py [--db PATH]`
+
+## direction_filter_replay.py — soft→hard flip evidence for `[bias.direction_filter]`
+
+The T2c sibling of `regime_gate_replay`, same decision rule and same substitute-for-waiting
+rationale. Replays `[bias.direction_filter]` plus per-strategy `suppress_long` / `suppress_short`
+against `backtest_trades` and compares suppressed vs kept `avg_r`, with a per-strategy breakdown.
+
+Two standing caveats. It reads the flags from a config you pass (`--config`, default
+`config/signal_watch.toml`), so **the answer depends on which of the two live configs you name** —
+they are different populations. And `suppress_long`/`suppress_short` are themselves crypto-era
+inherited flags; `bos.suppress_long` was found one grep away from the #141 sweep that missed it.
+
+**Run:** `PYTHONPATH=. poetry run python tools/direction_filter_replay.py [--db PATH]
+[--config config/signal_watch.toml]`
+
+## combo_health.py — post-refresh spot-check for the co-fire tables
+
+Spot-checks `backtest_combos` and `backtest_cross_tf_combos` after a combo/cross-TF refresh:
+totals, freshness (rows from runs in the last N hours), the `day_filter` distribution, and the
+count of rows meeting the live alert gates plus the top viable combos. Gate defaults mirror
+`[combo]` in `config/strategy_params.toml` (same-TF `tue_thu` + `avg_r >= 1.0`; cross-TF
+`tue_thu` + `avg_r >= 0.0`).
+
+**Both tables currently hold 0 rows**, so the tool reports empty and the live co-fire gate is
+inert — no alert can carry a confluence tag. That is a *data* gap, not a tool fault: repopulating
+means running the combo sweeps, which is frozen sweep work. Read an empty report as "never
+refreshed", not "refresh failed".
+
+**Run:** `PYTHONPATH=. poetry run python tools/combo_health.py [--db PATH] [--fresh-hours N]`
+after `make wifey-combo-backtest` / `make wifey-cross-tf-backtest` (both `SAVE=1`).
+
 ## pundit_score.py — read-only scorer for the Stream-C pundit ledger
 
 Ported from the parent. Resolves every `docs/plans/pundit-calls.jsonl` call against stored
