@@ -7,9 +7,31 @@
 1. The maintainer — to keep a coherent mental model across long-running development.
 2. External LLM reviewers — see [§9 External-AI briefing prompt](#9-external-ai-briefing-prompt) for the self-contained copy-paste.
 
-**Last updated.** 2026-05-13 (post PR #364 — F9 trio closed, `liquidity_sweep 1h` re-enabled).
+**Last updated.** §1 rewritten and verified against the tree 2026-08-13. **§§2–9 were
+last revised 2026-05-13, one day before the fork, and are still largely the crypto
+parent's** — read them as history, not as this repo's state.
 
-**Live state in one line.** 20 strategies registered; 16 enabled on `signal_watch.toml` (tue_thu); F8 HTF EMA gate hard; regime gate soft; **measured live edge: +0.089R on one cell (`liquidity_sweep 1h`)**; `bos` (87 % of live trade volume) remains net-negative across every F9 cell.
+> **⚠ Provenance warning — this doc is a hybrid.** It was inherited from
+> `buibui-moon-trader-bot` and only patched twice since (PR #143's gate row, and §1
+> here). Concretely known wrong below §1, measured 2026-08-13:
+>
+> - **`liquidity_sweep` does not exist in this fork** (`ls analytics/strategies/`), so
+>   the old headline "measured live edge +0.089R on `liquidity_sweep 1h`" describes the
+>   parent, not wifey. Same for `smt_divergence` / `cvd_divergence` / `funding_extreme`.
+> - **"20 strategies registered; 16 enabled"** — the real counts are **18 detector
+>   modules, 17 in `STRATEGY_REGISTRY`, 16 in `DETECTOR_REGISTRY`** (dispatch;
+>   `seasonality` is excluded because it returns stats, not signals).
+> - §4's measured-edge tables predate the six sleeve verdicts, the ADR/EV-gate fixes
+>   (#141–#151) and #172's ratings reweighting. **Any number measured before
+>   2026-08-07 is on the ungated population; any rating number before 2026-08-13 is
+>   symbol-unweighted.**
+>
+> Authoritative current state lives in `CLAUDE.md` (verdicts + footguns) and the
+> master to-do. Refreshing §§2–9 is queued, not done.
+
+**Live state in one line** (2026-08-13): 18 detector modules, 16 dispatched; six research
+sleeves all non-positive and the TA detector book frozen; no equity-native edge established;
+dispatch is a manual one-shot (`make go-live`), not a daemon.
 
 ---
 
@@ -29,44 +51,98 @@
 
 ## 1. System architecture (data flow)
 
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ Binance Futures REST + WebSocket                                            │
-└────────────────┬────────────────────────────────────────────────────────────┘
-                 │ klines (OHLCV), funding (unwired), OI (unwired)
-                 ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ analytics/data_sync.py  (incremental)  ·  data_fetcher.py  (backfill)       │
-└────────────────┬────────────────────────────────────────────────────────────┘
-                 │ upsert
-                 ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ DuckDB  (analytics.db)                                                      │
-│  ohlcv · signals · backtest_runs · backtest_trades · backtest_combos        │
-│  backtest_cross_tf_combos · backtest_cache · confidence_ratings · stats_*   │
-└────────────────┬───────────────────────────────────────┬────────────────────┘
-                 │ read                                  │ read
-                 ▼                                       ▼
-┌─────────────────────────┐                ┌──────────────────────────────────┐
-│ Live signal daemon      │                │ FastAPI + Svelte web UI          │
-│ (signal_runner.py)      │                │ (web/api/ + web/ui/)             │
-│  ↓ run_scan_cycle       │                │ Chart · Backtest · SignalFeed    │
-│  ↓ scan_symbol/tf       │                │ Positions · Prices · Stats       │
-│  ↓ detect_<strategy>    │                └──────────────────────────────────┘
-│  ↓ Phase 3 gate chain   │
-│  ↓ Telegram + DB write  │
-└─────────────────────────┘
+**Verified against the tree at `5bf695d` (2026-08-13).** Every edge is directed:
+`A --> B` means A writes to, or hands off to, B. Read the two callouts under the
+diagram before drawing any conclusion from it — both encode defects this repo has
+already paid for.
+
+```mermaid
+flowchart TD
+  YF["yfinance API<br/>utils/yfinance_client.py"]
+  BACKFILL["analytics/data_fetcher.py<br/>backfill — full history"]
+  SYNC["analytics/data_sync.py<br/>sync — incremental"]
+
+  subgraph store["DuckDB · analytics.db"]
+    OHLCV[("ohlcv")]
+    BTRUNS[("backtest_runs<br/>+ backtest_trades, backtest_cache")]
+    RATINGS[("confidence_ratings<br/>160 rows")]
+    LEDGER[("signals<br/>signal_alert_outcomes")]
+  end
+
+  DET["analytics/strategies/*.py<br/>18 detector modules · 17 in STRATEGY_REGISTRY<br/>16 dispatched — seasonality returns stats, not signals"]
+  ENGINE["analytics/backtest_runner.py<br/>backtest engine"]
+  RECAL["analytics/recalibrate_runner.py"]
+  WEBBT["web/api/routers/backtest.py"]
+
+  subgraph live["Live path — manual one-shot, no daemon"]
+    RUNNER["analytics/signal_runner.py<br/>make go-live"]
+    SCAN["signal/scanner.py::run_scan_cycle"]
+    GATES["signal/gates.py<br/>gate chain — see section 2"]
+    EV["EV gate<br/>directional · 365d · z-tested"]
+    TG["signals/alert_formatter.py<br/>Telegram"]
+  end
+
+  WEBUI["web/ui — Svelte"]
+
+  YF -->|OHLCV bars| BACKFILL
+  YF -->|OHLCV bars| SYNC
+  BACKFILL -->|upsert| OHLCV
+  SYNC -->|upsert| OHLCV
+
+  OHLCV -->|read bars| DET
+  DET --> ENGINE
+  ENGINE -->|"WRITER 1 — origin=sweep :587 · sets sweep_id"| BTRUNS
+  ENGINE -->|"WRITER 2 — origin=single_run :963"| BTRUNS
+  WEBBT -->|"WRITER 3 — origin=web :176"| BTRUNS
+  EV -->|"WRITER 4 — origin=live_gate :1244 · sweep_id NULL"| BTRUNS
+
+  BTRUNS -->|"read WHERE sweep_id IS NOT NULL"| RECAL
+  RECAL -->|write| RATINGS
+  RATINGS -.->|"edge is OFF — conflict_resolver=false in the sweep"| ENGINE
+
+  RUNNER --> SCAN
+  OHLCV -->|read bars| SCAN
+  SCAN -->|detect| DET
+  SCAN --> GATES
+  GATES --> EV
+  EV --> TG
+  RATINGS -->|"stars + which direction leg wins"| GATES
+  TG -->|"persist alert + outcome"| LEDGER
+
+  OHLCV -->|read| WEBBT
+  BTRUNS -->|read| WEBBT
+  RATINGS -->|"stars on the Backtest page"| WEBBT
+  WEBBT --> WEBUI
 ```
 
-**CLI surface** (single entry `wifey.py`):
+**`backtest_runs` has FOUR writers, and the writer is part of the row key**
+(`origin`, PR #148). A row-key derived from parameters alone does not identify a
+measurement: before #148 the live gate's single-strategy row *replaced* the
+competed sweep row in place. Never read `backtest_runs` without saying which
+`origin` you mean — `sweep` (the only one `recalibrate` consumes) and `live_gate`
+are different populations measured over different windows.
 
-- `buibui analytics backfill | sync` — ingestion
-- `buibui signal watch` — live daemon
-- `buibui signal test` — historical replay (no DB writes)
-- `buibui backtest` — manual + sweep + combo + cross-TF modes
-- `buibui param-audit | param-sweep` — WFO Phase 1 + Phase 2
-- `buibui recalibrate` — refresh star ratings
-- `buibui web` — start FastAPI
+**The dashed edge is the one that decides whether a change needs a full
+`make db-update`.** `confidence_ratings` is a **leaf** only because
+`conflict_resolver` is off inside the sweep (`backtest_runner.py:211` returns
+`None`, so the sweep never reads ratings). Switching it on closes a loop — sweep
+resolves ties from ratings, which changes `backtest_runs`, which changes the next
+recalibrate — and it measurably does not converge (PR #149). While the edge stays
+dashed, a ratings-only fix needs `make db-update-recalibrate`, not the full chain.
+**The live path always resolves conflicts** (`scanner.py:571`, ungated), which is
+why a rating change is operational and not cosmetic.
+
+**CLI surface** (single entry `wifey.py`, verified against `wifey --help`):
+
+- `wifey analytics backfill | sync` — ingestion
+- `wifey signal watch` — live daemon (**no wifey daemon or timer is installed**;
+  dispatch is the manual one-shot `make go-live`)
+- `wifey signal test` — historical replay (no DB writes)
+- `wifey backtest` — manual + sweep + combo + cross-TF modes
+- `wifey digest` — pre-canned analytics queries
+- `wifey param-audit | param-sweep` — WFO Phase 1 + Phase 2
+- `wifey recalibrate` — refresh star ratings
+- `wifey web` — start FastAPI
 
 **Detection lives in `analytics/strategies/<name>.py`**. The `signals/` package only handles alert dispatch + dedup. The split is deliberate: detection is testable and reusable across live + replay + backtest; alerting is side-effectful and lives behind a thin facade.
 
@@ -79,7 +155,7 @@ This is the production ordering inside `run_scan_cycle` (`analytics/signal/scann
 | Step | Gate | Mode | What it does | Where | Known issues |
 | ------ | ------ | ------ | -------------- | ------- | -------------- |
 | **Pre-fetch** | OHLCV + HTF EMA slope cache + regime cache | — | Phase 1: pre-computes per-cycle: 4h regime per symbol; HTF EMA slope per (symbol, tf, period). Cache miss falls open. | `scanner.py` Phase 1 (~L335) | — |
-| **Detect** | `detect_<strategy>` | — | Phase 2: fan-out per (symbol, tf). 20 strategies registered, 16 enabled on `signal_watch.toml`. | `analytics/strategies/*.py` | — |
+| **Detect** | `detect_<strategy>` | — | Phase 2: fan-out per (symbol, tf). 18 detector modules, 16 dispatched (2026-08-13). | `analytics/strategies/*.py` | — |
 | **0** | ATR-as-min-SL floor (F9) | Per-cell opt-in | Phase 3 first. Widens `sl_price` to `max(structural_dist, atr_mult × ATR14)` when `atr_sl_floor=true`. TP recomputed to preserve R:R. | `analytics/signal/atr_floor.py` | Currently enabled only on `liquidity_sweep 1h` (PR #364). Default off. |
 | **1** | Conflict resolution | Always on | Drops opposing same-(symbol, tf, candle) long+short. | `scanner.py` ~L490 | — |
 | **2** | Cooldown dedup | Always on | Two-layer: candle watermark + per-(symbol, strategy, direction) cooldown timer (3600s). | `signals/cooldown_store.py` | — |
@@ -233,7 +309,13 @@ These are the questions an external reviewer is best positioned to challenge:
 
 ## 9. External-AI briefing prompt
 
-> **Copy from here to the end and paste into ChatGPT / Gemini / Claude.ai when you want an outside read.**
+> **⚠ DO NOT PASTE THIS AS-IS — it describes the crypto parent, not this repo.** The
+> block below is inherited verbatim from `buibui-moon-trader-bot`: it opens "I'm building
+> a crypto trading bot for Binance Futures", names BTCUSDT / ETHUSDT / SOLUSDT and the
+> `15m`/`1h` timeframes, and lists strategies this fork does not have. Sending it to an
+> outside reviewer buys advice about a different system. **Rewriting it for wifey
+> (US equities, yfinance, `4h`/`1d`, the six failed sleeves) is queued, not done** — until
+> then, brief an external reviewer from §1 plus `CLAUDE.md`.
 
 ```text
 I'm building a crypto trading bot for Binance Futures (3 symbols: BTCUSDT,
