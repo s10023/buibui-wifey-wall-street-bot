@@ -1041,6 +1041,40 @@ empty list and conclude the API is broken.
 turned fully green on a re-run inside the public window with no code change — found only
 because the operator asked, which is the gap this sweep closes.
 
+**WAITING for CI needs a FLOOR ON THE CHECK COUNT, not just "nothing pending".** The natural
+polling idiom asks whether any check is still unresolved — `[.statusCheckRollup[] | select(
+.conclusion == null)] | length == 0` — and that is **true of an EMPTY rollup**, which is
+exactly the state for the first ~30–60s after `gh pr create` (and permanently in the
+`total_count: 0` case above). So the loop exits immediately and renders identically to "all
+checks passed". Hit on #194. Same family as `total_count: 0`, and the same lesson as
+`until ! pgrep`: **a wait condition that is vacuously true at t=0 is not a wait.**
+
+Assert the expected number of checks as well as their settlement — here **5**, or **2–3**
+runs' worth if you are counting workflow runs (`Docker Build` is path-filtered). **Count with
+`jq 'length'`, never `wc -w`, and treat an EMPTY conclusion as pending**:
+
+```bash
+for i in $(seq 1 40); do
+  J=$(GH_TOKEN=$(gh auth token --user s10023) gh pr view <PR#> \
+    --repo s10023/buibui-wifey-wall-street-bot --json statusCheckRollup)
+  N=$(echo "$J" | jq '.statusCheckRollup | length')
+  P=$(echo "$J" | jq '[.statusCheckRollup[] | select((.conclusion // "") == "")] | length')
+  [ "$N" -ge 5 ] && [ "$P" -eq 0 ] && break
+  sleep 30
+done
+```
+
+**Both refinements are scars from #195, where the first version of this very snippet
+reported SETTLED on a still-running `lint-typecheck-test`.** `wc -w` counts *words*, and
+`Trivy filesystem scan` contains two spaces — so **4** checks scored **7** and cleared a
+floor of 5. And a queued check's `conclusion` comes back as the empty string, not `null`,
+so `// "RUNNING"` never fires and a `grep -q RUNNING` guard sees nothing pending. **A guard
+written against `null` must also handle `""`** — `(.conclusion // "") == ""` covers both.
+
+Background it (`run_in_background`) and do close-out work meanwhile — never a foreground
+`gh pr checks --watch` poll. Then apply the duration/`steps` discriminators above to the
+settled result; a floor proves the checks *arrived*, never that they *ran*.
+
 Output one line per item. If everything is green, say so explicitly:
 `pre-merge: clean — ready when you are.`
 

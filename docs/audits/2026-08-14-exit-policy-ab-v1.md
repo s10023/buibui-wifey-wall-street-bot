@@ -185,11 +185,28 @@ stricter/nearer leg is the one nobody wrote down. It is also why the positive
 control matters — at the declared target the `fixed` arm agreed with the ledger
 on 263 of 267 rows, which is high enough to look like rounding noise and was not.
 
-**Not fixed here.** `analytics/exits/audit.py::effective_tp_r` corrects it
-**read-side, for the replay only**. Correcting the ledger itself means rewriting
-`outcome_r` on historical rows and changing what `_scan_forward` credits — a live
-path, a migration, and a decision about whether `rr_ratio` should store the
-effective target at fire time instead. That is its own task.
+**Not fixed here** — `analytics/exits/audit.py::implied_tp_r` corrected it
+**read-side, for the replay only**.
+
+**FIXED 2026-08-14 (SoT N4).** The helper moved to
+`analytics/signal/outcome_backfill.py` as the single definition — and was renamed
+`implied_tp_r`, because `SignalWatchConfig.effective_tp_r` already means the
+*declared* side (the configured `tp_r` after override resolution) and its output
+is what arrives as `rr_ratio`. Sharing the name would have written
+`effective_tp_r(rr_ratio=cfg.effective_tp_r(...))` into `scanner.py`. All three
+surfaces now share it: the resolver credits the target it walked, the scanner
+records that target at fire time, and this module imports it. `rr_ratio` answers
+both questions the task left open — it stores the effective target — and
+`migrations/003_outcome_r_implied_tp.py` rewrote the history.
+
+Two figures above are worth restating with what the fix measured. The divergence
+is **34 of 298** rows, not 30 of 267: the extra four were **still open**, so this
+was mis-crediting future resolutions and not merely history. And the correction
+runs **both** ways — a structural TP can sit further out than the declared target
+as well as nearer — which is why the fix derives the value rather than clamping
+it. The edge reading is unchanged: this moved the ledger's own headline to
+**−0.1752R** but not the A/B, which already used the corrected target on every
+arm.
 
 ## Next
 

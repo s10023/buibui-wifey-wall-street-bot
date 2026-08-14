@@ -1788,11 +1788,20 @@ class TestSignalOutcomePersistence:
             )
 
         row = conn.execute(
-            "SELECT tp_price, rr_ratio FROM signal_alert_outcomes"
+            "SELECT entry_price, sl_price, tp_price, rr_ratio "
+            "FROM signal_alert_outcomes"
         ).fetchone()
         assert row is not None
-        assert row[0] == pytest.approx(120.5)  # structural TP wins
-        assert row[1] == pytest.approx(2.0)  # rr_ratio = eff_alert_tp_r
+        assert row[2] == pytest.approx(120.5)  # structural TP wins
+        # rr_ratio records the EFFECTIVE target, not the configured tp_r of 2.0:
+        # entry=104, sl=98 → risk 6, and the structural TP sits 16.5 away = 2.75R.
+        # The correction runs BOTH ways — a structural TP can be further than the
+        # declared one, as here, or nearer, which is the case that over-credited
+        # 8 live wins by +13.50R. Asserting only the nearer direction would pass
+        # against a fix that clamped instead of deriving.
+        assert row[0] == pytest.approx(104.0)
+        assert row[1] == pytest.approx(98.0)
+        assert row[3] == pytest.approx(2.75)
 
     def test_outcome_row_uses_pct_fallback_when_no_structural_sl(
         self, tmp_path: Any

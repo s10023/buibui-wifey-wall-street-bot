@@ -490,6 +490,145 @@ class TestStillFormingFinalBar:
         assert _fetch_one(conn, "sig1")[0] == "win"
 
 
+class TestWinCreditsTheEffectiveTarget:
+    """A win books the R implied by `tp_price`, not the declared `rr_ratio`.
+
+    `alert_formatter` (mirrored by `_resolve_outcome_sl_tp`) prefers a detector's
+    structural TP over `entry ± sl_dist × tp_r`, but the ledger recorded the
+    configured `tp_r` in `rr_ratio` — so a TP sitting 2R away was booked at 5R.
+    30 of 267 resolved rows diverged and 8 of them were wins, worth +13.50R of
+    phantom credit; the resolver now derives the credit from the level it walks.
+    """
+
+    def test_structural_tp_win_credits_implied_not_declared(self) -> None:
+        conn = duckdb.connect(":memory:")
+        init_schema(conn)
+        # risk = 5, TP at 110 = +2R — but the config declared tp_r = 5.0.
+        _insert_signal(conn, candle_ts_ms=0, entry=100.0, sl=95.0, tp=110.0, rr=5.0)
+        _insert_ohlcv(
+            conn,
+            "BTCUSDT",
+            "1h",
+            [{"open_time": _HOUR, "high": 111.0, "low": 100.0, "close": 110.5}],
+        )
+
+        assert backfill_outcomes(conn, now_ms=2 * _HOUR)["win"] == 1
+        outcome, outcome_r, _ = _fetch_one(conn, "sig1")
+        assert outcome == "win"
+        assert outcome_r == pytest.approx(2.0)  # NOT the declared 5.0
+
+    def test_short_structural_tp_win_credits_implied(self) -> None:
+        conn = duckdb.connect(":memory:")
+        init_schema(conn)
+        # short: risk = 10, TP at 75 = +2.5R, declared 5.0.
+        _insert_signal(
+            conn,
+            candle_ts_ms=0,
+            direction="short",
+            entry=100.0,
+            sl=110.0,
+            tp=75.0,
+            rr=5.0,
+        )
+        _insert_ohlcv(
+            conn,
+            "BTCUSDT",
+            "1h",
+            [{"open_time": _HOUR, "high": 101.0, "low": 74.0, "close": 75.0}],
+        )
+
+        assert backfill_outcomes(conn, now_ms=2 * _HOUR)["win"] == 1
+        outcome, outcome_r, _ = _fetch_one(conn, "sig1")
+        assert outcome == "win"
+        assert outcome_r == pytest.approx(2.5)
+
+    def test_pct_fallback_win_still_credits_the_declared_value(self) -> None:
+        """The other direction: an agreeing row must not move.
+
+        On a pct-fallback alert `tp_price` IS `entry + sl_dist × tp_r`, so the
+        implied value reproduces `rr_ratio` exactly. A fix that only ever
+        lowered the credit would pass the two tests above and silently break
+        every ordinary alert.
+        """
+        conn = duckdb.connect(":memory:")
+        init_schema(conn)
+        _insert_signal(conn, candle_ts_ms=0, entry=100.0, sl=95.0, tp=115.0, rr=3.0)
+        _insert_ohlcv(
+            conn,
+            "BTCUSDT",
+            "1h",
+            [{"open_time": _HOUR, "high": 116.0, "low": 100.0, "close": 115.5}],
+        )
+
+        assert backfill_outcomes(conn, now_ms=2 * _HOUR)["win"] == 1
+        assert _fetch_one(conn, "sig1")[1] == pytest.approx(3.0)
+
+    def test_loss_and_expired_are_untouched_by_the_declared_target(self) -> None:
+        """Only a win ever read `rr_ratio` — the other two branches must not move."""
+        conn = duckdb.connect(":memory:")
+        init_schema(conn)
+        _insert_signal(
+            conn,
+            signal_id="loss1",
+            candle_ts_ms=0,
+            entry=100.0,
+            sl=95.0,
+            tp=110.0,
+            rr=5.0,
+        )
+        _insert_ohlcv(
+            conn,
+            "BTCUSDT",
+            "1h",
+            [{"open_time": _HOUR, "high": 101.0, "low": 94.0, "close": 95.0}],
+        )
+        assert backfill_outcomes(conn, now_ms=2 * _HOUR)["loss"] == 1
+        assert _fetch_one(conn, "loss1")[1] == pytest.approx(-1.0)
+
+        conn2 = duckdb.connect(":memory:")
+        init_schema(conn2)
+        _insert_signal(
+            conn2,
+            signal_id="exp1",
+            candle_ts_ms=0,
+            entry=100.0,
+            sl=95.0,
+            tp=110.0,
+            rr=5.0,
+        )
+        _insert_ohlcv(
+            conn2,
+            "BTCUSDT",
+            "1h",
+            [{"open_time": _HOUR, "high": 103.0, "low": 99.0, "close": 103.0}],
+        )
+        counts = backfill_outcomes(
+            conn2, now_ms=3 * _HOUR, max_hold_bars_by_tf={"1h": 1}
+        )
+        assert counts["expired"] == 1
+        # mark-to-market off sl_dist: (103 - 100) / 5 = +0.6, no rr_ratio in sight.
+        assert _fetch_one(conn2, "exp1")[1] == pytest.approx(0.6)
+
+    def test_unusable_tp_price_falls_back_to_the_declared_value(self) -> None:
+        """A TP on the wrong side of entry is not a target — keep `rr_ratio`.
+
+        `implied_tp_r` guards this the way `alert_formatter` does. Without the
+        guard the implied value would be negative and a win would book a loss.
+        """
+        conn = duckdb.connect(":memory:")
+        init_schema(conn)
+        _insert_signal(conn, candle_ts_ms=0, entry=100.0, sl=95.0, tp=90.0, rr=2.0)
+        _insert_ohlcv(
+            conn,
+            "BTCUSDT",
+            "1h",
+            [{"open_time": _HOUR, "high": 120.0, "low": 99.0, "close": 119.0}],
+        )
+
+        assert backfill_outcomes(conn, now_ms=2 * _HOUR)["win"] == 1
+        assert _fetch_one(conn, "sig1")[1] == pytest.approx(2.0)
+
+
 class TestMaxHoldCalibrationCoverage:
     """Every timeframe a config scans must have a calibrated hold cap.
 
