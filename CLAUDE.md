@@ -311,16 +311,21 @@ functions rather than restating their arithmetic):
 `docs/plans/scripts/sleeve_gate_mintrl_bar.py`.
 
 **`signal_alert_outcomes.rr_ratio` is the DECLARED target; `tp_price` is the EFFECTIVE one — and the
-ledger credits the wrong one.** `scanner.py:1042` stores `rr_ratio = eff_alert_tp_r` (the configured
-`tp_r`), but `alert_formatter` sets `tp_price` to a detector's **structural** TP when it has one and
-only otherwise falls back to `entry ± sl_dist × tp_r`. `_scan_forward` walks `tp_price` and, on a
-hit, records `outcome_r = rr_ratio` — so an alert whose TP was 2.0R away is credited 5.0R.
-**30 of 267** resolved rows disagree (up to **3.0R**), 8 are wins, **+13.50R** over-credited.
-**The live ledger's pooled avg_r is therefore −0.1753R, not the −0.1247R widely quoted** — re-derive
-before citing it. **Not fixed**: `analytics/exits/audit.py::effective_tp_r` corrects it *read-side
-for the replay only*; the live fix needs a decision about `outcome_r` on historical rows. Same family
-as #142/#154 — a column recording what was *configured* is not a record of what *happened*.
-Audit: `docs/audits/2026-08-14-exit-policy-ab-v1.md` § "A defect this port found".
+ledger credited the wrong one.** `scanner.py` stored `rr_ratio = eff_alert_tp_r` (the configured
+`tp_r`) while `_resolve_outcome_sl_tp` set `tp_price` to a detector's **structural** TP when it had
+one; `_scan_forward` walked `tp_price` and credited `rr_ratio`, so an alert whose TP was 2.0R away
+booked 5.0R. **34 of 298** rows diverged (up to **3.0R**): 8 resolved wins worth **+13.50R** of
+phantom credit, and **4 still OPEN** — a live defect, not only a historical one.
+**Enforced**: one shared `effective_tp_r` in `analytics/signal/outcome_backfill.py`. The resolver
+credits the target it **walked**, the scanner records that same target at fire time, and
+`analytics/exits/audit.py` imports the one definition instead of keeping the read-side copy that
+found this (#165). `migrations/003_outcome_r_effective_tp.py` rewrote history — hand-run, dry-run by
+default, and safe in place *because* neither column is in the row identity (contrast #142, where the
+same fix needed a new `run_id`). **The pooled live avg_r is −0.1752R; any doc quoting −0.1247R
+predates the fix.** **Rules**: a column recording what was *configured* is not a record of what
+*happened* (#142/#154); and when a consumer holds both a stored number and the price it ACTS on, it
+must derive from the price — crediting the stored one beside a walked level is how the two drift.
+Audit: `docs/audits/2026-08-14-exit-policy-ab-v1.md` § "Two defects this port found".
 
 **A BAR COUNT IS NOT A CALENDAR SPAN on an RTH tape — second instance of the crypto-constant rule.**
 Upstream #437 fetched a trade's forward window as `max(candle_ts) + (max_hold + 2) * tf_ms`, exact on

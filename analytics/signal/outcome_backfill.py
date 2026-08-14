@@ -13,7 +13,8 @@ mirroring the backtest engine semantics in `analytics/backtest/engine.py`:
 Same-bar TP+SL resolves to "loss" (conservative, matches the engine).
 
 Outcomes:
-  - "win"     — TP hit first. outcome_r = +rr_ratio
+  - "win"     — TP hit first. outcome_r = +the R implied by `tp_price`
+                (`effective_tp_r`), NOT the declared `rr_ratio`.
   - "loss"    — SL hit first or same-bar tie. outcome_r = -1.0
   - "expired" — exceeded `max_hold_bars` without hitting either.
                 outcome_r = mark-to-market at the last in-window bar.
@@ -97,6 +98,43 @@ def _resolve_max_hold(tf: str, hold_map: dict[str, int]) -> int | None:
     return hold_map.get(tf)
 
 
+def effective_tp_r(
+    *,
+    direction: str,
+    entry: float,
+    sl_price: float,
+    rr_ratio: float,
+    tp_price: float | None,
+) -> float:
+    """The R multiple the alert's TP was ACTUALLY at — not the declared one.
+
+    `signal_alert_outcomes.rr_ratio` records the *configured* `tp_r`, but
+    `alert_formatter` (mirrored by `_resolve_outcome_sl_tp`) prefers a detector's
+    **structural** TP when it has one, and only then falls back to
+    `entry ± sl_dist × tp_r`. So on a structural-TP alert the stored `rr_ratio`
+    is the DECLARED target while `tp_price` is the EFFECTIVE one.
+
+    This is the single definition of that conversion. It is deliberately shared
+    by all three surfaces that need it — the resolver below (which credits the
+    target it WALKED), `scanner.py` (which records it at fire time) and
+    `analytics/exits/audit.py` (which re-derives it read-side for the replay) —
+    because inlining it four times is what let the declared/effective split
+    diverge unnoticed in the first place (#165).
+
+    Falls back to `rr_ratio` when `tp_price` is absent, zero, or on the wrong
+    side of entry — the same guards `alert_formatter` applies before trusting
+    it. On a pct-fallback row `tp_price` is `entry ± sl_dist × tp_r` by
+    construction, so the implied value reproduces `rr_ratio` exactly.
+    """
+    risk = abs(entry - sl_price)
+    if risk <= 0.0 or tp_price is None or tp_price <= 0.0:
+        return rr_ratio
+    implied = (
+        (tp_price - entry) / risk if direction == "long" else (entry - tp_price) / risk
+    )
+    return implied if implied > 0.0 else rr_ratio
+
+
 def _scan_forward(
     bars: pd.DataFrame,
     candle_ts_ms: int,
@@ -107,7 +145,13 @@ def _scan_forward(
     rr_ratio: float,
     max_hold_bars: int,
 ) -> tuple[str | None, float | None, int | None]:
-    """Decide outcome for one signal given pre-fetched OHLCV bars for its TF."""
+    """Decide outcome for one signal given pre-fetched OHLCV bars for its TF.
+
+    A win is credited the R implied by `tp_price` — the level this walk actually
+    tests — and NOT the stored `rr_ratio`, which is only the declared target and
+    is the larger of the two on a structural-TP alert. `rr_ratio` survives as the
+    fallback inside `effective_tp_r` for rows whose `tp_price` is unusable.
+    """
     post = bars[bars["open_time"] > candle_ts_ms].reset_index(drop=True)
     if post.empty:
         return None, None, None
@@ -132,7 +176,14 @@ def _scan_forward(
     if sl_first <= tp_first and sl_first < len(t):
         return "loss", -1.0, int(t[sl_first])
     if tp_first < len(t):
-        return "win", float(rr_ratio), int(t[tp_first])
+        credited = effective_tp_r(
+            direction=direction,
+            entry=entry,
+            sl_price=sl_price,
+            rr_ratio=rr_ratio,
+            tp_price=tp_price,
+        )
+        return "win", float(credited), int(t[tp_first])
 
     # Neither hit within the window so far.
     if len(window) < max_hold_bars:

@@ -56,6 +56,7 @@ from analytics.signal.gates import (
     effective_adr_threshold,
     passes_ev_gate,
 )
+from analytics.signal.outcome_backfill import effective_tp_r
 from analytics.signal.resolvers import (
     _resolve_atr_sl_floor,
     _resolve_atr_sl_multiplier,
@@ -1003,7 +1004,9 @@ def run_scan_cycle(
             # Persist per-event outcome rows so win/loss can be backfilled later.
             # tp_price/rr_ratio are filled here (after eff_alert_tp_r is known) so
             # the backfill worker can resolve win/loss against the same target the
-            # alert showed. Per-event SL/TP mirrors the formatter math: structural
+            # alert showed — and `rr_ratio` records the R that target is ACTUALLY
+            # at, so the two never describe different levels (see effective_tp_r).
+            # Per-event SL/TP mirrors the formatter math: structural
             # SL when valid, else the same entry*(1±eff_sl_pct) pct fallback the
             # alert renders, floored by min_sl_pct. Every row is therefore
             # scoreable — no NULL sl_price/tp_price (closes the outcome-ledger
@@ -1025,6 +1028,16 @@ def run_scan_cycle(
                     min_sl_pct=min_sl_pct,
                     tp_r=eff_alert_tp_r,
                 )
+                # Record the EFFECTIVE target, not the configured one: when the
+                # detector supplied a structural TP, `ev_tp` is that level and
+                # `eff_alert_tp_r` describes a target this alert never had.
+                ev_rr = effective_tp_r(
+                    direction=direction,
+                    entry=entry,
+                    sl_price=ev_sl,
+                    rr_ratio=eff_alert_tp_r,
+                    tp_price=ev_tp,
+                )
                 try:
                     upsert_signal_outcome(
                         conn,
@@ -1039,7 +1052,7 @@ def run_scan_cycle(
                             "entry_price": entry,
                             "sl_price": ev_sl,
                             "tp_price": ev_tp,
-                            "rr_ratio": eff_alert_tp_r,
+                            "rr_ratio": ev_rr,
                             "confidence_at_fire": e.confidence,
                             "tags": e.reason,
                         },

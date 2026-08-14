@@ -60,7 +60,7 @@ from analytics.exits.policies import ExitPolicyConfig, composite, fixed
 from analytics.exits.replay import replay_exits
 from analytics.research_guards.bootstrap import BootstrapCI, block_bootstrap_ci
 from analytics.research_guards.dsr import deflated_sharpe_ratio
-from analytics.signal.outcome_backfill import DEFAULT_MAX_HOLD_BARS
+from analytics.signal.outcome_backfill import DEFAULT_MAX_HOLD_BARS, effective_tp_r
 from analytics.store.market_data import get_latest_open_time, get_ohlcv
 
 TIME_STOP_FLOOR_BY_TF: dict[str, int] = {
@@ -93,39 +93,12 @@ _LEDGER_SQL = (
 )
 
 
-def effective_tp_r(
-    *,
-    direction: str,
-    entry: float,
-    sl_price: float,
-    rr_ratio: float,
-    tp_price: float | None,
-) -> float:
-    """The R multiple the alert's TP was ACTUALLY at — not the declared one.
-
-    `signal_alert_outcomes.rr_ratio` stores the *configured* `tp_r`
-    (`scanner.py:1042` writes `eff_alert_tp_r`), but `alert_formatter` prefers a
-    detector's **structural** TP when it has one, and only then falls back to
-    `entry ± sl_dist × tp_r`. So on a structural-TP alert the stored `rr_ratio`
-    is the DECLARED target while `tp_price` is the EFFECTIVE one, and they
-    disagree on **30 of 267** resolved rows here — by up to 3.0R.
-
-    Deriving the target from `tp_price` is what makes the `fixed` arm reproduce
-    the live resolver, which walks `tp_price` and not `rr_ratio`. Falls back to
-    `rr_ratio` when `tp_price` is absent, zero, or on the wrong side of entry
-    (the same guards `alert_formatter` applies before trusting it).
-
-    NOTE: this is a read-side correction local to the replay. The live ledger
-    itself still CREDITS `rr_ratio` on a `tp_price` win — see
-    `docs/audits/2026-08-14-exit-policy-ab-v1.md` § "A defect this port found".
-    """
-    risk = abs(entry - sl_price)
-    if risk <= 0.0 or tp_price is None or tp_price <= 0.0:
-        return rr_ratio
-    implied = (
-        (tp_price - entry) / risk if direction == "long" else (entry - tp_price) / risk
-    )
-    return implied if implied > 0.0 else rr_ratio
+# `effective_tp_r` now lives in `analytics.signal.outcome_backfill` — its single
+# definition — and is imported above. It moved there when the live resolver was
+# fixed to credit the target it walks: the replay derived the effective R
+# read-side while the ledger still recorded the declared one, and two copies of
+# that conversion is exactly the divergence #165 warns about. The import keeps
+# `analytics.exits.audit.effective_tp_r` resolving for existing callers.
 
 
 def _policy_for(
