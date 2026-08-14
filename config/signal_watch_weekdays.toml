@@ -1,6 +1,24 @@
 # Signal Watch — weekdays equity profile (Mon–Fri, no weekend signals)
 # Usage: make wifey-signal-watch CONFIG=config/signal_watch_weekdays.toml
 #
+# state_file IS DELIBERATELY SHARED with signal_watch.toml (both default to
+# signal_state.json) — do NOT give this config its own. Verified 2026-08-14:
+# this config's 32 declared cells are a strict SUPERSET of signal_watch's 22
+# (overlap 22 of 22), and both dispatch to the same Telegram channels, so the
+# one shared watermark file is what stops a Tue–Thu candle alerting twice.
+# Splitting it would double-alert every one of those 22 cells.
+#
+# What sharing actually costs is narrower than it looks, and the reverse of what
+# was long filed as a defect: day_filter is applied inside scan_symbol
+# (scanner.py:267) BEFORE events are returned, so a suppressed candle never
+# fires and never marks. After a tue_thu run Mon/Fri are therefore still
+# unmarked and a later weekdays run alerts them normally — nothing is buried in
+# that direction. The real ordering effect runs the other way: a weekdays run
+# marks Tue–Thu candles too, so a later tue_thu run is silent on them — but they
+# were ALREADY alerted by the weekdays run. No alert is lost; what changes is
+# which config's tp_r the alert carried. That is operator discipline (do not run
+# both live on the same day), not a code defect.
+#
 # Inherits: bias, backtest defaults, and consistent per-strategy flags
 # from strategy_params.toml. Only weekdays-specific values are defined here.
 #

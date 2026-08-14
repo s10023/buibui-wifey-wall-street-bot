@@ -250,7 +250,10 @@ atr_sl_multiplier_4h = 1.5    # Task C-followup 13-sym: +0.17R (tied 0.5/1.0/1.5
 tp_r_4h = 4.0                 # Phase 2 resweep 13-sym (under ATR floor 2.5×): combined 4.0@+0.019R, n=54 (NEW commit; was global default 2.0@-0.056R — near-zero edge but uplift +0.075R)
 tp_r_1d = 3.0                 # Phase 2 resweep 13-sym (under ATR floor 2.5×): combined 3.0@+0.931R, n=29 (NEW commit; was global default 2.0@+0.655R)
 tp_r_long_1d = 5.0            # Phase 2 resweep 13-sym directional: longs +1.000R, n=15 at 5.0 (NEW commit; thin sample but strong edge)
-adr_exempt = true             # liquidity sweep — fires at structure extremes in continuation direction
+# adr_exempt MOVED to config/strategy_params.toml 2026-08-14 so BOTH configs inherit it.
+# Living here made it config-local: signal_watch_weekdays.toml never got it, so its
+# eqh_eql x 4h took an ADR haircut this config was exempt from (4h only — the gate is
+# intraday-only). Not the bos void: eqh_eql carries no volume_suppress in either config.
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 2.5    # Task C-followup 13-sym: -0.12R least-bad (tied 0.5/1.0/1.5/2.5), n=99
 atr_sl_multiplier_1d = 2.5    # Task C-followup 13-sym: +0.29R, n=77
