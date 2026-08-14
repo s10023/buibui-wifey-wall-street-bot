@@ -173,6 +173,10 @@ wifey-pead-audit:
 	@echo "🔬 Edge-hunt #4 — PEAD-lite 2x2 audit over the breadth universe (1d)..."
 	@PYTHONPATH=. poetry run python tools/pead_audit.py $(ARGS)
 
+wifey-gapfill-audit:
+	@echo "🔬 Edge-hunt #5 — gap-fill magnet audit over the breadth universe (1d)..."
+	@PYTHONPATH=. poetry run python tools/gapfill_audit.py $(ARGS)
+
 wifey-pead-backfill:
 	@echo "📥 Edge-hunt #4 — ingesting EDGAR earnings facts (one-shot)..."
 	@PYTHONPATH=. poetry run python tools/pead_backfill.py $(ARGS)

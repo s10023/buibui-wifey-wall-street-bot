@@ -85,7 +85,7 @@ the text would simply be destroyed. If a footgun has no committed audit, write o
 | --- | --- | --- |
 | `wifey.py` · `cli/` | Thin CLI entry shim delegating to `cli.main:main`; argparse subcommand package (`signal` / `analytics` / `backtest` / `digest` / `param` / `recalibrate` / `web`) with `_common.py` helpers | — |
 | `analytics/` | Analytics data layer (DuckDB): `store/`, `strategies/` (18 detector modules, **16** registered for dispatch), `backtest/`, `signal/`, `stats/`, `research_guards/`, `sweep_guard.py`, `audit_guard.py` (hosted by `warning_audit.py` since 2026-08-13), `db_retry.py`, plus the data-ingest + quality + calendar layer | `context/analytics.md` |
-| `analytics/{forecast,xsmom,lowvol,xasset,pead,exits}/` | The P2/P3 research sleeves and the exit diagnostic — **verdicts below** | `context/analytics.md` |
+| `analytics/{forecast,xsmom,lowvol,xasset,pead,gapfill,exits}/` | The P2/P3 research sleeves and the exit diagnostic — **verdicts below** | `context/analytics.md` |
 | `signals/` · `utils/` | Alerting + dedup daemon (detection lives in `analytics/`); shared Telegram / yfinance / EDGAR clients and the two config-universe loaders | `context/signals.md` |
 | `web/` | FastAPI backend + Svelte 5 / Vite UI | `context/web.md` |
 | `tools/` | One-shot analysis, audit, and research-ingest scripts; not part of the daemon or CLI surface | `context/tools.md` |
@@ -97,9 +97,11 @@ the text would simply be destroyed. If a footgun has no committed audit, write o
 
 ### Sleeve verdicts — do NOT rebuild a shelved sleeve
 
-Six sleeves have been built and measured on equities. **Every one is non-positive.** The free-data
-edge-hunt arc is **CONCLUDED** (synthesis `docs/audits/2026-06-24-honest-exit-free-data-edge-arc.md`);
-do not start a new free-data hunt without an explicit user go.
+**Seven** sleeves have been built and measured on equities. **Every one is non-positive.** The
+free-data edge-hunt arc was **CONCLUDED** 2026-06-24 (synthesis
+`docs/audits/2026-06-24-honest-exit-free-data-edge-arc.md`); do not start a new free-data hunt
+without an explicit user go. **One such go was given 2026-08-14** and produced edge-hunt #5
+(`gapfill/`, EXCLUDED) — a reopening is per-candidate and does not un-conclude the arc.
 
 | Sleeve | Verdict |
 | --- | --- |
@@ -109,6 +111,7 @@ do not start a new free-data hunt without an explicit user go.
 | `lowvol/` low-beta / BAB (edge-hunt #2, PR #100) | **FAIL** — committed cell Sharpe −0.069 @2bps, DSR ~0.03. The realized-beta guardrail **FIRED** (β +3.9, not ≈0) → a fail of *this construction's neutrality*, not a clean BAB-premium test |
 | `xasset/` cross-asset TSMOM (edge-hunt #3, PR #102) | **FAIL (clean)** — `broad_ls` +0.41 cost-free / +0.36 @2bps, never ≥0.7; PBO ~0.79. The equity-β guardrail **held** (β −0.083), so the construction diversified as designed and the premium is simply too weak in free-ETF proxies |
 | `pead/` PEAD-lite (edge-hunt #4, PR #104) | **FAIL** — `broad_ls` +0.10 @2bps, DSR 0.20. The β guardrail **FIRED** (β ≈ +113, governor saturation on sparse daily cohorts); the controlled mega arm (β −0.40) showed *negative* drift (−0.53) |
+| `gapfill/` gap-fill magnet (edge-hunt #5, PR #198) | **EXCLUDED — the direction is REFUTED, not merely unsupported.** Cost-free the magnet returns **−0.460**, so gaps *continue* rather than revert; the post-hoc inverse is **+0.392**, below the 0.7 bar before a single bp. Gated `broad_ls` fails all four legs (−1.333 @0bps, DSR 0.000, boot_lo −1.984). At **~211× daily gross turnover** the 1bp fee alone costs ~0.9 Sharpe, so neither direction is tradeable. **90.3% of gaps DO fill within 60 sessions — the descriptive claim is true and inert**, which is the whole finding. Range-regime conditioning changes nothing (−1.317). β guardrail fired (−1.564) but the cell fails on every surviving leg independently. Ran only because the user reopened the concluded arc for it |
 | `exits/` MFE-MAE diagnostic (PR #96) | **EXIT-FIXABLE at the cohort level** (re-run 2026-08-12, n=264, 264/264 scored). Supersedes the n=22 INCONCLUSIVE call **and reverses its direction**: of the 157 losses that could show excursion, **43.9%** reached ≥1R before stopping (CI 36.4–51.8%), vs the 13.3% that produced the earlier "entry-broken" read. Still blocked per-edge (0 of 30 loss cells reach n=30) and the whole ledger is **pre-#151**. Audit: `docs/audits/2026-08-12-exit-mfe-mae-diagnostic-rerun.md` |
 | `exits/` policy replay A/B (PR #194, parent #437) | **BOUNDED** (reframed 2026-08-14b) — **the lever's ceiling is +0.368R of paired uplift and it buys no measurably profitable book.** All three arms beat `fixed` on a paired bootstrap CI clear of zero (day-clustered too), and the effect is **entirely the time lever**: `time_only` **+0.317R** [+0.173, +0.468] *exceeds* the full `composite` **+0.297R**, so bolting breakeven+partial onto a time-stop makes it worse — the 43.9% figure above shows a lever *could* work, it does not rank it against levers it never measured. **But a paired CI certifies "A beats B", never "A makes money"**: no arm's own mean R clears zero once the **31** ET session days rather than the 267 alerts are the unit, and the swept maximum over the 10×2 time-stop grid is arm-level t **+2.52** against a Bonferroni bar of **2.81** — the *paired* maximum (t +4.91) clears it, the arm-level one does not. Baseline avg_r −0.176, itself only t −1.84; both parameters in-sample. **"Mean R of an open position peaks at bar 3" was a MISLABEL** — that table is the arm's own avg_r at `time_stop=k`, i.e. the sensitivity sweep shifted by the baseline; positions genuinely still open at bar k *improve* monotonically (+0.283 → +0.951) because a stop removes losers first, so the honest claim is about the marginal bar over the whole book, never a position's own trajectory. Audit: `docs/audits/2026-08-14-exit-policy-ab-v1.md` |
 

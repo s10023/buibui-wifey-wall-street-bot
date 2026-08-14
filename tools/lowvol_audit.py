@@ -89,7 +89,7 @@ def main() -> None:
 
     print(
         "\nGate (pre-registered, beta x beta-neutral L/S): DSR>=0.95 ∧ PBO<=0.5 ∧ "
-        "boot_lo>0 ∧ n>=MinTRL ∧ Sharpe>=0.7; deploy-grade tier = Sharpe>=1.0 ∧ "
+        "boot_lo>0 ∧ Sharpe>=0.7; deploy-grade tier = Sharpe>=1.0 ∧ "
         "long-only leg>=0.7. The beta-neutral construct defuses (does not fully "
         "eliminate) the survivorship bias of the current-S&P-500 set; realized_beta "
         "≈0 confirms the neutralization. Short-borrow cost omitted (mildly optimistic "

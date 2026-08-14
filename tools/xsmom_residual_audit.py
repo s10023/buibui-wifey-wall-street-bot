@@ -152,7 +152,7 @@ def main() -> None:
 
     print(
         "\nGate (pre-registered, broad x residual+skip): DSR>=0.95 ∧ PBO<=0.5 ∧ "
-        "boot_lo>0 ∧ n>=MinTRL ∧ Sharpe>=0.7. Broad-arm numbers carry the "
+        "boot_lo>0 ∧ Sharpe>=0.7. Broad-arm numbers carry the "
         "survivorship flag — a marginal pass is suspect; a clean fail is "
         "trustworthy. Short-borrow cost omitted (mildly optimistic short legs)."
     )

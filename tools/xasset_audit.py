@@ -79,7 +79,7 @@ def main() -> None:
 
     print(
         "\nGate (pre-registered, broad x long-short): DSR>=0.95 ∧ PBO<=0.5 ∧ "
-        "boot_lo>0 ∧ n>=MinTRL ∧ Sharpe>=0.7; deploy-grade tier = Sharpe>=1.0 ∧ "
+        "boot_lo>0 ∧ Sharpe>=0.7; deploy-grade tier = Sharpe>=1.0 ∧ "
         "long-flat leg>=0.7. equity_beta is the realized beta to SPY — the "
         "committed cross-asset book should read ≈0 (the diversification thesis). "
         "USO contango + ETF tracking error are accepted free-data proxy "
