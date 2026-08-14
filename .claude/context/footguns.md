@@ -1,7 +1,7 @@
 # Footgun narratives
 
 CLAUDE.md keeps each footgun's **rule**, its **enforcing mechanism**, and the **transferable
-lesson**: the part a session needs before it acts. The discovery narrative and the full measured
+lesson** — the part a session needs before it acts. The discovery narrative and the full measured
 impact live in the linked committed audit.
 
 This file is the committed home for the entries that have **no** audit of their own. Read it when
@@ -11,13 +11,13 @@ Everything else is reachable from CLAUDE.md's own pointers.
 ## DuckDB read-only opens and `IOException`
 
 On duckdb 1.5.5 only reader-vs-reader shares a database file. A writer refuses a read-only opener
-with the *identical* `Conflicting lock` message a second writer gets, verified 2026-08-12 by
+with the *identical* `Conflicting lock` message a second writer gets — verified 2026-08-12 by
 holding a connection from a child process. So `read_only=True` buys nothing against a live writer,
 and code that assumed otherwise was silently wrong.
 
 DuckDB also raises one exception class for every I/O failure. Two `web/` handlers caught bare
 `duckdb.IOException` and reported a missing or corrupt database as "busy, try again in a few
-seconds", advice that can never come true, while `main.py`'s `except: pass` started the API with
+seconds" — advice that can never come true — while `main.py`'s `except: pass` started the API with
 no schema and no complaint. Both messages also blamed "the signal-watch daemon", which this fork
 does not have.
 
@@ -30,7 +30,7 @@ on the request path, where a ~52s retry would block the very response the cache 
 
 ## `INSERT OR REPLACE` with a partial row
 
-`upsert_signal_outcome` took a 16-column row. The scanner, its only production caller, passes no
+`upsert_signal_outcome` took a 16-column row. The scanner — its only production caller — passes no
 `outcome` / `outcome_r` / `outcome_filled_at_ms` key, so `row.get(col)` returned NULL and a
 re-detection erased a resolved label.
 
@@ -39,7 +39,7 @@ columns. **Preventive, not a repair**: across all 295 events exactly one re-writ
 (`ADBE-1d-eqh_eql`, 31 minutes after first detection on 2026-06-05, while still unresolved), so no
 resolved label is known to have been destroyed.
 
-The damage was invisible from the other writer's side: `backfill_outcomes` issues a direct
+The damage was invisible from the other writer's side — `backfill_outcomes` issues a direct
 `UPDATE`, so it never collided.
 
 Ordering also masked it: `signal_runner.py:350` re-derives the label right after the scan, so a
@@ -47,7 +47,7 @@ loss surfaces only if the backfill throws, and that call sits in a "logged but n
 cycle" try/except.
 
 The retraction this cost. Thirteen ledger rows stamped 2026-08-11 were first read as re-detections.
-They were **first inserts in both tables**: a catch-up scan discovering historical signals and
+They were **first inserts in both tables** — a catch-up scan discovering historical signals and
 resolving them in the same cycle. What discriminates is that the two writers hold opposite conflict
 policies: `signals` is `INSERT OR IGNORE` (first write wins) while the ledger was
 `INSERT OR REPLACE` (last write wins), so `signals.fired_at <> outcomes.fired_at` *proves* a
@@ -62,14 +62,14 @@ All four equity sleeves (`xsmom`, `lowvol`, `xasset`, `pead`) declared `_GATE_SH
 
 MinTRL against a non-zero target asks *"can I confirm Sharpe ≥ 1?"*, so it returns `inf` for any
 sample at or below that target: no amount of data confirms a hypothesis the sample contradicts. The
-effective bar was therefore ~2.174 at n=500, ~1.585 at n=2000, ~1.478 at n=3000. The whole 0.7-1.58
+effective bar was therefore ~2.174 at n=500, ~1.585 at n=2000, ~1.478 at n=3000. The whole 0.7–1.58
 band cleared every threshold the code *named* and was rejected by one it did not.
-`_DEPLOY_SHARPE = 1.0` was inert for the same reason, being only consulted on a cell that already
+`_DEPLOY_SHARPE = 1.0` was inert for the same reason — only consulted on a cell that already
 passed, and a passing cell was already above 1.58.
 
 **No recorded verdict rested on this.** The gate is read on four committed cells (`xsmom`'s
 residual grid, `lowvol`, `xasset`, `pead`; `forecast` computes `min_trl` and applies no gate at
-all), and each already fails on DSR, PBO, `boot_lo`, or the 0.7 Sharpe leg, all of which bind
+all), and each already fails on DSR, PBO, `boot_lo`, or the 0.7 Sharpe leg — all of which bind
 before MinTRL.
 
 **Re-targeting to `target_sr = 0` was considered and rejected as a no-op**, which is the sharper
@@ -94,7 +94,7 @@ only cells at risk are ones blocked *solely* by MinTRL, and `TestRecordedVerdict
 that none of the four recorded cells is one.
 
 Reproduction script (calls the production functions rather than restating their arithmetic):
-`docs/plans/scripts/sleeve_gate_mintrl_bar.py`. Note that tree is gitignored and single-copy.
+`docs/plans/scripts/sleeve_gate_mintrl_bar.py` — note that tree is gitignored and single-copy.
 
 ## Bar counts read as calendar spans
 
@@ -103,17 +103,17 @@ Three instances, all the same crypto-inherited shape.
 **Forward windows.** Upstream #437 fetched a trade's forward window as
 `max(candle_ts) + (max_hold + 2) * tf_ms`. Exact on a 24/7 tape; it covered **0.0%** of real equity
 windows here. Thirty `4h` bars span ~132 `4h` units of wall-clock (p95 150, max 161), and 14 `1d`
-bars span ~20 (p95 22). The truncation is silent: it marks would-be winners to market at the last
-fetched bar. It also biases an A/B, because a short window cannot touch a policy whose time-stop
+bars span ~20 (p95 22). The truncation is silent — it marks would-be winners to market at the last
+fetched bar — and it biases an A/B, because a short window cannot touch a policy whose time-stop
 fires at bar 3 but truncates the long-held baseline. The tell was that the positive control against
-production sat at 96-99% rather than 100%, high enough to read as rounding noise.
+production sat at 96–99% rather than 100%, high enough to read as rounding noise.
 
 **Regime history windows.** `analytics/regime.py` carried a private crypto table (`4h: 6`,
-`1h: 24`) against `cost_model.py`'s correct RTH values: one repo, both values, the whole life of
+`1h: 24`) against `cost_model.py`'s correct RTH values — one repo, both values, the whole life of
 the fork. `history_window = bars_per_day * _ATR_HISTORY_DAYS` therefore looked back 540 bars ≈ 270
 sessions where it said 90. **12.02%** of `4h` labels moved (`1h` 12.52%), and the dispatch/ratings
 blast radius is **zero**: `[bias.regime] mode = "soft"` keeps 34/34 events in every regime, verified
-with a `mode="hard"` control that drops 30-32.
+with a `mode="hard"` control that drops 30–32.
 
 **Why deduping beat correcting.** Swapping the values alone would have hidden two further defects,
 both found only because deduping put the whole key set in scope. `1wk` was *missing* from regime's
@@ -127,7 +127,7 @@ was wrong, so this restored a documented calibration rather than choosing a new 
 ## Average of averages beside a sum of counts
 
 `get_backtest_win_rates` summed `closed_trades` across a cell's symbols but took a plain `mean()`
-of `avg_r`, so a 1-trade symbol moved the star rating exactly as far as a 50-trade one, while
+of `avg_r`, so a 1-trade symbol moved the star rating exactly as far as a 50-trade one — while
 `min_trades` guarded the *pooled* count.
 
 Impact, fixed 2026-08-13: **38 of 160 `confidence_ratings` rows changed stars, 21 crossed zero** (22
