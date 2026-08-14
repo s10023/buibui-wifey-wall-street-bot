@@ -612,7 +612,7 @@ class TestWinCreditsTheEffectiveTarget:
     def test_unusable_tp_price_falls_back_to_the_declared_value(self) -> None:
         """A TP on the wrong side of entry is not a target — keep `rr_ratio`.
 
-        `effective_tp_r` guards this the way `alert_formatter` does. Without the
+        `implied_tp_r` guards this the way `alert_formatter` does. Without the
         guard the implied value would be negative and a win would book a loss.
         """
         conn = duckdb.connect(":memory:")

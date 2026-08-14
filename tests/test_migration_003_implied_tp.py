@@ -1,4 +1,4 @@
-"""Tests for migrations/003_outcome_r_effective_tp.py.
+"""Tests for migrations/003_outcome_r_implied_tp.py.
 
 The migration rewrites two columns with different rules — `rr_ratio` on every
 divergent row, `outcome_r` on resolved WINS only — so the two ways it can fail
@@ -25,7 +25,7 @@ from analytics.store import init_schema, upsert_signal_outcome
 _MIGRATION = (
     Path(__file__).resolve().parent.parent
     / "migrations"
-    / "003_outcome_r_effective_tp.py"
+    / "003_outcome_r_implied_tp.py"
 )
 
 

@@ -16,7 +16,7 @@ from analytics.exits.audit import (
     TIME_STOP_FLOOR_BY_TF,
     _policy_for,
     baseline_agreement,
-    effective_tp_r,
+    implied_tp_r,
     resolve_ledger_under_policy,
     run_exit_ab,
 )
@@ -120,17 +120,17 @@ class TestEffectiveTpR:
 
     def test_structural_tp_overrides_declared_rr_long(self) -> None:
         # entry 100, sl 90 -> risk 10. tp 120 is +2R, but rr_ratio claims 5.
-        assert effective_tp_r(
+        assert implied_tp_r(
             direction="long", entry=100.0, sl_price=90.0, rr_ratio=5.0, tp_price=120.0
         ) == pytest.approx(2.0)
 
     def test_structural_tp_overrides_declared_rr_short(self) -> None:
-        assert effective_tp_r(
+        assert implied_tp_r(
             direction="short", entry=100.0, sl_price=110.0, rr_ratio=5.0, tp_price=75.0
         ) == pytest.approx(2.5)
 
     def test_agreeing_tp_returns_the_same_number(self) -> None:
-        assert effective_tp_r(
+        assert implied_tp_r(
             direction="long", entry=100.0, sl_price=90.0, rr_ratio=3.0, tp_price=130.0
         ) == pytest.approx(3.0)
 
@@ -138,19 +138,19 @@ class TestEffectiveTpR:
     def test_missing_or_nonpositive_tp_falls_back_to_declared(
         self, tp: float | None
     ) -> None:
-        assert effective_tp_r(
+        assert implied_tp_r(
             direction="long", entry=100.0, sl_price=90.0, rr_ratio=4.0, tp_price=tp
         ) == pytest.approx(4.0)
 
     def test_tp_on_the_wrong_side_falls_back_rather_than_going_negative(self) -> None:
         # A long whose "TP" sits below entry would imply a negative R target,
         # which `ExitPolicyConfig` rejects outright. Fall back instead.
-        assert effective_tp_r(
+        assert implied_tp_r(
             direction="long", entry=100.0, sl_price=90.0, rr_ratio=4.0, tp_price=80.0
         ) == pytest.approx(4.0)
 
     def test_zero_risk_falls_back(self) -> None:
-        assert effective_tp_r(
+        assert implied_tp_r(
             direction="long", entry=100.0, sl_price=100.0, rr_ratio=2.0, tp_price=120.0
         ) == pytest.approx(2.0)
 

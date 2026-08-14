@@ -14,7 +14,7 @@ Same-bar TP+SL resolves to "loss" (conservative, matches the engine).
 
 Outcomes:
   - "win"     — TP hit first. outcome_r = +the R implied by `tp_price`
-                (`effective_tp_r`), NOT the declared `rr_ratio`.
+                (`implied_tp_r`), NOT the declared `rr_ratio`.
   - "loss"    — SL hit first or same-bar tie. outcome_r = -1.0
   - "expired" — exceeded `max_hold_bars` without hitting either.
                 outcome_r = mark-to-market at the last in-window bar.
@@ -98,7 +98,7 @@ def _resolve_max_hold(tf: str, hold_map: dict[str, int]) -> int | None:
     return hold_map.get(tf)
 
 
-def effective_tp_r(
+def implied_tp_r(
     *,
     direction: str,
     entry: float,
@@ -107,6 +107,14 @@ def effective_tp_r(
     tp_price: float | None,
 ) -> float:
     """The R multiple the alert's TP was ACTUALLY at — not the declared one.
+
+    NAMED `implied_tp_r`, NOT `effective_tp_r`, and the distinction is the whole
+    subject of this function. `SignalWatchConfig.effective_tp_r` already exists
+    and means the opposite thing: the *configured* `tp_r` after the
+    symbol/TF/direction override chain resolves — i.e. the DECLARED side. Its
+    output is what arrives here as `rr_ratio`. A shared name would put
+    `effective_tp_r(rr_ratio=cfg.effective_tp_r(...))` in `scanner.py`, which
+    reads as a tautology and hides exactly the gap this exists to close.
 
     `signal_alert_outcomes.rr_ratio` records the *configured* `tp_r`, but
     `alert_formatter` (mirrored by `_resolve_outcome_sl_tp`) prefers a detector's
@@ -150,7 +158,7 @@ def _scan_forward(
     A win is credited the R implied by `tp_price` — the level this walk actually
     tests — and NOT the stored `rr_ratio`, which is only the declared target and
     is the larger of the two on a structural-TP alert. `rr_ratio` survives as the
-    fallback inside `effective_tp_r` for rows whose `tp_price` is unusable.
+    fallback inside `implied_tp_r` for rows whose `tp_price` is unusable.
     """
     post = bars[bars["open_time"] > candle_ts_ms].reset_index(drop=True)
     if post.empty:
@@ -176,7 +184,7 @@ def _scan_forward(
     if sl_first <= tp_first and sl_first < len(t):
         return "loss", -1.0, int(t[sl_first])
     if tp_first < len(t):
-        credited = effective_tp_r(
+        credited = implied_tp_r(
             direction=direction,
             entry=entry,
             sl_price=sl_price,

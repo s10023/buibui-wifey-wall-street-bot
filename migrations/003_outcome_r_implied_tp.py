@@ -12,7 +12,7 @@ nobody wrote down.
 Found by PR #194 (the exit-policy replay), whose `fixed` arm reproduced the live
 resolver's label on 267 of 267 rows only once it derived the target from
 `tp_price`. Fixed forward in the same PR as this migration: the resolver now
-credits `effective_tp_r`, and the scanner records it.
+credits `implied_tp_r`, and the scanner records it.
 
 TWO COLUMNS, TWO DIFFERENT CLAIMS, both re-derived from the row's own stored
 geometry (`entry_price`, `sl_price`, `tp_price`) — never from config, so nothing
@@ -26,9 +26,15 @@ here is reconstructed or guessed:
     loss books -1.0 and an expired row books mark-to-market off `sl_price`, so
     neither ever read `rr_ratio`.
 
-NO ERA CUTOFF, deliberately — unlike 002. The resolver has credited `rr_ratio`
-since P1 (a21681a) with no intervening change, so every row in the table was
-written under one code era for this defect. The other historical writer,
+NO ERA CUTOFF, deliberately — unlike 002, and this was checked against the DATA
+rather than against git. An era split would look like resolved wins whose
+`outcome_r` matches the *implied* target while disagreeing with `rr_ratio`; there
+are none. Measured on the pre-migration `.bak`: of **45** resolved wins, **45**
+credited exactly `rr_ratio` and **0** credited anything else, spanning the full
+`fired_at_ms` range of the table. One era, so one rule. (The file's own history is
+not a usable check here — it predates the `analytics/signal/` split and the
+fork's history was copied, so `git show <old-sha>:<path>` returns nothing.)
+The other historical writer,
 `tools/backfill_null_tp_outcomes.py`, forces the pct fallback
 (`struct_sl=struct_tp=0.0`), which makes implied ≡ declared by construction, so
 its rows are not divergent and are not touched.
@@ -55,7 +61,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import duckdb  # noqa: E402
 
-from analytics.signal.outcome_backfill import effective_tp_r  # noqa: E402
+from analytics.signal.outcome_backfill import implied_tp_r  # noqa: E402
 
 # Float tolerance for "the stored value already equals the derived one". The
 # derived value round-trips through a division, so an exact compare would
@@ -96,7 +102,7 @@ def migrate(db_path: str, apply: bool) -> None:
             outcome,
             outcome_r,
         ) in rows:
-            effective = effective_tp_r(
+            effective = implied_tp_r(
                 direction=str(direction),
                 entry=float(entry),
                 sl_price=float(sl_price),

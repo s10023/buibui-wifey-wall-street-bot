@@ -316,10 +316,10 @@ ledger credited the wrong one.** `scanner.py` stored `rr_ratio = eff_alert_tp_r`
 one; `_scan_forward` walked `tp_price` and credited `rr_ratio`, so an alert whose TP was 2.0R away
 booked 5.0R. **34 of 298** rows diverged (up to **3.0R**): 8 resolved wins worth **+13.50R** of
 phantom credit, and **4 still OPEN** — a live defect, not only a historical one.
-**Enforced**: one shared `effective_tp_r` in `analytics/signal/outcome_backfill.py`. The resolver
+**Enforced**: one shared `implied_tp_r` in `analytics/signal/outcome_backfill.py`. The resolver
 credits the target it **walked**, the scanner records that same target at fire time, and
 `analytics/exits/audit.py` imports the one definition instead of keeping the read-side copy that
-found this (#165). `migrations/003_outcome_r_effective_tp.py` rewrote history — hand-run, dry-run by
+found this (#165). `migrations/003_outcome_r_implied_tp.py` rewrote history — hand-run, dry-run by
 default, and safe in place *because* neither column is in the row identity (contrast #142, where the
 same fix needed a new `run_id`). **The pooled live avg_r is −0.1752R; any doc quoting −0.1247R
 predates the fix.** **Rules**: a column recording what was *configured* is not a record of what

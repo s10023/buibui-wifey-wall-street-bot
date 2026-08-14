@@ -4,7 +4,7 @@ For each resolved alert this walks the forward OHLCV window (entry → entry +
 `max_hold_bars`) under a policy via `replay_exits`, and scores the resulting
 per-trade R series. Every arm sees identical entries and stops — only exit
 management differs, and the runner targets the alert's own EFFECTIVE R target
-(see `effective_tp_r`) — so the comparison is apples-to-apples. With that target
+(see `implied_tp_r`) — so the comparison is apples-to-apples. With that target
 the `fixed` arm reproduces the live resolver's label on **267 of 267** rows.
 
 THE METRIC SUBSTITUTION (the reason this port sat backlogged; parent PR #437)
@@ -60,7 +60,7 @@ from analytics.exits.policies import ExitPolicyConfig, composite, fixed
 from analytics.exits.replay import replay_exits
 from analytics.research_guards.bootstrap import BootstrapCI, block_bootstrap_ci
 from analytics.research_guards.dsr import deflated_sharpe_ratio
-from analytics.signal.outcome_backfill import DEFAULT_MAX_HOLD_BARS, effective_tp_r
+from analytics.signal.outcome_backfill import DEFAULT_MAX_HOLD_BARS, implied_tp_r
 from analytics.store.market_data import get_latest_open_time, get_ohlcv
 
 TIME_STOP_FLOOR_BY_TF: dict[str, int] = {
@@ -93,12 +93,12 @@ _LEDGER_SQL = (
 )
 
 
-# `effective_tp_r` now lives in `analytics.signal.outcome_backfill` — its single
+# `implied_tp_r` now lives in `analytics.signal.outcome_backfill` — its single
 # definition — and is imported above. It moved there when the live resolver was
 # fixed to credit the target it walks: the replay derived the effective R
 # read-side while the ledger still recorded the declared one, and two copies of
 # that conversion is exactly the divergence #165 warns about. The import keeps
-# `analytics.exits.audit.effective_tp_r` resolving for existing callers.
+# `analytics.exits.audit.implied_tp_r` resolving for existing callers.
 
 
 def _policy_for(
@@ -226,7 +226,7 @@ def resolve_ledger_under_policy(
             pol = _policy_for(
                 kind,
                 tf=tf,
-                rr=effective_tp_r(
+                rr=implied_tp_r(
                     direction=str(direction),
                     entry=float(entry),
                     sl_price=float(sl),
