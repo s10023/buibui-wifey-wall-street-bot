@@ -165,6 +165,8 @@ a second reader (a ported Brief board) imports the same definition rather than r
 
 - `classify_series(df, timeframe) → pd.Series[str]` — labels each row as `trend`/`range`/`high_vol`/`unknown` per §6 of `docs/redesign/buibui-redesign.md`
 - `high_vol` if ATR-14% ≥ 90-day rolling 80th-percentile; else `trend` if `|EMA-50 slope|` ≥ 0.5% over 10 bars; else `range`; `unknown` for rows lacking enough history
+- **Bar counts come from `cost_model.BARS_PER_DAY` — the one definition.** This module carried a private crypto copy (`4h: 6`, `1h: 24`) for the whole life of the fork, so the "90-day" window above was really **540 bars ≈ 270 sessions** on `4h`; the doc line was right and the code was wrong. Corrected 2026-08-14 — 12.02% of `4h` labels moved, dispatch/ratings blast radius **zero** (soft mode). Unknown timeframes fall **closed** (`ValueError`), unlike `bars_per_day_for_tf`, which falls open to 1.0
+- `atr_window_bars(bars_per_day) → (history_window, min_history)` — extracted so a test observes it rather than re-deriving it. Clamps `min_periods` to the window: the 50-bar floor was calibrated on intraday counts and **exceeds** the 18-bar `1wk` window, which pandas rejects. `1h`/`4h`/`1d` keep 50
 - Used by `tools/strategy_edge_audit.py` (Phase 0). Live as soft-mode gate since 2026-05-10 — wired into `run_scan_cycle` as Step −1 of the bias chain via `analytics/signal/gates.py::_apply_regime_gate`.
 
 ## param_sweep.py — WFO sweep lib
