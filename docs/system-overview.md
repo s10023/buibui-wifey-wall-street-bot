@@ -358,8 +358,12 @@ best placed to challenge.
 1. **Is a free-data equity edge findable at all, or is the honest conclusion that the data is
    the constraint?** Four hunts were run and closed. Reopening needs an explicit decision, not
    drift.
-2. **Should the exit policy be A/B'd** (build #437)? The data blocker cleared at n=264; a
-   design blocker (no `portfolio/` substitute) stands.
+2. ~~**Should the exit policy be A/B'd** (build #437)?~~ **ANSWERED — built 2026-08-14 (PR #194).**
+   The design blocker dissolved on contact: the engine imports no `portfolio/`, so only the verdict
+   layer needed substituting (per-trade R Sharpe + a paired bootstrap). The live question it
+   replaces: **the uplift is real but its mechanism is signal decay, so is the actionable change an
+   exit policy at all, or a shorter declared hold?** See
+   `docs/audits/2026-08-14-exit-policy-ab-v1.md`.
 3. **Is the 13-symbol megacap watchlist the right live universe** when the research universe is
    505 names? A significant cell on 13 correlated megacaps in a bull market must still pass a
    beta test before it counts as alpha.
