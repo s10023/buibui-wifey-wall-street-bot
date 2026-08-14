@@ -1050,17 +1050,26 @@ checks passed". Hit on #194. Same family as `total_count: 0`, and the same lesso
 `until ! pgrep`: **a wait condition that is vacuously true at t=0 is not a wait.**
 
 Assert the expected number of checks as well as their settlement — here **5**, or **2–3**
-runs' worth if you are counting workflow runs (`Docker Build` is path-filtered):
+runs' worth if you are counting workflow runs (`Docker Build` is path-filtered). **Count with
+`jq 'length'`, never `wc -w`, and treat an EMPTY conclusion as pending**:
 
 ```bash
 for i in $(seq 1 40); do
-  OUT=$(GH_TOKEN=$(gh auth token --user s10023) gh pr view <PR#> \
-    --repo s10023/buibui-wifey-wall-street-bot --json statusCheckRollup \
-    --jq '[.statusCheckRollup[] | "\(.name)=\(.conclusion // "RUNNING")"] | join(" ")')
-  [ "$(echo "$OUT" | wc -w)" -ge 5 ] && ! echo "$OUT" | grep -q RUNNING && break
+  J=$(GH_TOKEN=$(gh auth token --user s10023) gh pr view <PR#> \
+    --repo s10023/buibui-wifey-wall-street-bot --json statusCheckRollup)
+  N=$(echo "$J" | jq '.statusCheckRollup | length')
+  P=$(echo "$J" | jq '[.statusCheckRollup[] | select((.conclusion // "") == "")] | length')
+  [ "$N" -ge 5 ] && [ "$P" -eq 0 ] && break
   sleep 30
 done
 ```
+
+**Both refinements are scars from #195, where the first version of this very snippet
+reported SETTLED on a still-running `lint-typecheck-test`.** `wc -w` counts *words*, and
+`Trivy filesystem scan` contains two spaces — so **4** checks scored **7** and cleared a
+floor of 5. And a queued check's `conclusion` comes back as the empty string, not `null`,
+so `// "RUNNING"` never fires and a `grep -q RUNNING` guard sees nothing pending. **A guard
+written against `null` must also handle `""`** — `(.conclusion // "") == ""` covers both.
 
 Background it (`run_in_background`) and do close-out work meanwhile — never a foreground
 `gh pr checks --watch` poll. Then apply the duration/`steps` discriminators above to the
