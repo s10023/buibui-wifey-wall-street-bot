@@ -1,15 +1,25 @@
 # Exit-Policy Replay A/B v1 (2026-08-14)
 
-**Verdict: every exit arm beats the fixed baseline with a paired CI clear of zero,
-and the whole effect is the TIME lever, not the lock levers — the composite is
-WORSE than the time-stop alone. But the mechanism is signal decay, not exit
-craft: the mean R of an open position peaks at bar 3 and falls monotonically to
-the cap, and the median trade is at −1R by bar 8. This is a statement about how
-long these signals stay good, not a deployable exit rule, and it is measured on a
-book whose baseline expectancy is negative.**
+**Verdict: BOUNDED — exit management is worth at most +0.368R per trade on this
+book, and that ceiling buys a book whose own mean R still does not clear zero.
+Every arm beats the `fixed` baseline on a paired CI clear of zero, the whole
+effect is the TIME lever (the composite is WORSE than the time-stop alone), and
+the paired result survives a multiplicity bar. But no arm's own mean R clears
+zero once days rather than alerts are the unit, and the best point on the swept
+time-stop grid fails that same bar. So this closes a direction rather than
+opening one: exits are not where the missing equity edge is. The re-run trigger
+is ledger growth, not a code change.**
 
 Port of parent PR #437 (`fbf6607`). Step 1 is
 `docs/audits/2026-08-14-mfe-timing.md`.
+
+**Reframed 2026-08-14b** under the standing rule that every audit answers the
+edge question. v1 led with the paired uplift and buried what that certifies;
+three things it lacked are now in it — the arm-level significance table
+(§Arm-level), the swept-maximum correction (§Multiplicity), and the clustering
+that bounds effective n (§Effective n). One of its tables was **mislabelled**
+and its "mechanism is decay" section is rewritten (§Mechanism); nothing in the
+headline result changed.
 
 ## How this was produced
 
@@ -17,6 +27,12 @@ Port of parent PR #437 (`fbf6607`). Step 1 is
   (no `portfolio/` dependency); verdict layer `analytics/exits/audit.py`.
 - Command: `make wifey-exit-replay` (= `tools/exit_audit.py --replay`), read-only.
 - Sensitivity + attribution: `docs/plans/scripts/exit_time_stop_sensitivity.py`.
+- Significance, multiplicity, clustering, costs, and the corrected open-position
+  curve: `docs/plans/scripts/exit_ab_arm_significance.py`, which calls the
+  production `resolve_ledger_under_policy` / `replay_exits` / `implied_tp_r` /
+  `block_bootstrap_ci` rather than restating their arithmetic, and asserts its
+  own re-implemented fetch loop reproduces production `fixed` on all 267 rows
+  before printing anything (PASS).
 - Population: the same **267** resolved scoreable alerts, `4h` 177 / `1d` 90.
 
 **Metric substitution.** Upstream judged on portfolio Sharpe from its P1
@@ -54,6 +70,159 @@ time-stop that never arms a stop at all recovers **+0.705R**. **A diagnostic tha
 shows a lever COULD work does not rank it against the levers it did not
 measure.**
 
+### Arm-level: the CI above is PAIRED and cannot say an arm makes money
+
+The `95% CI` column tests `arm − fixed`. A paired CI clear of zero certifies
+**"A beats B"** and is silent on **"A is profitable"** — two different questions,
+and the second is the one an edge claim needs. Each arm's own mean R against
+zero, same `block_bootstrap_ci` as the paired leg, plus a CI that resamples
+**ET session days** instead of alerts:
+
+| arm | n | avg_r | sd | t | boot 95% CI | day-clustered CI |
+| --- | --- | --- | --- | --- | --- | --- |
+| fixed | 267 | −0.176 | 1.557 | −1.84 | [−0.351, +0.006] | [−0.373, +0.062] |
+| time_only | 267 | +0.141 | 1.277 | +1.80 | [−0.027, +0.318] | [−0.084, +0.397] |
+| be_partial | 267 | +0.001 | 1.098 | +0.01 | [−0.127, +0.132] | [−0.174, +0.176] |
+| composite | 267 | +0.121 | 0.989 | +2.01 | [+0.003, +0.246] | [−0.042, +0.298] |
+
+**Not one arm's own mean clears zero on the clustered CI**, and only `composite`
+clears it on the iid one (`[+0.003, +0.246]`, i.e. by 0.003R). The baseline's
+**negative** expectancy is equally unproven — `fixed` sits at t = −1.84 with a CI
+that contains zero — so "a real improvement on a losing book" overstates both
+halves: the book is not measurably losing and the arms are not measurably
+winning. What is measurable is the *difference*, which is why the paired leg is
+the only one v1 should have led with.
+
+The paired leg itself is robust to clustering, which is worth stating because it
+is the half that survives:
+
+| arm | uplift | t | iid CI | day-clustered CI |
+| --- | --- | --- | --- | --- |
+| time_only | +0.317 | +4.42 | [+0.173, +0.468] | [+0.156, +0.470] |
+| be_partial | +0.176 | +3.02 | [+0.060, +0.291] | [+0.040, +0.299] |
+| composite | +0.297 | +3.98 | [+0.153, +0.443] | [+0.133, +0.443] |
+
+### Multiplicity: the sensitivity curve is a swept grid, not a point
+
+Paired uplift and arm-level mean across the whole admissible time-stop range:
+
+| ts (bars) | 1 | 2 | 3 | 4 | 6 | 8 | 10 | 14 | 20 | 30 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| paired uplift | +0.283 | +0.308 | +0.368 | +0.320 | +0.244 | +0.217 | +0.213 | +0.101 | +0.019 | 0 |
+| paired t | 3.24 | 3.80 | 4.91 | 4.47 | 3.99 | 3.76 | 3.70 | 2.37 | 0.54 | — |
+| arm avg_r | +0.108 | +0.132 | **+0.192** | +0.145 | +0.068 | +0.042 | +0.038 | −0.075 | −0.157 | −0.176 |
+| arm t | 2.19 | 2.15 | **2.52** | 1.83 | 0.80 | 0.47 | 0.41 | −0.82 | −1.73 | −1.84 |
+
+(`time_only`; the `composite` sweep is in the script and peaks lower on both
+rows.) **Both maxima sit at ts=3 and they answer differently.** Ten time-stops ×
+two policies is 20 trials, so the bar for a swept maximum is a two-sided
+Bonferroni z of **2.81** at 10 trials or **3.02** at 20, not 1.96:
+
+- best **paired** t = **+4.91** → clears both bars. The "an exit policy beats
+  this baseline" claim survives multiplicity.
+- best **arm-level** t = **+2.52** (avg_r +0.192R) → fails both. The "and the
+  resulting book makes money" claim does not, at any point on the grid.
+
+That pair is the audit's real result, and it is why the verdict is BOUNDED
+rather than FOUND: **the ceiling on the lever is +0.368R of uplift, and the best
+book that ceiling can buy is +0.192R per trade at t = 2.52 against a bar of
+2.81.** The floor the arms actually ship (`4h` 4 / `1d` 3) is near but not at
+that optimum, so the conclusion does not depend on the chosen value — it is
+already the most favourable value on the grid that fails.
+
+### Effective n: 267 alerts are not 267 draws
+
+| quantity | value |
+| --- | --- |
+| alerts | 267 |
+| distinct ET session days | **31** |
+| symbols | 13 (correlated megacaps) |
+| calendar span | 83 days (2026-05-20 → 2026-08-11) |
+| alerts/day | mean 8.6, median 9, max 18 |
+| SPY over the same window | +4.0% (57 `1d` bars) |
+
+If the day is the independent unit, `sqrt(n)` falls 16.3 → 5.6, a **~2.93×** SE
+inflation. Measured, the day-clustered paired CIs above barely move — so
+clustering does **not** overturn the paired leg, and saying so is part of the
+result. It does overturn every arm-level CI, and it is the reason the whole
+exercise is one regime: 31 days inside a single +4.0% SPY stretch, on 13 names
+that move together, in a long-tilted book.
+
+### Costs are not the binding constraint
+
+"Gross of costs" is a caveat only if costs could change the sign. They cannot,
+because 1R is wide here — median **313 bps**, p25 200, p75 503, min 50:
+
+| round trip | median cost in R | worst-case row |
+| --- | --- | --- |
+| 5 bps | 0.016R | 0.100R |
+| 10 bps | 0.032R | 0.200R |
+| 20 bps | 0.064R | 0.400R |
+
+A 10bps round trip is **0.032R**, about a tenth of the +0.317R uplift, and
+turnover per trade is unchanged (one round trip either way). Slippage against a
+time-stop's mark-to-close remains unmodelled, but no plausible cost assumption
+reaches the effect. **The constraint on this result is significance and regime,
+not execution cost.**
+
+### Mechanism: the marginal bar, not a decay curve
+
+v1 printed a table headed *"mean R of an open position marked to market at bar
+k"* and read it as a peak at bar 3 followed by monotone decay. **That table was
+mislabelled.** It re-resolves the `time_only` **arm** at `time_stop = k`, so it
+is the sensitivity curve shifted by the baseline — `arm_avg_r(k) = −0.176 +
+paired_uplift(k)`, e.g. `+0.192 = −0.176 + 0.368` at k=3 — and it includes every
+trade that had already hit SL or TP. It is the same measurement as the row above
+it, presented twice as two findings.
+
+The population it claimed to describe behaves in the **opposite** direction.
+Positions genuinely still unresolved under `fixed` at bar k, marked at that
+bar's close:
+
+| k | 1 | 2 | 3 | 4 | 6 | 8 | 10 | 14 | 20 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| still open | 225 | 191 | 158 | 136 | 105 | 86 | 75 | 33 | 18 |
+| share open | 84% | 72% | 59% | 51% | 39% | 32% | 28% | 12% | 7% |
+| mean R | +0.283 | +0.384 | +0.489 | +0.589 | +0.588 | +0.787 | +0.914 | +0.952 | +0.951 |
+| median R | +0.156 | +0.342 | +0.368 | +0.438 | +0.385 | +0.675 | +0.805 | +0.782 | +1.068 |
+
+It rises monotonically, and the reason is survivorship: a stop removes losers
+first, so the surviving cohort looks better every bar. **An open position that is
+still alive at bar 10 is not a decaying asset — it is a winner.**
+
+So the honest mechanism is about the **marginal bar over the whole book**, not
+about a position's own trajectory: past ~3 bars, the next bar adds more stop-outs
+than it adds gains, which is a statement about the unconditional expectation of
+holding. The clean way to say what v1 was reaching for is that **67.8% of alerts
+have resolved by bar 8 and 55.1% of the book is a full −1R stop-out by then, which
+is why the median trade under an 8-bar stop is exactly −1.000R** — against a median
+of −0.144R under a 4-bar stop. These signals mostly reach their stop, and they
+reach it early. R-per-bar (`fixed` −0.0235 vs `time_only` +0.0483) points
+the same way, though it is not independent evidence: both terms are
+policy-determined.
+
+**Either way the actionable reading is the holding period, not the exit craft** —
+and a 3-bar time-stop and a 3-bar `max_hold_bars` are the same trade with
+different paperwork. Which of the two (if either) to change is a user decision;
+`max_hold_bars` changes are on the frozen list.
+
+## Caveats — read before quoting any number above
+
+1. **In-sample.** Both the +1R lock and the time-stop floor were derived from
+   these 267 rows. The sensitivity curve shows the result is not a *point*
+   artifact; §Multiplicity shows what that costs when the grid is priced in.
+2. **The whole ledger is pre-#151** — it describes the narrow live gate, before
+   the direction-counted sample guard and the significance test.
+3. **45 wins are the entire positive tail.** `time_only` destroys ~1R of each
+   (−40.9R across 45 wins), outweighed by 198 losses that had not yet reached
+   their stop at bar 3–4. A cohort that small cannot support a per-edge
+   assignment: **0 of 30 loss cells reach n=30**, which is why every arm here is
+   one pooled global policy.
+4. **`expired` is 9.0% here vs upstream's 39.4%.** Upstream's headline finding was
+   that caps, not exits, dominated its portfolio; this fork has no book and no
+   caps, so this measures the population effect upstream could not reach — a
+   different question with the same engine, not a reproduction.
+
 ### Where the uplift comes from (`time_only`, by recorded cohort)
 
 | recorded | tf | n | ΣΔR | mean ΔR |
@@ -64,58 +233,6 @@ measure.**
 | win | 1d | 12 | −8.74 | −0.728 |
 | expired | 1d | 21 | −7.09 | −0.338 |
 | expired | 4h | 3 | −2.59 | −0.864 |
-
-The cost to winners is real and large (−40.9R across 45 wins, ~1R each); it is
-simply outweighed by 198 losses that had not yet reached their stop at bar 3–4.
-
-### Sensitivity — the result is not an artifact of the chosen floor
-
-Paired uplift vs `fixed` across the whole admissible time-stop range:
-
-| ts (bars) | 1 | 2 | 3 | 4 | 6 | 8 | 10 | 14 | 20 | 30 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| time_only uplift | +0.283 | +0.308 | +0.368 | +0.320 | +0.244 | +0.217 | +0.213 | +0.101 | +0.019 | 0 |
-| t | 3.24 | 3.80 | 4.91 | 4.47 | 3.99 | 3.76 | 3.70 | 2.37 | 0.54 | — |
-
-Positive with t > 2.3 everywhere below the cap, peaking at ts=3. The floor
-(`4h` 4 / `1d` 3) is near but not at the optimum, and the conclusion does not
-depend on it.
-
-### The mechanism is decay, not exit skill
-
-Mean R of an **open** position marked to market at bar k:
-
-| k | 1 | 2 | 3 | 4 | 6 | 8 | 12 | 20 | 30 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| mean R | +0.108 | +0.132 | **+0.192** | +0.145 | +0.068 | +0.042 | +0.000 | −0.157 | −0.176 |
-| median R | +0.060 | +0.096 | +0.007 | −0.144 | −0.856 | −1.000 | −1.000 | −1.000 | −1.000 |
-
-R-per-bar: `fixed` −0.0235, `time_only` +0.0483. The book is only favourable for
-about three bars. **An exit policy that harvests that is arbitraging the holding
-period, not managing the trade** — and the honest restatement is that these
-signals have a ~3-bar half-life against a stop they mostly reach.
-
-## Caveats — read before quoting any number above
-
-1. **The baseline book is negative-expectancy** (avg_r −0.176, Sharpe −0.113).
-   Turning −0.176 into +0.141 is a real improvement on a losing book and is not
-   evidence of an edge. Nothing here clears any deploy bar, and no gate was
-   applied that could have said otherwise.
-2. **In-sample.** Both the +1R lock and the time-stop floor were derived from
-   these 267 rows. The sensitivity curve shows the result is not a *point*
-   artifact; it does not make it out-of-sample.
-3. **Gross of costs.** R-space only. Turnover per trade is unchanged (one round
-   trip either way), so this is not a turnover-cost story — but a 3-bar exit
-   marks to the bar close, and slippage against a mark is unmodelled.
-4. **The whole ledger is pre-#151** — it describes the narrow live gate, before
-   the direction-counted sample guard and the significance test.
-5. **45 wins are the entire positive tail.** The policy destroys ~1R of each.
-   A cohort that small cannot support a per-edge assignment: **0 of 30 loss cells
-   reach n=30**, which is why every arm here is one pooled global policy.
-6. **`expired` is 9.0% here vs upstream's 39.4%.** Upstream's headline finding was
-   that caps, not exits, dominated its portfolio; this fork has no book and no
-   caps, so this measures the population effect upstream could not reach — a
-   different question with the same engine, not a reproduction.
 
 ## Two defects this port found
 
@@ -210,9 +327,17 @@ arm.
 
 ## Next
 
-The engine exists and is cheap to re-point. The levers upstream listed as
-follow-ups — per-edge assignment, direction-prune, cost-netting, a time-stop
-sweep — are all blocked here by cohort depth (0 of 30 loss cells reach n=30),
-not by the engine. **The re-run trigger is ledger growth, not a code change.**
-The ledger-credit defect above is the one actionable item, and it is a live-path
-fix rather than research.
+**Nothing here deploys, and the bound is what closes the direction.** The levers
+upstream listed as follow-ups — per-edge assignment, direction-prune,
+cost-netting, a time-stop sweep — are all blocked by cohort depth (0 of 30 loss
+cells reach n=30), not by the engine, which exists and is cheap to re-point.
+**The re-run trigger is ledger growth, not a code change**; at roughly 3 alerts
+per calendar day the binding scarcity is *days*, not alerts, so the honest
+estimate is regime-limited rather than volume-limited.
+
+Two things would move this from BOUNDED to answerable, and neither is exit work:
+a book that is measurably positive before the exit is applied (so "A beats B"
+becomes worth acting on), and a second regime (31 days inside one +4.0% SPY
+stretch cannot separate an exit effect from a trend effect). **The successor
+question — exit policy or a shorter `max_hold_bars` — is a user decision and the
+second is on the frozen list.**
