@@ -6,8 +6,10 @@ so in this cross-section gaps CONTINUE rather than revert. The opposite
 (continuation) book is +0.392 cost-free, which is below the pre-registered 0.7
 bar and is post-hoc anyway; and at this construction's ~211× daily gross
 turnover even the 1bp fee alone costs ~0.9 Sharpe, so neither direction is
-tradeable. Meanwhile 90.3% of material gaps DO fill within 60 sessions. The
-descriptive claim is true and worth nothing: that gap is the entire finding.**
+tradeable. Meanwhile 90.3% of material gaps DO fill within 60 sessions — but a matched
+placebo level fills **88.9%**, so the gap-specific lift is **+1.5pp** at 60
+sessions (peaking at +5.7pp at 5). The descriptive claim is true, almost entirely
+diffusion, and worth nothing: that gap is the entire finding.**
 
 Spec + pre-registration:
 `docs/superpowers/specs/2026-08-14-edge-hunt-5-gapfill-magnet-design.md`.
@@ -26,12 +28,41 @@ for this candidate.
 | --- | --- | --- | --- | --- | --- |
 | 234,427 | 52.9% | 39.9% | 69.6% | 83.6% | **90.3%** |
 
-**The thesis' descriptive half is confirmed and it is inert.** Gaps overwhelmingly
-fill — 9 in 10 within 60 sessions. That fact survives contact with the data and
-still produces no tradeable book, which is exactly why the spec pre-registered
-"a fill rate is not an edge" *before* the numbers were read rather than
-discovering it as an excuse afterwards. A 90% fill rate whose 10% tail runs
-against you, on a position you must re-mark daily, is not an edge.
+Median gap size 1.31% (p25 0.91%, p75 2.06%).
+
+### ⚠ The raw fill rate is ~90% DIFFUSION. Never quote it without this null
+
+**A fill rate needs a null, and this one barely clears it.** Over 60 sessions
+almost any level ~1σ from spot gets touched by random walking alone, so 90.3% on
+its own is a statement about volatility and horizon, not about gaps. Matched
+placebo — same symbol, same signed distance, same direction, same 60-session
+horizon and touch rule, anchored on a random session with **no** material gap
+(`docs/plans/scripts/gapfill_fill_rate_null.py`, n = 234,427 each):
+
+| horizon | gap fill | matched placebo | **gap-specific lift** |
+| --- | --- | --- | --- |
+| 1 session | 39.9% | 35.6% | **+4.4pp** |
+| 5 | 69.6% | 63.9% | **+5.7pp** |
+| 20 | 83.6% | 80.9% | **+2.7pp** |
+| 60 | **90.3%** | **88.9%** | **+1.5pp** |
+
+**So the citable fact is the lift, not the level.** At the 60-session horizon the
+headline number is 98.3% reproduced by an arbitrary level: gaps add **1.5
+percentage points**. The lift is real (n = 234k per arm makes 1.5pp many standard
+errors from zero) and it is *economically* small — and note it **peaks at the
+short end (+5.7pp at 5 sessions) and decays to nothing by 60**, which is the
+opposite shape from how the headline reads. **The 60-day figure is the least
+informative row in the table.**
+
+**The thesis' descriptive half is therefore confirmed only in a weak form, and it
+is inert.** Gaps do fill, slightly more often than nothing-in-particular fills,
+and the tradeable book still loses. That is exactly why the spec pre-registered
+"a fill rate is not an edge" *before* the numbers were read rather than reaching
+for it afterwards.
+
+**If a future system cites this audit, cite the lift row and the horizon decay.**
+Quoting "90% of gaps fill" as a gap property would be wrong in the direction that
+invites building on it.
 
 ## The pre-registered family
 
@@ -163,7 +194,8 @@ only candidate, and at +0.392 gross it starts below the bar.
 **EXCLUDED.** Gap-fill as a daily cross-sectional signal is closed: the magnet
 direction is refuted cost-free, the continuation direction is below the bar
 before costs, and the construction's turnover makes either untradeable. The
-descriptive fill rate is confirmed at 90.3%/60d and carries no edge. This closes
+descriptive fill rate is confirmed at 90.3%/60d against an 88.9% placebo — a
+**+1.5pp** gap-specific lift — and carries no edge. This closes
 the gap-fill half of the 2026-08-14 reopening; the IPO post-hype thesis (the
 other half of that candidate) remains untested and is blocked on data the
 universe does not contain.
