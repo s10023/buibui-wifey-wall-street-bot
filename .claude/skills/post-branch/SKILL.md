@@ -1025,6 +1025,17 @@ is path-filtered, so a dependency bump gets 3 and a typical feature branch gets 
 count in an instruction is the kind of number that is right when written and
 wrong after one workflow edit.
 
+**`total_count: 0` is a THIRD state, and it is not requeueable.** Billing-dead CI
+has two distinct shapes and the fix differs. A run that exists with `steps=0` can
+be re-run in place, which is what turned #190/#191 green. But a PR opened while
+the repo is private can have **no workflow run at all** — the rollup still shows
+several checks FAILING in 2–4s, so it renders identically, yet
+`actions/runs?head_sha=<sha>` returns `total_count: 0` and there is no run id to
+POST to. Measured on #193, 2026-08-14. Flip the repo public and push a commit (or
+re-open the PR) to get runs *created*; requeueing is not an option that exists
+yet. **Check `total_count` before reaching for `/rerun`**, or you will chase an
+empty list and conclude the API is broken.
+
 **A PR opened while the repo was PRIVATE has never been tested**, and `UNSTABLE` on
 `steps=0` checks renders identically to a code failure. #190 and #191 both sat that way and
 turned fully green on a re-run inside the public window with no code change — found only
