@@ -104,7 +104,7 @@ def main() -> None:
 
     print(
         "\nGate (pre-registered, broad x dollar-neutral L/S): DSR>=0.95 ∧ PBO<=0.5 ∧ "
-        "boot_lo>0 ∧ n>=MinTRL ∧ Sharpe>=0.7; deploy-grade tier = Sharpe>=1.0 ∧ "
+        "boot_lo>0 ∧ Sharpe>=0.7; deploy-grade tier = Sharpe>=1.0 ∧ "
         "long-only leg>=0.7. SUE = seasonal random walk (EPS − same-fp prior year), "
         "entry next session after the 8-K item-2.02 announcement, 60-session drift. "
         "The current-S&P-500 universe is a deliberately hard (large-cap, efficient) "

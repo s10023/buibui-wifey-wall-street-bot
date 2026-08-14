@@ -4,15 +4,15 @@
 `make docs-index-check` (and `tests/test_docs_index.py`) fails when this file
 drifts from the corpus.
 
-**14 specs on disk.** Reconcile status is **derived** — a spec counts as
+**15 specs on disk.** Reconcile status is **derived** — a spec counts as
 reconciled when an audit that both names its filename and identifies itself as a
 spec-vs-code reconcile says so, recomputed from disk on every run rather than
 carried in prose where nothing would catch it going stale.
 
-- **Reconciled (derived): 0 of 14 — and 0 is the only value this
+- **Reconciled (derived): 0 of 15 — and 0 is the only value this
   column can currently take**, because no audit in `docs/audits/` identifies
   itself as a spec-vs-code reconcile. Read it as *no reconcile has been written up*,
-  never as *14 specs went unreconciled*: the two are indistinguishable
+  never as *15 specs went unreconciled*: the two are indistinguishable
   from here, and the second is a claim this table cannot support.
 - Referenced by no audit at all: 10.
 
@@ -21,6 +21,7 @@ H1 — that is the whole detector, and it is deliberately not a body keyword.
 
 | Date | Spec | Reconciled by | Also referenced by | File |
 | --- | --- | --- | --- | --- |
+| 2026-08-14 | Edge-hunt #5 — gap-fill "magnet" sleeve (design + pre-registration) | — | 2026-08-14-edge-hunt-5-gapfill-magnet.md | [2026-08-14-edge-hunt-5-gapfill-magnet-design.md](2026-08-14-edge-hunt-5-gapfill-magnet-design.md) |
 | 2026-07-28 | `/ingest-video` — video → research pipeline (design) | — | — | [2026-07-28-ingest-video-design.md](2026-07-28-ingest-video-design.md) |
 | 2026-06-30 | X-post ingest — iteration 1 (design) | — | — | [2026-06-30-x-post-ingest-design.md](2026-06-30-x-post-ingest-design.md) |
 | 2026-06-23 | Edge-Hunt #4 — Post-Earnings-Announcement Drift (PEAD-lite) | — | 2026-06-23-edge-hunt-4-pead-lite.md | [2026-06-23-edge-hunt-4-pead-lite-design.md](2026-06-23-edge-hunt-4-pead-lite-design.md) |
