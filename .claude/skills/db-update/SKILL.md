@@ -122,9 +122,49 @@ them; if any appear again, something re-created them and the warning says so.
    in your PR** — revert them and say so. Confirmed on #148, where a golden diff
    after `make db-update` looked like a behaviour change and was not.
 
+   **`make db-update`'s completion banner prints this same command**, because the
+   banner is what a *direct* runner reads. On 2026-08-14 the target was run
+   instead of this skill, so this step was skipped and a 137-line golden diff
+   shipped in #192 that the falsifier — run late — proved was pure drift. Keep
+   the two in sync: if you change the command here, change it in the Makefile.
+   **Note what the falsifier does NOT cover**: it clears the *goldens* (the AAPL
+   fixtures) and says nothing about `confidence_ratings`, which is a wider
+   population (13 symbols, longer window). A star move needs its own
+   attribution — see the star-attribution block below.
+
    This cuts both ways: #146's first dry run showed 44 changed rows that the
    change could not possibly cause, and chasing that discrepancy is what found a
    larger defect. **An unexplained diff is a lead, not noise.**
+
+   **Attributing a STAR move needs a second run, not a second look.** The
+   goldens have a one-command falsifier; `confidence_ratings` has none, because
+   `regression-update` and the recalibrate both re-derive from a DB that has
+   moved on. Two rules make the attribution cheap:
+
+   **First, establish which cells the change can PHYSICALLY reach, before
+   reading any diff.** #192 moved one `adr_exempt` flag whose gate is
+   intraday-only and whose config declares one strategy — reach was **3 cells**,
+   while the refresh moved 13 stars. Anything outside the reachable set is drift
+   by construction and needs no further thought. The tell on 2026-08-14 was that
+   four strategies moved which the change could not touch at all.
+
+   **Second, for a cell that IS in reach, re-run the production sweep twice over
+   ONE fixed window with only the config flipped.** Anchor `start_ms`/`end_ms`
+   once and pass them to both arms — `run_backtest_sweep` anchors on now-minus-
+   `days`, so two ordinary runs do not share a window. Flip the flag **in
+   memory** rather than editing the TOML: no tree mutation, nothing to restore.
+   Call `_collect_sweep_results` with `sweep_id=None` so neither arm writes.
+   Worked example, and the reason this step exists:
+   `docs/plans/scripts/eqh_eql_adr_exempt_rating_isolation.py`, which resolved
+   #192's one in-reach cell from "confounded" to a **−0.392R config-only effect**
+   — *larger* than the shipped diff suggested, because drift had masked part of
+   it.
+
+   **Flip the flag on every surface the sweep reads.** `cfg.strategy_params`
+   drives the legacy pre-filter and what `effective_adr_threshold` RECORDS, but
+   when `live_parity.adr_bias` is on — it is, in both shipped configs — the
+   engine applies ADR from `cfg.live_strategy_params` instead. Flipping one of
+   the two measures the wrong thing and still prints a plausible delta.
 
 4. **No daemon restart is needed — and there is no daemon to restart.** This
    step used to say "restart the live signal-watch daemon"; that was false, and

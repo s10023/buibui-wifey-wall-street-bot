@@ -322,9 +322,22 @@ check-orphan-tests:
 ## The completion banner is CONDITIONAL on the surface check. It used to print
 ## an unqualified ✅ beside nine orphaned confidence_ratings rows, one of them
 ## displaying 3★ — the refresh had "succeeded" and the output said so.
+##
+## The banner also carries /db-update step 3's falsifier, because the banner is
+## what a DIRECT runner reads. Running `make db-update` instead of invoking the
+## skill is how that step got skipped on 2026-08-14: regression-update re-derives
+## the fixture parquets from a DB that has moved on, so a golden diff is usually
+## DATA DRIFT and reads as a behaviour change (13 star moves, 12 of them out of
+## the change's reach). A procedure that lives only in the skill does not reach
+## the person who typed the target.
 db-update: db-update-backtest db-update-recalibrate regression-update
 	@$(MAKE) --no-print-directory check-dead-surfaces \
-	  && echo "✅ Routine DB update complete. Review: git diff tests/fixtures/golden_*.json" \
+	  && printf '%s\n' \
+	    "✅ Routine DB update complete." \
+	    "   Review:  git diff tests/fixtures/golden_*.json" \
+	    "   FALSIFY: git checkout -- tests/fixtures/ && make test-regression" \
+	    "   If that PASSES, your code is golden-neutral: the diff is fixture data" \
+	    "   drift, NOT your change — revert the goldens rather than shipping them." \
 	  || echo "⚠️  DB refresh finished, but the surface check above FAILED — fix that before trusting the ratings."
 
 wifey-digest:
