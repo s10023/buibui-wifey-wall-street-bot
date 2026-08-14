@@ -14,11 +14,14 @@ from typing import Literal
 
 import pandas as pd
 
+# The ONE bar-count definition. This module carried a private crypto-era copy
+# (`4h: 6`, `1h: 24`) against cost_model's correct RTH counts for the whole life
+# of the fork, so the "90-day" ATR window below really spanned ~270 sessions on
+# 4h. `_ATR_HISTORY_DAYS` is in TRADING days, hence `1wk` = 0.2 of one.
+from analytics.backtest.cost_model import BARS_PER_DAY
 from analytics.strategies._shared import compute_ema
 
 Regime = Literal["trend", "range", "high_vol", "unknown"]
-
-_BARS_PER_DAY = {"1m": 1440, "5m": 288, "15m": 96, "1h": 24, "4h": 6, "1d": 1}
 
 _SLOPE_LOOKBACK = 10
 _SLOPE_TREND_THRESHOLD = 0.005
@@ -26,6 +29,20 @@ _ATR_PERIOD = 14
 _ATR_PERCENTILE = 0.80
 _ATR_HISTORY_DAYS = 90
 _MIN_HISTORY_DAYS = 7
+
+
+def atr_window_bars(bars_per_day: float) -> tuple[int, int]:
+    """`(history_window, min_history)` in BARS for a timeframe's bar count.
+
+    Extracted so a test can observe it rather than re-implement it. The 50-bar
+    floor was calibrated on intraday counts, where the window is always far
+    larger; on a coarse timeframe it can EXCEED the window (`1wk`: floor 50 vs
+    an 18-bar window), which `pandas.rolling` rejects outright — hence the
+    clamp. No previously-supported timeframe moves: 4h/1h/1d all keep 50.
+    """
+    history_window = int(bars_per_day * _ATR_HISTORY_DAYS)
+    min_history = min(max(50, int(bars_per_day * _MIN_HISTORY_DAYS)), history_window)
+    return history_window, min_history
 
 
 def _atr_wilder(df: pd.DataFrame, period: int = _ATR_PERIOD) -> pd.Series:
@@ -54,14 +71,15 @@ def classify_series(
     research / sweeps (see `tools/regime_threshold_sweep.py`). When None, the
     live default is used.
     """
-    bars_per_day = _BARS_PER_DAY.get(timeframe)
+    bars_per_day = BARS_PER_DAY.get(timeframe)
     if bars_per_day is None:
+        # Falls CLOSED, unlike cost_model's own `bars_per_day_for_tf`, which
+        # falls open to 1.0 for its purposes. Do not swap one for the other.
         raise ValueError(f"Unsupported timeframe: {timeframe}")
     threshold = (
         _SLOPE_TREND_THRESHOLD if slope_threshold is None else float(slope_threshold)
     )
-    history_window = bars_per_day * _ATR_HISTORY_DAYS
-    min_history = max(50, bars_per_day * _MIN_HISTORY_DAYS)
+    history_window, min_history = atr_window_bars(bars_per_day)
 
     close = df["close"].astype(float)
     ema50 = compute_ema(close, 50)
