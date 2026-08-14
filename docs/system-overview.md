@@ -13,7 +13,8 @@
 without a substantive revision.
 
 > **Reading rules for the numbers below.** Every figure in §4 was queried from
-> `analytics.db` on **2026-08-13** and carries the query that reproduces it. Two dating
+> `analytics.db` on **2026-08-13**, with §4a re-run **2026-08-14** after #195 corrected the
+> ledger, and each carries the query that reproduces it. Two dating
 > rules apply to anything quoted from elsewhere: a number measured **before 2026-08-07**
 > is on the **ungated** population (~33–35% more trades), and a rating measured **before
 > 2026-08-13** is **symbol-unweighted** (#172). `CLAUDE.md` remains authoritative for
@@ -211,7 +212,7 @@ A ledger symbol outside the 13 goes stale — `make go-live` syncs the watchlist
 
 ## 4. Current measured edge
 
-All figures below were queried from `analytics.db` on **2026-08-13** and are reproducible with
+All figures below were queried from `analytics.db` on **2026-08-13** (§4a re-run **2026-08-14**) and are reproducible with
 the query named in each row.
 
 ### 4a. Live alert ledger — the only record of real dispatched signals
@@ -222,14 +223,20 @@ the query named in each row.
 | Outcome | n | avg R |
 | --- | --- | --- |
 | loss | 198 | −1.000 |
-| win | 45 | +3.144 |
+| win | 45 | +2.844 |
 | expired | 24 | +0.967 |
 | still open | 31 | — |
-| **resolved total** | **267** | **−0.1247** |
+| **resolved total** | **267** | **−0.1752** |
 
-**The live book is net negative at −0.125R per resolved alert**, on an 18.5% strike rate
-(45 of 243 decided). The payoff structure is working as designed — winners average +3.1R
+**The live book is net negative at −0.175R per resolved alert**, on an 18.5% strike rate
+(45 of 243 decided). The payoff structure is working as designed — winners average +2.8R
 against −1.0R losers — but the hit rate does not pay for it.
+
+**Both figures moved on 2026-08-14 (#195) and the old ones are a staleness tell.** The
+ledger had credited each win the *declared* `tp_r` rather than the target the resolver
+actually walked, so the win row read +3.144 and the total −0.1247. `migrations/003_*`
+corrected 8 wins (+13.50R of phantom credit). Re-run the query below rather than trusting
+either number.
 
 Read it with three caveats. **282 of 298 rows are pre-#151**, i.e. they fired before the EV
 gate was direction-counted and significance-tested; the 31 open rows are correctly open
@@ -291,7 +298,7 @@ the 6 a crypto-era constant assumes. Live scans run `4h` and `1d` only.
 ## 5. Known issues & open hypotheses
 
 1. **No equity-native edge is established.** This is the binding constraint, and it is
-   endogenous — six sleeves are non-positive and the live ledger is −0.125R. Sizing, portfolio
+   endogenous — six sleeves are non-positive and the live ledger is −0.175R. Sizing, portfolio
    construction and the order layer are all downstream of an edge that does not yet exist.
 2. **The EV gate sits upstream of the recorder.** A blocked leg is dropped before
    `signal_alert_outcomes` is written, so suppression destroys evidence rather than merely
@@ -322,7 +329,7 @@ could make money*. Ordered by what blocks what.
 
 | Gap | Current state | What it blocks |
 | --- | --- | --- |
-| **An actual edge** | Six sleeves non-positive; live ledger −0.125R over 267 resolved alerts. | Everything. You cannot vol-target or size your way out of a negative expectancy. |
+| **An actual edge** | Six sleeves non-positive; live ledger −0.175R over 267 resolved alerts. | Everything. You cannot vol-target or size your way out of a negative expectancy. |
 | **Outcome ledger depth** | 298 rows, **282 pre-#151**, 0 of 30 loss cells at n=30. | Per-cell decisions. The ledger exists and resolves correctly — it is simply young. |
 | **Position sizing** | None. Phase A emits levels, not size. | Turning a positive cell into PnL. Deferred until an edge clears gate G1. |
 | **Order layer / broker** | `trade/` is an empty placeholder — both files 0 bytes; the parent's Binance opener was dropped at fork and nothing replaced it. | Execution. **Phase B, gated G3→G4.** |
@@ -403,8 +410,8 @@ What exists:
 
 What the measurements say:
 
-- The live ledger is 298 alerts over ~10 weeks, 267 resolved, averaging -0.125R.
-  Strike rate 18.5%; winners average +3.14R, losers -1.0R. So the payoff shape is
+- The live ledger is 298 alerts over ~10 weeks, 267 resolved, averaging -0.175R.
+  Strike rate 18.5%; winners average +2.84R, losers -1.0R. So the payoff shape is
   fine and the hit rate is not.
 - Six research sleeves have been built and measured, and ALL are non-positive:
   EWMAC trend following (portfolio Sharpe -0.05, negative even before costs),
