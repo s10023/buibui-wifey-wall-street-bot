@@ -4,13 +4,15 @@
 `make docs-index-check` (and `tests/test_docs_index.py`) fails when this file
 drifts from the corpus.
 
-**22 audits.** A verdict line is shown only where one could be read
-out of a Verdict heading as prose — that is **12 of 22**.
+**24 audits.** A verdict line is shown only where one could be read
+out of a Verdict heading as prose — that is **14 of 24**.
 An em dash means the doc states its verdict in a table, a blockquote or the body,
 **not** that it lacks one; open the file. Nothing here is keyword-guessed.
 
 | Date | Audit | Verdict (as written) | File |
 | --- | --- | --- | --- |
+| 2026-08-14 | MFE Timing Within the Hold Window — Exit Sub-project B, Step 1 | the +1R lock level is timing-safe on equities, and the per-tf time-stop floor is `4h` 4 bars / `1d` 3 bars — a quarter of… | [2026-08-14-mfe-timing.md](2026-08-14-mfe-timing.md) |
+| 2026-08-14 | Exit-Policy Replay A/B v1 | every exit arm beats the fixed baseline with a paired CI clear of zero, and the whole effect is the TIME lever, not the lock… | [2026-08-14-exit-policy-ab-v1.md](2026-08-14-exit-policy-ab-v1.md) |
 | 2026-08-13 | Warning-value audit — do the W1–W8 alert warnings predict avg_r? | INSUFFICIENT on 11 of 12 cells — the audit could not rule anything out; one SUPPRESS-CANDIDATE — `w5_wick_rejection` / long… | [2026-08-13-warning-value-audit.md](2026-08-13-warning-value-audit.md) |
 | 2026-08-13 | Vacuous causality guards in the sleeve books | Two of three causality guards were vacuous — they passed with the causal shift they guard deleted. Fixed, and each is now… | [2026-08-13-vacuous-causality-guards.md](2026-08-13-vacuous-causality-guards.md) |
 | 2026-08-13 | HTF-EMA Population Parity — Measured and Declined as Net Harmful | the population mismatch is REAL and large — 40.1% of the EV gate's evidence is trades the live F8 HTF-EMA gate would never have… | [2026-08-13-htf-ema-population-parity.md](2026-08-13-htf-ema-population-parity.md) |
