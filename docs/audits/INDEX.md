@@ -4,8 +4,8 @@
 `make docs-index-check` (and `tests/test_docs_index.py`) fails when this file
 drifts from the corpus.
 
-**25 audits.** A verdict line is shown only where one could be read
-out of a Verdict heading as prose — that is **15 of 25**.
+**26 audits.** A verdict line is shown only where one could be read
+out of a Verdict heading as prose — that is **16 of 26**.
 An em dash means the doc states its verdict in a table, a blockquote or the body,
 **not** that it lacks one; open the file. Nothing here is keyword-guessed.
 
@@ -13,6 +13,7 @@ An em dash means the doc states its verdict in a table, a blockquote or the body
 | --- | --- | --- | --- |
 | 2026-08-14 | MFE Timing Within the Hold Window — Exit Sub-project B, Step 1 | the +1R lock level is timing-safe on equities, and the per-tf time-stop floor is `4h` 4 bars / `1d` 3 bars — a quarter of… | [2026-08-14-mfe-timing.md](2026-08-14-mfe-timing.md) |
 | 2026-08-14 | Exit-Policy Replay A/B v1 | BOUNDED — exit management is worth at most +0.368R per trade on this book, and that ceiling buys a book whose own mean R still… | [2026-08-14-exit-policy-ab-v1.md](2026-08-14-exit-policy-ab-v1.md) |
+| 2026-08-14 | Edge-hunt #6 — velocity-alternation sleeve | EXCLUDED — and unlike edge-hunt #5 this is a NULL, not a refutation. The committed `broad_ls` cell fails all four gate legs at… | [2026-08-14-edge-hunt-6-velocity-alternation.md](2026-08-14-edge-hunt-6-velocity-alternation.md) |
 | 2026-08-14 | Edge-hunt #5 — gap-fill "magnet" sleeve | EXCLUDED. The gap-magnet direction is not merely unsupported, it is REFUTED — cost-free, fading toward an unfilled gap edge… | [2026-08-14-edge-hunt-5-gapfill-magnet.md](2026-08-14-edge-hunt-5-gapfill-magnet.md) |
 | 2026-08-13 | Warning-value audit — do the W1–W8 alert warnings predict avg_r? | INSUFFICIENT on 11 of 12 cells — the audit could not rule anything out; one SUPPRESS-CANDIDATE — `w5_wick_rejection` / long… | [2026-08-13-warning-value-audit.md](2026-08-13-warning-value-audit.md) |
 | 2026-08-13 | Vacuous causality guards in the sleeve books | Two of three causality guards were vacuous — they passed with the causal shift they guard deleted. Fixed, and each is now… | [2026-08-13-vacuous-causality-guards.md](2026-08-13-vacuous-causality-guards.md) |

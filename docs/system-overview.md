@@ -298,7 +298,7 @@ the 6 a crypto-era constant assumes. Live scans run `4h` and `1d` only.
 ## 5. Known issues & open hypotheses
 
 1. **No equity-native edge is established.** This is the binding constraint, and it is
-   endogenous — six sleeves are non-positive and the live ledger is −0.175R. Sizing, portfolio
+   endogenous — eight sleeves are non-positive and the live ledger is −0.175R. Sizing, portfolio
    construction and the order layer are all downstream of an edge that does not yet exist.
 2. **The EV gate sits upstream of the recorder.** A blocked leg is dropped before
    `signal_alert_outcomes` is written, so suppression destroys evidence rather than merely
@@ -329,7 +329,7 @@ could make money*. Ordered by what blocks what.
 
 | Gap | Current state | What it blocks |
 | --- | --- | --- |
-| **An actual edge** | Six sleeves non-positive; live ledger −0.175R over 267 resolved alerts. | Everything. You cannot vol-target or size your way out of a negative expectancy. |
+| **An actual edge** | Eight sleeves non-positive; live ledger −0.175R over 267 resolved alerts. | Everything. You cannot vol-target or size your way out of a negative expectancy. |
 | **Outcome ledger depth** | 298 rows, **282 pre-#151**, 0 of 30 loss cells at n=30. | Per-cell decisions. The ledger exists and resolves correctly — it is simply young. |
 | **Position sizing** | None. Phase A emits levels, not size. | Turning a positive cell into PnL. Deferred until an edge clears gate G1. |
 | **Order layer / broker** | `trade/` is an empty placeholder — both files 0 bytes; the parent's Binance opener was dropped at fork and nothing replaced it. | Execution. **Phase B, gated G3→G4.** |
