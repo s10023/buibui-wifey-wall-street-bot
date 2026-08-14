@@ -26,6 +26,13 @@ make typecheck      # mypy strict
 make test           # full pytest suite (no coverage; use `make test-cov` for that)
 ```
 
+**`make status`** prints every repo-shape number (tests, files, CLAUDE.md size, handoff lines,
+MEMORY.md size + bullet count, audits, skills, tools). **Run it instead of writing any of them
+into a doc** — each has a history of being quoted stale. **`make wait-ci PR=<n>`** waits for a
+PR's checks and reports whether they *ran*: it exits **3** on `steps=0` (the Actions-allowance
+failure, which renders exactly like a real one — flip the repo public, never debug it) and
+**1** on a genuine failure.
+
 For Markdown changes: `make lint-md` — this covers `.claude/` (skills and context) as of 2026-08-05, so a skill edit lints like any other file and CI fails on a violation. No special invocation is needed; do not re-add a `!.claude` exclusion to `.markdownlint-cli2.jsonc` (the tree accumulated 245 issues while it was excluded, and the excluded-tree failure mode is silent — see `/post-branch` step 4).
 
 After adding or renaming a file in `docs/audits/` or `docs/superpowers/specs/`: `make docs-index`.
