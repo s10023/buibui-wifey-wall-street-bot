@@ -20,6 +20,15 @@ Schema is `{ticker: {sl_pct: float in (0, 1.0)}}` validated by
 `universe_policy` block (`{scope, as_of: "fixed"|"today", survivorship_note}`, Phase 0.1) declaring
 how the watchlist was selected — absent → `DEFAULT_UNIVERSE_POLICY` applies.
 
+**The committed `stocks.json.example` DECLARES that block; keep the live file in sync by hand.**
+Until 2026-08-14 the example carried it and the live gitignored `stocks.json` did not, so
+`load_universe_policy()` returned the default and `backtest_runs.universe_policy` recorded an
+**undeclared default** on every run. Nothing recorded was wrong — the default's text describes this
+same 13-name watchlist — which is exactly why it survived: **a permissive fallback that happens to
+be accurate is indistinguishable from a declaration.** The live file is gitignored, so CI can never
+assert on it; `TestShippedStocksExample` guards the example instead, which is what a fresh clone
+copies. Ask what an *absent* value means before trusting a loader that has a default.
+
 ## config/universe.json
 
 Phase A research **breadth universe** (N3, **committed/tracked** — a reproducible research
@@ -114,6 +123,17 @@ Full write-up: `docs/audits/2026-08-06-adr-volume-gate-conjunction.md`.
 - `adr_exempt` belongs in **this shared base**, never in one day-filter config. `bos` carried it in
   `signal_watch.toml` only, so `signal_watch_weekdays.toml` never inherited it and ran `bos` voided.
   A flag whose correctness depends on a second flag must live beside it.
+  **`eqh_eql` had the SAME shape and the 2026-08-06 pass missed it — moved 2026-08-14.** Its
+  residue was narrower and so had no loud failure mode: `eqh_eql` declares no `volume_suppress` in
+  either config, so the voided conjunction could not fire and `voided_volume_gates` would have
+  refused the pairing anyway. What was live was pure **cross-config incomparability** —
+  `signal_watch`'s `eqh_eql × 4h` ran exempt while `signal_watch_weekdays`' took the ADR haircut,
+  so the two configs measured different populations for one cell. Scope was `4h` only
+  (`adr_gate_applies` is intraday-only). **A fix that removes a defect's loud symptom does not
+  remove the defect from its siblings** — the conjunction was what made `bos` visible, and it is
+  the reason the same inheritance bug survived here for eight more days. When a rule is written
+  because one instance broke, column-scan for every other instance of the *rule*, not of the
+  symptom.
 - Every `tp_r` / `atr_sl_multiplier` for `doji`, `orb`, `engulfing`, `bos` was calibrated **under**
   the conjunction, on the surviving 2–8% subsample — flagged as debt in both configs and
   deliberately **not** re-derived (frozen TA-sweep work).

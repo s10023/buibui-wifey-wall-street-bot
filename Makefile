@@ -364,6 +364,11 @@ go-live-prep:
 # alert. The last 4h RTH bar (17:30 UTC) closes at 21:30 UTC, also after the bell.
 # A pre-open run is safely past both. Override config:
 #   make go-live GO_LIVE_CONFIG=config/signal_watch_weekdays.toml
+# Do NOT run both configs live on the same day. They share signal_state.json on
+# purpose (weekdays' 32 declared cells are a strict superset of signal_watch's 22),
+# so whichever runs FIRST alerts the shared Tue–Thu candles with ITS tp_r and the
+# other then stays silent. Nothing is lost, but the parameters are the first
+# runner's — see the header of config/signal_watch_weekdays.toml.
 # To run as a continuous daemon instead (self-syncs + sleeps to candle boundaries),
 # drop the once flag: make wifey-signal-watch CONFIG=... TELEGRAM=1
 # Pass CATCH_UP=1 to replay candles missed since the last run (skipped run-day recovery).

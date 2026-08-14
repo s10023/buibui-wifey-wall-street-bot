@@ -300,6 +300,21 @@ volume_suppress = false       # A14b: low-vol edge (reversal confirmed)
 # NOT made adr_exempt: orb is a breakout like bos and arguably qualifies, but that
 # variant is unmeasured — the numbers above keep the ADR gate ON. Follow-up, not a fix.
 
+[strategy_params.eqh_eql]
+# adr_exempt MOVED here from signal_watch.toml 2026-08-14 so BOTH configs inherit it —
+# the same inheritance fix bos got 2026-08-06, on the one strategy that pass missed.
+# This is NOT the voided-conjunction defect: eqh_eql declares no volume_suppress in
+# either config, so the ~99% discard cannot fire and `voided_volume_gates` would refuse
+# the pairing anyway. What was live is narrower and purely a COMPARABILITY defect —
+# signal_watch's eqh_eql x 4h ran exempt while signal_watch_weekdays' took the ADR
+# haircut, so the two configs measured different populations for the same cell and the
+# difference was invisible in either file alone.
+# Scope is 4h ONLY: adr_gate_applies() is intraday-only, so 1d/1wk were already
+# unaffected in both configs (>1 bar per calendar day is the gate's precondition).
+# Not a threshold choice and nothing was searched or maximised — the value is the one
+# signal_watch has carried since T14; this pass only changes WHICH configs inherit it.
+adr_exempt = true             # liquidity sweep — fires at structure extremes in continuation direction
+
 [strategy_params.inside_bar]
 # inside_bar audit (2026-05-19, 13-sym pooled WFO): retires the crypto-era
 # tp_r_long=4.0 / tp_r_short=2.0 directional override (BTC 1h / SOL 1h derived).

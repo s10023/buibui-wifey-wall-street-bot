@@ -778,3 +778,53 @@ class TestShippedUniverseFile:
             assert sym in note.survivorship_note, (
                 f"note must name {sym} as the retained class"
             )
+
+
+class TestShippedStocksExample:
+    """``config/stocks.json.example`` must DECLARE a universe policy.
+
+    The live ``config/stocks.json`` is gitignored, so CI never sees it and no test
+    can assert on it — the example is the only committed surface, and it is what a
+    fresh clone copies. That asymmetry is exactly how the drift happened: the
+    example carried a valid ``universe_policy`` block while the live file (created
+    before the block existed) did not, so ``load_universe_policy`` silently
+    returned ``DEFAULT_UNIVERSE_POLICY`` and ``backtest_runs.universe_policy``
+    recorded an **undeclared default** on every run.
+
+    Nothing recorded was WRONG — the default's text describes this same watchlist —
+    which is why it stayed invisible for months: a permissive fallback that happens
+    to be accurate reads exactly like a declaration. Guard the example so the
+    copy-the-example path yields a declared policy, and keep the live file in sync
+    by hand.
+    """
+
+    _EXAMPLE = Path("config/stocks.json.example")
+
+    def test_example_is_valid_stocks_config(self) -> None:
+        config = json.loads(self._EXAMPLE.read_text())
+        assert validate_stocks_config(config)
+        symbols = [k for k in config if k != UNIVERSE_POLICY_KEY]
+        assert len(symbols) >= 10, "example should ship a usable watchlist"
+
+    def test_example_declares_a_valid_universe_policy(self) -> None:
+        config = json.loads(self._EXAMPLE.read_text())
+        assert UNIVERSE_POLICY_KEY in config, (
+            "the example must DECLARE the policy — an absent block falls back to "
+            "DEFAULT_UNIVERSE_POLICY, which is a silent default, not a declaration"
+        )
+        assert validate_universe_policy(config[UNIVERSE_POLICY_KEY])
+
+    def test_example_policy_is_declared_not_defaulted(self) -> None:
+        """The load path must return the example's own block, not the fallback.
+
+        This is the assertion with teeth: the two previous tests still pass if the
+        loader ignores the block entirely. Deleting the block from the example
+        turns this red while leaving the shape tests green.
+        """
+        policy = load_universe_policy(self._EXAMPLE)
+        assert policy != DEFAULT_UNIVERSE_POLICY
+        assert policy.as_of in ("today", "fixed")
+        assert "survivorship" in policy.survivorship_note.lower(), (
+            "the bounded claim must survive in the declared note, not only in the "
+            "default it replaces"
+        )
