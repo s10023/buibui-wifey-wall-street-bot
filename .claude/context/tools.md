@@ -262,6 +262,38 @@ pre-registered `{broad,mega}×{long-short,long-only}` 2×2 over the breadth univ
 **Run:** `make wifey-pead-audit` or
 `PYTHONPATH=. poetry run python tools/pead_audit.py [--slippage-bps N]`
 
+## gapfill_audit.py — edge-hunt #5 audit for the gap-fill magnet sleeve
+
+Read-only **edge-hunt #5** audit (PR #198) for `analytics/gapfill/`: runs the pre-registered
+four-arm family (`broad_ls` gated / `broad_ls_range` / `reversal_control` / `long_only`) over
+the breadth universe (1d) at 0/2/8 bps, prints DSR/PBO/boot-CI + realized β + `corr_reversal`,
+plus the descriptive gap population. `build_grid`/`_grid_frame` are the testable units.
+**Read `corr_reversal` before `sharpe`** — the magnet construction is mechanically a gap-fade.
+**Verdict = EXCLUDED, direction REFUTED** (`docs/audits/2026-08-14-edge-hunt-5-gapfill-magnet.md`).
+**⚠ Its "0 bps" column is not cost-free** — `fee_pct` defaults to 1bp; see `velocity_audit.py`.
+
+**Run:** `make wifey-gapfill-audit` or
+`PYTHONPATH=. poetry run python tools/gapfill_audit.py [--slippage-bps N]`
+
+## velocity_audit.py — edge-hunt #6 audit for the velocity-alternation sleeve
+
+Read-only **edge-hunt #6** audit for `analytics/velocity/` (thesis H-007): runs the
+pre-registered four-arm family (`broad_ls` gated / `depth_control` / `duration_control` /
+`long_only`) over the breadth universe (1d), printing DSR/PBO/boot-CI, realized β, **beta-hedged
+Sharpe**, alpha t, correlation to both decomposition controls, and **gross turnover**.
+`build_grid`/`_grid_frame` are the testable units.
+
+**It is the only sleeve audit with a genuinely cost-free tier.** The three tiers are
+`gross (fee=0, slip=0)` / `live (2bps+1bp)` / `stressed (8bps+1bp)` — every sibling audit's
+"0 bps" column still bills `fee_pct`'s 1bp default, so only this one can separate "the signal is
+absent" from "the costs ate it". **Read `corr_depth`/`corr_duration`, then `turnover`, then
+`realized_beta`, and only then `sharpe`** — and when the β guardrail fires, read
+`hedged_sharpe` INSTEAD of `sharpe`.
+**Verdict = EXCLUDED as a null** (`docs/audits/2026-08-14-edge-hunt-6-velocity-alternation.md`).
+
+**Run:** `make wifey-velocity-audit` or
+`PYTHONPATH=. poetry run python tools/velocity_audit.py [--slippage-bps N]`
+
 ## expand_universe_sp500.py — one-shot universe expander
 
 One-shot universe expander (experiment #1, PR #98): snapshots the pre-expansion `kind=="stock"`

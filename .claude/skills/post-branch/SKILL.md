@@ -875,6 +875,10 @@ say so and move on.
 - Default: `git push` (no force).
 - If a rebase happened, use `--force-with-lease` and **only** with explicit
   user approval. Never `--force`.
+- **The `guard-destructive` hook blocks every force-push, `--force-with-lease`
+  included, and that is deliberate — do not loosen the guard to get past it.**
+  Approval makes the push *intended*, not *safe*. Ask the operator to run it in
+  their own terminal.
 - Never push to `main` from this skill. Ever.
 
 ---
@@ -1337,7 +1341,8 @@ a dead path.
   flag the path issue separately for the user to triage.
 - **Never use `Write` to overwrite a doc.** Always targeted `Edit`.
 - **No force-push without explicit OK.** `--force-with-lease` only, after
-  the user types yes.
+  the user types yes — and the `guard-destructive` hook blocks it even then,
+  so the operator runs it, not you. See Step 7's push rules.
 - **Stop on uncertainty.** If you can't tell whether a doc claim is stale,
   show the user the doc snippet and the relevant diff hunk and ask.
 - **Draft-PR default:** if `gh pr create` was run with `--draft`, don't flip

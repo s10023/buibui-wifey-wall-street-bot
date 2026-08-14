@@ -274,12 +274,15 @@ sparsity (the crypto-era reading); it is an empty table. Populating it means run
 `make wifey-combo-backtest` / `wifey-cross-tf-backtest` — which is a *sweep*, and sweeps are
 frozen. Left inert on purpose; the gate is tag-only, so nothing downstream breaks.
 
-### 4d. Research sleeves — six built, six non-positive
+### 4d. Research sleeves — eight built, eight non-positive
 
 Full verdicts and the gate each failed live in `CLAUDE.md → Sleeve verdicts`; the one-line
 summary is that the free-data edge-hunt arc is **concluded**, `forecast` and `xsmom` fail
 pre-cost, and `lowvol` / `pead` failed their own neutrality guardrails, so neither is even
-evidence about the underlying premium. **Do not rebuild a shelved sleeve.**
+evidence about the underlying premium. The arc was reopened **per-candidate** twice on
+2026-08-14 — `gapfill` (EXCLUDED, direction refuted) and `velocity` (EXCLUDED as a null; its β
+guardrail fired, so read the beta-hedged −0.169 / alpha t −0.49 rather than the raw Sharpe).
+**Do not rebuild a shelved sleeve.**
 
 ### 4e. Data coverage — history is not uniform
 
@@ -298,7 +301,7 @@ the 6 a crypto-era constant assumes. Live scans run `4h` and `1d` only.
 ## 5. Known issues & open hypotheses
 
 1. **No equity-native edge is established.** This is the binding constraint, and it is
-   endogenous — six sleeves are non-positive and the live ledger is −0.175R. Sizing, portfolio
+   endogenous — eight sleeves are non-positive and the live ledger is −0.175R. Sizing, portfolio
    construction and the order layer are all downstream of an edge that does not yet exist.
 2. **The EV gate sits upstream of the recorder.** A blocked leg is dropped before
    `signal_alert_outcomes` is written, so suppression destroys evidence rather than merely
@@ -329,7 +332,7 @@ could make money*. Ordered by what blocks what.
 
 | Gap | Current state | What it blocks |
 | --- | --- | --- |
-| **An actual edge** | Six sleeves non-positive; live ledger −0.175R over 267 resolved alerts. | Everything. You cannot vol-target or size your way out of a negative expectancy. |
+| **An actual edge** | Eight sleeves non-positive; live ledger −0.175R over 267 resolved alerts. | Everything. You cannot vol-target or size your way out of a negative expectancy. |
 | **Outcome ledger depth** | 298 rows, **282 pre-#151**, 0 of 30 loss cells at n=30. | Per-cell decisions. The ledger exists and resolves correctly — it is simply young. |
 | **Position sizing** | None. Phase A emits levels, not size. | Turning a positive cell into PnL. Deferred until an edge clears gate G1. |
 | **Order layer / broker** | `trade/` is an empty placeholder — both files 0 bytes; the parent's Binance opener was dropped at fork and nothing replaced it. | Execution. **Phase B, gated G3→G4.** |
@@ -414,12 +417,15 @@ What the measurements say:
 - The live ledger is 298 alerts over ~10 weeks, 267 resolved, averaging -0.175R.
   Strike rate 18.5%; winners average +2.84R, losers -1.0R. So the payoff shape is
   fine and the hit rate is not.
-- Six research sleeves have been built and measured, and ALL are non-positive:
+- Eight research sleeves have been built and measured, and ALL are non-positive:
   EWMAC trend following (portfolio Sharpe -0.05, negative even before costs),
   cross-sectional momentum (-0.156 at 2bps), residualised cross-sectional momentum
   (+0.15, fails DSR), low-beta/BAB (-0.069, and its beta-neutrality guardrail
   fired), cross-asset time-series momentum (+0.36 at 2bps, clean but too weak),
-  and post-earnings-announcement drift (+0.10, beta guardrail fired).
+  post-earnings-announcement drift (+0.10, beta guardrail fired), a gap-fill
+  magnet (-0.460 cost-free, i.e. the direction is refuted rather than merely
+  unsupported), and velocity alternation (beta guardrail fired; beta-hedged -0.169
+  with an alpha t-stat of -0.49, so a null in either direction).
 - The TA detector book is frozen: no new detectors and no threshold sweeps, on the
   grounds that the category has repeatedly produced negative expectancy.
 
