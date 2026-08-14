@@ -10,8 +10,9 @@ DEV_PORT ?= 5173
 
 PYTHON_FILES = $(shell find . -name "*.py" -not -path "./venv/*" -not -path "./.venv/*")
 DOCKER_IMAGE = wifey-bot
+MEMORY = $(HOME)/.claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot/memory/MEMORY.md
 
-.PHONY: lint lint-md lint-md-fix docs-index docs-index-check lint-py-check lint-py typecheck test test-cov test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-universe-backfill universe-coverage universe-stamp-listed wifey-forecast-audit wifey-xsmom-audit wifey-xsmom-residual-audit wifey-lowvol-audit wifey-xasset-audit wifey-xasset-backfill wifey-pead-audit wifey-pead-backfill wifey-velocity-audit wifey-exit-audit wifey-exit-replay wifey-warning-value-audit wifey-pundit-score wifey-check-levels wifey-route-dedup-seed wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep backup backup-dry-run wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent check-dead-surfaces check-orphan-tests wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
+.PHONY: status wait-ci lint lint-md lint-md-fix docs-index docs-index-check lint-py-check lint-py typecheck test test-cov test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-universe-backfill universe-coverage universe-stamp-listed wifey-forecast-audit wifey-xsmom-audit wifey-xsmom-residual-audit wifey-lowvol-audit wifey-xasset-audit wifey-xasset-backfill wifey-pead-audit wifey-pead-backfill wifey-velocity-audit wifey-exit-audit wifey-exit-replay wifey-warning-value-audit wifey-pundit-score wifey-check-levels wifey-route-dedup-seed wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep backup backup-dry-run wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent check-dead-surfaces check-orphan-tests wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
 
 lint: lint-md lint-py
 
@@ -323,6 +324,22 @@ check-dead-surfaces:
 	@echo "🔍 Checking for declared-but-dead and rated-but-undeclared cells..."
 	@poetry run python tools/dead_surface_check.py
 
+## Prints the repo-shape numbers that used to be hand-copied into the handoff and
+## MEMORY.md. Every one of them has a history of being quoted stale — the fix is to
+## PRINT them, not to write them down. Fast: no full suite, no full mypy.
+status:
+	@echo "📊 Repo shape ($$(date -u +%Y-%m-%d))"
+	@printf '  tests collected   %s  (incl. 2 regression that `make test` ignores)\n' "$$(poetry run pytest tests/ --collect-only -q 2>/dev/null | tail -1 | grep -oE '^[0-9]+' || echo '?')"
+	@printf '  python files      %s\n' "$$(git ls-files '*.py' | wc -l)"
+	@printf '  markdown files    %s\n' "$$(npx markdownlint-cli2 2>&1 | grep -oE 'Linting: [0-9]+' | grep -oE '[0-9]+' || echo '?')"
+	@printf '  CLAUDE.md         %s KB\n' "$$(du -k CLAUDE.md | cut -f1)"
+	@printf '  handoff           %s lines\n' "$$(wc -l < docs/plans/next-conversation-prompt.md)"
+	@printf '  MEMORY.md         %s KB, %s Current State bullets\n' "$$(du -k $(MEMORY) | cut -f1)" "$$(awk '/^## Current State/,0' $(MEMORY) | grep -c '^- ')"
+	@printf '  audits            %s\n' "$$(ls docs/audits/*.md | grep -vc INDEX)"
+	@printf '  skills            %s\n' "$$(ls -d .claude/skills/*/ | wc -l)"
+	@printf '  context docs      %s\n' "$$(ls .claude/context/*.md | wc -l)"
+	@printf '  tools             %s\n' "$$(ls tools/*.py | wc -l)"
+
 ## Reports Test* classes that NAME a unit but never CALL it (#150: five TestEvGate
 ## tests never invoked the EV gate — it was a closure, so they re-implemented the
 ## comparison and passed against any implementation). Heuristic, so it is advisory
@@ -490,3 +507,10 @@ clean:
 	@echo "🧹 Cleaning cache and build artifacts..."
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	rm -rf .mypy_cache .ruff_cache .pytest_cache .coverage htmlcov/ dist/
+
+## Waits for a PR's checks to settle, then reports whether they actually RAN.
+## Encodes four scars as code rather than handoff prose: a check-count FLOOR (an
+## empty rollup satisfies "nothing pending"), ""-is-pending (not null), steps=0 =
+## billing not code, and a fast PASS needs the same scrutiny as a fast FAIL.
+wait-ci:
+	@PYTHONPATH=. poetry run python tools/wait_ci.py --pr $(PR)
