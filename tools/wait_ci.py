@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -42,11 +43,14 @@ def gh(*args: str) -> str:
         text=True,
         check=True,
     ).stdout.strip()
+    # INHERIT the environment and override only GH_TOKEN. A bare env= drops HOME,
+    # and `gh` then falls back to writing its state relative to the CWD -- which
+    # littered an untracked `.local/state/gh/` into the repo root on first run.
     out = subprocess.run(
         ["gh", *args],
         capture_output=True,
         text=True,
-        env={"GH_TOKEN": token, "PATH": "/usr/bin:/bin:/usr/local/bin"},
+        env={**os.environ, "GH_TOKEN": token},
     )
     if out.returncode != 0:
         return ""
