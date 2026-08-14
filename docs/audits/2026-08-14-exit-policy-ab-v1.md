@@ -117,9 +117,41 @@ signals have a ~3-bar half-life against a stop they mostly reach.
    caps, so this measures the population effect upstream could not reach — a
    different question with the same engine, not a reproduction.
 
-## A defect this port found
+## Two defects this port found
 
-**The live ledger over-credits R on a structural-TP win.** `scanner.py:1042`
+Both were found by **running** the ported code and reading its output, not by reviewing it.
+
+### 1. The forward-window fetch assumed a 24/7 tape (fixed here)
+
+Upstream fetches a trade's forward window as `max(candle_ts) + (max_hold + 2) * tf_ms`,
+which is exact when bars are contiguous. Equity RTH bars are not:
+
+| tf | max_hold | real span p50 | p95 | max | upstream assumed | windows covered |
+| --- | --- | --- | --- | --- | --- | --- |
+| 4h | 30 | 132 | 150 | 161 | 32 | **0.0%** |
+| 1d | 14 | 20 | 22 | 25 | 16 | **0.0%** |
+
+Units are `tf_ms`; measured over all 13 ledger symbols (14,072 `4h` and 33,397 `1d`
+windows). Reproduce:
+
+```sql
+SELECT open_time FROM ohlcv WHERE symbol = ? AND timeframe = ? ORDER BY open_time
+-- then (open_time[i+max_hold] - open_time[i]) / tf_ms, per symbol
+```
+
+The truncation is silent — a would-be winner is marked to market at the last fetched bar
+and labelled `expired` — and it **biases the A/B**, because a window that stops early
+cannot affect a policy whose time-stop fires at bar 3 but does clip the long-held
+baseline. It was invisible in review and obvious in the positive control, which sat at
+**95.9%** rather than 100%: high enough to read as tie-break noise.
+
+Fixed by fetching to `get_latest_open_time`, which removes the trap by construction rather
+than re-tuning the literal. `TestForwardWindowSpansRthGaps` pins it with RTH-gapped
+fixture bars and fails if the time-derived horizon returns (mutation-verified).
+
+### 2. The live ledger over-credits R on a structural-TP win (NOT fixed here)
+
+`scanner.py:1042`
 stores `rr_ratio = eff_alert_tp_r` (the *configured* `tp_r`), but
 `alert_formatter` sets `tp_price` to a detector's **structural** TP when it has
 one, falling back to `entry ± sl_dist × tp_r` only otherwise. `_scan_forward`
@@ -133,6 +165,19 @@ So an alert whose TP was 2.0R away is credited 5.0R when it hits.
 - **The live ledger's headline is therefore −0.1753R, not the −0.1247R currently
   quoted.** The arithmetic closes exactly: −0.1247 − 13.50/267 = −0.1753, which
   is the replayed `fixed` avg_r of −0.176.
+
+Reproduce the whole thing in one query — the discriminator is that `implied_rr` is derived
+from `tp_price` (what the resolver walks) and `rr_ratio` is what it credits:
+
+```sql
+SELECT signal_id, outcome, outcome_r, rr_ratio,
+       CASE WHEN direction = 'long'
+            THEN (tp_price - entry_price) / abs(entry_price - sl_price)
+            ELSE (entry_price - tp_price) / abs(entry_price - sl_price) END AS implied_rr
+FROM signal_alert_outcomes
+WHERE outcome IN ('win', 'loss', 'expired')
+  AND abs(implied_rr - rr_ratio) > 1e-6;      -- 30 rows; 8 with outcome='win'
+```
 
 This is the repo's declared-vs-effective family again (#142/#154): a column that
 records what was *configured* is not a record of what *happened*, and the

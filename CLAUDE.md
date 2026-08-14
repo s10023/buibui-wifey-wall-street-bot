@@ -110,6 +110,7 @@ do not start a new free-data hunt without an explicit user go.
 | `xasset/` cross-asset TSMOM (edge-hunt #3, PR #102) | **FAIL (clean)** — `broad_ls` +0.41 cost-free / +0.36 @2bps, never ≥0.7; PBO ~0.79. The equity-β guardrail **held** (β −0.083), so the construction diversified as designed and the premium is simply too weak in free-ETF proxies |
 | `pead/` PEAD-lite (edge-hunt #4, PR #104) | **FAIL** — `broad_ls` +0.10 @2bps, DSR 0.20. The β guardrail **FIRED** (β ≈ +113, governor saturation on sparse daily cohorts); the controlled mega arm (β −0.40) showed *negative* drift (−0.53) |
 | `exits/` MFE-MAE diagnostic (PR #96) | **EXIT-FIXABLE at the cohort level** (re-run 2026-08-12, n=264, 264/264 scored). Supersedes the n=22 INCONCLUSIVE call **and reverses its direction**: of the 157 losses that could show excursion, **43.9%** reached ≥1R before stopping (CI 36.4–51.8%), vs the 13.3% that produced the earlier "entry-broken" read. Still blocked per-edge (0 of 30 loss cells reach n=30) and the whole ledger is **pre-#151**. Audit: `docs/audits/2026-08-12-exit-mfe-mae-diagnostic-rerun.md` |
+| `exits/` policy replay A/B (PR #194, parent #437) | **POSITIVE but NOT deployable, and it re-ranks the diagnostic's own lever.** All three arms beat the `fixed` baseline on a paired bootstrap CI clear of zero, and the effect is **entirely the time lever**: `time_only` **+0.317R** [+0.173, +0.468] *exceeds* the full `composite` **+0.297R**, so bolting breakeven+partial onto a time-stop makes it worse — the 43.9% figure above shows a lever *could* work, it does not rank it against levers it never measured. **Mechanism is signal decay, not exit craft**: mean R of an open position peaks at bar 3 (+0.192) and falls monotonically to −0.176 at the cap, median −1R by bar 8. Baseline book is negative-expectancy (avg_r −0.176) and both parameters are in-sample. Audit: `docs/audits/2026-08-14-exit-policy-ab-v1.md` |
 
 **The TA detector book is frozen** — no new boolean detectors, no tp_r / gate / threshold sweeps
 (inherited category verdict). A guardrail firing (`lowvol`, `pead`) means the *construction* failed
@@ -308,6 +309,30 @@ on ≥2 surviving legs). **`min_trl` and `n_obs` are no longer PARAMETERS** of
 default that creeps back. Script (reproduces every number here by calling the production
 functions rather than restating their arithmetic):
 `docs/plans/scripts/sleeve_gate_mintrl_bar.py`.
+
+**`signal_alert_outcomes.rr_ratio` is the DECLARED target; `tp_price` is the EFFECTIVE one — and the
+ledger credits the wrong one.** `scanner.py:1042` stores `rr_ratio = eff_alert_tp_r` (the configured
+`tp_r`), but `alert_formatter` sets `tp_price` to a detector's **structural** TP when it has one and
+only otherwise falls back to `entry ± sl_dist × tp_r`. `_scan_forward` walks `tp_price` and, on a
+hit, records `outcome_r = rr_ratio` — so an alert whose TP was 2.0R away is credited 5.0R.
+**30 of 267** resolved rows disagree (up to **3.0R**), 8 are wins, **+13.50R** over-credited.
+**The live ledger's pooled avg_r is therefore −0.1753R, not the −0.1247R widely quoted** — re-derive
+before citing it. **Not fixed**: `analytics/exits/audit.py::effective_tp_r` corrects it *read-side
+for the replay only*; the live fix needs a decision about `outcome_r` on historical rows. Same family
+as #142/#154 — a column recording what was *configured* is not a record of what *happened*.
+Audit: `docs/audits/2026-08-14-exit-policy-ab-v1.md` § "A defect this port found".
+
+**A BAR COUNT IS NOT A CALENDAR SPAN on an RTH tape — second instance of the crypto-constant rule.**
+Upstream #437 fetched a trade's forward window as `max(candle_ts) + (max_hold + 2) * tf_ms`, exact on
+a 24/7 tape and covering **0.0%** of real equity windows here: 30 `4h` bars span ~**132** `4h` units
+of wall-clock (p95 150, max 161) and 14 `1d` bars span ~**20** (p95 22). The truncation is silent —
+it marks would-be winners to market at the last fetched bar — and it **biases an A/B**, because a
+short window cannot touch a policy whose time-stop fires at bar 3 but truncates the long-held
+baseline. **Enforced**: fetch to `get_latest_open_time`, i.e. remove the trap by construction rather
+than re-tune the literal; `TestForwardWindowSpansRthGaps` pins it with RTH-gapped fixture bars and
+fails if the time-derived horizon returns. **Rule**: any expression converting bars→time or time→bars
+must be checked against `4h` RTH = **2 bars/day**, and the tell is that the positive control against
+production sits at 96–99% rather than 100% — high enough to read as rounding noise.
 
 **A statistic can report a value it was DEFINED to report, and a cohort median is where that hides.**
 `exits/`'s MFE for a loss comes from `fav[:-1]`, so **a loss resolved on its first held bar has
