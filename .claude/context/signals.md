@@ -27,6 +27,17 @@ alert formatting, cooldown, the signal registry, Telegram dispatch, or config/un
   1. Candle watermark per `(symbol, tf, strategy)` — prevents re-firing same candle
   2. Cooldown timer per `(symbol, strategy, direction)` — time-based suppression
 - JSON-persisted to `signal_state.json`
+- **Both live configs share ONE state file, deliberately** (`state_file` is a config field
+  defaulting to `signal_state.json`; neither declares an override). The watermark key carries no
+  config identity, so the sharing IS the cross-config dedup: `signal_watch_weekdays`' 32 declared
+  cells are a strict **superset** of `signal_watch`'s 22 (overlap 22 of 22, verified 2026-08-14)
+  and both dispatch to the same Telegram channels, so splitting the file would let one Tue–Thu
+  candle alert twice. **Do not give weekdays its own `state_file`.** The cost of sharing is
+  narrower than it looks: `day_filter` is applied inside `scan_symbol` *before* events are
+  returned, so a suppressed candle never fires and never marks — after a `tue_thu` run Mon/Fri are
+  still unmarked and a later weekdays run alerts them normally. Whichever config runs FIRST alerts
+  the shared candles with ITS `tp_r`; the other then stays silent. No alert is lost, so this is
+  operator discipline (do not run both live on the same day), not a defect.
 - `is_new_candle` / `mark_candle` take `channel: str = "primary"` (Task D, 2026-05-20). Primary preserves the legacy `{sym}:{tf}:{strategy}` key shape so existing state files load without migration; wife uses `{sym}:{tf}:{strategy}:wife`. Scanner marks **each** channel's watermark only on a successful live `dispatch_to_channel` — primary on a successful primary send, wife on a successful wife send — so a non-sending / dry run never "consumes" a candle (which would dedup the real alert away) and the two watermarks move independently (fix `fix/watermark-on-send`, 2026-06-06; primary previously marked unconditionally).
 - `last_marked(symbol, tf, strategy, channel="primary") -> int | None` (catch-up, 2026-06-06) — returns the stored watermark or `None` when never marked. Distinct from `is_new_candle`'s `-1` sentinel: the `--catch-up` cold-start guard needs to tell "no prior watermark" (→ seed latest candle only, no burst) apart from "marked at candle 0".
 
