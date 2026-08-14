@@ -986,6 +986,50 @@ the standing workaround (flip the repo public for the open-PR window, private ag
 merge; **confirm with the operator every time** — it publishes the parent's history).
 **Never open a debugging session on that shape.**
 
+**`steps` is the discriminator; seconds alone never is.** Duration narrows the suspicion,
+it does not settle it — a legitimate check can finish in seconds (`markdownlint` 7s), and a
+billing-dead one can burn 9s looking like a real scan (#181's Trivy). The falsifier is
+whether the job executed any steps at all:
+
+```bash
+gh api repos/s10023/buibui-wifey-wall-street-bot/actions/runs/<id>/jobs \
+  --jq '.jobs[] | "\(.name) steps=\(.steps|length)"'
+```
+
+`steps=0` is billing. Its mirror is equally load-bearing: **a PASS in seconds needs the same
+check as a FAIL in seconds** — #189's `Regression tests` read 6s against a 43s baseline and
+was legitimate (`steps=10`; the regression tests skip when the fixture parquets are absent
+in CI).
+
+**When the flip happens, sweep EVERY open PR — not just this one.** This step reads *this*
+PR's rollup, so it is structurally blind to other open PRs sitting on billing-dead CI, and
+the public window is a repo-wide event: it is the one moment when those checks can actually
+run. Dependabot PRs are where this bites, because nobody is watching them.
+
+```bash
+GH_TOKEN=$(gh auth token --user s10023) gh pr list --state open \
+  --repo s10023/buibui-wifey-wall-street-bot --json number,headRefOid,title
+# ENUMERATE the runs for that head SHA — never assume how many there are:
+GH_TOKEN=$(gh auth token --user s10023) gh api \
+  "repos/s10023/buibui-wifey-wall-street-bot/actions/runs?head_sha=<sha>" \
+  --jq '.workflow_runs[] | "\(.id) \(.name) \(.conclusion)"'
+GH_TOKEN=$(gh auth token --user s10023) gh api \
+  -X POST repos/s10023/buibui-wifey-wall-street-bot/actions/runs/<id>/rerun
+```
+
+**Requeue every run on the SHA, and enumerate rather than counting from memory.**
+There are three workflow files (`lint.yaml`, `security-scan.yaml`,
+`docker-build.yaml`) but a PR does **not** always get three runs: `Docker Build`
+is path-filtered, so a dependency bump gets 3 and a typical feature branch gets 2
+(verified 2026-08-14 across six feature SHAs and three dependabot SHAs). A fixed
+count in an instruction is the kind of number that is right when written and
+wrong after one workflow edit.
+
+**A PR opened while the repo was PRIVATE has never been tested**, and `UNSTABLE` on
+`steps=0` checks renders identically to a code failure. #190 and #191 both sat that way and
+turned fully green on a re-run inside the public window with no code change — found only
+because the operator asked, which is the gap this sweep closes.
+
 Output one line per item. If everything is green, say so explicitly:
 `pre-merge: clean — ready when you are.`
 
