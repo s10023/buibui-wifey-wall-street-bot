@@ -1041,6 +1041,31 @@ empty list and conclude the API is broken.
 turned fully green on a re-run inside the public window with no code change — found only
 because the operator asked, which is the gap this sweep closes.
 
+**WAITING for CI needs a FLOOR ON THE CHECK COUNT, not just "nothing pending".** The natural
+polling idiom asks whether any check is still unresolved — `[.statusCheckRollup[] | select(
+.conclusion == null)] | length == 0` — and that is **true of an EMPTY rollup**, which is
+exactly the state for the first ~30–60s after `gh pr create` (and permanently in the
+`total_count: 0` case above). So the loop exits immediately and renders identically to "all
+checks passed". Hit on #194. Same family as `total_count: 0`, and the same lesson as
+`until ! pgrep`: **a wait condition that is vacuously true at t=0 is not a wait.**
+
+Assert the expected number of checks as well as their settlement — here **5**, or **2–3**
+runs' worth if you are counting workflow runs (`Docker Build` is path-filtered):
+
+```bash
+for i in $(seq 1 40); do
+  OUT=$(GH_TOKEN=$(gh auth token --user s10023) gh pr view <PR#> \
+    --repo s10023/buibui-wifey-wall-street-bot --json statusCheckRollup \
+    --jq '[.statusCheckRollup[] | "\(.name)=\(.conclusion // "RUNNING")"] | join(" ")')
+  [ "$(echo "$OUT" | wc -w)" -ge 5 ] && ! echo "$OUT" | grep -q RUNNING && break
+  sleep 30
+done
+```
+
+Background it (`run_in_background`) and do close-out work meanwhile — never a foreground
+`gh pr checks --watch` poll. Then apply the duration/`steps` discriminators above to the
+settled result; a floor proves the checks *arrived*, never that they *ran*.
+
 Output one line per item. If everything is green, say so explicitly:
 `pre-merge: clean — ready when you are.`
 
