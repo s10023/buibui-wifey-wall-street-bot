@@ -7,7 +7,7 @@ Instructions for Claude Code in this repository.
 The main thread is the orchestrator: design, judgment, review and routing stay here. Push bulk
 mechanical work down a tier. Use **sonnet** subagents for high-volume execution (vision extraction,
 file sweeps, boilerplate, test triage), **haiku** for trivial one-shot lookups, and **opus**
-subagents only as a quota escape valve for long parallel research — Opus sits below the main
+subagents only as a quota escape valve for long parallel research. Opus sits below the main
 thread in capability, so it conserves limits rather than buying better thinking.
 
 Every subagent brief must be self-contained: goal, success metric and rubric inline, with no
@@ -30,11 +30,11 @@ a feature exists in both repos. Skip the parent's Current State and its crypto-s
 
 **Active work is driven by the master to-do** at
 `~/.claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot/memory/project_todo_master.md`,
-which carries the north star and acceptance gates G1–G4 and is the single source of truth. Current
+which carries the north star and acceptance gates G1-G4 and is the single source of truth. Current
 scope is correctness plus universe groundwork; XS-momentum forecasts and paper sizing wait for the
 parent to pass G1, and Phase B (order layer, broker pick) is gated G3→G4.
 
-⚠ **TA detector and sweep work is frozen** — no new boolean detectors, no tp_r / gate / threshold
+⚠ **TA detector and sweep work is frozen**: no new boolean detectors, no tp_r / gate / threshold
 sweeps. This is an inherited category verdict; see memory `project_parent_fresh_eyes_port.md`.
 
 Historical design for the retired bring-up queue:
@@ -58,14 +58,14 @@ make test           # full pytest suite (make test-cov for coverage)
 
 `make status` prints every repo-shape number: tests, files, CLAUDE.md size, handoff lines,
 MEMORY.md size and bullet count, audits, skills, tools. **Print these rather than writing any of
-them into a doc** — each has a history of being quoted stale.
+them into a doc**: each has a history of being quoted stale.
 
 `make wait-ci PR=<n>` waits for a PR's checks and reports whether they *ran*. It exits **3** on
 `steps=0`, the Actions-allowance failure that renders exactly like a real one (flip the repo
 public, never debug it), and **1** on a genuine failure.
 
 Markdown changes: `make lint-md`, which covers `.claude/` skills and context, so a skill edit lints
-like any other file. ⚠ **Do not re-add a `!.claude` exclusion to `.markdownlint-cli2.jsonc`** — the
+like any other file. **Do not re-add a `!.claude` exclusion to `.markdownlint-cli2.jsonc`**: the
 tree accumulated 245 issues while it was there, and an excluded-tree failure is silent.
 
 After adding or renaming a file in `docs/audits/` or `docs/superpowers/specs/`: `make docs-index`.
@@ -87,7 +87,7 @@ never blocks the refresh, but the completion banner is conditional on it. Run
 ⚠ **A golden diff from that run is usually data drift, not your change.** `regression-update`
 re-derives the fixture parquets from a DB that has moved on. The success banner prints the
 falsifier (`git checkout -- tests/fixtures/ && make test-regression`); if it passes, revert the
-goldens rather than shipping them. This does not cover a `confidence_ratings` star move — attribute
+goldens rather than shipping them. This does not cover a `confidence_ratings` star move: attribute
 those by re-running the sweep twice over one fixed window (`/db-update` step 3).
 
 `make backup` writes a verified copy of `analytics.db` plus all of `docs/plans/` to
@@ -122,21 +122,21 @@ The deep reference lives in `.claude/context/`, and the pointers below are a ses
 it. Follow them before working in an area. Verdicts and footguns stay in this file on purpose: they
 guard against re-litigating settled research, and a guard rail behind a pointer is not a guard rail.
 
-A footgun entry holds what a session needs before it acts — the rule, the enforcing mechanism, any
+A footgun entry holds what a session needs before it acts: the rule, the enforcing mechanism, any
 operational constant still in force, and the transferable lesson. The discovery narrative and full
 measured impact belong in the linked committed audit, or in `.claude/context/footguns.md` for the
 entries that have no audit of their own.
 
 | Package | What it is | Deep reference |
 | --- | --- | --- |
-| `wifey.py` · `cli/` | Entry shim delegating to `cli.main:main`; argparse subcommand package with `_common.py` helpers | — |
+| `wifey.py` · `cli/` | Entry shim delegating to `cli.main:main`; argparse subcommand package with `_common.py` helpers | None |
 | `analytics/` | DuckDB analytics layer: `store/`, `strategies/` (18 modules, **16** registered for dispatch), `backtest/`, `signal/`, `stats/`, `research_guards/`, `sweep_guard.py`, `audit_guard.py`, `db_retry.py`, plus data ingest, quality and calendar | `context/analytics.md` |
 | `analytics/{forecast,xsmom,lowvol,xasset,pead,gapfill,velocity,exits}/` | P2/P3 research sleeves and the exit diagnostic (verdicts below) | `context/analytics.md` |
 | `signals/` · `utils/` | Alerting and dedup daemon (detection lives in `analytics/`); shared Telegram, yfinance and EDGAR clients; the two config-universe loaders | `context/signals.md` |
 | `web/` | FastAPI backend plus Svelte 5 / Vite UI | `context/web.md` |
 | `tools/` | One-shot analysis, audit and research-ingest scripts; outside the daemon and CLI surface | `context/tools.md` |
-| `trade/` | Empty placeholder — both files are 0 bytes. The parent's Binance Futures opener was dropped at fork time and nothing replaced it; `make wifey-open-trades` now fails loudly. An order layer would land in Phase B | — |
-| `tests/` | pytest suite; tests import from lib modules and pass mock dependencies directly | — |
+| `trade/` | Empty placeholder, both files 0 bytes. The parent's Binance Futures opener was dropped at fork time and nothing replaced it; `make wifey-open-trades` now fails loudly. An order layer would land in Phase B | None |
+| `tests/` | pytest suite; tests import from lib modules and pass mock dependencies directly | None |
 | `migrations/` | One-shot migration scripts, run by hand. Both refuse to start without a `.bak`, and both rewrite `run_id` and cascade to `backtest_trades`. Routine schema changes go through `analytics/store/schema.py`'s migration list | `context/migrations.md` |
 | `config/` | `stocks.json` (gitignored 13-symbol live watchlist), `universe.json` (committed 505-member research universe), `strategy_params.toml` (shared base inherited via `extends`), `youtube_channels.toml` (gitignored; `.example` committed) | `context/config.md` |
 | `deploy/` | `backup-analytics.sh`, `notify-failure.sh`, and opt-in `wifey-*` systemd user units. Nothing installs them; there is still no wifey daemon | `deploy/README.md` |
@@ -153,16 +153,16 @@ not evidence about the underlying premise.
 
 | Sleeve | Verdict |
 | --- | --- |
-| `forecast/` EWMAC trend | **G2 FAIL** — portfolio Sharpe −0.05, negative even pre-cost, so a signal failure rather than a cost failure |
-| `xsmom/` cross-sectional momentum | **G3 FAIL** — combined Sharpe −0.156 @2bps, negative at 0bps; `corr_to_trend` +0.62, so not a diversification win either |
-| `xsmom/residual.py` residualised XS | **FAIL** — committed `broad_residual_skip` Sharpe +0.15 @2bps, DSR 0.44, boot_lo<0. The long-only leg's +0.88 is survivorship- and beta-confounded and is not the gated cell |
-| `lowvol/` low-beta / BAB | **FAIL** — committed cell Sharpe −0.069 @2bps, DSR ~0.03; realized-beta guardrail fired (β +3.9) |
-| `xasset/` cross-asset TSMOM | **FAIL (clean)** — `broad_ls` +0.41 cost-free, +0.36 @2bps, never ≥0.7; PBO ~0.79. The equity-β guardrail held (β −0.083), so the construction diversified as designed and the premium is simply too weak in free-ETF proxies |
-| `pead/` PEAD-lite | **FAIL** — `broad_ls` +0.10 @2bps, DSR 0.20; β guardrail fired (β ≈ +113, governor saturation on sparse daily cohorts). The controlled mega arm (β −0.40) showed negative drift (−0.53) |
-| `gapfill/` gap-fill magnet | **EXCLUDED, direction refuted.** Cost-free the magnet returns −0.460, so gaps continue rather than revert; the post-hoc inverse is +0.392, below the 0.7 bar before a single bp. At ~211× daily gross turnover the 1bp fee alone costs ~0.9 Sharpe, so neither direction is tradeable. ⚠ **Never quote "90.3% of gaps fill within 60 sessions" without its null** — a matched placebo level fills 88.9%, so the gap-specific lift is +1.5pp, peaking +5.7pp at 5 sessions and gone by 60. The descriptive claim is true, almost entirely diffusion, and inert. Audit: `docs/audits/2026-08-14-edge-hunt-5-gapfill-magnet.md` |
-| `velocity/` velocity alternation | **EXCLUDED as a null**, in contrast to `gapfill`. The β guardrail fired (−1.646) so the raw −0.265 is contaminated; beta-hedged −0.169 at alpha t −0.49 means no effect in either direction. The decomposition is the finding: `velocity = depth / duration` sits at corr +0.499 / +0.546 to its own component controls and performs indistinguishably from depth alone. Cost is not the constraint (24.5× daily gross; gross is already non-positive). ⚠ **`long_only` +0.649 gross hedges to +0.004** (alpha t +0.01), i.e. 100% market beta, so `deploy_grade`'s long-only leg reads market exposure — latent, never bound, and changing that gate is a user call. The time-series form the pundit described is untested and not queued. Audit: `docs/audits/2026-08-14-edge-hunt-6-velocity-alternation.md` |
-| `exits/` MFE-MAE diagnostic | **EXIT-FIXABLE at the cohort level** (n=264, 264/264 scored). Of the 157 losses that could show excursion, 43.9% reached ≥1R before stopping (CI 36.4–51.8%). Still blocked per-edge (0 of 30 loss cells reach n=30) and the whole ledger predates the outcome fix. Audit: `docs/audits/2026-08-12-exit-mfe-mae-diagnostic-rerun.md` |
-| `exits/` policy replay A/B | **BOUNDED** — the lever's ceiling is +0.368R of paired uplift and it buys no measurably profitable book. All three arms beat `fixed` on a paired bootstrap CI clear of zero, and the effect is entirely the time lever: `time_only` +0.317R exceeds the full `composite` +0.297R, so bolting breakeven and partial onto a time-stop makes it worse. ⚠ **A paired CI certifies "A beats B", never "A makes money"** — no arm's own mean R clears zero once the 31 ET session days rather than the 267 alerts are the unit, and the swept maximum over the 10×2 time-stop grid is arm-level t +2.52 against a Bonferroni bar of 2.81. Baseline avg_r −0.176 at t −1.84; both parameters in-sample. "Mean R of an open position peaks at bar 3" is a mislabel: that table is the arm's own avg_r at `time_stop=k`, and positions genuinely still open at bar k improve monotonically (+0.283 → +0.951) because a stop removes losers first. Audit: `docs/audits/2026-08-14-exit-policy-ab-v1.md` |
+| `forecast/` EWMAC trend | **G2 FAIL**: portfolio Sharpe −0.05, negative even pre-cost, so a signal failure rather than a cost failure |
+| `xsmom/` cross-sectional momentum | **G3 FAIL**: combined Sharpe −0.156 @2bps, negative at 0bps; `corr_to_trend` +0.62, so not a diversification win either |
+| `xsmom/residual.py` residualised XS | **FAIL**: committed `broad_residual_skip` Sharpe +0.15 @2bps, DSR 0.44, boot_lo<0. The long-only leg's +0.88 is survivorship- and beta-confounded and is not the gated cell |
+| `lowvol/` low-beta / BAB | **FAIL**: committed cell Sharpe −0.069 @2bps, DSR ~0.03; realized-beta guardrail fired (β +3.9) |
+| `xasset/` cross-asset TSMOM | **FAIL (clean)**: `broad_ls` +0.41 cost-free, +0.36 @2bps, never ≥0.7; PBO ~0.79. The equity-β guardrail held (β −0.083), so the construction diversified as designed and the premium is simply too weak in free-ETF proxies |
+| `pead/` PEAD-lite | **FAIL**: `broad_ls` +0.10 @2bps, DSR 0.20; β guardrail fired (β ≈ +113, governor saturation on sparse daily cohorts). The controlled mega arm (β −0.40) showed negative drift (−0.53) |
+| `gapfill/` gap-fill magnet | **EXCLUDED, direction refuted.** Cost-free the magnet returns −0.460, so gaps continue rather than revert; the post-hoc inverse is +0.392, below the 0.7 bar before a single bp. At ~211× daily gross turnover the 1bp fee alone costs ~0.9 Sharpe, so neither direction is tradeable. ⚠ **Never quote "90.3% of gaps fill within 60 sessions" without its null**: a matched placebo level fills 88.9%, so the gap-specific lift is +1.5pp, peaking +5.7pp at 5 sessions and gone by 60. The descriptive claim is true, almost entirely diffusion, and inert. Audit: `docs/audits/2026-08-14-edge-hunt-5-gapfill-magnet.md` |
+| `velocity/` velocity alternation | **EXCLUDED as a null**, in contrast to `gapfill`. The β guardrail fired (−1.646) so the raw −0.265 is contaminated; beta-hedged −0.169 at alpha t −0.49 means no effect in either direction. The decomposition is the finding: `velocity = depth / duration` sits at corr +0.499 / +0.546 to its own component controls and performs indistinguishably from depth alone. Cost is not the constraint (24.5× daily gross; gross is already non-positive). ⚠ **`long_only` +0.649 gross hedges to +0.004** (alpha t +0.01), i.e. 100% market beta, so `deploy_grade`'s long-only leg reads market exposure. Latent, never bound, and changing that gate is a user call. The time-series form the pundit described is untested and not queued. Audit: `docs/audits/2026-08-14-edge-hunt-6-velocity-alternation.md` |
+| `exits/` MFE-MAE diagnostic | **EXIT-FIXABLE at the cohort level** (n=264, 264/264 scored). Of the 157 losses that could show excursion, 43.9% reached ≥1R before stopping (CI 36.4-51.8%). Still blocked per-edge (0 of 30 loss cells reach n=30) and the whole ledger predates the outcome fix. Audit: `docs/audits/2026-08-12-exit-mfe-mae-diagnostic-rerun.md` |
+| `exits/` policy replay A/B | **BOUNDED**: the lever's ceiling is +0.368R of paired uplift and it buys no measurably profitable book. All three arms beat `fixed` on a paired bootstrap CI clear of zero, and the effect is entirely the time lever: `time_only` +0.317R exceeds the full `composite` +0.297R, so bolting breakeven and partial onto a time-stop makes it worse. ⚠ **A paired CI certifies "A beats B", never "A makes money"**: no arm's own mean R clears zero once the 31 ET session days rather than the 267 alerts are the unit, and the swept maximum over the 10×2 time-stop grid is arm-level t +2.52 against a Bonferroni bar of 2.81. Baseline avg_r −0.176 at t −1.84; both parameters in-sample. "Mean R of an open position peaks at bar 3" is a mislabel: that table is the arm's own avg_r at `time_stop=k`, and positions genuinely still open at bar k improve monotonically (+0.283 → +0.951) because a stop removes losers first. Audit: `docs/audits/2026-08-14-exit-policy-ab-v1.md` |
 
 ### Footguns
 
@@ -200,14 +200,14 @@ required arg so mypy forces every call site to state it, and unknown timeframes 
 gate needs more than one bar per calendar day; on `1d` and `1wk` the ratio stops measuring
 exhaustion and its direction guard makes `chasing` true by construction. It stays dispersed
 (p25 0.71 / p75 1.21), which is why a degenerate gate reads as functional. Re-derive any
-crypto-inherited constant against equity bar counts — `4h` RTH is 2 bars/day, not 6. Note that
-`check-dead-surfaces` cannot see this class: it finds exact zeros, and a 77–82% haircut leaves the
+crypto-inherited constant against equity bar counts. `4h` RTH is 2 bars/day, not 6. Note that
+`check-dead-surfaces` cannot see this class: it finds exact zeros, and a 77-82% haircut leaves the
 cell non-empty. Audit: `docs/audits/2026-08-06-adr-gate-timeframe-degeneracy.md`.
 
 **One `bt_days` feeds both the OHLCV cache and `run_scan_cycle`.** Cross-check a recorded parameter
 against a recorded observable (`data_end_ms - data_start_ms` found this in one query), and remember
 that when a value reaches its consumer through a cache, fixing the consumer's argument fixes
-nothing — find who populates the cache first. `passes_ev_gate` returns `True` below `min_trades`,
+nothing. Find who populates the cache first. `passes_ev_gate` returns `True` below `min_trades`,
 so this gate fails open and has no loud failure mode.
 Audit: `docs/audits/2026-08-06-live-ev-gate-window.md`.
 
@@ -220,7 +220,7 @@ a producer's output count against what the consumer stored.
 Audit: `docs/audits/2026-08-07-backtest-runs-writer-collision.md`.
 
 ⚠ **`conflict_resolver` stays off inside the sweep.** It reads `confidence_ratings`, so enabling it
-in the pipeline that produces them is a fixed-point iteration rather than a gate — three consecutive
+in the pipeline that produces them is a fixed-point iteration rather than a gate. Three consecutive
 passes went 108 → 66 rows differing, damping but not converged. Five gates are on in
 `config/strategy_params.toml`, the shared base and deliberately not a Makefile flag; with five, two
 consecutive passes differ on 0 of 160 rows. Enforced by `TestSharedBaseGateState`. Check data-flow
@@ -230,7 +230,7 @@ written. Audit: `docs/audits/2026-08-07-live-parity-ratings-sweep.md`.
 
 **The live EV gate counts `long_closed_trades` / `short_closed_trades`**, matching the direction
 whose `avg_r` it tests; `README.md` had documented those semantics all along. A gate that fails open
-inverts the meaning of "stricter" — at `min_trades = 20` the `1wk` gate reaches 100% bypass. A test
+inverts the meaning of "stricter": at `min_trades = 20` the `1wk` gate reaches 100% bypass. A test
 that re-implements the code under test can never falsify it, so extraction is a prerequisite for the
 fix rather than scope creep. Suppression upstream of the recorder destroys evidence, not just
 output: a blocked leg never reaches `signal_alert_outcomes`.
@@ -244,12 +244,12 @@ sweep and is wrong for a per-leg operational gate, where Bonferroni z ≈ 3.5 wo
 fail-open gate. `BacktestSnapshot` is the hot path, so a new statistic has to be added to both the
 cached and the computed type. Audit: `docs/audits/2026-08-07-ev-gate-significance-test.md`.
 
-**`upsert_backtest_run` requires `effective_adr_threshold(declared, timeframe, adr_exempt=…)`** — a
+**`upsert_backtest_run` requires `effective_adr_threshold(declared, timeframe, adr_exempt=…)`**: a
 column recording what was *declared* is not provenance. Three things this cost: mypy cannot enforce
 a required kwarg through a `**dict` splat, so run the suite; a column in the identity hash cannot be
 corrected in place without a migration, since flipping the value changes `run_id` and leaves the old
 row behind as a fake gated-vs-ungated pair; and a migration must respect code eras. Check whether
-the consumer already assumed the correct semantics — `recalibrate_lib` did, which is what made the
+the consumer already assumed the correct semantics. `recalibrate_lib` did, which is what made the
 migration provably rating-neutral. Narrative:
 `migrations/002_adr_threshold_executed.py` docstring.
 
@@ -263,14 +263,14 @@ Narrative: `context/footguns.md`.
 **`passes_sleeve_gate`'s bar is `GATE_SHARPE = 0.7`, declared and effective.** `min_trl` and
 `n_obs` are no longer parameters, so re-adding a MinTRL leg has to touch every call site. A gate is
 identified by its full leg set rather than by the constant that carries the name, and when a
-threshold is a function of the data the bar is not a number that can be read off the source — solve
+threshold is a function of the data the bar is not a number that can be read off the source, so solve
 for it. Narrative: `context/footguns.md`.
 
 **Credit the target you walked.** `signal_alert_outcomes.rr_ratio` is the declared target and
 `tp_price` is the effective one, so one shared `implied_tp_r` in
 `analytics/signal/outcome_backfill.py` serves the resolver, the scanner at fire time, and
 `analytics/exits/audit.py`. A column recording what was configured is not a record of what happened.
-⚠ **Pooled live avg_r is −0.1752R; any doc quoting −0.1247R predates the fix.**
+**Pooled live avg_r is −0.1752R; any doc quoting −0.1247R predates the fix.**
 Audit: `docs/audits/2026-08-14-exit-policy-ab-v1.md`.
 
 **A bar count is not a calendar span on an RTH tape.** Check any expression converting bars to time
@@ -293,13 +293,13 @@ requires the CI strictly inside ±`bar`, is computed once so the rule cannot dri
 `False` so an untested cell establishes nothing. A sample-size floor says a test *ran*; it never says
 the test could have seen anything. `INSUFFICIENT` and a powered null are different states, and
 collapsing them prints the confident one. Only negative labels can move under this correction, so it
-cannot promote a cell. Check a tool's legend against its own predicate — the printed legend was wrong
+cannot promote a cell. Check a tool's legend against its own predicate. The printed legend was wrong
 in the same direction as the code, so the output corroborated the defect.
 Audit: `docs/audits/2026-08-13-warning-value-audit.md`.
 
 **Pool a mean over its denominator.** `digest_lib::_pooled`
 (`SUM(avg_r * closed_trades) / SUM(closed_trades)`) is the one definition for all six queries.
-When two aggregates sit side by side, check they pool the same way before trusting either — the tell
+When two aggregates sit side by side, check they pool the same way before trusting either. The tell
 is inside the row, since `win_rate` was already `SUM(win_count)/SUM(trades)` and so disagreed with
 itself about its denominator. Mask numerator and denominator together, and re-derive a producer-side
 fix's consumers rather than re-running everything. Narrative: `context/footguns.md`.
@@ -340,7 +340,7 @@ for full DB isolation and never touch the real `analytics.db`.
 skips if the fixture parquets are absent. Regenerate with `make regression-update` after an
 intentional change.
 
-**A "did not change" assertion is satisfied by two worlds** — the invariant holding, and the
+**A "did not change" assertion is satisfied by two worlds**: the invariant holding, and the
 perturbation never arriving. Every one needs a positive control, and the control must observe the
 channel the guard protects. Three traps to watch. A cap silently turns a perturbation test into a
 no-op: xsmom's fixture perturbed `STRONG`, a ramp pinned at the +20 EWMAC cap, so the guarded input
@@ -389,7 +389,7 @@ that cost has to be earned by content whose absence causes silent damage.
 | Surface | Loaded | Committed? | Holds |
 | --- | --- | --- | --- |
 | `CLAUDE.md` | always | yes | Rules binding on any session here regardless of task: commands, conventions, footguns, sleeve verdicts. No personal preferences |
-| `MEMORY.md` index | always | no | A routing table — one line per memory, plus Current State. Enough to decide whether to open a file, never the content |
+| `MEMORY.md` index | always | no | A routing table: one line per memory, plus Current State. Enough to decide whether to open a file, never the content |
 | `memory/*.md` topics | on demand | no | The detail behind an index line: user preferences, feedback and its why, project history, references |
 | `.claude/context/*.md` | on demand | yes | Long-form module references and footgun narratives, reached via the Project Structure pointers |
 | `docs/plans/next-conversation-prompt.md` | session start | no (gitignored, in-repo) | Live state: what is in flight, queued, or just decided. Pruned every run |
@@ -404,7 +404,7 @@ At the end of every session where anything changed, update the **Current State**
 being asked. Keep a one-line summary of what changed, and the open questions or "none".
 
 The index is read into context every session, so its size is a per-conversation tax. Capping it
-makes each update O(1) — add one line, roll one out:
+makes each update O(1), adding one line and rolling one out:
 
 - Current State holds at most 6 bullets. Adding a 7th means first rolling the oldest, verbatim,
   into `memory/project_session_log_<month>.md`.
@@ -420,8 +420,8 @@ Skills live in `.claude/skills/<name>/SKILL.md`, are invoked with `/skill-name`,
 description and trigger conditions are already loaded every session. Use them proactively. Only the
 facts that are not derivable from those descriptions live here:
 
-- ⚠ **Always load `/frontend-design` before any Svelte, CSS or UI change.**
-- ⚠ **Invoke `/post-branch` before `gh pr create`**, while the branch is still local-only.
+- **Always load `/frontend-design` before any Svelte, CSS or UI change.**
+- **Invoke `/post-branch` before `gh pr create`**, while the branch is still local-only.
 - `/wfo-sweep` is the trusted production path for `tp_r`; `/config-refresh` covers the other config
   dimensions.
 - `/sanity-check` runs weekly or after a large refactor. Its §4a fork-drift sweep deliberately
@@ -454,7 +454,7 @@ mis-attribute commits. Check `git config --local user.email` first. The SSH alia
 `git@github.com-personal:...` is also required for s10023 remotes; see memory
 `reference_ssh_host_aliases.md`.
 
-⚠ **Every `gh` command here needs `--repo s10023/buibui-wifey-wall-street-bot`.** The `gh` default
+**Every `gh` command here needs `--repo s10023/buibui-wifey-wall-street-bot`.** The `gh` default
 repo is intentionally the parent, so a bare `gh pr view N` resolves against the wrong repo. This is
 a preference rather than a bug to fix, so leave `gh repo set-default` alone.
 
@@ -486,7 +486,7 @@ GH_TOKEN=$(gh auth token --user s10023) gh repo edit s10023/buibui-wifey-wall-st
   --visibility private --accept-visibility-change-consequences
 ```
 
-⚠ **Wait for main's own push run to finish before flipping back.** Merging starts a fresh run on
+**Wait for main's own push run to finish before flipping back.** Merging starts a fresh run on
 `main` (`lint.yaml` and `security-scan.yaml` also trigger on `push: branches:[main]`), and flipping
 to private kills whichever jobs are created after the flip. `Regression tests` needs
 `lint-typecheck-test` and is not created until ~4 minutes in, so an early flip leaves it at
@@ -511,7 +511,7 @@ MD041 error. Local's 99 is the same 98 plus untracked `.pytest_cache/README.md`,
 superset. Re-run that count before "fixing" a divergence here.
 
 ⚠ **Know what the public window costs, because flipping back does not undo it.** wifey is not a
-GitHub fork — its history was copied — so 389 of 541 commits are the still-private parent's pre-fork
+GitHub fork; its history was copied, so 389 of 541 commits are the still-private parent's pre-fork
 research, published for the duration. Anything cloned or indexed in that window stays out, and any
 fork created while public is split into its own network and survives the flip back. This is an IP
 and history exposure rather than a secrets one: all 4,519 blobs scanned clean. Flip back promptly
