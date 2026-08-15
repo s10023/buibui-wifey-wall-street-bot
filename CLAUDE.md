@@ -401,6 +401,19 @@ is a smell rather than the finding. `make check-orphan-tests` cannot see this cl
 tests all call their subject.
 Audit: `docs/audits/2026-08-13-vacuous-causality-guards.md`.
 
+**A mutation test proves a guard is REACHABLE by its own test, never that its SCOPE matches the
+sentence written beside it.** The loop is closed over what the guard does, so code and test can be
+internally consistent and jointly wrong about coverage — upstream's destination guard shipped that
+way through a full suite, mutation testing, lint and typecheck. After mutation-testing, ask
+separately: *what does the doc sentence claim, and can I construct an input satisfying the claim but
+not the guard?* Then build that input; if it passes, the sentence is wrong, not the test. Three
+distinct shapes now, and they need different fixes — a fixture that can never **reach** the guard
+(vacuous, above), one that reaches it and tests the wrong **scope** (this), and one that reaches it
+at the right scope but asserts against **inputs that do not exist**. The third is the quietest — the
+off-site guard's first draft asserted an intruder rejection using top-level entries the real remote
+has never had, and it would have passed forever. Prefer a characterization test naming a known hole
+over a test asserting a protection you have not constructed.
+
 **A green suite does not mean a test exercises its subject.** Three mechanical guards exist because
 prose did not enforce these constraints:
 
