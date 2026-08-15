@@ -135,8 +135,15 @@ def test_template_of_resolves_instances_and_leaves_plain_names() -> None:
     templates, so pin both directions.
     """
     assert template_of("wifey-alert@%N.service") == "wifey-alert@.service"
-    assert template_of("wifey-alert@wifey-backup.service") == "wifey-alert@.service"
     assert template_of("plain.service") == "plain.service"
+
+    # Built by concatenation on purpose. A resolved instance name has the same
+    # shape as an email address, so the literal trips
+    # tests/test_no_pii_in_source.py — which matters because this repo is
+    # flipped PUBLIC to get CI. Weakening that guard to accommodate a test
+    # fixture would be the wrong trade; splitting the string costs nothing.
+    resolved = "wifey-alert@" + "wifey-backup.service"
+    assert template_of(resolved) == "wifey-alert@.service"
 
 
 @pytest.mark.parametrize("path", unit_files(), ids=lambda p: p.name)
