@@ -29,7 +29,7 @@ After=wifey-backup.service
 # unarmed while everything looks healthy. wifey-backup.service shipped that way
 # and was caught by `systemd-analyze verify` on 2026-08-15; `systemctl start`
 # cannot catch it, because the unit genuinely works.
-OnFailure=wifey-backup-alert.service
+OnFailure=wifey-alert@%N.service
 
 [Service]
 Type=oneshot

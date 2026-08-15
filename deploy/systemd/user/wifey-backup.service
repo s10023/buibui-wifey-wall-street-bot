@@ -24,7 +24,7 @@ Documentation=file:///home/kng/repo/buibui-wifey-wall-street-bot/deploy/backup-a
 # thing it exists to prevent. `systemctl start` will not tell you: the unit runs
 # fine. `systemd-analyze verify <unit>` is what names the line, and it is the
 # only check that would have caught this.
-OnFailure=wifey-backup-alert.service
+OnFailure=wifey-alert@%N.service
 
 [Service]
 Type=oneshot

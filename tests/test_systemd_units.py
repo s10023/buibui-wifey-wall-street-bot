@@ -99,6 +99,20 @@ def test_install_only_directives_are_in_the_install_section(path: Path) -> None:
     assert not misplaced, f"{path.name}: {misplaced} — ignored outside [Install]"
 
 
+def template_of(unit: str) -> str:
+    """Resolve `foo@%N.service` to the template file `foo@.service`.
+
+    systemd instance names are expanded at load time, so the file on disk is
+    always the bare `name@.suffix`. Checking the literal string would report a
+    dangling reference for every correctly-written template.
+    """
+    if "@" not in unit:
+        return unit
+    head, _, tail = unit.partition("@")
+    suffix = tail[tail.rindex(".") :] if "." in tail else ""
+    return f"{head}@{suffix}"
+
+
 @pytest.mark.parametrize("path", unit_files(), ids=lambda p: p.name)
 def test_onfailure_targets_a_unit_that_exists(path: Path) -> None:
     """A dangling alert reference fails exactly when the alert is needed."""
@@ -106,9 +120,23 @@ def test_onfailure_targets_a_unit_that_exists(path: Path) -> None:
         if key != "OnFailure":
             continue
         for target in value.split():
-            assert (UNIT_DIR / target).exists(), (
-                f"{path.name}: OnFailure={target} names a unit not in {UNIT_DIR}"
+            resolved = template_of(target)
+            assert (UNIT_DIR / resolved).exists(), (
+                f"{path.name}: OnFailure={target} resolves to {resolved}, "
+                f"which is not in {UNIT_DIR}"
             )
+
+
+def test_template_of_resolves_instances_and_leaves_plain_names() -> None:
+    """Control for the helper above — without it the check could pass vacuously.
+
+    A `template_of` that returned its input unchanged would make every OnFailure
+    assertion above trivially true for plain names and trivially false for
+    templates, so pin both directions.
+    """
+    assert template_of("wifey-alert@%N.service") == "wifey-alert@.service"
+    assert template_of("wifey-alert@wifey-backup.service") == "wifey-alert@.service"
+    assert template_of("plain.service") == "plain.service"
 
 
 @pytest.mark.parametrize("path", unit_files(), ids=lambda p: p.name)

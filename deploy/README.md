@@ -145,6 +145,35 @@ them. They are named `wifey-*` on purpose — the crypto parent's
 `buibui-backup.service` and `.timer` are already present in this user's systemd
 instance, and reusing the name would have one repo's unit shadow the other's.
 
+**The full inventory, spelled out.** Every `cp` line below uses brace expansion,
+so no literal unit filename appears in a command — a doc can enumerate by glob
+and read as complete while naming nothing, which is how
+`wifey-backup-offsite.service` went undocumented until the `/post-branch`
+presence check caught it:
+
+| Unit | Fires | Does |
+| --- | --- | --- |
+| `wifey-backup.service` | by `wifey-backup.timer` | local verified snapshot |
+| `wifey-backup.timer` | 08:10 + 13:10 UTC | twice daily, `Persistent=true` |
+| `wifey-backup-offsite.service` | by `wifey-backup-offsite.timer` | `rclone sync` to the remote |
+| `wifey-backup-offsite.timer` | 13:55 UTC | once daily, after both legs above |
+| `wifey-alert@.service` | `OnFailure=wifey-alert@%N.service` on either service | Telegrams the last 25 journal lines **of the unit that actually failed** |
+
+⚠ **The alert is templated, and that is a correctness fix rather than tidiness.**
+Its predecessor hardcoded `notify-failure.sh wifey-backup`, which was right while
+one unit referenced it and silently wrong the moment a second did — an off-site
+failure would have Telegrammed "wifey-backup FAILED" with the *local* backup's
+journal attached. An alert that names the wrong unit and shows the wrong log is
+worse than none, because it sends you to a healthy component. `%N` expands to the
+failing unit's name and arrives in the template as `%i`.
+
+⚠ **`OnFailure=` belongs in `[Unit]`.** In `[Service]` systemd logs "unknown key
+… ignoring" and starts the unit anyway, so the alert is silently unarmed while
+everything looks healthy — `wifey-backup.service` shipped that way until
+2026-08-15. `systemctl start` cannot catch it; `systemd-analyze verify <unit>`
+names the line, and `tests/test_systemd_units.py` now enforces it in `make test`
+so nobody has to remember to run either.
+
 ```bash
 mkdir -p ~/.config/systemd/user
 cp deploy/systemd/user/wifey-backup*.{service,timer} ~/.config/systemd/user/
@@ -162,8 +191,15 @@ parent's backup timer so two large DuckDB exports do not run at once.
 resume.
 
 On failure — and only on failure — `OnFailure=` starts
-`wifey-backup-alert.service`, which Telegrams the last 25 journal lines via
-`deploy/notify-failure.sh`. That message body is raw journal output, which is
+`wifey-alert@<failing-unit>.service`, which Telegrams that unit's last 25 journal
+lines via `deploy/notify-failure.sh`.
+
+⚠ **Failure is the ONLY signal, which makes the channel unfalsifiable.** Nothing
+here emits a heartbeat, so a timer that silently stopped firing and a timer with
+nothing to report are indistinguishable from the Telegram side. The parent closes
+this with a `daily_check.py` off-site freshness line; wifey has no `daily_check.py`
+at all, so **the gap is open and is not closed by this leg**. Until it is, the
+liveness check is manual: `systemctl --user list-timers 'wifey-*'`. That message body is raw journal output, which is
 exactly the payload that used to break this alert: a traceback carries `line 33,
 in <module>`, Telegram's HTML parser reads the bare `<` as an unclosed tag and
 answers 400, and the alert failed on precisely the crashes it exists to report.
@@ -212,12 +248,15 @@ near-instant.
 Provenance for the two upstream PRs this derives from: parent **#582 / #587** (size,
 provider choice, rclone setup) and **#631** (destination guards).
 
-### Setup — what is done, and the one step that needs the operator
+### Setup — completed 2026-08-15; kept as the rebuild procedure
 
-rclone is installed (v1.74.3, distro package at `/usr/bin` — **not** linuxbrew as in
-the parent). Everything from step 2 on is outstanding, and **step 2 cannot be run
-from a session**: the browser OAuth flow is interactive and hits EOF on the first
-prompt through a `!` prefix.
+**This is done on this machine.** rclone v1.74.3 (distro package at `/usr/bin` —
+**not** linuxbrew as in the parent), `gdrive-wifey` created and pinned, `.env` wired,
+first sync verified byte-for-byte (228 objects / 471,037,868 bytes, remote == local),
+timer enabled. The steps below are the procedure for a rebuild or a second machine.
+
+⚠ **Step 2 cannot be run from a session** — the browser OAuth flow is interactive and
+hits EOF on the first prompt through a `!` prefix. It needs a real terminal.
 
 ```bash
 # 1. rclone installed                                        [DONE - v1.74.3]
