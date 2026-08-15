@@ -105,10 +105,12 @@ and refused.
    **What this scan structurally cannot see.** It keys on **merged** parent PRs
    and on paths, so four classes score zero hits while being real work. Silence
    from the scan is not coverage — check these by hand each run:
-   - **An UNMERGED parent PR.** Parent **#631** was open (its CI billing-dead) and
-     was the most consequential thing upstream; it scored zero and reached wifey
-     only because a peer session sent a message. Check `gh pr list --state open`
-     on the parent, not just the merged range.
+   - **An UNMERGED parent PR.** Parent **#631** was still open at scan time (its
+     CI billing-dead) and was the most consequential thing upstream; it scored
+     zero and reached wifey only because a peer session sent a message. It has
+     since merged, which is the point — by the time the scan can see a PR, the
+     window in which you needed to know about it has closed. Check
+     `gh pr list --state open` on the parent, not just the merged range.
    - **A prose-only convention** that lives in a `CLAUDE.md` or `SKILL.md`
      paragraph and changes no path wifey watches.
    - **A measurement** rather than a change — a number the parent derived that
@@ -121,10 +123,11 @@ and refused.
    writing it down, even when the rule itself transfers unchanged.*
 
    Three instances landed in a single session. The sharpest: the parent's
-   regression-gate bullet justifies a path list because the gate costs **~95s**
-   there; here it costs **8.35s**, so the identical rule needed the *opposite*
-   justification — the list marks a coverage gap, not a cost. Copying the reason
-   would have taught the next session to skip a gate that is nearly free.
+   regression-gate bullet justifies a path list because the gate is expensive
+   there; here `make test-regression` runs in **~8s** (7.77s wall, measured
+   2026-08-15), so the identical rule needed the *opposite* justification — the
+   list marks a coverage gap, not a cost. Copying the reason would have taught
+   the next session to skip a gate that is nearly free.
    **A wrong reason is worse than a wrong number, because it is not checkable
    against anything.**
 
