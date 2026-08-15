@@ -102,6 +102,32 @@ and refused.
    skill-only PR, check that its SUBJECT exists here, not its imports**: read the
    commands and modules the prose invokes and confirm each resolves.
 
+   **What this scan structurally cannot see.** It keys on **merged** parent PRs
+   and on paths, so four classes score zero hits while being real work. Silence
+   from the scan is not coverage — check these by hand each run:
+   - **An UNMERGED parent PR.** Parent **#631** was open (its CI billing-dead) and
+     was the most consequential thing upstream; it scored zero and reached wifey
+     only because a peer session sent a message. Check `gh pr list --state open`
+     on the parent, not just the merged range.
+   - **A prose-only convention** that lives in a `CLAUDE.md` or `SKILL.md`
+     paragraph and changes no path wifey watches.
+   - **A measurement** rather than a change — a number the parent derived that
+     alters a decision here.
+   - **A rule whose reason is repo-specific** (see below).
+
+   **Port the rule, re-derive the reason.** Agreed with the parent 2026-08-14i,
+   and the same text is owed in both repos' sync skills: *a rationale is a claim
+   about THIS repo's costs, coverage and constraints — verify it here before
+   writing it down, even when the rule itself transfers unchanged.*
+
+   Three instances landed in a single session. The sharpest: the parent's
+   regression-gate bullet justifies a path list because the gate costs **~95s**
+   there; here it costs **8.35s**, so the identical rule needed the *opposite*
+   justification — the list marks a coverage gap, not a cost. Copying the reason
+   would have taught the next session to skip a gate that is nearly free.
+   **A wrong reason is worse than a wrong number, because it is not checkable
+   against anything.**
+
    Do **not** stop at the Workstreams table and the bucket counts. At a wide range
    they carry almost no signal — the 2026-08-11 scan bucketed 156 PRs as
    **0 SKIP / 39 PORT / 107 EVALUATE / 10 ALREADY-APPLIED**, because the classifier
