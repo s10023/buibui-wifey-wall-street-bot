@@ -1017,6 +1017,7 @@ SoT reconcile      — <row> moved to Closed | <row> corrected | no SoT row affe
                      (never committed)
 claims audit       — <n> claims, each with its reproducing query | no new prose
 doc indexes        — current | regenerated (make docs-index) | no audit/spec change
+markdown pre-lint  — clean | <n> `^#[0-9]` hits reworded | no .md changed
 Makefile           — no change needed: no new CLI commands
 docker-compose.yml — no change needed: no new processes
 .claude/context/*  — updated: analytics.md (store/ paths) | no change needed
@@ -1352,8 +1353,21 @@ The order is fixed:
 1. `wc -l < docs/plans/next-conversation-prompt.md` — the *prev* number.
 2. Make every content edit. Leave the old stamp line untouched.
 3. `wc -l` again — the *new* number, now final.
-4. One last `Edit` replacing that single line. It is line-neutral, so it cannot
-   invalidate the figure it reports.
+4. One last `Edit` replacing that single line.
+5. **Verify — re-read `wc -l` and confirm it equals what the stamp now claims.**
+
+⚠ **Step 4 is NOT line-neutral on the run that fixes a multi-line stamp**, and
+that is exactly the run where the rule is being applied for the first time. The
+"it is line-neutral, so it cannot invalidate the figure" reasoning this list used
+to carry holds only once the stamp is *already* one line: replacing a six-line
+stamp with one drops five, so the number is wrong the moment it is written.
+Measured on #206, which got it wrong twice — once converting the stamp, once
+because a later edit to "Read first" landed after the stamp was written.
+
+Step 5 is the whole fix, and it is the positive control the rule never had: the
+check is two seconds and it is the only thing that distinguishes "I followed the
+order" from "the number is true". Reconcile by editing the stamp again — it
+converges, because the second edit *is* line-neutral.
 
 Same class as "write derived numbers **after** producing the artifact", which has
 been wrong on first write ~13 runs running. The line:
