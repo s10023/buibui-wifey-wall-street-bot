@@ -103,12 +103,21 @@
 #   6. only THEN enable the timer:
 #      systemctl --user enable --now wifey-backup-offsite.timer
 #
-# ⚠ NEVER paste `rclone config` output into a session or a chat. It contains a
-# live refresh token. That is how one leaked on 2026-08-15; it was rotated, and
-# the falsifiable check that it really died is the "Access given on" timestamp
-# at myaccount.google.com/permissions -- a re-consent keeps the original, so a
-# NEW timestamp is the only proof the old grant was removed. Safe verifications
-# are `rclone lsf <remote>:` and `rclone about <remote>:`.
+# ⚠ `rclone config create` DUMPS THE WHOLE REMOTE TO STDOUT on success --
+# client_secret, access_token and refresh_token -- unasked and unwarned. Always
+# redirect it (`>/dev/null`). Two live credentials reached session transcripts
+# this way on 2026-08-15, the second AFTER everyone involved knew about the
+# first, because the mitigation in play was "do not paste the output" rather
+# than "do not print it". A rule that depends on a human noticing is not a
+# control; the redirect is.
+#
+# Rotating a leak: remove the grant at myaccount.google.com/permissions (a
+# re-consent is NOT enough -- Google keeps ~100 live refresh tokens per
+# client+user), then `rclone config reconnect` BOTH remotes, since they share
+# one client_id. `reconnect` keeps root_folder_id; `config delete` drops it.
+# The falsifiable check that the old grant really died is the "Access given on"
+# timestamp -- a re-consent leaves the original in place, so only a NEW one
+# proves removal. Safe verifications: `rclone lsf <remote>:`, `rclone about`.
 
 set -uo pipefail
 

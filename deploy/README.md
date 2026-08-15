@@ -225,10 +225,23 @@ sudo dnf install rclone
 
 # 2. wifey's OWN remote, UNPINNED so it can still see the Drive root.
 #    ORDER MATTERS -- the remote must exist before its folder, because a pinned
-#    root cannot be escaped. Same client_id/secret and same Google account as
-#    the parent's remote; the unverified-app interstitial is
+#    root cannot be escaped. The unverified-app interstitial is
 #    Advanced -> Go to <app> (unsafe).
-rclone config create gdrive-wifey drive client_id=<ID> client_secret=<SECRET> scope=drive
+#
+#    ⚠ THE `>/dev/null` IS LOAD-BEARING. `rclone config create` DUMPS THE WHOLE
+#    REMOTE TO STDOUT ON SUCCESS -- client_secret, access_token AND
+#    refresh_token -- with no flag asked for and no warning. It is not an error
+#    path or a verbose mode; it is the normal output. That is how a live token
+#    reached a session transcript twice on 2026-08-15. "Do not paste the
+#    output" is not the fix, because it puts the burden on whoever is watching;
+#    not printing it is.
+#
+#    Read the client out of the existing remote rather than by eye -- copying a
+#    secret by hand is the other way it ends up on a screen:
+CID=$(rclone config show gdrive | awk -F' = ' '/^client_id/{print $2}')
+CSEC=$(rclone config show gdrive | awk -F' = ' '/^client_secret/{print $2}')
+rclone config create gdrive-wifey drive \
+    client_id="$CID" client_secret="$CSEC" scope=drive >/dev/null
 
 # 3. Its own folder at the Drive root, then pin it BY ID
 rclone mkdir gdrive-wifey:wifey-backups
@@ -255,8 +268,23 @@ systemctl --user daemon-reload
 systemctl --user enable --now wifey-backup-offsite.timer
 ```
 
-⚠ **Never paste step 2's output back into a session or a chat** — it contains a live
-refresh token, which is exactly how one leaked on 2026-08-15.
+⚠ **`rclone config create` prints the whole remote — including `refresh_token` — to
+stdout on success.** No flag requests it and nothing warns you. Two live credentials
+reached session transcripts this way on 2026-08-15, the second *after* everyone
+involved knew about the first, because the mitigation in play was "don't paste the
+output" rather than "don't print it". Redirect it.
+
+**Rotating a leaked token — both remotes, in this order:**
+
+1. `myaccount.google.com/permissions` → the rclone app → **Remove all access**.
+   Re-consenting is *not* enough: Google keeps ~100 live refresh tokens per
+   client+user, so the old one survives a re-grant. The grant record must be removed.
+2. `rclone config reconnect gdrive:` **and** `rclone config reconnect gdrive-wifey:`.
+   ⚠ **Both**, because they share one `client_id` — revoking the app kills the
+   parent's access too. `reconnect` preserves `root_folder_id`; **`config delete`
+   drops it**, so never rotate that way.
+3. Verify: "Access given on" must show a **new** timestamp, and `rclone lsf` on each
+   remote must still be confined (`snapshots/` for the parent, empty for wifey).
 
 Three guards, deliberately at different layers:
 
