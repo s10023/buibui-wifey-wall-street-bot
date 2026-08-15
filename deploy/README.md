@@ -272,7 +272,14 @@ systemctl --user enable --now wifey-backup-offsite.timer
 stdout on success.** No flag requests it and nothing warns you. Two live credentials
 reached session transcripts this way on 2026-08-15, the second *after* everyone
 involved knew about the first, because the mitigation in play was "don't paste the
-output" rather than "don't print it". Redirect it.
+output" rather than "don't print it". Redirect it. Verified upstream against a dummy
+non-OAuth remote (`rclone config create __leaktest alias remote=/tmp`), so the
+behaviour is the command's, not something about Drive.
+
+⚠ **The interactive `rclone config` wizard prints the same block and CANNOT be
+redirected** — hiding stdout would hide the prompts you have to answer. So prefer the
+non-interactive `config create` form above; when the wizard is unavoidable, clear the
+scrollback afterwards rather than trusting yourself to scroll past it.
 
 **Rotating a leaked token — both remotes, in this order:**
 

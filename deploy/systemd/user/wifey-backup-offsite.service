@@ -20,6 +20,17 @@ Documentation=file:///home/kng/repo/buibui-wifey-wall-street-bot/deploy/backup-o
 # off-site sync of the snapshots that already succeeded.
 After=wifey-backup.service
 
+# A stale off-machine copy fails silently by construction: nobody watches a
+# timer that works. There is no healthchecks.io wiring and no run-job.sh in this
+# fork -- both are parent-only -- so this Telegram alert is the ONLY signal.
+#
+# ⚠ [Unit], NOT [Service]. systemd parses OnFailure in [Service] as an unknown
+# key, logs "ignoring", and runs the unit anyway, so the alert is silently
+# unarmed while everything looks healthy. wifey-backup.service shipped that way
+# and was caught by `systemd-analyze verify` on 2026-08-15; `systemctl start`
+# cannot catch it, because the unit genuinely works.
+OnFailure=wifey-backup-alert.service
+
 [Service]
 Type=oneshot
 WorkingDirectory=/home/kng/repo/buibui-wifey-wall-street-bot
@@ -40,12 +51,6 @@ Environment=PATH=/usr/local/bin:/usr/bin:/bin
 SyslogIdentifier=wifey-backup-offsite
 
 ExecStart=/home/kng/repo/buibui-wifey-wall-street-bot/deploy/backup-offsite.sh
-
-# A backup that fails silently is the failure mode this whole unit exists to
-# prevent, one level up. There is no healthchecks.io wiring and no run-job.sh in
-# this fork -- both are parent-only -- so the Telegram alert is the ONLY signal
-# an operator gets that the off-machine copy has gone stale.
-OnFailure=wifey-backup-alert.service
 
 # Sized from OBJECT COUNT, which is the real cost on Drive -- per-file API
 # overhead dominates, not bytes. Measured 2026-08-15: this root is 228 files /

@@ -109,7 +109,12 @@
 # this way on 2026-08-15, the second AFTER everyone involved knew about the
 # first, because the mitigation in play was "do not paste the output" rather
 # than "do not print it". A rule that depends on a human noticing is not a
-# control; the redirect is.
+# control; the redirect is. Verified against a dummy non-OAuth remote, so it is
+# the command's behaviour rather than anything about Drive.
+#
+# The INTERACTIVE `rclone config` wizard prints the same block and CANNOT be
+# redirected -- hiding stdout would hide its prompts. Prefer the non-interactive
+# form above; if the wizard is unavoidable, clear the scrollback afterwards.
 #
 # Rotating a leak: remove the grant at myaccount.google.com/permissions (a
 # re-consent is NOT enough -- Google keeps ~100 live refresh tokens per

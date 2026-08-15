@@ -428,14 +428,20 @@ go-live:
 # $WIFEY_BACKUP_ROOT (default ~/backups/wifey). Verified and atomically
 # published, so a snapshot at the final path is always restorable.
 # This is the LIKELY-failure leg only — it does not survive disk loss.
+# Sources .env for the same reason the off-site targets below do: both units
+# carry EnvironmentFile=, so a hand-run that skipped it would apply the built-in
+# 14/8 retention while the TIMER applied whatever .env says — a hand-run and a
+# scheduled run pruning to different depths, with nothing reporting a
+# difference. No WIFEY_KEEP_* is set today, so this is latent, not live.
 backup:
-	@echo "💾 Verified local backup → $${WIFEY_BACKUP_ROOT:-$$HOME/backups/wifey}"
-	./deploy/backup-analytics.sh --weekly-if-due
+	@set -a; [ -f .env ] && . ./.env; set +a; \
+		echo "💾 Verified local backup → $${WIFEY_BACKUP_ROOT:-$$HOME/backups/wifey}"; \
+		./deploy/backup-analytics.sh --weekly-if-due
 
 # Report what would be captured; writes nothing. Use this after adding anything
 # to docs/plans to confirm the file count moved.
 backup-dry-run:
-	./deploy/backup-analytics.sh --dry-run
+	@set -a; [ -f .env ] && . ./.env; set +a; ./deploy/backup-analytics.sh --dry-run
 
 # Off-machine leg: rclone sync of $WIFEY_BACKUP_ROOT to $WIFEY_BACKUP_REMOTE.
 # This is the one that survives disk death or a lost laptop. It syncs whatever
@@ -445,14 +451,19 @@ backup-dry-run:
 # folder (gdrive-wifey:snapshots) — that separation is what keeps this off the
 # crypto parent's snapshot tree on the same Drive account, NOT the script's own
 # guards, which cannot tell a same-shaped sibling from our data.
+# Both targets source .env, because unlike `backup` this script REQUIRES config
+# and would otherwise fail "WIFEY_BACKUP_REMOTE is unset" on every hand-run.
+# The systemd unit reads the same file via EnvironmentFile= instead.
 backup-offsite:
-	@echo "☁️  Off-site backup → $${WIFEY_BACKUP_REMOTE:-<WIFEY_BACKUP_REMOTE unset>}"
-	./deploy/backup-offsite.sh
+	@set -a; [ -f .env ] && . ./.env; set +a; \
+		echo "☁️  Off-site backup → $${WIFEY_BACKUP_REMOTE:-<unset: see deploy/README.md>}"; \
+		./deploy/backup-offsite.sh
 
 # Report what would upload and what would be DELETED remotely; writes nothing.
-# Always run this first after changing WIFEY_BACKUP_REMOTE.
+# Always run this first after changing WIFEY_BACKUP_REMOTE, and read the DELETE
+# lines rather than only the copies — deletions are the direction that loses data.
 backup-offsite-dry-run:
-	./deploy/backup-offsite.sh --dry-run
+	@set -a; [ -f .env ] && . ./.env; set +a; ./deploy/backup-offsite.sh --dry-run
 
 docker-signal-watch:
 	@echo "🔍 Running signal detection daemon in Docker..."
