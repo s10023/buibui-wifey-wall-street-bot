@@ -169,19 +169,94 @@ in <module>`, Telegram's HTML parser reads the bare `<` as an unclosed tag and
 answers 400, and the alert failed on precisely the crashes it exists to report.
 `utils/telegram.py` now drops `parse_mode` and retries as plain text on a 400.
 
-## Off-site — the leg that is not built here
+## Off-site — the leg that survives losing the laptop
 
-Not implemented in this fork: no `deploy/backup-offsite.sh`, no rclone dependency,
-no remote. The layout above is deliberately a single directory so that port stays a
-sync of `$WIFEY_BACKUP_ROOT` rather than a rewrite, and `.env` is already excluded
-from the snapshot because a credential must not ride along to a third-party remote.
+`deploy/backup-offsite.sh` (`make backup-offsite`, `make backup-offsite-dry-run`)
+rclones `$WIFEY_BACKUP_ROOT` to `$WIFEY_BACKUP_REMOTE`. It snapshots nothing itself
+— it syncs whatever the local leg already verified, so exactly one place decides
+what a good snapshot is. `.env` is excluded from that tree on purpose: a credential
+must not ride along to a third-party remote.
 
-Upstream walkthrough: parent PRs **#582 / #587** (size, provider choice, rclone
-setup) and **#631** (destination guards). Read #631 *before* writing the script
-here — `rclone sync` mirrors deletions in **both** directions, and #582 / #587 only
-guard the source. The parent's script refuses an empty source (no `MANIFEST.json`
-is a fault, never "nothing to do"); nothing guarded the far side, where a mistyped
-`*_BACKUP_REMOTE` mirrors the snapshot tree over the target and deletes the rest.
+`sync` mirrors deletions in **both** directions. Source side is guarded upstream (no
+`MANIFEST.json` is a fault, never "nothing to do"). The far side is what the guards
+below exist for: a mistyped `WIFEY_BACKUP_REMOTE` mirrors the snapshot tree over the
+target and deletes the rest.
+
+### What actually runs here
+
+| | |
+| --- | --- |
+| Remote | `gdrive-wifey:snapshots` — wifey's **own** rclone remote, not a path on the parent's |
+| Pinned root | `wifey-backups`, pinned by folder **ID**, so renaming it in Drive is safe |
+| Account | the operator's *personal* Google Drive, 100 GiB, shared with the crypto parent |
+| Isolation | **structural** — `gdrive` is pinned to `buibui-backups`, `gdrive-wifey` to `wifey-backups`; neither remote can address the other |
+| Timer | `wifey-backup-offsite.timer`, 13:55 UTC daily (opt-in, nothing installs it) |
+| First sync | 228 files / 450 MB → **~5 min** |
+
+⚠ **Two remotes, not one remote with two paths — and the difference is not
+cosmetic.** `gdrive` is pinned to `buibui-backups`, so *every* path on it resolves
+inside that folder: `gdrive:wifey-snapshots` would land **nested under the parent's
+backup**, not beside it, and one typo of `gdrive:snapshots` would still delete the
+parent's tree. A second remote pinned to its own folder makes that **impossible**
+rather than merely discouraged — rclone cannot navigate above a pinned root, so even
+a bare `gdrive-wifey:` stays inside wifey's folder. Same upgrade `root_folder_id`
+bought in the first place: care becomes cannot.
+
+**Sizing is per-FILE, not per-byte.** Measured in the parent 2026-08-15: 2.32 GiB
+across 1,726 objects took ~32 min, and the first 68 objects carried 2.275 GiB in
+~15% of the wall clock. Drive's per-file API overhead dominates, so estimate from
+`find $WIFEY_BACKUP_ROOT -type f | wc -l`, not from `du`. wifey's 228 files are ~7.5×
+fewer than the parent's, hence the ~5 min above. `--checksum` makes re-syncs
+near-instant.
+
+Provenance for the two upstream PRs this derives from: parent **#582 / #587** (size,
+provider choice, rclone setup) and **#631** (destination guards).
+
+### Setup — what is done, and the one step that needs the operator
+
+rclone is installed (v1.74.3, distro package at `/usr/bin` — **not** linuxbrew as in
+the parent). Everything from step 2 on is outstanding, and **step 2 cannot be run
+from a session**: the browser OAuth flow is interactive and hits EOF on the first
+prompt through a `!` prefix.
+
+```bash
+# 1. rclone installed                                        [DONE - v1.74.3]
+sudo dnf install rclone
+
+# 2. wifey's OWN remote, UNPINNED so it can still see the Drive root.
+#    ORDER MATTERS -- the remote must exist before its folder, because a pinned
+#    root cannot be escaped. Same client_id/secret and same Google account as
+#    the parent's remote; the unverified-app interstitial is
+#    Advanced -> Go to <app> (unsafe).
+rclone config create gdrive-wifey drive client_id=<ID> client_secret=<SECRET> scope=drive
+
+# 3. Its own folder at the Drive root, then pin it BY ID
+rclone mkdir gdrive-wifey:wifey-backups
+rclone lsf gdrive-wifey: --dirs-only --format ip | grep wifey-backups
+rclone config update gdrive-wifey root_folder_id=<FOLDER_ID> --non-interactive
+
+# 4. PROVE the pin. Must print NOTHING (the folder is empty), never the Drive
+#    root. Step 3's output cannot tell you this -- see the rules below.
+rclone lsf gdrive-wifey:
+
+# 5. Wire it in. The path is RELATIVE to the pinned root.
+echo 'WIFEY_BACKUP_REMOTE=gdrive-wifey:snapshots' >> .env
+echo 'WIFEY_RCLONE_FLAGS=--drive-use-trash=false' >> .env
+
+# 6. Dry-run BEFORE the timer exists. Read the DELETE lines, not just the copies.
+make backup-offsite-dry-run
+
+# 7. First real sync by hand (~5 min at 228 files)
+make backup-offsite
+
+# 8. Only now install the timer
+cp deploy/systemd/user/wifey-backup-offsite.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now wifey-backup-offsite.timer
+```
+
+⚠ **Never paste step 2's output back into a session or a chat** — it contains a live
+refresh token, which is exactly how one leaked on 2026-08-15.
 
 Three guards, deliberately at different layers:
 
@@ -198,6 +273,15 @@ Three guards, deliberately at different layers:
 Guards 2 and 3 are tracked code and survive a reclone; guard 1 does not. That is why
 they duplicate it rather than trusting it.
 
+⚠ **Guard 3 compares TOP-LEVEL entries only, so it cannot catch a same-shaped
+sibling.** The parent's tree is `daily/` + `weekly/` exactly like this one; a
+dry-run aimed at it passed every guard and reported deletions of the parent's own
+files (measured 2026-08-15). It catches an *unrelated* destination — someone's
+`Photos/` — which is a different failure. The two pinned roots above are what makes
+this moot between these two repos; the hole is still real for any third tree sharing
+a root, which is why `tests/test_backup_offsite_guards.py` pins it as an explicit
+characterization test rather than leaving it as folklore.
+
 Operating rules, each of them learned upstream:
 
 - **`rclone config delete` drops `root_folder_id`** — rotate a credential with
@@ -206,8 +290,15 @@ Operating rules, each of them learned upstream:
 - **Prove confinement, never assume it**: `rclone lsf <remote>:` must list the
   backup folder's *contents*, not the drive root. That one command is the whole
   proof.
-- **The remote path is relative to the confined root** — `gdrive:snapshots`, not
-  `gdrive:wifey-backups`, which would nest the folder name twice.
+- **The remote path is relative to the pinned root** — `gdrive-wifey:snapshots`, not
+  `gdrive-wifey:wifey-backups`, which would nest the folder name twice.
+- ⚠ **Create the remote BEFORE its folder.** A pinned root cannot be escaped, so
+  `rclone mkdir gdrive:../wifey-backups` does *not* work — that is the whole point of
+  pinning. The new remote starts unpinned, makes its folder at the Drive root, and
+  only then gets pinned.
+- **`rclone config update` on an OAuth remote looks like it failed.** It returns a
+  token-refresh state machine, so the write landing is not inferable from its output.
+  `rclone lsf` is the only thing that settles it.
 - **`--drive-use-trash=false` is load-bearing.** Drive Trash counts against quota
   and auto-empties only after 30 days while retention prunes about one snapshot a
   day, so the default parks GiB of dead snapshots against the quota while `rclone
@@ -218,18 +309,41 @@ Operating rules, each of them learned upstream:
   files it created, so a rebuilt config cannot prune what the old one uploaded, and
   `sync` must be able to delete for retention to work at all.
 
-⚠ **Re-derive the account question rather than inheriting the parent's answer.** The
-parent runs on the operator's *personal* Google Drive — dedicated-account signup was
-blocked on Google's phone verification — so its isolation is folder confinement plus
-guards 2 and 3, not account separation. Whether that holds here depends on which
-account this fork would use, and the answer belongs in this file rather than assumed
-from upstream.
+### The account question, answered
 
-Tests would be the only gate: no shellcheck runs here and no CI step reads `deploy/`.
-Two choices keep them from going vacuous. Every rejection asserts `sync` was **never
-invoked** rather than merely that the exit was 1, because a script dying for an
-unrelated reason also exits 1. And a **positive control** proves a populated *own*
-destination still passes — without it, guard 3 would pass equally well if it rejected
-any non-empty destination, which would break every sync after the first.
-Mutation-test rather than trusting a green suite: disabling either tracked guard must
-fail exactly its own test and nothing else.
+This runs on the operator's **personal** Google Drive — dedicated-account signup was
+blocked on Google's phone verification — so there is no account separation between
+wifey, the crypto parent, and personal files. All the isolation there is comes from
+the two pinned roots plus guards 2 and 3. The OAuth token still carries `scope=drive`
+and would grant the whole account if it leaked; narrowing to `drive.file` is **not**
+the fix, for the reason in the rules above. Moving to a dedicated account later costs
+one `rclone config reconnect` and one re-sync.
+
+⚠ **A credential leaked exactly this way on 2026-08-15** — `rclone config` output
+pasted into a session transcript. It was rotated the same day. The falsifiable check
+that a rotation *actually happened* is **"Access given on" at
+`myaccount.google.com/permissions`**: a re-consent keeps the original timestamp, so
+only a **new** one proves the old grant was removed and its refresh tokens
+invalidated. Google keeps ~100 live refresh tokens per client+user, so re-consenting
+alone does not kill the old one — this is the difference between "revocation was
+requested" and "revocation happened", and it is answerable in ten seconds. Never
+paste config output anywhere; `rclone lsf <remote>:` and `rclone about <remote>:` are
+the safe verifications.
+
+### Testing
+
+The tests are the **only** gate: no shellcheck runs here and no CI step reads
+`deploy/`. `tests/test_backup_offsite_guards.py` holds 9 cases, and three choices
+keep them from going vacuous:
+
+- Every rejection asserts `sync` was **never invoked**, not merely that the exit was
+  1 — a script dying for an unrelated reason also exits 1.
+- A **positive control** proves a populated *own* destination still passes. Without
+  it, guard 3 would pass equally well if it rejected any non-empty destination, which
+  would break every sync after the first.
+- One test asserts a **hole** rather than a guard (`test_same_shaped_sibling_is_NOT_caught`),
+  so guard 3's top-level-only reach is pinned rather than assumed.
+
+**Mutation-tested 2026-08-15, not merely green**: disabling each of the four guards
+in turn fails exactly its own test and nothing else. Re-run that after any edit here
+— a fixture that could never reach the guard reports green either way.

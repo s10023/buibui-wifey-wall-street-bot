@@ -1,0 +1,58 @@
+[Unit]
+# Off-machine leg of the backup: rclone $WIFEY_BACKUP_ROOT to a remote.
+# Type=oneshot, driven by the .timer beside this file.
+#
+# The local wifey-backup unit protects against fat-finger deletes, `git clean
+# -xdf` and tool bugs; every copy it writes is still on the same disk. This unit
+# is the leg that survives losing the laptop.
+#
+# NAMED wifey-*, NOT buibui-*. The crypto parent's buibui-backup-offsite.service
+# and .timer are already installed in this user's systemd instance; reusing the
+# name would have one repo's unit silently shadow the other's.
+#
+# DO NOT `enable` THIS UNTIL WIFEY_BACKUP_REMOTE IS SET -- the script exits 1
+# when it is missing, on purpose, so an unconfigured-but-enabled timer complains
+# every day instead of looking green while protecting nothing.
+Description=wifey off-machine backup (rclone sync of the local snapshot tree)
+Documentation=file:///home/kng/repo/buibui-wifey-wall-street-bot/deploy/backup-offsite.sh
+
+# Ordering only -- NOT Requires=. A failed local snapshot must not suppress the
+# off-site sync of the snapshots that already succeeded.
+After=wifey-backup.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/kng/repo/buibui-wifey-wall-street-bot
+
+# WIFEY_BACKUP_REMOTE and the Telegram creds are read from the process env
+# before anything else runs. Leading `-` keeps a missing .env from failing the
+# unit (the script then reports the unset remote itself, which is the clearer
+# message).
+EnvironmentFile=-/home/kng/repo/buibui-wifey-wall-street-bot/.env
+
+# User units get a minimal PATH. rclone is the distro package at /usr/bin here,
+# NOT linuxbrew as in the crypto parent -- do not copy that PATH across.
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+
+# Without this, journald tags output with the EXECUTABLE name
+# (backup-offsite.sh) and the entries lose unit attribution -- `journalctl -u`
+# then reads NOTHING while the lines sit in the journal under another identity.
+SyslogIdentifier=wifey-backup-offsite
+
+ExecStart=/home/kng/repo/buibui-wifey-wall-street-bot/deploy/backup-offsite.sh
+
+# A backup that fails silently is the failure mode this whole unit exists to
+# prevent, one level up. There is no healthchecks.io wiring and no run-job.sh in
+# this fork -- both are parent-only -- so the Telegram alert is the ONLY signal
+# an operator gets that the off-machine copy has gone stale.
+OnFailure=wifey-backup-alert.service
+
+# Sized from OBJECT COUNT, which is the real cost on Drive -- per-file API
+# overhead dominates, not bytes. Measured 2026-08-15: this root is 228 files /
+# 450MB, against the parent's 1,726 files / 2.32GiB that took ~32 min, so the
+# first full upload here is ~5 min. Later runs move one new snapshot and
+# --checksum makes the rest near-instant. The ceiling is ~12x that estimate,
+# which covers a slow uplink without letting a wedged transfer hang for hours.
+TimeoutStartSec=3600
+Nice=19
+IOSchedulingClass=idle

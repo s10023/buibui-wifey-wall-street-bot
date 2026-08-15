@@ -12,7 +12,7 @@ PYTHON_FILES = $(shell find . -name "*.py" -not -path "./venv/*" -not -path "./.
 DOCKER_IMAGE = wifey-bot
 MEMORY = $(HOME)/.claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot/memory/MEMORY.md
 
-.PHONY: status wait-ci lint lint-md lint-md-fix docs-index docs-index-check lint-py-check lint-py typecheck test test-cov test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-universe-backfill universe-coverage universe-stamp-listed wifey-forecast-audit wifey-xsmom-audit wifey-xsmom-residual-audit wifey-lowvol-audit wifey-xasset-audit wifey-xasset-backfill wifey-pead-audit wifey-pead-backfill wifey-velocity-audit wifey-exit-audit wifey-exit-replay wifey-warning-value-audit wifey-pundit-score wifey-check-levels wifey-route-dedup-seed wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep backup backup-dry-run wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent check-dead-surfaces check-orphan-tests wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
+.PHONY: status wait-ci lint lint-md lint-md-fix docs-index docs-index-check lint-py-check lint-py typecheck test test-cov test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-universe-backfill universe-coverage universe-stamp-listed wifey-forecast-audit wifey-xsmom-audit wifey-xsmom-residual-audit wifey-lowvol-audit wifey-xasset-audit wifey-xasset-backfill wifey-pead-audit wifey-pead-backfill wifey-velocity-audit wifey-exit-audit wifey-exit-replay wifey-warning-value-audit wifey-pundit-score wifey-check-levels wifey-route-dedup-seed wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep backup backup-dry-run backup-offsite backup-offsite-dry-run wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent check-dead-surfaces check-orphan-tests wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
 
 lint: lint-md lint-py
 
@@ -436,6 +436,23 @@ backup:
 # to docs/plans to confirm the file count moved.
 backup-dry-run:
 	./deploy/backup-analytics.sh --dry-run
+
+# Off-machine leg: rclone sync of $WIFEY_BACKUP_ROOT to $WIFEY_BACKUP_REMOTE.
+# This is the one that survives disk death or a lost laptop. It syncs whatever
+# `backup` already verified and snapshots nothing itself.
+# ⚠ `sync` MIRRORS DELETIONS. Read deploy/README.md's off-site section before
+# setting WIFEY_BACKUP_REMOTE. wifey has its OWN rclone remote pinned to its own
+# folder (gdrive-wifey:snapshots) — that separation is what keeps this off the
+# crypto parent's snapshot tree on the same Drive account, NOT the script's own
+# guards, which cannot tell a same-shaped sibling from our data.
+backup-offsite:
+	@echo "☁️  Off-site backup → $${WIFEY_BACKUP_REMOTE:-<WIFEY_BACKUP_REMOTE unset>}"
+	./deploy/backup-offsite.sh
+
+# Report what would upload and what would be DELETED remotely; writes nothing.
+# Always run this first after changing WIFEY_BACKUP_REMOTE.
+backup-offsite-dry-run:
+	./deploy/backup-offsite.sh --dry-run
 
 docker-signal-watch:
 	@echo "🔍 Running signal detection daemon in Docker..."
