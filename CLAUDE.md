@@ -104,6 +104,23 @@ them into a doc** — each has a history of being quoted stale.
 `steps=0`, the Actions-allowance failure that renders exactly like a real one (flip the repo
 public, never debug it), and **1** on a genuine failure.
 
+⚠ **Never write a `pgrep` waiter for a background job — wait for the task notification.**
+`until ! pgrep -f 'pytest tests/'` matches the polling shell's own argv and waits on itself; the
+bracketed fix exits instantly instead, so an empty log reads as "done". If a waiter is unavoidable,
+assert a positive marker (`grep -q ALLDONE`), never an absence. Both variants were already in memory
+`reference_env_gotchas.md` and were not read, which cost three mutually-deadlocked waiters and an
+hour. That is why the rule is here rather than there.
+
+`CATCH_UP=1 make go-live` is the **manual one-shot** dispatch. There is no wifey signal daemon or
+scheduler — the only `wifey-*` unit is `wifey-backup-offsite.timer`, and `buibui-signal-watch.*` in
+systemd belongs to the parent — so "restart signal watch" is a non-instruction. It is operator-only
+because Telegram goes out, and ratings reload every run. **Run it pre-open, not after the close**:
+`1d` bars stamp 04:00/05:00 UTC and close the next day, so at the bell that session's daily bar is
+still forming.
+
+Re-run `make universe-stamp-listed` after any membership or backfill change: a new constituent
+arrives unstamped, and unstamped is the permissive value.
+
 Markdown changes: `make lint-md`, which covers `.claude/` skills and context, so a skill edit lints
 like any other file. **Do not re-add a `!.claude` exclusion to `.markdownlint-cli2.jsonc`** — the
 tree accumulated 245 issues while it was there, and an excluded-tree failure is silent.
@@ -443,6 +460,10 @@ through `poetry add` / `poetry remove` rather than by hand.
 
 Update `README.md` when changes affect project structure, CLI commands, features or behaviour.
 
+`docs/system-overview.md` is the best single onboarding read. §9 is safe to send externally, and
+§4's figures each ship the query that produced them — re-run those rather than editing a number in
+place.
+
 ### Where knowledge goes
 
 **If a session would not know to go look something up, it must be always-loaded; if it would, it
@@ -470,7 +491,8 @@ The index is read into context every session, so its size is a per-conversation 
 makes each update O(1) — add one line, roll one out:
 
 - Current State holds at most 6 bullets. Adding a 7th means first rolling the oldest, verbatim,
-  into `memory/project_session_log_<month>.md`.
+  into `memory/project_session_log_<month>.md`. After rolling one, grep the log to confirm it landed.
+- The whole index stays under ~17KB; a hook fires at 19.7KB.
 - "Last session" is at most 2 lines; every other bullet is exactly 1 line.
 - Session logs have no size limit. Prune by moving, never by deleting.
 - Open questions live in `memory/project_open_questions.md`. They are live state, so they cannot be
@@ -555,7 +577,10 @@ to private kills whichever jobs are created after the flip. `Regression tests` n
 `lint-typecheck-test` and is not created until ~4 minutes in, so an early flip leaves it at
 `steps=0` and main looks red for billing reasons rather than code ones. Poll the run's jobs until
 all report `status == completed` rather than flipping when the chained job is merely created, and
-never sleep blindly.
+never sleep blindly. **Gate on a job-count floor, not on "nothing pending"** — the status check is
+vacuously true while a chained job does not yet exist, so wait for the count to reach 5 (it arrives
+as 3, then 5). After a corrective push, confirm `headRefOid` changed before trusting a check
+rollup, which can otherwise report the previous run.
 
 **A merge-run failure at ~3s with `steps=0` and `visibility=PRIVATE` is billing.** Verify duration,
 visibility and step count, then merge. Never debug it.
