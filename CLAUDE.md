@@ -100,9 +100,11 @@ make test           # full pytest suite (make test-cov for coverage)
 MEMORY.md size and bullet count, audits, skills, tools. **Print these rather than writing any of
 them into a doc** — each has a history of being quoted stale.
 
-`make wait-ci PR=<n>` waits for a PR's checks and reports whether they *ran*. It exits **3** on
-`steps=0`, the Actions-allowance failure that renders exactly like a real one (flip the repo
-public, never debug it), and **1** on a genuine failure.
+`make wait-ci PR=<n>` waits for a PR's checks and reports whether they *ran*. `tools/wait_ci.py`
+exits **3** on `steps=0`, the Actions-allowance failure that renders exactly like a real one (flip
+the repo public, never debug it), and **1** on a genuine failure. ⚠ **Through `make` you see
+neither** — GNU make collapses any recipe failure to its own exit **2**, so branch on the printed
+banner, or call `poetry run python tools/wait_ci.py --pr <n>` directly when you need the code.
 
 ⚠ **Never write a `pgrep` waiter for a background job — wait for the task notification.**
 `until ! pgrep -f 'pytest tests/'` matches the polling shell's own argv and waits on itself; the
