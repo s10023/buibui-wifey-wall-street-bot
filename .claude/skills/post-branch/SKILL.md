@@ -44,12 +44,15 @@ final tree either way. Practical consequence: **Step 6 composes the initial
 The steps below are numbered from when the sweep ran post-PR. The numbering is
 kept so existing references still resolve, but the running order is now:
 
-1. Steps 1–5d — behaviour gate, changed artifacts, doc walk, surface checks,
-   MEMORY.md, **SoT reconcile**, **claims audit**, **doc-index check**. All pure
-   local work; no PR, no `gh`, no network. Steps 5b and 5c write nothing to the
-   repo (the SoT lives outside it, and the claims audit edits prose the branch
-   already has), so both are free of CI either way. **5b, 5c and 5d run
-   regardless of the Step 1 gate.**
+0. **`git add -A`** — stage first, so the `--diff-filter=A` checks can see
+   untracked new files at all. Steps 1–5 then use `git diff main` (two dots),
+   never `main...HEAD`, which is vacuous before Step 7's commit.
+1. Steps 1–5e — behaviour gate, changed artifacts, doc walk, surface checks,
+   MEMORY.md, **SoT reconcile**, **claims audit**, **doc-index check**,
+   **markdown pre-lint**. All pure local work; no PR, no `gh`, no network. Steps
+   5b and 5c write nothing to the repo (the SoT lives outside it, and the claims
+   audit edits prose the branch already has), so both are free of CI either way.
+   **5b, 5c, 5d and 5e run regardless of the Step 1 gate.**
 2. **Step 7** — commit the doc edits and `git push -u origin <branch>`.
 3. **Step 6** — compose the "Documentation updates" section.
 4. `gh pr create --body …` with that section already **in** the initial body.
@@ -156,10 +159,29 @@ Read the branch's diff. There is normally **no PR yet**, so this is pure git —
 no `gh` call, and no network:
 
 ```bash
-git diff main...HEAD --stat
-git diff main...HEAD -- .
-git log main..HEAD --oneline
+git diff main --stat
+git diff main -- .
+git log main..HEAD --oneline    # empty until Step 7 commits; informational only
 ```
+
+⚠ **Use `git diff main`, not `git diff main...HEAD`, in Steps 1–5.** This skill
+runs *before* its own Step 7 commit by design, so on a clean-but-uncommitted
+tree `main...HEAD` diffs two identical trees: every check reports "no changes",
+the behaviour gate says "not user-facing", and the whole walk passes
+**vacuously**. `git diff main` compares the working tree instead and sees the
+uncommitted work. Every command in this skill now uses the two-dot form; reach
+for `main...HEAD` only if you add a step that runs after Step 7 and genuinely
+wants merge-base semantics. **A check that is
+vacuously true at t=0 is not a check** — same defect shape as the
+`assert_no_change` tests in CLAUDE.md's Testing section.
+
+⚠ **Run `git add -A` first, before anything else in Step 1.** `git diff` in any
+form cannot see an *untracked* file, so the `--diff-filter=A` checks in Step 4
+(new modules vs `.claude/context/`, new non-Python files vs the docs that
+enumerate by filename) silently report zero added files on a branch whose new
+code is untracked — the precise case they exist to catch. Staging is harmless
+and reversible, Step 7 commits anyway, and it makes every later `git diff main`
+in this walk complete.
 
 (Running late, on a branch whose PR already exists? `gh pr view <PR#> --json
 title,body,baseRefName,headRefName,files` still works — but prefer the git form,
@@ -376,6 +398,40 @@ needed no edit, and that silence was the most informative thing in the sweep.
 
 **A doc/code mismatch is not automatically doc drift.**
 
+### 3.4 — A changed verdict: grep the WORDING, not the filename
+
+When a branch edits a `**Verdict:**` line — a sleeve verdict, an audit's
+FOUND / BOUNDED / EXCLUDED / BLOCKED label, a retracted statistic — the filename
+grep finds the audit and stops. **Grep the old claim's distinctive wording across
+every doc surface**, because the prose that *quotes* a verdict lives nowhere near
+the file that declares it.
+
+One PR left four surfaces carrying a retracted statistic. The generated
+`INDEX.md` self-corrected on regeneration; every hand-written surface quoting it
+did not. Pick the two or three most distinctive tokens from the retracted
+sentence — a number, a metric name, a coined phrase — and grep those, not the
+verdict word, which is too common to discriminate.
+
+### 3.5 — Rewrote or compressed a doc? Diff the IDENTIFIERS, not the prose
+
+Reading a rewritten doc for "what looks missing" does not work: the new version
+reads complete, because it was written to. **Extract the backticked tokens from
+both versions, subtract, and triage the remainder** — every identifier the old
+version carried that the new one does not is either deliberately re-homed or an
+omission, and you have to say which.
+
+```bash
+toks() { grep -oE '`[^`]+`' "$1" | sort -u; }
+git show main:<path> > /tmp/old.md
+comm -23 <(toks /tmp/old.md) <(toks <path>)   # in old, gone from new
+```
+
+Two repos, two for two: on PR #203 this surfaced three real omissions a hand read
+had passed, and the crypto parent ran the same check on its own doc slim and
+caught one there (a number proving a circuit breaker was inert). In both cases
+**nothing else in the sweep found anything**. Re-homing counts as covered only if
+you can name the destination file.
+
 ---
 
 ## Step 3b — Negative-claim sweep (run whenever the PR ADDS something)
@@ -501,7 +557,7 @@ to know the answer, and they still do.
 
   ```bash
   # every module this branch ADDS vs. what the context docs actually document
-  git diff main...HEAD --diff-filter=A --name-only -- '*.py' | while read -r f; do
+  git diff main --diff-filter=A --name-only -- '*.py' | while read -r f; do
     case $f in tests/*|docs/*) continue;; esac
     grep -rqsw -e "$f" -e "$(basename "$f" .py)" .claude/context/ \
       || echo "UNDOCUMENTED: $f"
@@ -553,7 +609,7 @@ to know the answer, and they still do.
 
   ```bash
   # non-Python files this branch ADDS, vs every doc that enumerates by filename
-  git diff main...HEAD --diff-filter=A --name-only \
+  git diff main --diff-filter=A --name-only \
     | grep -vE '^(tests|docs)/|\.py$' | while read -r f; do
       grep -rqsw "$(basename "$f")" .claude/context/ deploy/README.md README.md \
         || echo "UNDOCUMENTED FILE: $f"
@@ -641,8 +697,8 @@ claim about it:
 
 ```bash
 HANDOFF=docs/plans/next-conversation-prompt.md
-{ git diff main...HEAD --name-only | xargs -n1 basename | sed 's/\.py$//'
-  git diff main...HEAD -- '*.py' \
+{ git diff main --name-only | xargs -n1 basename | sed 's/\.py$//'
+  git diff main -- '*.py' \
     | grep -oE '^[+-][[:space:]]*(def|class)[[:space:]]+[A-Za-z_][A-Za-z0-9_]*' \
     | awk '{print $NF}'
 } | sort -u | while read -r s; do
@@ -673,15 +729,23 @@ State"** at the end of every session. This is project policy (CLAUDE.md
 
 - Rewrite the "Last session" bullet to today's date + branch name + a one-line
   summary of what changed
-- **There is no "Previous session" bullet, and there has not been one.** This
-  step said *"move the previous 'Last session' entry to 'Previous session'"*
-  until 2026-08-13 (ported from parent #581, which hit the same defect). That
-  described a protocol `MEMORY.md` does not implement, so every run silently
-  worked around it by hand. **A step that is wrong every run and correct never
-  is worse than no step.** The oldest bullet is rolled into the month's session
-  log, not into a second bullet. The authority is CLAUDE.md's "Session Memory
-  Protocol"; if the two ever disagree, CLAUDE.md wins and this text is the side
-  to fix
+- **The roll is THREE-way, because Current State carries both a "Last session"
+  and a "Prior session" bullet.** Today's entry becomes **Last session**, the
+  existing Last session becomes **Prior session**, and the existing Prior
+  session goes **verbatim into `memory/project_session_log_<month>.md`**. Grep
+  the log afterwards to confirm it landed.
+
+  History worth keeping, because this step has now been wrong in both
+  directions. Until 2026-08-13 it said *"move the previous 'Last session' entry
+  to 'Previous session'"* (ported from parent #581), naming a bullet that did
+  not exist. The correction over-shot to *"there is no 'Previous session'
+  bullet, and there has not been one"* — but a **Prior session** bullet does
+  exist, so every run since re-derived the third leg by hand, which is the exact
+  failure the correction was written to kill. **A step that is wrong every run
+  and correct never is worse than no step**, and that cuts both ways: check the
+  live file rather than the last person's description of it. The authority is
+  CLAUDE.md's "Session Memory Protocol"; if the two disagree, CLAUDE.md wins and
+  this text is the side to fix
 - Convert any relative dates ("Thursday") to absolute (`2026-05-01`)
 - Update / remove open questions in `memory/project_open_questions.md`
 
@@ -762,7 +826,7 @@ handoff — **and, for each, name the query or command that reproduces it.** A c
 whose reproduction you cannot state is not ready to ship: cut it, soften it to
 what you did measure, or go measure it.
 
-Three shapes to hunt specifically:
+Four shapes to hunt specifically:
 
 1. **A claim about a MECHANISM supported only by a COUNT.** Both 2026-08-12
    failures had this shape — `"the run wrote zero ledger rows"` (grouped by the
@@ -777,6 +841,14 @@ Three shapes to hunt specifically:
    If the branch repeats it, the branch owns it.
 3. **An upstream number quoted as this repo's.** A ported fix's measured impact
    upstream is not wifey's; re-derive it here or say "preventive, not a repair".
+4. **A RATE with no null.** "X% of Y does Z within N" is not a finding until it
+   states what fraction of an arbitrary comparable does Z within N. This step
+   passed *"90.3% of gaps fill within 60 sessions"* as **true** — and it is true.
+   A matched placebo level fills 88.9%, so the gap-specific content was **+1.5pp**
+   and the sentence was inert. **This step audits whether a number is true, never
+   whether it is informative**, so the null has to be demanded explicitly. Applies
+   to fill rates, win rates, hit rates, "N% of alerts resolve by bar k" — any
+   proportion offered as evidence that a mechanism exists.
 
 Record the reproduction in the commit message or the audit doc, not just in
 the session — that is what makes the next challenge cheap.
@@ -805,6 +877,34 @@ sub-second, so it belongs before the commit that opens the PR.
 **Why it ignores Step 1's behaviour gate**, like 5b and 5c: a PR whose only new
 prose is an audit doc can legitimately gate as *skip* (bug fix + regression test,
 no behaviour change), and that is precisely the PR this catches.
+
+---
+
+## Step 5e — Markdown pre-lint (whenever the branch touches `.md`; before Step 7)
+
+One sub-second grep that costs a full lint cycle when missed. Run it over the
+branch's changed Markdown, then `make lint-md` for the real check.
+
+```bash
+git diff main --name-only -- '*.md' | xargs -r grep -nE '^#[0-9]'
+```
+
+It has **zero false positives**. A line that *wraps* so a PR reference lands in
+column 1 becomes an MD018 "no-missing-space-atx" heading — the text is correct,
+the reference is correct, and markdownlint is right to reject it. Reword to
+`PR #198` or reflow the line. Nothing about the sentence looks wrong on screen,
+which is why it survives a read and dies in CI.
+
+⚠ **Pipe into `xargs`; do not collect the list in a variable.** The obvious form
+— `CHANGED=$(git diff …); grep -nE '^#[0-9]' $CHANGED` — is broken in **zsh**,
+this repo's shell: zsh does not word-split an unquoted parameter, so the whole
+newline-joined list arrives as one filename, grep exits non-zero on "No such
+file or directory", and a `||` fallback prints *clean*. The check reports green
+by failing. (Found by running this recipe against its own branch.)
+
+**Why before Step 7 and not in Step 10a**: same reasoning as 5d — a lint failure
+found after `gh pr create` costs a second push and a second five-check matrix
+inside the paid public-flip window.
 
 ---
 
@@ -1181,6 +1281,28 @@ This exists because a template that overwrites is a template that must name
 what survives.
 
 ### PRUNE on every run — carry-forward is not append-only
+
+**Growth gate — measure at 10b's OPEN, before writing a word.**
+
+```bash
+wc -l docs/plans/next-conversation-prompt.md   # record this as the ceiling
+```
+
+**Refuse to finish 10b with more lines than you started with.** The file already
+carries a line-count stamp, but a stamp only *measures*; with nothing gating,
+"capture this session's lesson" beats "prune" every single run and the file
+ratchets. It reached **300 lines with the prune four runs overdue** before this
+gate existed.
+
+A growth *refusal* rather than an absolute cap, deliberately: a hard cap can
+force deleting a rule that is still live, whereas a refusal only forces you to
+pay for each new line by re-homing an old one — which is the behaviour wanted.
+When a session genuinely must end higher (a new blocking constraint landed),
+say so explicitly in the stamp line rather than silently exceeding it.
+
+**Re-homing is a separate pass, and it runs FIRST.** Move each rule to its
+durable home, verify it landed there (`grep` the destination), and only then cut
+the narrative. A prune that drops a guard is a regression disguised as hygiene.
 
 **Standing rule (user, 2026-08-07).** Carrying content forward is not the same
 as keeping all of it. Every run, delete from the handoff:

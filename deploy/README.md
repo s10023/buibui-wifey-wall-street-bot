@@ -420,4 +420,6 @@ keep them from going vacuous:
 
 **Mutation-tested 2026-08-15, not merely green**: disabling each of the four guards
 in turn fails exactly its own test and nothing else. Re-run that after any edit here
-— a fixture that could never reach the guard reports green either way.
+— a fixture that could never reach the guard reports green either way. The runnable
+form is `docs/plans/scripts/mutate_backup_offsite_guards.sh` (gitignored); it expects
+4 mutations, each failing one test, and restores the script identical.
