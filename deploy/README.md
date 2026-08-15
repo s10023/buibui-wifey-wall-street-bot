@@ -171,7 +171,65 @@ answers 400, and the alert failed on precisely the crashes it exists to report.
 
 ## Off-site — the leg that is not built here
 
-Not implemented in this fork. The upstream walkthrough (parent PRs #582 / #587,
-`deploy/backup-offsite.sh`) covers size, provider choice, and rclone setup, and
-the layout above is deliberately a single directory so that port stays a
-sync of `$WIFEY_BACKUP_ROOT` rather than a rewrite.
+Not implemented in this fork: no `deploy/backup-offsite.sh`, no rclone dependency,
+no remote. The layout above is deliberately a single directory so that port stays a
+sync of `$WIFEY_BACKUP_ROOT` rather than a rewrite, and `.env` is already excluded
+from the snapshot because a credential must not ride along to a third-party remote.
+
+Upstream walkthrough: parent PRs **#582 / #587** (size, provider choice, rclone
+setup) and **#631** (destination guards). Read #631 *before* writing the script
+here — `rclone sync` mirrors deletions in **both** directions, and #582 / #587 only
+guard the source. The parent's script refuses an empty source (no `MANIFEST.json`
+is a fault, never "nothing to do"); nothing guarded the far side, where a mistyped
+`*_BACKUP_REMOTE` mirrors the snapshot tree over the target and deletes the rest.
+
+Three guards, deliberately at different layers:
+
+1. **`root_folder_id` pinned on the remote** — every path resolves relative to the
+   backup folder and nothing above it is addressable. Strongest, and the only one
+   **not** in version control.
+2. **Reject a remote with no path component.** A bare `remote:` is the whole drive,
+   one character from the correct value. Reject a value with no colon at all too:
+   rclone would write **locally**, a green job with no off-machine copy.
+3. **Reject a destination holding entries the local root does not have.** Derive the
+   allowed set *from* the local root instead of hardcoding the snapshot tiers, so a
+   tier added later is not read as an intruder.
+
+Guards 2 and 3 are tracked code and survive a reclone; guard 1 does not. That is why
+they duplicate it rather than trusting it.
+
+Operating rules, each of them learned upstream:
+
+- **`rclone config delete` drops `root_folder_id`** — rotate a credential with
+  `rclone config reconnect <remote>:`, since delete-and-recreate silently loses
+  confinement.
+- **Prove confinement, never assume it**: `rclone lsf <remote>:` must list the
+  backup folder's *contents*, not the drive root. That one command is the whole
+  proof.
+- **The remote path is relative to the confined root** — `gdrive:snapshots`, not
+  `gdrive:wifey-backups`, which would nest the folder name twice.
+- **`--drive-use-trash=false` is load-bearing.** Drive Trash counts against quota
+  and auto-empties only after 30 days while retention prunes about one snapshot a
+  day, so the default parks GiB of dead snapshots against the quota while `rclone
+  about` still reads healthy.
+- **Never put a directory in a file array** — the `[ -f ]`-guarded loops skip it
+  **silently**. The same gap has landed twice upstream.
+- **Do not narrow the OAuth scope to `drive.file` as a "fix."** It can only touch
+  files it created, so a rebuilt config cannot prune what the old one uploaded, and
+  `sync` must be able to delete for retention to work at all.
+
+⚠ **Re-derive the account question rather than inheriting the parent's answer.** The
+parent runs on the operator's *personal* Google Drive — dedicated-account signup was
+blocked on Google's phone verification — so its isolation is folder confinement plus
+guards 2 and 3, not account separation. Whether that holds here depends on which
+account this fork would use, and the answer belongs in this file rather than assumed
+from upstream.
+
+Tests would be the only gate: no shellcheck runs here and no CI step reads `deploy/`.
+Two choices keep them from going vacuous. Every rejection asserts `sync` was **never
+invoked** rather than merely that the exit was 1, because a script dying for an
+unrelated reason also exits 1. And a **positive control** proves a populated *own*
+destination still passes — without it, guard 3 would pass equally well if it rejected
+any non-empty destination, which would break every sync after the first.
+Mutation-test rather than trusting a green suite: disabling either tracked guard must
+fail exactly its own test and nothing else.
