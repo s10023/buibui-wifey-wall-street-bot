@@ -146,13 +146,26 @@ def test_referenced_repo_paths_exist(path: Path) -> None:
     Only in-repo absolute paths are checked. A leading `-` on EnvironmentFile
     means "tolerate absence" and is skipped, which is why `.env` — gitignored
     and absent on a fresh clone — does not fail this.
+
+    EVERY token is checked, not just the executable. Under a wrapper form like
+    `ExecStart=.../run-job.sh <label> <VAR> -- .../<script>` the script doing
+    the real work sits in the *arguments*, so a first-token-only check would
+    miss a rename of exactly the thing the unit exists to run. wifey's units
+    call their scripts directly today, which is precisely when this kind of
+    scope quietly narrows and nobody notices. Ported from the crypto parent,
+    which uses the wrapper form (2026-08-15).
+
+    Specifiers like `%i` and `%N` are not absolute paths, so they fall out of
+    the prefix test without needing a special case.
     """
     for _section, key, value in parse(path):
         if key not in {"ExecStart", "EnvironmentFile"}:
             continue
-        token = value.split()[0] if value else ""
-        if key == "EnvironmentFile" and token.startswith("-"):
-            continue
-        if not token.startswith(str(REPO_ROOT)):
-            continue
-        assert Path(token).exists(), f"{path.name}: {key} points at missing {token}"
+        for token in value.split():
+            if token.startswith("-"):
+                continue
+            if not token.startswith(str(REPO_ROOT)):
+                continue
+            assert Path(token).exists(), (
+                f"{path.name}: {key} references missing {token}"
+            )
