@@ -770,10 +770,15 @@ atomic rename so a snapshot at the final path is never half-written. If somethin
 the database it retries, then falls back to a lock-free byte copy — it never kills the
 process holding the lock.
 
-This is the **likely-failure** leg only (fat-finger delete, `git clean`, a bad script). It
-does not survive disk death or a lost laptop; that leg is deliberately left as an `rclone
-sync` of one directory. An **opt-in** systemd user timer is documented — nothing installs it,
-and there is still no wifey daemon. Full rationale, coverage policy, and restore procedure:
+That is the **likely-failure** leg only (fat-finger delete, `git clean`, a bad script), and
+it does not survive disk death or a lost laptop. `make backup-offsite` is the leg that does:
+an `rclone sync` of that one directory to `gdrive-wifey:snapshots`, on wifey's **own** rclone
+remote pinned to its own Drive folder so it cannot reach the crypto parent's backups.
+⚠ `sync` mirrors deletions in both directions — read the off-site section before setting
+`WIFEY_BACKUP_REMOTE`, and use `make backup-offsite-dry-run` first.
+
+Both legs ship **opt-in** systemd user timers — nothing installs them, and there is still no
+wifey daemon. Full rationale, setup, coverage policy, and restore procedure:
 [`deploy/README.md`](deploy/README.md).
 
 ### Signal Test — Fire a Test Alert From Historical Data

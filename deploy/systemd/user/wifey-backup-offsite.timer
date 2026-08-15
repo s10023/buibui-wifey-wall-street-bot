@@ -1,0 +1,30 @@
+[Unit]
+Description=Sync the wifey backup tree off-machine once daily
+
+[Timer]
+# 13:55 UTC = 21:55 MYT. Two offsets are load-bearing:
+#
+#   +45 min after wifey-backup.timer's second fire (13:10 UTC), so the day's
+#   snapshot exists and has been verified before this uploads it.
+#
+#   +30 min after the crypto parent's buibui-backup-offsite.timer (13:25 UTC),
+#   which is installed in the SAME user systemd instance and saturates the same
+#   uplink. The two sync different remote paths so they cannot corrupt each
+#   other, but overlapping them would have both crawl.
+#
+# Once daily, not twice: the local leg runs twice (08:10/13:10) to raise the
+# odds of capturing a day on a laptop that is often off, whereas this only has
+# to move whatever the local leg has already verified.
+OnCalendar=*-*-* 13:55:00 UTC
+
+# The whole point on a laptop: after suspend/shutdown, systemd runs the fire it
+# missed once on resume (not once per missed slot).
+Persistent=true
+
+# Wider than wifey-backup.timer's 120s: this one saturates the uplink, so a fire
+# landing exactly on resume-from-suspend competes with everything else the
+# laptop is reconnecting.
+RandomizedDelaySec=900
+
+[Install]
+WantedBy=timers.target

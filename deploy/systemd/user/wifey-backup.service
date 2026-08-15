@@ -13,6 +13,19 @@
 Description=wifey local backup (verified analytics.db snapshot + research tree)
 Documentation=file:///home/kng/repo/buibui-wifey-wall-street-bot/deploy/backup-analytics.sh
 
+# A backup that fails silently is the failure mode this whole unit exists to
+# prevent, one level up. There is no healthchecks.io wiring in this fork, so the
+# alert is the only signal an operator gets.
+#
+# ⚠ THIS BELONGS IN [Unit], NOT [Service]. It sat in [Service] from the unit's
+# introduction until 2026-08-15, where systemd parses it as an unknown key,
+# logs "ignoring" at load, and starts the unit anyway -- so the alert had never
+# been armed and a failed backup would have been silent, which is precisely the
+# thing it exists to prevent. `systemctl start` will not tell you: the unit runs
+# fine. `systemd-analyze verify <unit>` is what names the line, and it is the
+# only check that would have caught this.
+OnFailure=wifey-alert@%N.service
+
 [Service]
 Type=oneshot
 WorkingDirectory=/home/kng/repo/buibui-wifey-wall-street-bot
@@ -35,11 +48,6 @@ SyslogIdentifier=wifey-backup
 # fixed weekday silently skips the parquet export forever. The script asks
 # whether the newest export is >=7 days old instead.
 ExecStart=/home/kng/repo/buibui-wifey-wall-street-bot/deploy/backup-analytics.sh --weekly-if-due
-
-# A backup that fails silently is the failure mode this whole unit exists to
-# prevent, one level up. There is no healthchecks.io wiring in this fork, so the
-# alert is the only signal an operator gets.
-OnFailure=wifey-backup-alert.service
 
 # Measured 2.7s for snapshot + parquet export on the real 153MB file. The
 # generous ceiling covers the lock-retry path: WIFEY_LOCK_RETRIES x

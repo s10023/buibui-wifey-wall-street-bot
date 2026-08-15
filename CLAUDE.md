@@ -138,6 +138,16 @@ than a backup. Coverage is a denylist over a wholesale copy, deliberately not th
 allowlist, because an allowlist over a single-copy tree defaults to uncovered. Rationale, restore
 procedure and the opt-in timer live in `deploy/README.md`.
 
+`make backup-offsite` is the leg that survives disk death: an `rclone sync` of that same root to
+`$WIFEY_BACKUP_REMOTE`. ⚠ **`sync` mirrors deletions in BOTH directions**, so always
+`make backup-offsite-dry-run` after touching the remote. wifey has its **own** rclone remote
+(`gdrive-wifey:snapshots`) pinned to its own Drive folder — that structural separation, not the
+script's guards, is what keeps it off the crypto parent's backups on the same account. The
+in-script intruder guard compares **top-level entries only**, so it cannot tell a same-shaped
+sibling tree from wifey's own; `tests/test_backup_offsite_guards.py` pins that hole deliberately
+and is the script's only gate, since no CI step reads `deploy/`. Never paste `rclone config`
+output anywhere — it carries a live refresh token.
+
 ## CLI
 
 `wifey.py` is the single entry point. Each Makefile `wifey-*` target wraps the equivalent
@@ -179,7 +189,7 @@ entries that have no audit of their own.
 | `tests/` | pytest suite; tests import from lib modules and pass mock dependencies directly | — |
 | `migrations/` | One-shot migration scripts, run by hand. Both refuse to start without a `.bak`, and both rewrite `run_id` and cascade to `backtest_trades`. Routine schema changes go through `analytics/store/schema.py`'s migration list | `context/migrations.md` |
 | `config/` | `stocks.json` (gitignored 13-symbol live watchlist), `universe.json` (committed 505-member research universe), `strategy_params.toml` (shared base inherited via `extends`), `youtube_channels.toml` (gitignored; `.example` committed) | `context/config.md` |
-| `deploy/` | `backup-analytics.sh`, `notify-failure.sh`, and opt-in `wifey-*` systemd user units. Nothing installs them; there is still no wifey daemon | `deploy/README.md` |
+| `deploy/` | `backup-analytics.sh` (local leg), `backup-offsite.sh` (rclone leg), `notify-failure.sh`, and opt-in `wifey-*` systemd user units. Nothing installs them; there is still no wifey daemon | `deploy/README.md` |
 
 ### Sleeve verdicts
 
@@ -390,6 +400,19 @@ why wifey's control asserts the demeaned forecast at `k` moved rather than reusi
 is a smell rather than the finding. `make check-orphan-tests` cannot see this class, since these
 tests all call their subject.
 Audit: `docs/audits/2026-08-13-vacuous-causality-guards.md`.
+
+**A mutation test proves a guard is REACHABLE by its own test, never that its SCOPE matches the
+sentence written beside it.** The loop is closed over what the guard does, so code and test can be
+internally consistent and jointly wrong about coverage — upstream's destination guard shipped that
+way through a full suite, mutation testing, lint and typecheck. After mutation-testing, ask
+separately: *what does the doc sentence claim, and can I construct an input satisfying the claim but
+not the guard?* Then build that input; if it passes, the sentence is wrong, not the test. Three
+distinct shapes now, and they need different fixes — a fixture that can never **reach** the guard
+(vacuous, above), one that reaches it and tests the wrong **scope** (this), and one that reaches it
+at the right scope but asserts against **inputs that do not exist**. The third is the quietest — the
+off-site guard's first draft asserted an intruder rejection using top-level entries the real remote
+has never had, and it would have passed forever. Prefer a characterization test naming a known hole
+over a test asserting a protection you have not constructed.
 
 **A green suite does not mean a test exercises its subject.** Three mechanical guards exist because
 prose did not enforce these constraints:

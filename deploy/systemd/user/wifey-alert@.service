@@ -1,0 +1,27 @@
+[Unit]
+# Telegram the last 25 journal lines of whichever unit failed.
+#
+# TEMPLATED ON PURPOSE. The predecessor, wifey-backup-alert.service, hardcoded
+# `notify-failure.sh wifey-backup`. That was correct while one unit referenced
+# it and silently wrong the moment a second did: an off-site sync failure would
+# have Telegrammed "wifey-backup FAILED" with the LOCAL backup's journal
+# attached -- naming the wrong unit and showing the wrong log, which is worse
+# than no alert because it sends you to a healthy component.
+#
+# Callers use `OnFailure=wifey-alert@%N.service`; %N expands to the failing
+# unit's name without its suffix, and arrives here as %i.
+Description=Telegram alert for a failed %i
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/kng/repo/buibui-wifey-wall-street-bot
+
+# Telegram credentials. Leading `-` so a missing .env does not fail the alert
+# unit itself -- the script degrades to a no-op rather than compounding one
+# failure with a second.
+EnvironmentFile=-/home/kng/repo/buibui-wifey-wall-street-bot/.env
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+
+SyslogIdentifier=wifey-alert
+
+ExecStart=/home/kng/repo/buibui-wifey-wall-street-bot/deploy/notify-failure.sh %i
