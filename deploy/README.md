@@ -213,6 +213,35 @@ rclones `$WIFEY_BACKUP_ROOT` to `$WIFEY_BACKUP_REMOTE`. It snapshots nothing its
 what a good snapshot is. `.env` is excluded from that tree on purpose: a credential
 must not ride along to a third-party remote.
 
+⚠ **A GREEN TIMER DOES NOT MEAN THE BACKUP IS CURRENT** (found 2026-08-17). Only the
+off-site leg is scheduled. It mirrors `$WIFEY_BACKUP_ROOT`, and **nothing populates
+that tree on a timer** — `make backup` is manual. So the nightly job logged
+`off-site backup OK (4 verified snapshots)` while faithfully mirroring a tree frozen
+two days earlier, and **the log line is byte-identical either way**. The success it
+reports is its own, never the freshness of what it copied. **Run `make backup` before
+`make backup-offsite`**, or the sync just re-affirms stale data.
+
+The one visible tell is the **snapshot count failing to increment** across consecutive
+runs — confirmed in the journal, which shows `(4 verified snapshot(s))` followed by
+`off-site backup OK` on two successive nights:
+
+```bash
+journalctl --user -u wifey-backup-offsite.service -o cat | grep 'verified snapshot'
+```
+
+Even that is weak evidence, because the count is also legitimately flat on any day the
+operator did not run the local leg — which is most days. It tells you the mirror is
+stale; it cannot tell you whether that was intended.
+
+This is the same shape as the pundit-ledger bug: a job reporting success about a
+dependency that is silently not being produced. The transferable rule is that **a
+scheduled job can only attest to the step it performs** — if a green light is to mean
+"the data is current", something has to check the *input's* age, not the copy's exit
+code. Two candidate fixes, both unbuilt and a user call: schedule the local leg too,
+or have the off-site leg refuse a source tree whose newest snapshot predates today.
+`systemctl --user list-timers 'wifey-*'` is the only liveness check either way —
+there is no heartbeat, since the failure alert is failure-only.
+
 `sync` mirrors deletions in **both** directions. Source side is guarded upstream (no
 `MANIFEST.json` is a fault, never "nothing to do"). The far side is what the guards
 below exist for: a mistyped `WIFEY_BACKUP_REMOTE` mirrors the snapshot tree over the

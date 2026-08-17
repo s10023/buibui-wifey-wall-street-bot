@@ -312,7 +312,9 @@ From the diff, build a concrete list the doc walk will key off:
 - Each new/renamed/deleted **file** (especially modules listed in CLAUDE.md
   Project Structure)
 - Each new **CLI flag/subcommand** in `wifey.py` / `cli/`
-- Each new **Make target** (lines added like `^[a-z_-]+:` in `Makefile`)
+- Each new **Make target** (lines added like `^[a-z][a-z0-9_-]*:` in `Makefile`)
+  — Step 4's Makefile section now checks these mechanically, so keep the two
+  regexes identical rather than letting this one drift narrower
 - Each new **TOML config key** or changed default in `config/*.toml`
 - Each module that became a **shim** (line count drops drastically and body
   is just `from X import …`) — the path users `import` from now points to
@@ -524,6 +526,36 @@ to know the answer, and they still do.
     not). So this bullet should prompt a **judgement, not assert a rule**: a tool
     the operator invokes as part of a documented workflow wants a target; a tool
     another tool calls does not.
+- **Third half — the REVERSE direction: does a new TARGET reach the docs?**
+  Both bullets above ask whether a script or subcommand *has* a target. Nothing
+  asked the converse, and no check in this step could: a new target is a new
+  **line in an existing file**, which is exactly the shape `--diff-filter=A`
+  cannot report, so both presence checks below are structurally blind to it.
+  Step 2 already lists new targets as a changed artifact — but that is a hand
+  walk, and a hand walk is not the walk.
+
+  ```bash
+  # make targets this branch ADDS, vs every doc an operator would read
+  git diff main -- Makefile | grep -E '^\+[a-z][a-z0-9_-]*:' \
+    | sed 's/^\+//; s/:.*//' | while read -r t; do
+      grep -rqsw "$t" CLAUDE.md README.md .claude/context/ deploy/README.md \
+        || echo "UNDOCUMENTED TARGET: $t"
+    done
+  ```
+
+  Same `-w` rule and the same deliberate over-reporting as the checks below.
+  Measured 2026-08-17 against all 76 of wifey's targets: **69 documented, 7 not**
+  (`clean-db`, `db-prune-backtests`, `lint-md-fix`, `lint-py-check`, `web-check`,
+  `wifey-param-audit`, `wifey-param-sweep`), so it discriminates rather than
+  reporting a uniform green. Those 7 are pre-existing and the check keys off the
+  branch diff, so they never fire on an unrelated branch.
+
+  ⚠ **#209, the branch that prompted this check, is NOT its positive control.**
+  It added `wifey-pundit-sync` and `wifey-pundit-backfill`, and that session
+  documented both by hand — so the check correctly stays *silent* there. Running
+  it on #209 and seeing nothing proves only that the fixture cannot fail. Verify
+  with a synthetic target instead: `printf '+zzz-nope: x\n'` through the same
+  pipeline reports `UNDOCUMENTED TARGET: zzz-nope`.
 
 ### docker-compose.yml
 
@@ -611,7 +643,8 @@ to know the answer, and they still do.
   # non-Python files this branch ADDS, vs every doc that enumerates by filename
   git diff main --diff-filter=A --name-only \
     | grep -vE '^(tests|docs)/|\.py$' | while read -r f; do
-      grep -rqsw "$(basename "$f")" .claude/context/ deploy/README.md README.md \
+      grep -rqsw "$(basename "$f")" \
+        CLAUDE.md README.md .claude/context/ deploy/README.md \
         || echo "UNDOCUMENTED FILE: $f"
     done
   ```
@@ -621,6 +654,23 @@ to know the answer, and they still do.
   asymmetry is the point — a false positive costs a glance, a silent miss ships a
   doc that enumerates every sibling but one and reads as complete. **This fires for
   real on the off-site backup task**, which adds a `deploy/` script.
+
+  **`CLAUDE.md` joined that grep list 2026-08-17; `Makefile` was considered and
+  REFUSED.** The two look like the same edit and are opposites. CLAUDE.md is a
+  doc, and it is the *only* mention of four tracked files
+  (`.claude/context/footguns.md`, `.claude/context/migrations.md`,
+  `.github/pull_request_template.md`, `.markdownlint-cli2.jsonc`), so adding it
+  removes four false alarms and can never manufacture coverage. A Makefile
+  reference is a **build rule, not documentation** — adding it would let a file
+  that appears in no prose at all report COVERED, which is the failure this
+  section's own `-w` rule exists to prevent: *a false-positive presence check is
+  worse than none, because it reports covered.* Measured before refusing: across
+  every non-Python operator file, the Makefile was either redundant with
+  `deploy/README.md` (both backup scripts) or silent (`notify-failure.sh`,
+  `stocks.json.example`, `youtube_channels.toml.example`). It supplies coverage
+  the docs do not in **zero** cases, so the edit buys nothing and risks a silent
+  miss. **Check what a proposed grep-list entry would newly mark COVERED before
+  adding it.**
 
 - **CLAUDE.md must not re-absorb this content.** The 2026-08-05 split left
   CLAUDE.md holding a package index plus verdicts and footguns, and the context

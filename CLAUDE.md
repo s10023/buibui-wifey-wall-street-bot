@@ -169,6 +169,13 @@ sibling tree from wifey's own; `tests/test_backup_offsite_guards.py` pins that h
 and is the script's only gate, since no CI step reads `deploy/`. Never paste `rclone config`
 output anywhere — it carries a live refresh token.
 
+⚠ **A green off-site timer does not mean the backup is current.** Only the off-site leg is
+scheduled; it mirrors `~/backups/wifey`, which **only a manual `make backup` populates**, so it
+logs an identical `off-site backup OK` whether the tree is fresh or frozen. **Run `make backup`
+first.** The general rule: a scheduled job attests only to the step it performs, so a green light
+means "the data is current" only if something checks the *input's* age. Rationale and the two
+candidate fixes are in `deploy/README.md`.
+
 ## CLI
 
 `wifey.py` is the single entry point. Each Makefile `wifey-*` target wraps the equivalent
