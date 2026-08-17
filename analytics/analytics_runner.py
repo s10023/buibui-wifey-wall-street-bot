@@ -12,6 +12,7 @@ from analytics.data_store import DEFAULT_DB_PATH, init_schema
 from analytics.data_sync import backfill, sync
 from analytics.db_retry import connect_with_retry
 from utils.config_validation import (
+    load_pundit_ledger_symbols,
     load_research_universe,
     load_stocks_config,
     load_universe_policy,
@@ -19,7 +20,10 @@ from utils.config_validation import (
 
 
 def _resolve_symbols(
-    symbols: list[str] | None, *, use_universe: bool = False
+    symbols: list[str] | None,
+    *,
+    use_universe: bool = False,
+    use_pundit: bool = False,
 ) -> list[str]:
     if symbols:
         return symbols
@@ -31,6 +35,20 @@ def _resolve_symbols(
             sys.exit(1)
         resolved = universe.active_symbols()
         logging.info("%s", universe.describe())
+        return resolved
+    if use_pundit:
+        try:
+            resolved = load_pundit_ledger_symbols()
+        except Exception as e:
+            logging.error("Failed to load pundit ledger: %s", e)
+            sys.exit(1)
+        # Loud on empty: an empty ledger and an unreadable one both otherwise
+        # produce a no-op sync that logs nothing and exits 0, which is the
+        # "reports success while refreshing nothing" shape this flag exists to fix.
+        if not resolved:
+            logging.error("Pundit ledger resolved 0 symbols — nothing to sync.")
+            sys.exit(1)
+        logging.info("Universe: pundit ledger (%d symbols)", len(resolved))
         return resolved
     try:
         resolved = list(load_stocks_config().keys())
@@ -62,8 +80,11 @@ def run_backfill(
     db_path: Path = DEFAULT_DB_PATH,
     *,
     use_universe: bool = False,
+    use_pundit: bool = False,
 ) -> None:
-    resolved = _resolve_symbols(symbols, use_universe=use_universe)
+    resolved = _resolve_symbols(
+        symbols, use_universe=use_universe, use_pundit=use_pundit
+    )
     with _open_session(db_path) as conn:
         for symbol in resolved:
             for timeframe in timeframes:
@@ -80,8 +101,11 @@ def run_sync(
     db_path: Path = DEFAULT_DB_PATH,
     *,
     use_universe: bool = False,
+    use_pundit: bool = False,
 ) -> None:
-    resolved = _resolve_symbols(symbols, use_universe=use_universe)
+    resolved = _resolve_symbols(
+        symbols, use_universe=use_universe, use_pundit=use_pundit
+    )
     with _open_session(db_path) as conn:
         for symbol in resolved:
             for timeframe in timeframes:

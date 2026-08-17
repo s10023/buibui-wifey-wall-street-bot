@@ -311,6 +311,7 @@ Options:
 - `--symbols AAPL MSFT` — symbols to fetch (default: all symbols in `config/stocks.json`)
 - `--timeframes 4h 1d 1wk` — timeframes to fetch (default: `1h 4h`). Supported: `1h`, `4h`, `1d`, `1wk`
 - `--universe` — resolve symbols from `config/universe.json` (505-member research breadth universe) instead of the watchlist
+- `--pundit` — resolve symbols from the pundit call ledger (`docs/plans/pundit-calls.jsonl`) instead of the watchlist. Mutually exclusive with `--universe`
 
 **Incremental sync — fetch new candles since last stored:**
 
@@ -320,8 +321,24 @@ poetry run python wifey.py analytics sync
 
 Options:
 
-- `--symbols` / `--timeframes` — same as backfill
+- `--symbols` / `--timeframes` / `--universe` / `--pundit` — same as backfill
 - Requires backfill to have been run first for each symbol/timeframe
+
+**Three universes, and syncing one never refreshes another.** `config/stocks.json` is the
+13-symbol live watchlist, `config/universe.json` the 505-member research breadth universe,
+and the pundit ledger a third set that overlaps neither by construction: it records the
+index and futures **underlyings** a pundit actually quoted (`^GSPC`, `GC=F`) rather than the
+tradeable ETF proxies a watchlist carries. `make go-live` syncs only the first, so the
+ledger's symbols need their own refresh:
+
+```bash
+make wifey-pundit-sync        # 1d only — these are horizon-scored calls, not intraday signals
+make wifey-pundit-backfill    # first-time history for a newly-quoted underlying
+```
+
+Skipping this does not fail loudly: `pundit_score` degrades a symbol with stale bars to
+`STALE` rather than erroring, so a permanently-unresolving ledger reads as "nothing has
+triggered yet".
 
 Data is stored in `analytics.db` (auto-created in CWD).
 

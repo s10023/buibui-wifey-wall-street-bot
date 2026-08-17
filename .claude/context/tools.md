@@ -626,6 +626,35 @@ Read-only; no schema change, goldens untouched.
 **Run:** `make wifey-pundit-score` or
 `PYTHONPATH=. poetry run python tools/pundit_score.py [--as-of ISO] [--min-n N]`
 
+### Its OHLCV is a third universe, and nothing else refreshes it
+
+`make go-live` syncs `config/stocks.json` — 13 ETF and equity **proxies**. The ledger records the
+index and futures **underlyings** a pundit actually quoted (`^GSPC`, `GC=F`, `^TNX`), so the two
+sets barely intersect and syncing one never refreshed the other. Measured 2026-08-15 right after an
+operator `CATCH_UP=1 make go-live`: the mega-caps reached 2026-08-14 while eight ledger symbols sat
+at 2026-08-04 and `^TNX` had **no bars at all** — and go-live reported success throughout, because
+`pundit_score` degrades a stale symbol to `STALE` rather than erroring. A permanently-unresolving
+ledger is indistinguishable from one where nothing has triggered yet.
+
+Fixed 2026-08-17 by `wifey analytics {sync,backfill} --pundit`, wrapped as `make wifey-pundit-sync`
+/ `make wifey-pundit-backfill`. Three properties worth keeping:
+
+- **It resolves from the ledger at run time**, never from a second hardcoded list. A frozen list
+  would reproduce the original defect one level over — the ledger gains symbols as calls are routed.
+- **An empty resolve exits non-zero rather than falling back to the watchlist.** A fallback would
+  resync the same 13 names go-live already covers and report success, which is exactly the shape
+  being fixed.
+- **`--universe` and `--pundit` are mutually exclusive at argparse level**, so a conflicting pair is
+  rejected outright instead of silently resolving by precedence.
+
+`INVALID_LEDGER_SYMBOLS` (in `utils/config_validation.py`) is the single definition of "not a
+symbol", imported by both the loader and this scorer — if they diverge, the sync path fetches
+symbols the scorer discards, or skips ones it scores. `tests/test_analytics_runner.py` pins the
+identity.
+
+After scoring, the ledger's own state is the check that the refresh worked: 22 rows, 0 `STALE`,
+0 `UNRESOLVABLE` as of 2026-08-17.
+
 ## backfill_null_tp_outcomes.py — one-shot retro migration
 
 One-shot retro migration (ported from parent #410): reconstructs the pct-fallback SL/TP for
