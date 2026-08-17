@@ -75,7 +75,9 @@ scope is correctness plus universe groundwork; XS-momentum forecasts and paper s
 parent to pass G1, and Phase B (order layer, broker pick) is gated G3→G4.
 
 ⚠ **TA detector and sweep work is frozen** — no new boolean detectors, no tp_r / gate / threshold
-sweeps. This is an inherited category verdict; see memory `project_parent_fresh_eyes_port.md`.
+sweeps. Scope: the equity signal engine's `DETECTOR_REGISTRY` book at `4h`/`1d`/`1wk`, and it is a
+policy rather than a claim about moving averages or price structure anywhere else. This is an
+inherited category verdict; see memory `project_parent_fresh_eyes_port.md`.
 
 Historical design for the retired bring-up queue:
 `docs/superpowers/specs/2026-04-10-tradfi-equity-fork-design.md`.

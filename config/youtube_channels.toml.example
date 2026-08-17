@@ -79,6 +79,40 @@ min_duration_s = 180
 lang = "zh"
 intro_recap_s = 0
 
+# Resolved live 2026-08-15 via `yt_feed.py resolve @benjaminjcowen`. BOTH-SUBJECT channel,
+# followed in BOTH repos by design (see the SUBJECT ROUTING header) — primarily crypto with
+# a real macro / US-equities stream, and the source of H-001 / H-002 / H-003. English, and
+# it publishes captions, so this one takes the yt-dlp path and does not need GROQ_API_KEY.
+#
+# This block is the worked example of `title_exclude` carrying a crypto-majority channel in
+# an equities repo, and every term was MEASURED against his 150-video back catalogue on
+# 2026-08-15 rather than guessed: bitcoin 97, ethereum 4, crypto 1, "alt season" 1 — 101 of
+# 150 filtered, leaving 49 genuinely macro/equities videos. `btc`, `altcoin`, `solana`,
+# `xrp`, `cardano`, `dogecoin` and `litecoin` each hit ZERO (he writes names out in full),
+# so they are omitted rather than carried as dead weight. "nfa live" comes from the parent's
+# row for this same channel: his ~41m unstructured livestream Q&A, where the space is
+# load-bearing because bare "nfa" is the not-financial-advice disclaimer.
+#
+# ⚠ NEVER add a bare "eth" — the same over-match trap as bare "nfa", and here it is measured
+# rather than hypothetical: it matches "Som(eth)ing Strange Is Happening in the Labor Market"
+# and both "Gar(eth) Soloway" panel videos, silently eating 3 macro videos, which is the
+# exact subject this repo exists to keep. "ethereum" already covers every real hit.
+#
+# Accepted cost: a crypto-TITLED video whose body also covers equities never surfaces here.
+# That is the right trade — the parent follows this channel too and scores its crypto stream
+# against 24/7 perp bars, so nothing is lost to the system, only routed to the repo whose
+# bars can score it. Note `title_exclude` applies to `backfill` as well as `poll` (both go
+# through `_scan_items` → `title_excluded`); backfill ignores only the DATE floor.
+[[channel]]
+id = "UCRvqjQPSeaWn-uEx-w0XOIg"
+name = "Benjamin Cowen"
+handle = "@benjaminjcowen"
+title_include = []
+title_exclude = ["#shorts", "nfa live", "bitcoin", "ethereum", "crypto", "alt season"]
+min_duration_s = 180
+lang = "en"
+intro_recap_s = 0
+
 # Example of a channel that DOES open with a recap block every time.
 # [[channel]]
 # id = "UCkSCETUQ-oPbVccY9Z7vZZg"
