@@ -431,11 +431,12 @@ which live only in `MEMORY.md`, so "it inherits `CLAUDE.md`" does not explain th
 
 This matters even when what leaks is accurate: the rubric is deliberately a *distilled
 snapshot* so the extractor classifies against a frozen prior, and an agent silently seeing
-the live SoT is a different experiment from the documented one. **The vector has NOT been
-re-derived on wifey** — do that before building anything on top of the isolation claim:
-dispatch one throwaway subagent of each type (`general-purpose`, `Explore`, a
-`tools:`-restricted custom agent) and ask each what project context it can see without
-reading a file.
+the live SoT is a different experiment from the documented one. **Confirmed here
+2026-08-15**: a `general-purpose` pass-2 agent cited `CLAUDE.md` by name, unprompted, with
+that file neither read nor named in its prompt. What it asserted was accurate, so nothing
+routed wrongly — but the "self-contained" claim is false on wifey too, and a rubric the
+agent can see past is not a frozen prior. Treat the leak as present when designing any
+experiment that depends on isolation.
 
 Instruct it to return ONLY this JSON:
 
@@ -850,6 +851,17 @@ liquidity sweep, funding extreme, SMT, CVD divergence) is frozen under an
 inherited category verdict (TA = negative-EV; no new boolean detectors, no
 tp_r/gate/threshold sweeps). A claim that just restates one of these
 candlestick/structure patterns → `FROZEN-CATEGORY`.
+
+**Scope — the freeze binds this repo's equity signal engine, nothing wider.** It covers
+the boolean bar-pattern detectors in
+`analytics/strategies/_registry.py::DETECTOR_REGISTRY`, evaluated at `4h`/`1d`/`1wk` on
+the US-equity universe. It is a **policy** — an inherited category verdict — never a
+measurement about moving averages or price structure in general. So mark
+`FROZEN-CATEGORY` only when the claim would land as a new detector or a new sweep in
+*that* book. A monthly-timeframe MA band, a regime or drawdown classifier, and anything
+on another asset class or horizon are all **out of scope**: judge them on their merits.
+When unsure, return `NOVEL` and let the human review gate decide — a wrong
+`FROZEN-CATEGORY` drops the item silently, a wrong `NOVEL` costs one line of review.
 
 **Already-tested (verdict known → `ALREADY-TESTED`, drop unless materially new
 evidence).** All six research sleeves audited on the ~500-name US-equity breadth
