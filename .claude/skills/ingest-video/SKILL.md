@@ -438,6 +438,12 @@ routed wrongly — but the "self-contained" claim is false on wifey too, and a r
 agent can see past is not a frozen prior. Treat the leak as present when designing any
 experiment that depends on isolation.
 
+**Scope of that confirmation: `general-purpose` only** — which is the type both passes
+here actually dispatch, so it covers the production path. `Explore` and a
+`tools:`-restricted custom agent remain untested *on wifey*; the parent measured that a
+dedicated agent type does not close the leak, so do not reach for one as a fix without
+re-deriving it here.
+
 Instruct it to return ONLY this JSON:
 
 ```json
