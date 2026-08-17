@@ -221,6 +221,18 @@ two days earlier, and **the log line is byte-identical either way**. The success
 reports is its own, never the freshness of what it copied. **Run `make backup` before
 `make backup-offsite`**, or the sync just re-affirms stale data.
 
+The one visible tell is the **snapshot count failing to increment** across consecutive
+runs — confirmed in the journal, which shows `(4 verified snapshot(s))` followed by
+`off-site backup OK` on two successive nights:
+
+```bash
+journalctl --user -u wifey-backup-offsite.service -o cat | grep 'verified snapshot'
+```
+
+Even that is weak evidence, because the count is also legitimately flat on any day the
+operator did not run the local leg — which is most days. It tells you the mirror is
+stale; it cannot tell you whether that was intended.
+
 This is the same shape as the pundit-ledger bug: a job reporting success about a
 dependency that is silently not being produced. The transferable rule is that **a
 scheduled job can only attest to the step it performs** — if a green light is to mean
