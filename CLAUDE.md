@@ -387,6 +387,20 @@ rather than by reading it. Full narratives in `context/tools.md`; the standing r
   target with the stop left unstated rather than inventing a level the pundit never gave.
 - `tools/route_dedup.py` is advisory except for `already_routed`: it never drops a row, and `mark`
   runs strictly after the sink write.
+- **Swapping a symbol to a "tradeable proxy" without converting its levels silently disables the
+  level parser.** Two 2026-07-31 rows normalised spot `XAUUSD`/`XAGUSD` to `GLD`/`SLV` and kept the
+  quoted levels, so a $3,800 gold level met the ref-relative sanity gate against a ~$375 ETF, failed
+  it, and fell back to call-time price — the row then scored a level the author never gave, at
+  confidence `fallback`, with the gate behaving exactly as designed. **Record the underlying the
+  author actually quoted** (`GC=F`, `SI=F`); a proxy is a second instrument, not a rename. Refiled
+  2026-08-17, which restored the real level at confidence `low`.
+
+**A units error near 1× is more dangerous than one near 10×.** The gold row above was ~10.7× off and
+the sanity gate caught it; the silver row was ~6% off at call time and no gate can see it, so it sat
+`OPEN` awaiting a trigger that could not come. ⚠ **Anchor a plausibility check to the price at
+`call_ts_utc`, never to the symbol's recent range** — a handoff scored that same silver row "~2× off"
+by comparing against SLV's January 2026 peak of 105.60 rather than its 53.08 close on the call date,
+which mis-stated both the magnitude and the severity.
 
 **A cap that silently truncates looks identical to an absence.** `tools/video_marks.py::keep_items`
 ranks by specificity descending then timestamp ascending, so a tie at `ITEM_CAP` resolves in favour

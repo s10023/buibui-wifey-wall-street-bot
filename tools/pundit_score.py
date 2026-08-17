@@ -100,6 +100,7 @@ from analytics.store import DEFAULT_DB_PATH
 from analytics.store.market_data import get_ohlcv
 from analytics.trading_calendar import nyse_sessions
 from tools.x_route import MONTH_YEAR_RE, check_level_order
+from utils.config_validation import INVALID_LEDGER_SYMBOLS
 
 HOUR_MS = 3_600_000
 DAY_MS = 86_400_000
@@ -187,11 +188,12 @@ _HEDGE_RE = re.compile(
     r"|implied",
     re.IGNORECASE,
 )
-#: A Stream-C row with no resolved ticker is unscoreable. Today this rule lives only as
-#: prose in `.claude/skills/ingest-video/SKILL.md` ("never route a setup item with
-#: symbol: null"); without a guard here a JSON `null` stringifies to "None" and silently
-#: queries a symbol that cannot exist, reporting UNRESOLVABLE for the wrong reason.
-_INVALID_SYMBOLS = {"", "none", "null", "n/a", "unspecified", "tbd"}
+#: A Stream-C row with no resolved ticker is unscoreable. The rule also lives as prose
+#: in `.claude/skills/ingest-video/SKILL.md` ("never route a setup item with
+#: symbol: null"). The set itself is now defined ONCE in `utils.config_validation` and
+#: imported here, because `load_pundit_ledger_symbols` has to reject exactly what this
+#: parser rejects — otherwise the sync path would fetch a symbol the scorer discards.
+_INVALID_SYMBOLS = INVALID_LEDGER_SYMBOLS
 _ZONE_RE = re.compile(
     r"(\d[\d,]*(?:\.\d+)?)\s*([kK])?\s*(?:-|–|\bto\b)\s*(\d[\d,]*(?:\.\d+)?)\s*([kK])?"
 )

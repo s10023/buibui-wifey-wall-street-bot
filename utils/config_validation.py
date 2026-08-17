@@ -427,3 +427,51 @@ def load_research_universe(
     if min_history_days is not None:
         universe = universe.with_min_history(min_history_days)
     return universe
+
+
+#: A Stream-C row with no resolved ticker is unscoreable. Without this guard a JSON
+#: ``null`` stringifies to ``"None"`` and becomes a symbol that cannot exist — a
+#: yfinance fetch for it fails, and `pundit_score` reports UNRESOLVABLE for the wrong
+#: reason. Single definition on purpose: `tools/pundit_score.py` imports this rather
+#: than carrying its own copy, because two answers to "what is not a symbol" is how a
+#: guard silently stops covering one of its callers.
+INVALID_LEDGER_SYMBOLS = frozenset({"", "none", "null", "n/a", "unspecified", "tbd"})
+
+_DEFAULT_PUNDIT_LEDGER_PATH = Path("docs/plans/pundit-calls.jsonl")
+
+
+def load_pundit_ledger_symbols(
+    path: Path = _DEFAULT_PUNDIT_LEDGER_PATH,
+) -> list[str]:
+    """Return the distinct symbols named by the pundit ledger, sorted.
+
+    This is a *third* universe, and it does not overlap the other two by
+    construction: `stocks.json` and `universe.json` hold tradeable equity and ETF
+    tickers, while the ledger records whatever underlying a pundit actually quoted —
+    index and futures symbols like ``^GSPC`` or ``GC=F`` that no watchlist carries.
+    Syncing one set has never refreshed the other, which is why a ledger row can sit
+    permanently unresolved while `make go-live` reports success.
+
+    Malformed lines are skipped rather than raised on, matching
+    ``pundit_score.load_ledger``: the ledger is append-only research capture, so one
+    bad row must not block a refresh of the other fifty.
+    """
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} not found — the pundit call ledger (Stream C) lives here."
+        )
+    seen: set[str] = set()
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        if not raw.strip():
+            continue
+        try:
+            obj = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        symbol = str(obj.get("symbol") or "").strip()
+        if symbol.lower() in INVALID_LEDGER_SYMBOLS:
+            continue
+        seen.add(symbol)
+    return sorted(seen)
