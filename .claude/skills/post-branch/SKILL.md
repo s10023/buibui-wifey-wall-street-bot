@@ -535,20 +535,37 @@ to know the answer, and they still do.
   walk, and a hand walk is not the walk.
 
   ```bash
-  # make targets this branch ADDS, vs every doc an operator would read
+  # make targets this branch ADDS, vs every doc an operator would read.
+  # ${t#wifey-} strips the CLI-wrapper prefix -- see the convention note below.
   git diff main -- Makefile | grep -E '^\+[a-z][a-z0-9_-]*:' \
     | sed 's/^\+//; s/:.*//' | while read -r t; do
-      grep -rqsw "$t" CLAUDE.md README.md .claude/context/ deploy/README.md \
+      grep -rqsw -e "$t" -e "${t#wifey-}" \
+        CLAUDE.md README.md .claude/context/ deploy/README.md \
         || echo "UNDOCUMENTED TARGET: $t"
     done
   ```
 
+  **The `${t#wifey-}` strip is not a fudge — it encodes a documented convention.**
+  CLAUDE.md states *"Each Makefile `wifey-*` target wraps the equivalent
+  invocation"* and then documents the **subcommands** in its CLI table, so
+  `wifey-param-audit` is covered by the `param-audit` row plus that rule. Without
+  the strip the check reports every `wifey-*` wrapper undocumented — which is a
+  false COVERED-inverse: noisy rather than dangerous, but noise is what gets a
+  check ignored. **Added 2026-08-17 after the first run's 7 hits turned out to
+  include 2 of exactly this shape.**
+
   Same `-w` rule and the same deliberate over-reporting as the checks below.
-  Measured 2026-08-17 against all 76 of wifey's targets: **69 documented, 7 not**
-  (`clean-db`, `db-prune-backtests`, `lint-md-fix`, `lint-py-check`, `web-check`,
-  `wifey-param-audit`, `wifey-param-sweep`), so it discriminates rather than
-  reporting a uniform green. Those 7 are pre-existing and the check keys off the
-  branch diff, so they never fire on an unrelated branch.
+  Measured 2026-08-17 against all 76 of wifey's targets: **71 documented, 5 not**
+  (`clean-db`, `db-prune-backtests`, `lint-md-fix`, `lint-py-check`, `web-check`
+  — all documented since), so it discriminates rather than reporting a uniform
+  green. Pre-existing hits never fire on an unrelated branch, since the check
+  keys off the branch diff.
+
+  **It earned its keep on run two.** `db-prune-backtests` runs
+  `scripts/db_prune_backtests.py`, and chasing that one hit found that
+  **`scripts/` was missing from CLAUDE.md's Project Structure entirely** — a
+  whole top-level directory, all three files undocumented. A target check is
+  therefore also a cheap *directory* check: follow a hit to what it executes.
 
   ⚠ **#209, the branch that prompted this check, is NOT its positive control.**
   It added `wifey-pundit-sync` and `wifey-pundit-backfill`, and that session
@@ -899,6 +916,18 @@ Four shapes to hunt specifically:
    whether it is informative**, so the null has to be demanded explicitly. Applies
    to fill rates, win rates, hit rates, "N% of alerts resolve by bar k" — any
    proportion offered as evidence that a mechanism exists.
+5. **A SET-WIDE claim built from a SPOT CHECK.** A sentence quantified over a set
+   — *every*, *none*, *all N*, *in zero cases*, *the only* — is a claim about
+   each member, so it is falsified by one counterexample and can only be
+   established by scanning the whole column. Sampling a few members and
+   generalising feels like evidence and is not. **Demand the full scan, not a
+   representative handful.** #210 wrote *"across every non-Python operator file,
+   the Makefile supplies coverage the docs do not in zero cases"* after checking
+   **five hand-picked files**; the claim happened to survive the real scan
+   (`git ls-files | grep -vE …` over all of them), but nothing in this step had
+   asked for one. The tell is grammatical rather than numerical — a superlative
+   or a universal quantifier — so it is cheap to spot once you are looking for
+   it. Related: [[feedback_setwide_claims_need_a_column_scan]].
 
 Record the reproduction in the commit message or the audit doc, not just in
 the session — that is what makes the next challenge cheap.
