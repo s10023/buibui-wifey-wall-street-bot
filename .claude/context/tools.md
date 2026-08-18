@@ -195,7 +195,13 @@ n** (100 → 2,100) moves the bar **1.17×**; holding n at the live ledger's 267
 **1 to 320 trials** moves it **15.9×** (0.101 → 1.611). So a skill that reads three books
 and emits forty hypotheses inflates the trial family until every cell is unreachable,
 including ones that would have passed alone. The tool is what makes that arithmetic
-tracked rather than recalled.
+tracked rather than recalled. Reproduce:
+
+```python
+from analytics.research_guards import required_sharpe
+required_sharpe(100, n_trials=20, sr_variance=0.25) / required_sharpe(2100, n_trials=20, sr_variance=0.25)
+required_sharpe(267, n_trials=320, sr_variance=0.25) / required_sharpe(267, n_trials=1, sr_variance=0.25)
+```
 
 **Three flags carry the traps.** `--units` is mandatory with **no default**, because a
 figure that looks portable silently changes meaning with the panel — `regime.py` carried
