@@ -474,6 +474,13 @@ prose did not enforce these constraints:
 - `make check-orphan-tests` (advisory, heuristic, not in `make test`) reports `Test*` classes that
   name a unit but never call it. Its `not-importable` verdict means the unit is a closure and no
   test can reach it, so extraction becomes a prerequisite for a fix.
+- `make post-branch-checks` (advisory, not in `make test`) runs the ten mechanical `/post-branch`
+  checks — queue items the branch closed, handoff claims, undocumented new files/modules/targets,
+  negative claims, stale doc indexes, MD018 headings, the MEMORY.md cap and the handoff stamp.
+  They were **16 shell blocks inside `post-branch/SKILL.md`** until 2026-08-18, i.e. a check that
+  only ran when a session remembered to copy it. **A skill that answers each new defect with more
+  prose accumulates defects**: two of these had shipped broken, and the fix in both cases was to
+  make them code with a positive control (`tests/test_post_branch_checks.py`).
 - `tests/test_outcome_backfill.py::TestMaxHoldCalibrationCoverage` (in `make test`) walks every
   `config/signal_watch*.toml` and fails if a declared timeframe has no `DEFAULT_MAX_HOLD_BARS`
   entry. The outcome resolver refuses an unlisted timeframe (`counts["no_hold_cap"]`) rather than
@@ -525,7 +532,18 @@ makes each update O(1) — add one line, roll one out:
 
 - Current State holds at most 6 bullets. Adding a 7th means first rolling the oldest, verbatim,
   into `memory/project_session_log_<month>.md`. After rolling one, grep the log to confirm it landed.
-- The whole index stays under ~17KB; a hook fires at 19.7KB.
+- The whole index stays under ~17KB. ⚠ **No hook enforces this.** Column-scanned
+  2026-08-18 across all five settings files (`find ~/.claude ~/.claude-personal .claude
+  -name 'settings*.json'`, then every `hooks` entry): **4 hooks total** —
+  `guard-destructive`, the `gh pr create` advisory, a context-mode cache heal and a budget
+  line — and **none reads a file size**. So "a hook fires at 19.7KB" was false and the cap
+  had **no** enforcement at all. `make post-branch-checks` is the enforcement now
+  (`memory-cap`). Re-run that scan before trusting any claim about which hooks exist —
+  this one was first filed after checking only two of the five files.
+  It compounded with a second defect: `make status` measured with `du -k`, i.e. disk
+  blocks, so it overstated the file by up to 4KB — in the direction that causes needless
+  rolling, and worst on the smallest file, which is the one with the cap. Fixed to
+  `wc -c`; MEMORY.md now reads 16.5 KB where it printed 20.
 - "Last session" is at most 2 lines; every other bullet is exactly 1 line.
 - Session logs have no size limit. Prune by moving, never by deleting.
 - Open questions live in `memory/project_open_questions.md`. They are live state, so they cannot be

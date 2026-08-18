@@ -10,7 +10,7 @@ description: >
   `gh pr create`, while the branch is still local-only, and fold the resulting
   "Documentation updates" section into the initial PR body.
   Skip for pure refactors, bug fixes covered by tests, dependency bumps, and
-  lint-only commits — the behaviour gate (Step 1) decides. Confirm every edit
+  lint-only commits — the behaviour gate decides. Confirm every edit
   before writing; never force-push without explicit OK. Also triggers on the
   user saying "/post-branch", "wrap up the branch", "docs check",
   "pre-merge check", or "next conversation prompt".
@@ -19,408 +19,237 @@ allowed-tools: Bash, Read, Edit, Write
 
 # Post-Branch Docs Sweep
 
-The mental model: a PR's diff is the source of truth for what changed. The
-docs are claims about how the codebase behaves. After a PR introduces new
-flags, scripts, defaults, files, or commands, those claims often go stale —
-sometimes silently. This skill walks a fixed list of doc surfaces, diffs
-each one against the PR's actual behaviour, surfaces the drift, and proposes
-edits the user can approve.
+A PR's diff is the source of truth for what changed. The docs are claims about
+how the codebase behaves. After a PR adds flags, scripts, defaults, files or
+commands, those claims go stale — often silently. This skill walks the doc
+surfaces, surfaces the drift, and proposes edits.
 
-It runs **before the PR exists** — on a branch that is committed and pushed but
-not yet opened. Its job is not to gatekeep the PR but to catch doc drift while
-fixing it is still free.
+**It runs before the PR exists**, on a branch that is committed but not opened.
+Private repo, free tier, hard Actions budget: sweeping after the PR is open means
+a second push, and every push re-runs the full five-check matrix. Sweeping first
+is one CI run instead of two, with identical review signal.
 
-**Why before, not after** (user decision, 2026-08-06): these are private repos on
-the free tier, so GitHub Actions minutes are a hard budget. Sweeping after the PR
-is open means a second push to an open PR, and every push re-runs the full matrix
-— five checks here (`markdownlint`, `Trivy filesystem scan`, `lint-typecheck-test`,
-`frontend-check`, `Regression tests`) for what is usually a two-file docs edit.
-Sweeping first costs one CI run instead of two and the reviewer sees the same
-final tree either way. Practical consequence: **Step 6 composes the initial
-`--body` rather than editing an existing one**, and Steps 7→6 swap order.
+## Running order
 
-## Order of operations (the step numbers are historical — follow THIS)
+Phases, not step numbers. (Earlier versions numbered steps in one order and ran
+them in another, which was a standing source of error.)
 
-The steps below are numbered from when the sweep ran post-PR. The numbering is
-kept so existing references still resolve, but the running order is now:
+| Phase | What | Costs CI? |
+| --- | --- | --- |
+| **1** | `make post-branch-checks` — every mechanical check | no |
+| **2** | Behaviour gate — is this PR user-facing? | no |
+| **3** | Doc walk — judgement, keyed off the diff | no |
+| **4** | Always-run: MEMORY.md, SoT reconcile, claims audit | no |
+| **5** | Commit + push, then compose the PR body, then `gh pr create` | one run |
+| **6** | Pre-merge check, handoff, **re-verify PR state LAST** | no |
 
-0. **`git add -A`** — stage first, so the `--diff-filter=A` checks can see
-   untracked new files at all. Steps 1–5 then use `git diff main` (two dots),
-   never `main...HEAD`, which is vacuous before Step 7's commit.
-1. Steps 1–5e — behaviour gate, changed artifacts, doc walk, surface checks,
-   MEMORY.md, **SoT reconcile**, **claims audit**, **doc-index check**,
-   **markdown pre-lint**. All pure local work; no PR, no `gh`, no network. Steps
-   5b and 5c write nothing to the repo (the SoT lives outside it, and the claims
-   audit edits prose the branch already has), so both are free of CI either way.
-   **5b, 5c, 5d and 5e run regardless of the Step 1 gate.**
-2. **Step 7** — commit the doc edits and `git push -u origin <branch>`.
-3. **Step 6** — compose the "Documentation updates" section.
-4. `gh pr create --body …` with that section already **in** the initial body.
-5. Steps 10a (pre-merge check), 10b (handoff), **10c last** (re-verify PR state).
-
-Steps 6 and 7 are therefore swapped relative to their numbers, and everything
-touching `gh` moves after step 4. Step 10c genuinely needs a PR to exist, so it
-stays where it is — and it stays **last**.
+Phases 1 and 4 run **regardless** of the phase-2 gate. MEMORY.md and the SoT live
+outside the repo and the handoff is gitignored, so none of them ever costs CI.
 
 ---
 
-## Doc-surface configuration
-
-Each entry is a class of doc that might need updating when behaviour
-changes. **When porting this skill to another repo, edit only this block —
-the rest of the workflow stays the same.**
-
-```yaml
-surfaces:
-  - id: claude_md
-    path: CLAUDE.md
-    purpose: Authoritative project context for Claude Code (project structure, key commands, code style, agent skills)
-
-  - id: readme
-    path: README.md
-    purpose: User-facing project overview (CLI subcommands, install, quickstart)
-
-  - id: memory_md
-    path: ~/.claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot/memory/MEMORY.md
-    purpose: Cross-session memory; "Current State" section MUST be updated every session
-    always_update: true   # see Step 5
-
-  - id: makefile
-    path: Makefile
-    purpose: Make targets — every `wifey.py` subcommand should have a `wifey-*` wrapper
-    scope: any_referencing_changed_artifact
-
-  - id: docker_compose
-    path: docker-compose.yml
-    purpose: Long-running services (daemons → restart:unless-stopped) and one-shot tools (profiles:[tools])
-    scope: any_referencing_changed_artifact
-
-  - id: context_docs
-    path_glob: ".claude/context/*.md"
-    purpose: Long-form module references (analytics, tools, signals, web, config)
-    scope: any_referencing_changed_artifact + new_module_presence   # see below
-
-  - id: skill_docs
-    path_glob: ".claude/skills/*/SKILL.md"
-    purpose: Workflow instructions that name tools, flags and file paths — they drift exactly like CLAUDE.md does
-    scope: any_referencing_changed_artifact
-    lint: manual   # see below
-
-  - id: handoff
-    path: docs/plans/next-conversation-prompt.md
-    purpose: >
-      The standing session handoff — group A ("Settled, do not re-litigate") is the
-      highest-authority surface in this repo. Gitignored, so it is never committed
-      and no reviewer ever sees its drift.
-    scope: any_referencing_changed_artifact
-    written_at: step_10b   # read here, written there — see Step 4
-
-# Files that, if changed, almost always require a doc walk:
-behavior_signal_globs:
-  - "wifey.py"
-  - "cli/**/*.py"
-  - "Makefile"
-  - "deploy/**"                     # scripts + systemd units ARE operator-facing
-                                    # behaviour. Added 2026-08-13 (parent #583):
-                                    # wifey #162 shipped two scripts, three units
-                                    # and a README while this list had no deploy
-                                    # entry at all, so the gate saw no signal
-                                    # from that PR's largest change.
-  - "docker-compose.yml"
-  - ".github/workflows/**/*.yaml"   # NOT *.yml — every workflow here is .yaml
-  - "pyproject.toml"
-  - "config/strategy_params.toml"
-  - "config/*signal_watch*.toml"
-
-# Files that almost never require a doc walk (internal-only refactor space):
-behavior_skip_globs:
-  - "analytics/**/_*.py"          # underscore-private package internals
-  - "analytics/**/*.py"            # detector / signal / store internals (per-PR judgement)
-  - "tests/**"
-  - "**/*_test.py"
-  - "poetry.lock"
-  - "*.parquet"
-  - "tests/fixtures/**"
-```
-
-The `behavior_signal_globs` and `behavior_skip_globs` are heuristics, not
-absolute rules. A move that adds a new public symbol *is* user-facing even
-under `analytics/**`. Always read the diff before deciding.
-
----
-
-## Step 1 — Behaviour gate: is this PR user-facing?
-
-Before walking any docs, decide if the PR changes behaviour a user or
-operator would notice. **If not, stop after MEMORY.md update — don't churn
-docs for invisible changes.**
-
-Read the branch's diff. There is normally **no PR yet**, so this is pure git —
-no `gh` call, and no network:
+## Phase 1 — Run the mechanical sweep
 
 ```bash
-git diff main --stat
-git diff main -- .
-git log main..HEAD --oneline    # empty until Step 7 commits; informational only
+make post-branch-checks
 ```
 
-⚠ **Use `git diff main`, not `git diff main...HEAD`, in Steps 1–5.** This skill
-runs *before* its own Step 7 commit by design, so on a clean-but-uncommitted
-tree `main...HEAD` diffs two identical trees: every check reports "no changes",
-the behaviour gate says "not user-facing", and the whole walk passes
-**vacuously**. `git diff main` compares the working tree instead and sees the
-uncommitted work. Every command in this skill now uses the two-dot form; reach
-for `main...HEAD` only if you add a step that runs after Step 7 and genuinely
-wants merge-base semantics. **A check that is
-vacuously true at t=0 is not a check** — same defect shape as the
-`assert_no_change` tests in CLAUDE.md's Testing section.
+Ten checks, one command, in `tools/post_branch_checks.py`. They used to be
+sixteen shell blocks embedded in this file, which a session had to notice and
+copy by hand — *a hand walk is not the walk*, and the same defects recurred
+because prose cannot enforce.
 
-⚠ **Run `git add -A` first, before anything else in Step 1.** `git diff` in any
-form cannot see an *untracked* file, so the `--diff-filter=A` checks in Step 4
-(new modules vs `.claude/context/`, new non-Python files vs the docs that
-enumerate by filename) silently report zero added files on a branch whose new
-code is untracked — the precise case they exist to catch. Staging is harmless
-and reversible, Step 7 commits anyway, and it makes every later `git diff main`
-in this walk complete.
+| Check | Asks |
+| --- | --- |
+| `queue-items` | Does this branch **close** a task the handoff still lists as to-do? |
+| `handoff-symbols` | Does the handoff make a claim about a symbol or file this branch touched? |
+| `new-files` | Does an added non-Python operator file reach a doc that enumerates by name? |
+| `new-modules` | Does an added module reach `.claude/context/`? |
+| `new-targets` | Does an added Make target reach a doc? |
+| `negative-claims` | Does a doc assert the absence of something this branch just added? |
+| `doc-indexes` | Is a generated `INDEX.md` stale? (a red suite, not a lint nit) |
+| `md-atx` | Did a wrapped `#123` land in column 1 and become an MD018 heading? |
+| `memory-cap` | Is MEMORY.md over 6 Current State bullets or ~17KB? |
+| `handoff-size` | Does the handoff's line-count stamp match the file? |
 
-(Running late, on a branch whose PR already exists? `gh pr view <PR#> --json
-title,body,baseRefName,headRefName,files` still works — but prefer the git form,
-which is faster, offline, and correct in both cases.)
+**Every finding is a candidate to dismiss in seconds, never an automatic edit.**
+The asymmetry is deliberate: a false positive costs a glance, a silent miss ships
+a doc that enumerates every sibling but one and reads as complete.
 
-User-facing signals — **walk the docs** if any are present:
+Three properties the checks rely on, worth knowing before you change them:
 
-- New CLI subcommand or flag (`wifey.py`, `cli/`)
-- New Make target or changed default
-- New TOML config key or changed default
-- New environment variable
-- Renamed or moved file referenced from docs
-- New error class users will see (new exit code, new alert format)
+- **Word boundaries are load-bearing.** A bare substring match reports a module
+  "documented" on a hit that has nothing to do with it, and *a false-positive
+  presence check is worse than none, because it reports covered.*
+- **A basename that names a role cannot identify a file.** Every skill is
+  `SKILL.md`, so probing that matches CLAUDE.md's generic sentence about where
+  skills live; `probe_names` probes the parent directory for those. Same for
+  `__init__.py`, `INDEX.md`, `README.md`.
+- **Untracked files count as added.** `git diff` cannot see them, which used to
+  make the presence checks report zero on exactly the branch they existed for.
+
+The Makefile is deliberately **not** in the enumerating-doc list. A build rule is
+not documentation, and including it would let a file that appears in no prose
+report COVERED. Check what a proposed addition would newly mark covered before
+adding it.
+
+**Triaging the presence checks:**
+
+- A hit is a prompt to judge, not an automatic edit — a private helper module may
+  legitimately not warrant a context entry.
+- `migrations/` **is** in scope (documented at `.claude/context/migrations.md`),
+  so a new migration script gets checked like any other module.
+- `trade/` is knowingly absent and is **not** a finding — it is an empty
+  placeholder, both files 0 bytes.
+- **Renames are not covered.** The checks key on additions; swap in
+  `git diff main --diff-filter=R --name-only` and check the new path by hand.
+- **`docker-compose.yml` is not covered either.** Check by hand that a new
+  daemon got `restart: unless-stopped` and a new one-shot tool got
+  `profiles: [tools]`, plus its `docker-up` / `docker-down` lines.
+
+### What the sweep deliberately does NOT cover
+
+Judgement, all of it: the behaviour gate, the doc walk, the discovered-fact
+sweep, the claims audit, the SoT reconcile, and everything touching `gh`. Those
+are phases 2–6. A green sweep is not a green branch.
+
+---
+
+## Phase 2 — Behaviour gate: is this PR user-facing?
+
+Read the diff (`git diff main --stat`, then `git diff main`). Use **`git diff
+main`**, two dots — this skill runs before its own commit, so `main...HEAD`
+diffs two identical trees and every check passes *vacuously*.
+
+**Walk the docs** if any of these are present:
+
+- New CLI subcommand or flag; new Make target or changed default
+- New TOML key, changed default, or new environment variable
+- Renamed/moved file referenced from docs; new error class, exit code or alert format
 - New external dependency or system requirement
 - Behaviour change to an existing public command
-- New long-running daemon or one-shot tool (docker-compose)
-- **The diff touches `analytics/store/schema.py`** — see the DB-migration block below
-- **Anything on the notification-decision list below**
+- New long-running daemon or one-shot tool
+- The diff touches `analytics/store/schema.py` (see below)
+- Anything on the notification list (see below)
 
-### DB migrations are operator-facing even when nothing else in the PR is
+Path heuristics, not absolute rules — always read the diff before deciding:
 
-If the diff touches `analytics/store/schema.py`, the doc surfaces do not cover
-what the operator needs to know, because a schema change **applies silently at
-the next `init_schema`** — there is no command to run and no output to read.
-The handoff (Step 10) must therefore state, explicitly:
+```yaml
+behavior_signal_globs:   # touching these almost always needs a walk
+  - wifey.py · cli/**/*.py · Makefile · docker-compose.yml · pyproject.toml
+  - config/strategy_params.toml · config/*signal_watch*.toml
+  - deploy/**                     # scripts AND systemd units are operator-facing
+  - .github/workflows/**/*.yaml   # ⚠ .yaml, NOT .yml — every workflow here is .yaml
+behavior_skip_globs:     # internal-only refactor space
+  - analytics/**/_*.py · analytics/**/*.py (per-PR judgement) · tests/**
+  - poetry.lock · *.parquet · tests/fixtures/**
+```
 
-1. **When it applies** — next `init_schema`, i.e. the next process that opens
-   the DB. Name that process if it is a scheduled one.
+⚠ A move that adds a new **public symbol** is user-facing even under
+`analytics/**`.
+
+**Stop after phase 4** if the PR is purely: an internal refactor preserving the
+public API, a bug fix with a regression test and no behaviour change, a
+dependency bump, test-only changes, docstring edits inside source files, or a
+regression-fixture refresh with goldens unchanged.
+
+⚠ **"Lint-only" means the formatting, not the linter's configuration.** Editing
+`.markdownlint*`, ruff/mypy blocks, or a CI job's globs changes what the build
+*enforces*, which is operator-facing however mechanical the diff looks. One
+`chore(lint)` PR was 245 whitespace fixes plus one deleted glob line — and that
+line had silently excluded the tree the job was triggered by. **Judge the gate on
+what the change enforces, not on what the diff looks like.**
+
+**Strong refactor signals** — a module in CLAUDE.md's Project Structure was
+renamed, moved or reduced to a re-export shim; the CLI surface changed; a new
+`make wifey-*` target landed. When in doubt, ask.
+
+### DB migrations are operator-facing even when nothing else is
+
+A schema change applies **silently at the next `init_schema`** — no command to
+run, no output to read. The handoff must state, explicitly:
+
+1. **When it applies** — the next process that opens the DB. Name it if scheduled.
 2. **Whether existing rows stay readable**, and if not, what breaks.
-3. **Whether any manual step is needed** — a backfill, a `make db-update`, a
-   `clean-db`, or nothing.
-4. **Whether it is self-healing**, and *why*. A nullable column on a table whose
-   rows age out on their own needs no backfill; a nullable column on a table
-   that accumulates does.
+3. **Whether a manual step is needed** — backfill, `make db-update`, `clean-db`, none.
+4. **Whether it is self-healing, and why.** A nullable column on a table whose
+   rows age out needs no backfill; on a table that accumulates, it does.
 
-PR #151 is the worked example: `backtest_cache` gained two nullable columns, and
-because the cache key includes `last_candle_ts`, pre-migration rows aged out
-within one bar and read as "abstain" until they did — additive, no manual step.
-None of that is derivable from the diff, and it was written by hand because
-nothing prompted for it.
-
-Also confirm the positional-INSERT guard still passes
-(`tests/test_schema_insert_arity.py`, in `make test`): adding a column to a
-table written by a bare `VALUES (?,…)` or an `INSERT … SELECT` requires updating
-that statement in the same PR.
+Confirm `tests/test_schema_insert_arity.py` still passes: adding a column to a
+positionally-written table requires updating that statement in the same PR.
 
 ### Notification surface — decide it, never default to it
 
-**Telegram is an operator-facing output surface and belongs in this gate**, but
-it is not in the doc-surface list, so the decision gets made by whoever happens
-to think of it. Wifey has three notification paths and none of them is covered
-by any other step: the **personal** channel (long + short), the **wife** channel
-(BUY-only, a human audience), and `deploy/notify-failure.sh`.
+Telegram is an operator-facing output and belongs in this gate, but it is on no
+doc surface, so the decision gets made by whoever happens to think of it. Three
+paths: the **personal** channel (long+short), the **wife** channel (BUY-only, a
+human audience), and `deploy/notify-failure.sh`.
 
-**Trigger — this PR needs an explicit notification decision if it adds or
-changes any of:**
+Needs an explicit decision if the PR adds or changes: a scheduled job; an
+irreversible or outward-facing action; a latching state transition (the
+*transition* is the event, not the state); a failure path visible only in an
+unread log; or a periodic summary a human must act on.
 
-1. A **scheduled job** (timer/cron). Silence becomes ambiguous the moment nobody
-   is watching a terminal. *Wifey has none installed today* — the `wifey-*` units
-   under `deploy/systemd/user/` are opt-in and nothing installs them — so this
-   triggers when a PR adds a unit, not merely because one exists in the tree.
-2. An **irreversible or outward-facing action** — an alert dispatched, a message
-   sent to the wife channel, an order submitted (Phase B).
-3. A **latching state transition** — a gate flipping, a halt engaging or
-   clearing. The *transition* is the event, not the state.
-4. A **failure path visible only in a log** the operator does not read.
-5. A **periodic summary a human is meant to act on.**
+Record one of four verdicts: `always` (a human must act every time, or the
+channel needs a heartbeat) · `on-change` (only transitions matter) ·
+`on-failure-only` (correct for jobs nobody reads when healthy) · `never` (**state
+why**, in one line).
 
-**Record one of four verdicts, and never leave it implicit:**
-
-| verdict | when |
-| --- | --- |
-| `always` | a human must act on every occurrence, or the channel needs a heartbeat |
-| `on-change` | only transitions matter; steady state is noise |
-| `on-failure-only` | correct for jobs nobody reads when healthy — the `notify-failure.sh` default |
-| `never` | **must state why**, in one line |
-
-**The generalisable rule:** *a channel whose only signal is failure is
-unfalsifiable.* You cannot tell "healthy" from "broken" without a positive
-heartbeat, and the delivery path then gets exercised for the first time on the
-day you most need it working. If a path is `on-failure-only`, confirm something
-else proves it is alive.
-
-**Volume is the counterweight.** Multiply by the schedule before choosing
-`always`. Wifey's dispatch is the manual one-shot `CATCH_UP=1 make go-live`, so
-the per-run volume question is really *per alert* — and the wife channel is a
-real person, not a log.
-
-Skip signals — **stop here** (after MEMORY.md update) if the PR is purely:
-
-- Internal refactor that preserves the public API surface (byte-identical
-  re-export shim, registry/key order preserved, etc.)
-- Bug fix with a regression test added and no behaviour change
-- Dependency version bump with no API change
-- Lint/format-only commit — **the formatting itself, not the linter's
-  configuration.** Editing `.markdownlint*`, `pyproject.toml`'s ruff/mypy
-  blocks, or a CI job's globs/path filters changes what the build *enforces*,
-  which is operator-facing however mechanical the accompanying diff looks.
-  Walk the docs for those.
-- Test-only changes
-- Comment/docstring edits inside source files (not in the doc surfaces)
-- Regression-fixture refresh (`make regression-update`) with goldens unchanged
-
-That carve-out is not hypothetical: PR #133 was a `chore(lint)` whose diff was
-245 whitespace and fence-tag fixes plus one deleted glob line. Read as
-"lint-only" it would have skipped the walk — and missed both that it had
-falsified this file's own step 4 and that the CI job silently skipped the very
-tree it was triggered by. **Judge the gate on what the change enforces, not on
-what the diff looks like.**
-
-**Strong refactor signals** — these almost always trigger user-facing doc
-edits because they change paths users / docs reference:
-
-- A module listed in CLAUDE.md's "Project Structure" was renamed, moved, or
-  reduced to a re-export shim (the path users `import` from is now stale)
-- The CLI subcommand surface changed (`wifey --help` differs)
-- A new `make wifey-*` target lands
-
-When in doubt, ask the user: *"This PR touches X. I see [signals]; want me
-to walk the docs, or is this internal-only?"*
+⚠ **A channel whose only signal is failure is unfalsifiable** — you cannot tell
+healthy from broken without a heartbeat, and the delivery path gets exercised for
+the first time on the day you need it. If a path is `on-failure-only`, confirm
+something else proves it alive. **Volume is the counterweight**: multiply by the
+schedule before choosing `always`, and remember the wife channel is a person.
 
 ---
 
-## Step 2 — Identify changed artifacts
+## Phase 3 — Walk each doc surface
 
-From the diff, build a concrete list the doc walk will key off:
+```yaml
+surfaces:
+  - {id: claude_md,   path: CLAUDE.md,          purpose: project structure, commands, footguns, verdicts}
+  - {id: readme,      path: README.md,          purpose: CLI surface, install, quickstart}
+  - {id: memory_md,   path: <memory>/MEMORY.md, purpose: Current State, always_update: true}
+  - {id: makefile,    path: Makefile,           scope: any_referencing_changed_artifact}
+  - {id: compose,     path: docker-compose.yml, scope: any_referencing_changed_artifact}
+  - {id: context,     glob: .claude/context/*.md,      scope: + new_module_presence}
+  - {id: skills,      glob: .claude/skills/*/SKILL.md, scope: any_referencing_changed_artifact}
+  - {id: handoff,     path: docs/plans/next-conversation-prompt.md, written_at: phase_6}
+```
 
-- Each new/renamed/deleted **file** (especially modules listed in CLAUDE.md
-  Project Structure)
-- Each new **CLI flag/subcommand** in `wifey.py` / `cli/`
-- Each new **Make target** (lines added like `^[a-z][a-z0-9_-]*:` in `Makefile`)
-  — Step 4's Makefile section now checks these mechanically, so keep the two
-  regexes identical rather than letting this one drift narrower
-- Each new **TOML config key** or changed default in `config/*.toml`
-- Each module that became a **shim** (line count drops drastically and body
-  is just `from X import …`) — the path users `import` from now points to
-  thin re-exports rather than real code
+**When porting this skill to another repo, edit only that block.**
 
-Keep this list short and concrete — it's the basis for every doc diff.
+For each surface: locate it, read it, decide if an edit is warranted, **propose
+it as a diff and wait for confirmation**, then apply with `Edit` — never `Write`.
+Bias to minimal, targeted edits. Look for outdated examples, missing entries,
+broken paths, stale defaults, stale module-purpose descriptions, and:
 
----
+**A stale VALUE hides under a correct KEY.** The name grep matches the key, so a
+doc naming the right key with the wrong value reads as a hit and passes review.
+When a PR changes what a key *does*, compare the documented value against the
+current one.
 
-## Step 3 — Walk each doc surface
+**Removals have no new symbol to grep.** A PR that removes, narrows or disables a
+behaviour introduces nothing to search for, so the walk comes back clean. Grep
+the name of the artifact that was *constrained*, not of the thing that replaced
+it.
 
-For each surface in the config, do the following:
+**The doc can be right and the code wrong.** When a PR changes behaviour a doc
+already describes, diff the doc's claim against the **pre-fix** code too. If the
+doc already described the corrected behaviour, the bug was a bug rather than a
+design choice, and the fix restored a calibration instead of choosing one — which
+changes how the PR body should describe it. A doc/code mismatch is not
+automatically doc drift.
 
-1. **Locate the relevant files.** Use `path` or `path_glob`. For `scope:
-   any_referencing_changed_artifact`, grep the doc tree for the artifact
-   name (script name, flag, Make target, module path).
+**A changed verdict needs a WORDING grep, not a filename grep.** Prose that
+*quotes* a verdict lives nowhere near the file that declares it. Pick two or
+three distinctive tokens from the retracted sentence — a number, a metric name, a
+coined phrase — and grep those; the verdict word itself is too common to
+discriminate. One PR left four surfaces carrying a retracted statistic.
 
-2. **Read the doc.** Look for:
-   - Outdated examples (old flag names, removed scripts)
-   - Missing entries (new flag/script/target absent from the listing)
-   - Broken file paths (post-rename, post-shim)
-   - Stale defaults
-   - Stale module-purpose descriptions ("module X holds Y" when Y has moved
-     to the package next door)
-   - **Negative claims** — sentences asserting the thing the PR just built
-     does *not* exist ("not ported", "no reader", "until that port lands").
-     These are the most dangerous class and the easiest to miss; see Step 3b.
-   - **A stale VALUE under a correct KEY** — see 3.1 below.
-   - **A behaviour the PR REMOVED or NARROWED** — see 3.2 below.
-   - **A doc that needs no edit because it was right all along** — see 3.3.
-
-3. **Decide if an edit is warranted.** Bias toward minimal, targeted edits.
-   Don't rewrite docs that aren't affected. If a `README.md` doesn't mention
-   the changed artifact at all and never did, leave it alone — **but "doesn't
-   mention it" has to survive Step 3b first.** A doc can be entirely about the
-   artifact while never naming it, by describing its absence.
-
-4. **Propose the edit.** Show the user a unified-diff-style proposal:
-
-   ```diff
-   # CLAUDE.md (line 47)
-   - - `data_store.py` — DB schema, upsert/query helpers, `confidence_ratings`, …
-   + - `store/` — package: `schema.py`, `signals.py`, `backtest_runs.py`,
-   +   `backtest_cache.py`, `confidence.py`, `combos.py`, `stats_cache.py`.
-   +   `data_store.py` is a re-export shim for the 30+ external import sites.
-   ```
-
-   Wait for confirmation before writing.
-
-5. **Apply via the `Edit` tool.** Never use `Write` to overwrite a doc —
-   always targeted edits.
-
-### 3.1 — A stale VALUE hides under a correct KEY
-
-The name grep in step 1 matches on the key, so a doc that names the right key
-with the wrong value reads as a hit and then passes review. **When a PR changes
-what a config key DOES, grep the key across every doc surface and compare the
-documented VALUE against the config's current value**, not just the key's
-presence. Confirmed on PR #146, and it had bitten before that.
-
-### 3.2 — Removals have no new symbol to grep
-
-Steps 2–3 key off the changed artifact's name. A PR that *removes*, *narrows*,
-or *disables* a behaviour introduces no new symbol, so the entire walk has
-nothing to search for and comes back clean. **Grep the name of the artifact that
-was constrained — not the name of the thing that replaced it.** Confirmed on
-PR #143. Note this is the mirror of Step 3b: 3b covers additions falsifying
-negative claims, 3.2 covers removals leaving positive claims behind.
-
-### 3.3 — The doc can be right and the code wrong
-
-The whole sweep is framed as "did the docs drift from the code". Check the other
-direction too: **when a PR changes behaviour that a doc already describes, diff
-the doc's claim against the PRE-fix code, not only the post-fix code.**
-
-If the doc already described the corrected behaviour, that is evidence the bug
-was a *bug* rather than a design choice — and the fix restored a calibration
-instead of choosing a new one, which changes how the PR body and handoff should
-describe it. PR #150 is the case: `README.md` said the EV gate's guard was
-"applied to directional trade count" and the ladder was "calibrated from DB p25
-directional counts". Both were false of the code and true of the intent. The doc
-needed no edit, and that silence was the most informative thing in the sweep.
-
-**A doc/code mismatch is not automatically doc drift.**
-
-### 3.4 — A changed verdict: grep the WORDING, not the filename
-
-When a branch edits a `**Verdict:**` line — a sleeve verdict, an audit's
-FOUND / BOUNDED / EXCLUDED / BLOCKED label, a retracted statistic — the filename
-grep finds the audit and stops. **Grep the old claim's distinctive wording across
-every doc surface**, because the prose that *quotes* a verdict lives nowhere near
-the file that declares it.
-
-One PR left four surfaces carrying a retracted statistic. The generated
-`INDEX.md` self-corrected on regeneration; every hand-written surface quoting it
-did not. Pick the two or three most distinctive tokens from the retracted
-sentence — a number, a metric name, a coined phrase — and grep those, not the
-verdict word, which is too common to discriminate.
-
-### 3.5 — Rewrote or compressed a doc? Diff the IDENTIFIERS, not the prose
-
-Reading a rewritten doc for "what looks missing" does not work: the new version
-reads complete, because it was written to. **Extract the backticked tokens from
-both versions, subtract, and triage the remainder** — every identifier the old
-version carried that the new one does not is either deliberately re-homed or an
-omission, and you have to say which.
+**Rewrote or compressed a doc? Diff the IDENTIFIERS, not the prose.** Reading a
+rewrite for "what looks missing" does not work — it reads complete, because it
+was written to.
 
 ```bash
 toks() { grep -oE '`[^`]+`' "$1" | sort -u; }
@@ -428,1222 +257,360 @@ git show main:<path> > /tmp/old.md
 comm -23 <(toks /tmp/old.md) <(toks <path>)   # in old, gone from new
 ```
 
-Two repos, two for two: on PR #203 this surfaced three real omissions a hand read
-had passed, and the crypto parent ran the same check on its own doc slim and
-caught one there (a number proving a circuit breaker was inert). In both cases
-**nothing else in the sweep found anything**. Re-homing counts as covered only if
-you can name the destination file.
+Triage every remainder: each is either deliberately re-homed or an omission, and
+you must say which. **Re-homing counts as covered only if you can name the
+destination file** — and verify it there before cutting.
+
+### Discovered-fact sweep — run whenever the branch INVESTIGATED something
+
+Every check so far asks whether the docs drifted from the code. None asks whether
+the branch **learned** something durable about behaviour that did not change. A
+fix usually costs an investigation, and the investigation is the expensive part
+with no artifact — the diff records the repair, the commit message the reasoning,
+and neither is a surface a future session reads.
+
+Ask explicitly: *what does this branch now know about existing behaviour that it
+did not know when it started?* For each answer:
+
+1. **Durable, or session state?** How the code behaves is durable; "the DB was
+   stale on this machine" is not.
+2. **Would a future session go looking for it?** If yes → `.claude/context/*.md`.
+   If it would silently damage a session that never thought to ask → CLAUDE.md's
+   footgun block.
+3. **Already pinned by a test?** Then the test is the enforcement and the doc is
+   the *pointer* — write the pointer, don't restate the rationale.
+
+Two shapes are easy to miss: **a fact established by ruling something OUT** (a
+scan over an empty set, which nothing keyed on the diff can find), and **a
+near-miss you did not ship** (record the decision and its cost, or the next
+session re-derives the same dead end).
+
+⚠ A discovered fact is a claim, so it goes through the claims audit like any
+other. Re-derive it from the code before writing it down.
+
+### Surface-specific notes
+
+- **CLAUDE.md** — Project Structure entries match real homes; Key Commands and
+  CLI resolve; the skills table is current. ⚠ **CLAUDE.md must not re-absorb
+  context-doc content.** Two sources of truth, one of them invisible, always rots
+  the invisible one. If a PR adds module detail here, move it.
+- **README.md** — CLI list matches `wifey --help`; quickstart still works.
+- **Makefile** — every CLI subcommand has a `wifey-<name>` wrapper; script
+  wrappers are bare (`backup`, not `wifey-backup`). `tools/*.py` is genuinely
+  mixed, so this is a **judgement**: a tool the operator runs as part of a
+  documented workflow wants a target; one another tool calls does not. Following
+  a `new-targets` hit to what it *executes* is also a cheap directory check — it
+  is how `scripts/` was found missing from Project Structure entirely.
+- **docker-compose.yml** — daemons get `restart: unless-stopped`; one-shot tools
+  get `profiles: [tools]`.
+- **`.claude/skills/*/SKILL.md`** — a skill naming a tool, flag, path or constant
+  drifts exactly like CLAUDE.md. ⚠ **Ported skills drift against the fork, not
+  just against time**: check every `buibui-*` target, `buibui --help`, and
+  parent-repo memory path against this repo's equivalents. One such path would
+  have sent a session's Current State update into the parent repo.
+  `.claude/` is covered by `make lint-md`, so a skill edit lints like any other
+  file — keep it that way.
+- **The handoff** is the surface with no other check: gitignored, so no reviewer
+  ever sees its drift, and its group A is headed *"Settled — do not
+  re-litigate"*, which means a stale line there **instructs** rather than merely
+  misinforms. `queue-items` and `handoff-symbols` cover it mechanically; read
+  their hits here and fix in phase 6.
 
 ---
 
-## Step 3b — Negative-claim sweep (run whenever the PR ADDS something)
-
-Steps 2–3 search the docs for the changed artifact's **name**. That finds every
-doc that already talks about the thing. It structurally cannot find the docs
-that talk about the thing's **absence** — and a PR that adds a capability turns
-every such sentence into a false statement in one commit.
-
-This is not hypothetical. PR #127 added `tools/pundit_score.py` and three
-surfaces asserted the repo had no scorer. Two named the file, so the name grep
-caught them. The third did not have to: had it read *"routed rows accumulate
-unscored"* with no filename, the sweep would have passed clean while leaving an
-instruction telling the next session to **tell the user something false**.
-
-So run a second grep keyed on absence-language, not on the artifact. Note the
-`-o`: it prints the **matched phrase** rather than the line, which matters here
-because CLAUDE.md's Project Structure entries run to several thousand characters
-each and printing whole matching lines buries the signal (the first draft of this
-step did exactly that — 49 hits, most of them unreadable walls).
-
-```bash
-git grep -nEio \
-  "(never|not) (yet )?ported|no (reader|host|consumer)\b|this repo has no|\
-until (that|the) port lands|silent accumulator|accumulates? unscored|\
-is not (yet )?(available|implemented|wired)" \
-  -- CLAUDE.md README.md Makefile docker-compose.yml .claude
-```
-
-Output is `path:line:phrase`, one short line per hit — measured at **14 hits on
-this repo, 2026-08-04**. Open only the ones whose surrounding topic overlaps this
-PR; most are true statements about unrelated gaps and must be left alone. Judge
-by topic, not by keyword.
-
-Scope notes, all deliberate:
-
-- `docs/audits/` and `docs/redesign/` are **excluded**. They are dated historical
-  records, and a past-tense negative claim in them is correct by construction —
-  including them added ~35 hits, none actionable.
-- Keep the pattern list *narrow*. Generic phrases (`for now`, `unwired`,
-  `stop-gap`, bare `does not have`) each pulled in double-digit false positives
-  for no additional catch.
-- This file matches itself. Expected — skip `post-branch/SKILL.md` hits.
-
-Three properties make this worth doing on every additive PR:
-
-- One command, bounded output, no judgement needed to *run* it.
-- Its false-positive mode is harmless (read a line, move on); its false-negative
-  mode ships a doc that actively misleads the next session.
-- **In a fork it doubles as a port check.** A doc copied from the parent can
-  carry the parent's negative claim about *this* repo — true when written, in the
-  other repo's context, and quietly wrong here.
-
-Anything this turns up is proposed through the normal Step 3 flow. Prefer
-replacing the negative claim with the positive fact plus how to use it, rather
-than merely deleting the sentence — the sentence existed because a reader needed
-to know the answer, and they still do.
-
----
-
-## Step 3c — Discovered-fact sweep (run whenever the branch INVESTIGATED something)
-
-Every step so far asks the same question in a different place: **did the docs
-drift from the code?** None asks the inverse — **did the branch LEARN something
-durable about behaviour that did not change?** A fix usually costs an
-investigation, and the investigation's findings are the expensive part. They are
-also the part with no artifact: the diff records the repair and the commit
-message records the reasoning, and neither is a surface a future session reads.
-
-PR #212 is the worked example. Fixing one alert-header contradiction established
-that **detectors are always called with no params**, so every detector's own
-keyword arguments are dead and config `tp_r` only lands downstream. Nothing in
-the diff changed that — it was already true — so no name grep, no negative-claim
-sweep and no surface check could reach it. It landed in a commit message and
-stopped there, and the doc edit was still owed a session later.
-
-**Ask it explicitly: what does this branch now know about existing behaviour that
-it did not know when it started?** Then, for each answer:
-
-1. **Is it durable, or is it session state?** How the code behaves is durable.
-   "The DB was stale on this machine" is not.
-2. **Would a future session go looking for it?** If yes it belongs in
-   `.claude/context/*.md` behind the Project Structure pointer; if it would
-   silently damage a session that never thought to ask, it belongs in CLAUDE.md's
-   footgun block. That is CLAUDE.md's "Where knowledge goes" rule applied to a
-   finding rather than to a feature.
-3. **Is it already pinned by a test?** Then the test is the enforcement and the
-   doc is the *pointer* — write the pointer, do not restate the test's whole
-   rationale. #212 pinned its finding in `tests/test_signal_registry.py` and
-   still owed the pointer.
-
-Two shapes recur and are easy to miss:
-
-- **A fact established by ruling something OUT.** "Both call sites pass no
-  params" is a scan over an empty set, so nothing keyed on the diff can find it.
-- **A near-miss you did not ship.** Where the branch nearly changed something and
-  backed off because the repair is a *decision* rather than a cleanup, record the
-  decision and its cost — otherwise the next session re-derives the same dead end.
-
-⚠ **A discovered fact is a claim, so it goes through Step 5c like any other.**
-Re-derive it from the code before writing it down: the branch that found it was
-optimising for a fix, not for the generality of the sentence.
-
----
-
-## Step 4 — Surface-specific checks
-
-### CLAUDE.md
-
-- "Project Structure" section: every module listed should match its real
-  current home. If a `*.py` file is now a shim, rename or annotate to
-  point at the package that holds the real code.
-- "Key Commands" / "CLI" sections: every subcommand should still resolve.
-- "Agent Skills" table: skills added/removed since last sweep are listed.
-
-### README.md
-
-- CLI subcommand list matches `wifey --help`.
-- Quickstart still works (commands referenced still exist).
-
-### Makefile
-
-- Every `wifey.py` subcommand has a `make wifey-<name>` target.
-- Every public daemon has a `docker-up` / `docker-down` line.
-- **Second half — the repo also wraps SCRIPTS, not only CLI subcommands**
-  (parent #583/#616). `backup` → `deploy/backup-analytics.sh` is the precedent,
-  and note it is **not** `wifey-backup`: the `wifey-*` prefix marks CLI wrappers,
-  script wrappers are bare. Check both surfaces:
-  - Every `deploy/*.sh` an operator runs by hand should have a wrapper, or none
-    of them should.
-  - **And `tools/*.py`, which is where most hand-run scripts actually live.**
-    The convention there is genuinely mixed — measured 2026-08-13: **17 of 32**
-    are wrapped (`docs_index.py`, `stamp_universe_listed.py`, `pundit_score.py`
-    are; `combo_health.py`, `expand_universe_sp500.py`, `video_fetch.py` are
-    not). So this bullet should prompt a **judgement, not assert a rule**: a tool
-    the operator invokes as part of a documented workflow wants a target; a tool
-    another tool calls does not.
-- **Third half — the REVERSE direction: does a new TARGET reach the docs?**
-  Both bullets above ask whether a script or subcommand *has* a target. Nothing
-  asked the converse, and no check in this step could: a new target is a new
-  **line in an existing file**, which is exactly the shape `--diff-filter=A`
-  cannot report, so both presence checks below are structurally blind to it.
-  Step 2 already lists new targets as a changed artifact — but that is a hand
-  walk, and a hand walk is not the walk.
-
-  ```bash
-  # make targets this branch ADDS, vs every doc an operator would read.
-  # ${t#wifey-} strips the CLI-wrapper prefix -- see the convention note below.
-  git diff main -- Makefile | grep -E '^\+[a-z][a-z0-9_-]*:' \
-    | sed 's/^\+//; s/:.*//' | while read -r t; do
-      grep -rqsw -e "$t" -e "${t#wifey-}" \
-        CLAUDE.md README.md .claude/context/ deploy/README.md \
-        || echo "UNDOCUMENTED TARGET: $t"
-    done
-  ```
-
-  **The `${t#wifey-}` strip is not a fudge — it encodes a documented convention.**
-  CLAUDE.md states *"Each Makefile `wifey-*` target wraps the equivalent
-  invocation"* and then documents the **subcommands** in its CLI table, so
-  `wifey-param-audit` is covered by the `param-audit` row plus that rule. Without
-  the strip the check reports every `wifey-*` wrapper undocumented — which is a
-  false COVERED-inverse: noisy rather than dangerous, but noise is what gets a
-  check ignored. **Added 2026-08-17 after the first run's 7 hits turned out to
-  include 2 of exactly this shape.**
-
-  Same `-w` rule and the same deliberate over-reporting as the checks below.
-  Measured 2026-08-17 against all 76 of wifey's targets: **71 documented, 5 not**
-  (`clean-db`, `db-prune-backtests`, `lint-md-fix`, `lint-py-check`, `web-check`
-  — all documented since), so it discriminates rather than reporting a uniform
-  green. Pre-existing hits never fire on an unrelated branch, since the check
-  keys off the branch diff.
-
-  **It earned its keep on run two.** `db-prune-backtests` runs
-  `scripts/db_prune_backtests.py`, and chasing that one hit found that
-  **`scripts/` was missing from CLAUDE.md's Project Structure entirely** — a
-  whole top-level directory, all three files undocumented. A target check is
-  therefore also a cheap *directory* check: follow a hit to what it executes.
-
-  ⚠ **#209, the branch that prompted this check, is NOT its positive control.**
-  It added `wifey-pundit-sync` and `wifey-pundit-backfill`, and that session
-  documented both by hand — so the check correctly stays *silent* there. Running
-  it on #209 and seeing nothing proves only that the fixture cannot fail. Verify
-  with a synthetic target instead: `printf '+zzz-nope: x\n'` through the same
-  pipeline reports `UNDOCUMENTED TARGET: zzz-nope`.
-
-### docker-compose.yml
-
-- Long-running daemons → `restart: unless-stopped`.
-- One-shot tools → `profiles: [tools]` so they don't auto-start.
-
-### `.claude/context/*.md`
-
-- Module references match the current package layout. These are the most
-  refactor-sensitive docs.
-
-- **`any_referencing_changed_artifact` is BLIND TO OMISSION — this is how
-  `analytics.md` and `signals.md` rotted.** That scope greps the doc tree for
-  the changed artifact's name. When a PR *adds* a package, grepping for `pead`
-  finds zero hits, so the sweep concludes "no change needed" — when the correct
-  conclusion is the exact opposite: the doc is missing a module. A scope that
-  can only detect drift in things the doc already mentions can never detect the
-  module it has never heard of. Same defect shape as markdownlint's `!.claude`
-  glob: the check reported green because it could not see the files.
-
-  **So for context docs, run a presence check, not only a mention grep.** For
-  every module added or renamed in this PR, confirm the matching context doc
-  gained an entry.
-
-  **Key it off the branch diff, not off a directory walk.** The old version of
-  this check looped over top-level directories, which made it blind one level
-  down: `analytics/` is documented, so a brand-new `analytics/<sleeve>/` package
-  — or any new module inside an already-documented package — never tripped it.
-  That is the same omission blindness this bullet is about, reproduced in the
-  check meant to catch it. The diff knows exactly what is new:
-
-  ```bash
-  # every module this branch ADDS vs. what the context docs actually document
-  git diff main --diff-filter=A --name-only -- '*.py' | while read -r f; do
-    case $f in tests/*|docs/*) continue;; esac
-    grep -rqsw -e "$f" -e "$(basename "$f" .py)" .claude/context/ \
-      || echo "UNDOCUMENTED: $f"
-  done
-  ```
-
-  **The `-w` is load-bearing — do not drop it back to a bare substring match**
-  (ported from parent #581). Without it the check has the blind spot it was
-  written to fix, in the other direction: a bare grep for `docs_index` also
-  matches inside any longer identifier, so a module can report "documented" on
-  a hit that has nothing to do with it. **A false-positive presence check is
-  worse than none, because it reports covered.** `-w` works here for a
-  non-obvious reason: `_` is a word-constituent character, so a truncated probe
-  has no word boundary, while a real module path does (`/` and `.` are
-  boundaries). Re-verified against wifey's own docs tree — `ocs_index`,
-  `ombo_health`, `tamp_universe` and `niverse_coverage` all report COVERED under
-  a bare `grep` and MISSING under `-w` (4 for 4), while `docs_index`,
-  `combo_health` and `universe_coverage` stay COVERED. **If you re-verify this,
-  pick a probe that can still fail** — a module that is now documented no longer
-  discriminates.
-
-  `migrations/` was in this skip list until 2026-08-13 and is no longer: it is
-  documented at `.claude/context/migrations.md` (wifey #179), so a new migration
-  script should be checked like any other module.
-
-  Renames need the same treatment — swap `--diff-filter=A` for `--diff-filter=R`
-  and check the new path. A hit here is a prompt to judge, not an automatic
-  edit: a private helper module may legitimately not warrant a context entry.
-
-  One top-level package is knowingly absent and is **not** a finding: `trade/`
-  (empty placeholder, both files 0 bytes). `migrations/` was the second until
-  2026-08-13 — see the note above; it is documented now.
-
-- **FOURTH INSTANCE — a NON-PYTHON file, in a directory a doc enumerates by
-  name** (ported from parent #583, re-derived). The parent's version of this was
-  about the check looping over top-level directories; **wifey already fixed that**
-  (see "Key it off the branch diff" above), so what is left here is narrower and
-  different: the presence check is filtered to `-- '*.py'` and greps only
-  `.claude/context/`. A new `deploy/*.sh`, a systemd unit, or a `config/*.example`
-  is therefore invisible to it in **both** directions — the filter drops the file,
-  and the grep looks in a tree that names **zero** `.sh` files. The enumerating doc
-  for those is `deploy/README.md`, which names all **five** of today's deploy
-  artifacts (both scripts, all three units — column-scanned 2026-08-13).
-
-  A mention-grep is no help either: grepping a brand-new basename returns zero
-  hits and reads as "no change needed", when the correct reading is "the doc has
-  never heard of this file". **Both checks report green on a directory whose
-  contents have changed.**
-
-  ```bash
-  # non-Python files this branch ADDS, vs every doc that enumerates by filename
-  git diff main --diff-filter=A --name-only \
-    | grep -vE '^(tests|docs)/|\.py$' | while read -r f; do
-      grep -rqsw "$(basename "$f")" \
-        CLAUDE.md README.md .claude/context/ deploy/README.md \
-        || echo "UNDOCUMENTED FILE: $f"
-    done
-  ```
-
-  Same `-w` rule and the same deliberate over-reporting as above: not every added
-  file belongs in a doc, so a hit is a candidate to dismiss in seconds. The
-  asymmetry is the point — a false positive costs a glance, a silent miss ships a
-  doc that enumerates every sibling but one and reads as complete. **This fires for
-  real on the off-site backup task**, which adds a `deploy/` script.
-
-  **`CLAUDE.md` joined that grep list 2026-08-17; `Makefile` was considered and
-  REFUSED.** The two look like the same edit and are opposites. CLAUDE.md is a
-  doc, and it is the *only* mention of four tracked files
-  (`.claude/context/footguns.md`, `.claude/context/migrations.md`,
-  `.github/pull_request_template.md`, `.markdownlint-cli2.jsonc`), so adding it
-  removes four false alarms and can never manufacture coverage. A Makefile
-  reference is a **build rule, not documentation** — adding it would let a file
-  that appears in no prose at all report COVERED, which is the failure this
-  section's own `-w` rule exists to prevent: *a false-positive presence check is
-  worse than none, because it reports covered.* Measured before refusing: across
-  every non-Python operator file, the Makefile was either redundant with
-  `deploy/README.md` (both backup scripts) or silent (`notify-failure.sh`,
-  `stocks.json.example`, `youtube_channels.toml.example`). It supplies coverage
-  the docs do not in **zero** cases, so the edit buys nothing and risks a silent
-  miss. **Check what a proposed grep-list entry would newly mark COVERED before
-  adding it.**
-
-- **CLAUDE.md must not re-absorb this content.** The 2026-08-05 split left
-  CLAUDE.md holding a package index plus verdicts and footguns, and the context
-  docs holding the detail. Measured at the time of that split: CLAUDE.md's
-  `analytics/` bullet held 155 tokens that `context/analytics.md` did not, and
-  `context/signals.md` still claimed 20 strategies (naming the long-deleted
-  `funding_reversion`) where CLAUDE.md correctly said 18. Both files described
-  the same packages; the auto-loaded one was visibly wrong so it got maintained,
-  and the on-demand one silently diverged. **Two sources of truth, one of them
-  invisible, always rots the invisible one.** If a PR adds module detail to
-  CLAUDE.md's Project Structure, move it.
-
-### `.claude/skills/*/SKILL.md`
-
-- A skill that names a tool, flag, path or constant drifts exactly like
-  CLAUDE.md does. Grep the skill tree for the changed artifact's name — a
-  renamed flag or a moved module leaves a skill quietly instructing the next
-  session to run something that no longer exists.
-- **Ported skills drift against the fork, not just against time.** This tree
-  came from the crypto parent, so a skill can be internally consistent and
-  still wrong here: check every `buibui-*` Make target, `buibui --help`, and
-  `~/.claude-personal/projects/-home-kng-repo-buibui-moon-trader-bot/…` path
-  against this repo's equivalents. Four such artifacts survived in this file
-  alone until 2026-08-03, including a memory path that would have sent a
-  session's `Current State` update into the parent repo.
-- **`.claude/` is covered by `make lint-md`** as of 2026-08-05 (a dedicated
-  `chore(lint)` pass cleared a 245-issue backlog, then dropped `!.claude` from
-  the globs — 83 files, 0 issues). A skill edit therefore lints like any other
-  file and reddens CI on a violation, with no special invocation to remember.
-  Keep it that way: the backlog reached 245 precisely because nothing enforced
-  it, and re-adding the exclusion would restart that clock.
-
-  **Historical note — still true of the crypto parent, which keeps the
-  exclusion.** When a tree *is* excluded, passing an explicit path does not
-  override the glob, and it **does not error**: it silently lints the other
-  files and prints `Summary: 0 issues in 0 files`, indistinguishable from a
-  clean pass on the file you meant. `--no-globs` is the override, and the
-  falsifier is the file count — the output must name as many files as you
-  passed:
-
-  ```bash
-  npx markdownlint-cli2 --no-globs "<path>/SKILL.md"   # -> "Linting: 1 file"
-  ```
-
-  Running from outside the repo works too, but then `--config` is mandatory or
-  you lint against markdownlint's *defaults* rather than the repo's rules —
-  `MD013` (line length) fires on every prose line while a real violation hides
-  in the noise.
-
-### `docs/plans/next-conversation-prompt.md` — the surface with no other check
-
-Every other surface here has a second line of defence: CI lints it, a reviewer
-reads it, or a test asserts it. The handoff has **none** — it is gitignored, so
-it never reaches a PR, and it is the one artifact that survives a session
-delete. Its group A is headed *"Settled — do not re-litigate"*, which means a
-stale line there does not merely misinform the next session, it **instructs**
-it.
-
-**The failure is proven, not hypothetical.** #184 wrote the group-A entry
-*"`route_target` HAS NO SUPPRESSORS HERE"*; **#186 falsified it two PRs
-later.** It was corrected only because the same session wrote both — a fresh
-session would have read a confident, dated, wrong rule under a heading telling
-it not to re-check. This skill could not have caught it: the handoff is written
-at **Step 10b** and, until now, was absent from `surfaces:`, so Step 3 never
-diffed it against the branch.
-
-**Read it at Step 3, fix it at Step 10b** (or inline — it is gitignored, so
-neither costs CI). 10b's PRUNE rules are about *size*; this check is about
-*truth*, and the two are not the same pass.
-
-Key the check off the branch's changed **symbols**, not only its filenames —
-`route_target` is a function, and no file-level grep would have surfaced the
-claim about it:
-
-```bash
-HANDOFF=docs/plans/next-conversation-prompt.md
-{ git diff main --name-only | xargs -n1 basename | sed 's/\.py$//'
-  git diff main -- '*.py' \
-    | grep -oE '^[+-][[:space:]]*(def|class)[[:space:]]+[A-Za-z_][A-Za-z0-9_]*' \
-    | awk '{print $NF}'
-} | sort -u | while read -r s; do
-    [ -z "$s" ] && continue
-    grep -nw -- "$s" "$HANDOFF" | sed "s|^|  $s → |"
-  done
-```
-
-Same `-w` rule as the context-doc presence check above, and the same
-deliberate over-reporting. Measured on this repo 2026-08-13: **11 hits** on the
-diff of #186 and **4** on that of #185 — bounded enough to read in full. The
-false-positive mode is a generic basename that appears in prose for unrelated
-reasons (`tools.md` accounts for 3 of the 4 on #185); dismiss those in seconds.
-
-**It earned its keep on its first run.** Against #186's own diff it surfaced
-`route_target` at group A *and* at §3f, where the handoff still read *"has
-**zero flags** (re-verified #171)"* — false since #186 gave it two kw-only
-suppressors. The file was contradicting itself, one section asserting what
-another denied, and nothing else in this skill was looking.
-
----
-
-## Step 5 — MEMORY.md update (always)
-
-Regardless of the behaviour gate, **always update MEMORY.md's "Current
-State"** at the end of every session. This is project policy (CLAUDE.md
-"Session Memory Protocol"):
-
-- Rewrite the "Last session" bullet to today's date + branch name + a one-line
-  summary of what changed
-- **The roll is THREE-way, because Current State carries both a "Last session"
-  and a "Prior session" bullet.** Today's entry becomes **Last session**, the
-  existing Last session becomes **Prior session**, and the existing Prior
-  session goes **verbatim into `memory/project_session_log_<month>.md`**. Grep
-  the log afterwards to confirm it landed.
-
-  History worth keeping, because this step has now been wrong in both
-  directions. Until 2026-08-13 it said *"move the previous 'Last session' entry
-  to 'Previous session'"* (ported from parent #581), naming a bullet that did
-  not exist. The correction over-shot to *"there is no 'Previous session'
-  bullet, and there has not been one"* — but a **Prior session** bullet does
-  exist, so every run since re-derived the third leg by hand, which is the exact
-  failure the correction was written to kill. **A step that is wrong every run
-  and correct never is worse than no step**, and that cuts both ways: check the
-  live file rather than the last person's description of it. The authority is
-  CLAUDE.md's "Session Memory Protocol"; if the two disagree, CLAUDE.md wins and
-  this text is the side to fix
-- Convert any relative dates ("Thursday") to absolute (`2026-05-01`)
-- Update / remove open questions in `memory/project_open_questions.md`
-
-**Respect the index cap — this step is where it gets broken.** CLAUDE.md's
-Session Memory Protocol caps Current State at **6 bullets**, "Last session"
-at 2 lines and every other bullet at exactly 1. Adding a 7th bullet means
-first rolling the oldest, verbatim, into
-`memory/project_session_log_<month>.md`. Writing a rich multi-sentence entry
-here feels like diligence and is the exact mechanism by which the index grew
-to 57% Current State by 2026-08-03 — and the index is re-read on **every**
-session, so that bloat is billed per conversation, not per write.
-
-Check before you finish:
-
-```bash
-awk '/^## Current State/,0' <MEMORY.md> | grep -c '^- '   # must be <= 6
-```
-
-This step runs even when the behaviour gate skipped the user-facing doc
-walk, because MEMORY.md tracks **what changed in the session**, not just
-behaviour-visible changes.
-
----
-
-## Step 5b — SoT reconcile (always, and it is NOT covered by Step 5)
-
-**Ask one question: does this branch close, change, or contradict a row in the
-SoT** (`~/.claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot/memory/project_todo_master.md`)?
-If yes, reconcile it **now, in this same session** — move the row to **Closed**
-with a one-line verdict, per that file's own rule ("Move items there with a
-one-line verdict; never delete"). Like MEMORY.md it lives outside the repo, so
-it is **never committed** and costs no CI.
-
-Cheap way to find the row — search for the item ID and the PR number:
-
-```bash
-SOT=~/.claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot/memory/project_todo_master.md
-grep -n 'N1\|N3\|W4\|#159' "$SOT"     # the IDs and PRs this branch touched
-grep -n 'OPEN\|not yet\|unfixed' "$SOT" | grep -i "$TOPIC"
-```
-
-**Why this step exists, and why it is separate from Step 5.** Nothing auto-updates
-the SoT — the session-memory wiring (CLAUDE.md "Session Memory Protocol", this
-skill's Step 5, `/sanity-check`) all touches **MEMORY.md**, not the SoT. **The SoT
-predicted this failure in its own "How to use this file" section**; drift recurred
-and nobody acted on the trigger, so the step is now here.
-
-**The failure it prevents is misinformation, not clutter.** Measured on this repo
-2026-08-12, three rows were stale in a way that would misdirect a fresh session:
-`N1` still listed the **0.1 universe-as-of policy** and the **0.4 cost model** as
-the remaining work when `analytics/backtest/cost_model.py` and the
-`universe_policy` / `cost_model` columns were already live; `N3` asked to "expand
-beyond the 13-symbol watchlist … start ~S&P 100" against a committed **505**-member
-`config/universe.json`; and `W4` said "next `/sync-parent` scans `90a04e0..HEAD`"
-after **two** scans had run. A session picking up work from the SoT would have
-rebuilt shipped code.
-
-**A stale row is worse than a missing one**, because it reads as current evidence.
-If you are unsure whether a row is still true, do not leave it — either verify it
-against the code or mark it unverified with today's date. **Reconcile to what you
-verified, not to what is tidy**: a row that shipped *with a known residual gap*
+## Phase 4 — Always-run, regardless of the gate
+
+### MEMORY.md
+
+Rewrite "Last session" to today's date + branch + a one-line summary. **The roll
+is THREE-way**: today → **Last session**, the existing Last session → **Prior
+session**, the existing Prior session → verbatim into
+`memory/project_session_log_<month>.md`. Grep the log afterwards to confirm it
+landed. Convert relative dates to absolute. Update
+`memory/project_open_questions.md`.
+
+Respect the cap — this step is where it gets broken. Current State holds at most
+**6 bullets**, "Last session" at most 2 lines, every other bullet exactly 1.
+`memory-cap` in phase 1 checks it. Writing a rich multi-sentence entry feels like
+diligence and is the mechanism by which the index once grew to 57% Current State;
+the index is re-read every session, so that bloat is billed per conversation.
+
+⚠ **Check the live file rather than the last person's description of it.** This
+step has been wrong in both directions — once naming a bullet that did not exist,
+then denying one that does. CLAUDE.md's Session Memory Protocol is the authority.
+
+### SoT reconcile
+
+Ask: **does this branch close, change or contradict a row in the SoT**
+(`memory/project_todo_master.md`)? If yes, reconcile it now — move the row to
+Closed with a one-line verdict, per that file's own rule ("never delete").
+
+Nothing auto-updates the SoT; the session-memory wiring all touches MEMORY.md.
+**A stale row is worse than a missing one**, because it reads as current
+evidence — three stale rows once described shipped code as remaining work, and a
+session picking up from them would have rebuilt it. **Reconcile to what you
+verified, not to what is tidy**: a row that shipped with a known residual gap
 gets the gap written down, not a blanket close.
 
----
+### Claims audit — run whenever the branch ADDS PROSE
 
-## Step 5c — Claims audit (run whenever the branch ADDS PROSE; before Step 7's commit)
+Nothing else checks whether the **numbers the branch itself asserts** are true.
+Extract every quantitative claim from the branch's new prose — commit messages,
+audit docs, PR body, CLAUDE.md and context additions, the handoff — **and for
+each, name the query or command that reproduces it.** A claim whose reproduction
+you cannot state is not ready: cut it, soften it to what you measured, or measure
+it. Record the reproduction in the commit or the audit doc, not just the session.
 
-Every other step in this skill checks whether the **docs** drifted from the
-**code**. Nothing checks whether the **numbers the branch itself asserts** are
-true. On 2026-08-12 two false quantitative claims reached committed documents —
-one into an audit doc that merged as #156, one into the #157 PR body, CLAUDE.md
-and `.claude/context/analytics.md`. Both cost a retraction commit plus a duplicate
-CI matrix: exactly the cost this skill's pre-PR ordering exists to avoid.
+Five shapes to hunt:
 
-**Extract every quantitative claim from the branch's new prose** — commit
-messages, audit docs, the PR body, CLAUDE.md / `context/*.md` additions, and the
-handoff — **and, for each, name the query or command that reproduces it.** A claim
-whose reproduction you cannot state is not ready to ship: cut it, soften it to
-what you did measure, or go measure it.
-
-Four shapes to hunt specifically:
-
-1. **A claim about a MECHANISM supported only by a COUNT.** Both 2026-08-12
-   failures had this shape — `"the run wrote zero ledger rows"` (grouped by the
-   wrong clock) and `"13 rows re-stamped proves re-detection"` (they were first
-   inserts in both tables). A count is consistent with many mechanisms. **Demand
-   the query that rules the OTHER mechanisms out**, not merely one that produced
-   the number. Where two writers use opposite conflict policies, their
-   disagreement is a free discriminator.
-2. **A claim inherited from the handoff counts as one of the branch's own.**
-   #158's "23 rows past their hold window" was carried forward unchallenged for
-   two sessions and was an artifact of reading a **bar** count as calendar days.
-   If the branch repeats it, the branch owns it.
-3. **An upstream number quoted as this repo's.** A ported fix's measured impact
-   upstream is not wifey's; re-derive it here or say "preventive, not a repair".
+1. **A claim about a MECHANISM supported only by a COUNT.** A count is consistent
+   with many mechanisms. Demand the query that rules the *others* out.
+2. **A claim inherited from the handoff counts as the branch's own.** If the
+   branch repeats it, the branch owns it.
+3. **An upstream number quoted as this repo's.** Re-derive here, or say
+   "preventive, not a repair".
 4. **A RATE with no null.** "X% of Y does Z within N" is not a finding until it
-   states what fraction of an arbitrary comparable does Z within N. This step
-   passed *"90.3% of gaps fill within 60 sessions"* as **true** — and it is true.
-   A matched placebo level fills 88.9%, so the gap-specific content was **+1.5pp**
-   and the sentence was inert. **This step audits whether a number is true, never
-   whether it is informative**, so the null has to be demanded explicitly. Applies
-   to fill rates, win rates, hit rates, "N% of alerts resolve by bar k" — any
-   proportion offered as evidence that a mechanism exists.
-5. **A SET-WIDE claim built from a SPOT CHECK.** A sentence quantified over a set
-   — *every*, *none*, *all N*, *in zero cases*, *the only* — is a claim about
-   each member, so it is falsified by one counterexample and can only be
-   established by scanning the whole column. Sampling a few members and
-   generalising feels like evidence and is not. **Demand the full scan, not a
-   representative handful.** #210 wrote *"across every non-Python operator file,
-   the Makefile supplies coverage the docs do not in zero cases"* after checking
-   **five hand-picked files**; the claim happened to survive the real scan
-   (`git ls-files | grep -vE …` over all of them), but nothing in this step had
-   asked for one. The tell is grammatical rather than numerical — a superlative
-   or a universal quantifier — so it is cheap to spot once you are looking for
-   it. Related: [[feedback_setwide_claims_need_a_column_scan]].
-
-Record the reproduction in the commit message or the audit doc, not just in
-the session — that is what makes the next challenge cheap.
+   states what fraction of an arbitrary comparable does Z. This audit checks
+   whether a number is *true*, never whether it is *informative*, so the null has
+   to be demanded explicitly.
+5. **A SET-WIDE claim built from a SPOT CHECK.** *every*, *none*, *all N*, *in
+   zero cases*, *the only* — a sentence quantified over a set can only be
+   established by scanning the whole column. The tell is grammatical rather than
+   numerical, so it is cheap to spot once you look for it.
 
 ---
 
-## Step 5d — Generated doc indexes (always; before Step 7's commit)
-
-`docs/audits/INDEX.md` and `docs/superpowers/specs/INDEX.md` are **generated**
-(`tools/docs_index.py`). `tests/test_docs_index.py` regenerates both and compares
-byte-for-byte, so a branch that adds, renames, or deletes anything in either tree
-leaves a **red suite** — not a lint nit — until the indexes are refreshed:
+## Phase 5 — Commit, push, then open the PR
 
 ```bash
-make docs-index-check   # non-zero if either index is stale; writes nothing
+git add <files>
+git commit -F <file>      # -F, never a heredoc: quoting a hazard trips the guard
+git push -u origin <branch>
 ```
 
-Stale → `make docs-index`, then commit the regenerated files in Step 7. **Never
-hand-edit either `INDEX.md`.**
-
-**Why here and not in Step 10a.** 10a runs *after* `gh pr create`, so a failure
-caught there costs a second push and a second full five-check matrix — inside the
-public-flip window this repo pays for CI with. The check is local, offline and
-sub-second, so it belongs before the commit that opens the PR.
-
-**Why it ignores Step 1's behaviour gate**, like 5b and 5c: a PR whose only new
-prose is an audit doc can legitimately gate as *skip* (bug fix + regression test,
-no behaviour change), and that is precisely the PR this catches.
-
----
-
-## Step 5e — Markdown pre-lint (whenever the branch touches `.md`; before Step 7)
-
-One sub-second grep that costs a full lint cycle when missed. Run it over the
-branch's changed Markdown, then `make lint-md` for the real check.
-
-```bash
-git diff main --name-only -- '*.md' | xargs -r grep -nE '^#[0-9]'
-```
-
-It has **zero false positives**. A line that *wraps* so a PR reference lands in
-column 1 becomes an MD018 "no-missing-space-atx" heading — the text is correct,
-the reference is correct, and markdownlint is right to reject it. Reword to
-`PR #198` or reflow the line. Nothing about the sentence looks wrong on screen,
-which is why it survives a read and dies in CI.
-
-⚠ **Pipe into `xargs`; do not collect the list in a variable.** The obvious form
-— `CHANGED=$(git diff …); grep -nE '^#[0-9]' $CHANGED` — is broken in **zsh**,
-this repo's shell: zsh does not word-split an unquoted parameter, so the whole
-newline-joined list arrives as one filename, grep exits non-zero on "No such
-file or directory", and a `||` fallback prints *clean*. The check reports green
-by failing. (Found by running this recipe against its own branch.)
-
-**Why before Step 7 and not in Step 10a**: same reasoning as 5d — a lint failure
-found after `gh pr create` costs a second push and a second five-check matrix
-inside the paid public-flip window.
-
----
-
-## Step 6 — Write the "Documentation updates" section (runs AFTER Step 7)
-
-Once edits are approved, applied and **committed** (Step 7), compose a
-"Documentation updates" section so reviewers see the doc reasoning:
+Then compose the **Documentation updates** section and pass it in the *initial*
+`--body`. That ordering is the whole payoff — do not open the PR and then edit
+its body.
 
 ```markdown
 ## Documentation updates
 
-- `CLAUDE.md`: rewrote Project Structure entry for `analytics/store/` after
-  data_store.py reduced to a re-export shim
+- `CLAUDE.md`: <what changed>
 - `README.md`: no change needed (no CLI surface change)
-- `MEMORY.md`: Current State updated with strat-2 summary
+- `MEMORY.md`: Current State updated  (never committed)
 ```
 
-**This section goes into the INITIAL `gh pr create --body`** — that is the whole
-point of running the sweep first. Do not open the PR and then edit its body; that
-second push costs a duplicate CI matrix.
-
-State the no-change surfaces explicitly, with the reason. "no change needed:
+**State the no-change surfaces explicitly, with the reason.** "no change needed:
 internal refactor only" is useful to a reviewer; silence is not.
 
-**Only if you are running late** (the PR already exists — you skipped the gate,
-or a reviewer asked mid-flight), fall back to the fetch → append → push sequence:
+**MEMORY.md and the SoT are never committed** — they live outside the repo. The
+handoff is gitignored. If those are all this phase produced, say so and move on.
 
-```bash
-gh pr view <PR#> --json body --jq .body > /tmp/pr_body.md
-cat >> /tmp/pr_body.md <<'EOF'
+**Push rules**: default `git push`, no force. `--force-with-lease` only with
+explicit approval — and `guard-destructive` blocks it even then, deliberately.
+Approval makes a push *intended*, not *safe*; ask the operator to run it. Never
+push to `main` from this skill.
 
-## Documentation updates
-
-- `<file>`: <what changed>
-EOF
-gh pr edit <PR#> --body-file /tmp/pr_body.md
-```
-
-If that body already has a "Documentation updates" section, edit it in place —
-don't append a duplicate.
+**Rebase** only if a relevant doc lives on `main` but not the branch, and only on
+explicit OK.
 
 ---
 
-## Step 7 — Commit and push (runs BEFORE Step 6)
+## Phase 6 — Pre-merge, handoff, re-verify
 
-Commit doc edits as a single commit on the branch, then push, **then** open the
-PR with the Step 6 section already in its body:
+### Pre-merge readiness
 
-```bash
-git add <files>
-git commit -m "docs: sync docs with branch behavior changes"
-git push -u origin <branch>
-# ...then gh pr create --body "<...includes Step 6's Documentation updates...>"
-```
-
-Because the sweep now runs pre-PR, this push is part of the *same* CI run that
-the PR's first run will use — no duplicate matrix. That is the ordering's entire
-payoff, so don't open the PR before this commit lands.
-
-**MEMORY.md is never committed.** It lives outside the repo under
-`~/.claude-personal/...`, so it is not part of any project commit — save it
-via the `Edit` tool only, and never `git add` it. If the MEMORY.md update is
-the only thing this step produced, there is simply nothing to commit here;
-say so and move on.
-
-**Push rules:**
-
-- Default: `git push` (no force).
-- If a rebase happened, use `--force-with-lease` and **only** with explicit
-  user approval. Never `--force`.
-- **The `guard-destructive` hook blocks every force-push, `--force-with-lease`
-  included, and that is deliberate — do not loosen the guard to get past it.**
-  Approval makes the push *intended*, not *safe*. Ask the operator to run it in
-  their own terminal.
-- Never push to `main` from this skill. Ever.
-
----
-
-## Step 8 — Rebase handling (only when needed)
-
-Sometimes a relevant doc lives on `main` but not on the PR branch (e.g. it
-landed in a sibling PR). The diff at Step 3 won't surface it. If suspected:
-
-1. Check if the doc exists on main: `git ls-tree main -- <doc-path>`
-2. If yes and missing on the PR branch, ask the user:
-   *"Doc X is on main but not this branch. Rebase onto main so we can
-   update it here, or skip and let the next PR handle it?"*
-3. Rebase only on explicit OK:
-
-   ```bash
-   git fetch origin main
-   git rebase origin/main
-   ```
-
-4. Resolve conflicts the user's way, not by force.
-
----
-
-## Step 9 — Output format
-
-Output a per-surface report so the user has a clear summary:
-
-```text
-PR #<num> behaviour gate: <walked | skipped (pure refactor)>
-
-CLAUDE.md          — updated: <what> | no change needed: <reason>
-README.md          — updated: <what> | no change needed: <reason>
-MEMORY.md          — updated: Current State + <other>  (never committed)
-SoT reconcile      — <row> moved to Closed | <row> corrected | no SoT row affected
-                     (never committed)
-claims audit       — <n> claims, each with its reproducing query | no new prose
-doc indexes        — current | regenerated (make docs-index) | no audit/spec change
-markdown pre-lint  — clean | <n> `^#[0-9]` hits reworded | no .md changed
-Makefile           — no change needed: no new CLI commands
-docker-compose.yml — no change needed: no new processes
-.claude/context/*  — updated: analytics.md (store/ paths) | no change needed
-.claude/skills/*   — updated: <skill> | no change needed: <reason>
-handoff (group A)  — <n> symbol hits reviewed: <what was stale> | no change needed
-                     (never committed — gitignored)
-PR summary         — written to docs/plans/pr-<branch>.md   (slashes flattened to -)
-PR body            — "Documentation updates" folded into the initial --body (1 CI run)
-pre-merge          — clean | <blocker> (see Step 10a)
-handoff prompt     — written to docs/plans/next-conversation-prompt.md | declined
-PR state re-check  — #<num>: <OPEN | MERGED>, handoff table rewritten to match
-```
-
-**The PR-summary path flattens `/` to `-`.** Every branch here is `docs/…`,
-`feat/…`, `fix/…` or `chore/…`, so a literal `docs/plans/pr-<branch>.md` names a
-directory that does not exist and the write fails. `pr-summary/SKILL.md` owns
-the rule and the exact derivation; this line is the sibling that referenced the
-same artifact without it, which is the blind spot Step 4 describes.
-
-Be explicit. "no change needed: internal refactor only" is useful;
-silence is not.
-
----
-
-## Step 10 — Post-PR handoff
-
-After the doc walk closes, the user usually wants two more things before
-moving on: a quick pre-merge readiness check, and a self-contained prompt
-they can paste into a fresh conversation when this branch is done. Bake
-both in here so the user doesn't have to ask each time.
-
-### 10a — Pre-merge readiness check
-
-Run a short status sweep and report any blockers in one line each:
+Flag, do not fix: uncommitted changes, unpushed commits, `CONFLICTING` /
+`DIRTY`, failing required checks, `CHANGES_REQUESTED`.
 
 ```bash
-git status --short                                      # working tree clean?
-git log @{u}..HEAD --oneline 2>/dev/null || true        # unpushed commits?
-gh pr view <PR#> --repo s10023/buibui-wifey-wall-street-bot \
-  --json mergeable,mergeStateStatus,reviewDecision,statusCheckRollup \
-  --jq '{mergeable,mergeStateStatus,reviewDecision,
-         checks: [.statusCheckRollup[] | {name, conclusion, startedAt, completedAt}]}'
+poetry run python tools/wait_ci.py --pr <n>     # resolves the SHA, prints steps=
 ```
 
-Flag, do not fix:
+**Use that tool rather than hand-querying `gh`.** It settles the billing question
+directly, and the manual path has three traps that all render identically to a
+real failure:
 
-- Uncommitted changes in the working tree
-- Local commits not pushed to the PR branch
-- `mergeable: CONFLICTING` or `mergeStateStatus: DIRTY`
-- Failing required checks in `statusCheckRollup`
-- `reviewDecision: CHANGES_REQUESTED`
-- A stale generated doc index — reachable here only when the skill ran **late**,
-  on a branch whose PR already exists; normally Step 5d caught it pre-push
+- **`steps=0` is billing, not code.** Every job fails in 2–5s with zero steps
+  when the Actions allowance is exhausted. ⚠ Duration alone never settles it — a
+  healthy `markdownlint` finishes in 7s, and a **pass** in seconds needs the same
+  check as a fail. `steps` is the discriminator. **Never open a debugging session
+  on that shape.**
+- **`total_count: 0` is a third state and is not requeueable** — a PR opened while
+  the repo was private may have no run at all. ⚠ But that endpoint exact-matches,
+  so a **short SHA also returns 0, silently**. The free discriminator: *if the
+  rollup is green, the query is wrong, not the CI.* The transferable rule — **an
+  exact-match query that returns EMPTY rather than ERRORING on a malformed key is
+  indistinguishable from a true negative.**
+- **A wait must gate on a check-count FLOOR, not on "nothing pending".** An empty
+  rollup satisfies "no check is unresolved", so the loop exits immediately and
+  reads as all-passed. Assert the count reaches 5, treat `""` as pending (a queued
+  check's conclusion is the empty string, not `null`), and count with
+  `jq 'length'` — `wc -w` scores `Trivy filesystem scan` as two.
 
-**⚠ Before reporting ANY failing check, compute its runtime from
-`startedAt`/`completedAt` — that is why they are in the `--jq` above.**
-
-**A check that FAILS in 2–5 seconds never ran. That is a BILLING signal, never a code
-one.** When the GitHub Actions allowance is exhausted every job fails in a few seconds
-with zero steps executed, which renders identically to a real test failure. Every check
-on this repo died that way from #144 until the public-flip workaround (#153).
-
-**Use `conclusion` AND duration together — a fast check is not by itself the tell.**
-Wifey's real green baseline, measured on #166: `lint-typecheck-test` **4m34s**, `Trivy`
-**29s**, `Regression tests` **43s**, but `markdownlint` and `frontend-check` legitimately
-finish in **7s**. A bare "under 10s" threshold would flag two healthy checks — the
-discriminating shape is a *FAILURE* in seconds, especially several at once.
-
-Report it as such — *"4 checks failed in 2–3s each: GHA billing, not code"* — and point at
-the standing workaround (flip the repo public for the open-PR window, private again on
-merge; **confirm with the operator every time** — it publishes the parent's history).
-**Never open a debugging session on that shape.**
-
-**`steps` is the discriminator; seconds alone never is.** Duration narrows the suspicion,
-it does not settle it — a legitimate check can finish in seconds (`markdownlint` 7s), and a
-billing-dead one can burn 9s looking like a real scan (#181's Trivy). The falsifier is
-whether the job executed any steps at all:
+**Requeueing a `steps=0` run** (only after the repo is public — a run that exists
+can be re-run in place, which is what turns a billing-dead PR green):
 
 ```bash
-gh api repos/s10023/buibui-wifey-wall-street-bot/actions/runs/<id>/jobs \
-  --jq '.jobs[] | "\(.name) steps=\(.steps|length)"'
-```
-
-`steps=0` is billing. Its mirror is equally load-bearing: **a PASS in seconds needs the same
-check as a FAIL in seconds** — #189's `Regression tests` read 6s against a 43s baseline and
-was legitimate (`steps=10`; the regression tests skip when the fixture parquets are absent
-in CI).
-
-**When the flip happens, sweep EVERY open PR — not just this one.** This step reads *this*
-PR's rollup, so it is structurally blind to other open PRs sitting on billing-dead CI, and
-the public window is a repo-wide event: it is the one moment when those checks can actually
-run. Dependabot PRs are where this bites, because nobody is watching them.
-
-```bash
-GH_TOKEN=$(gh auth token --user s10023) gh pr list --state open \
-  --repo s10023/buibui-wifey-wall-street-bot --json number,headRefOid,title
-# ENUMERATE the runs for that head SHA — never assume how many there are.
-# headRefOid is the FULL 40-char SHA; pass it WHOLE (see the total_count note below):
 GH_TOKEN=$(gh auth token --user s10023) gh api \
-  "repos/s10023/buibui-wifey-wall-street-bot/actions/runs?head_sha=<sha>" \
+  "repos/s10023/buibui-wifey-wall-street-bot/actions/runs?head_sha=<FULL-40-char-sha>" \
   --jq '.workflow_runs[] | "\(.id) \(.name) \(.conclusion)"'
 GH_TOKEN=$(gh auth token --user s10023) gh api \
   -X POST repos/s10023/buibui-wifey-wall-street-bot/actions/runs/<id>/rerun
 ```
 
-**Requeue every run on the SHA, and enumerate rather than counting from memory.**
-There are three workflow files (`lint.yaml`, `security-scan.yaml`,
-`docker-build.yaml`) but a PR does **not** always get three runs: `Docker Build`
-is path-filtered, so a dependency bump gets 3 and a typical feature branch gets 2
-(verified 2026-08-14 across six feature SHAs and three dependabot SHAs). A fixed
-count in an instruction is the kind of number that is right when written and
-wrong after one workflow edit.
+**Enumerate the runs; never assume how many.** There are three workflow files,
+but a PR does not always get three runs — `Docker Build` is path-filtered, so a
+dependency bump gets 3 and a typical feature branch gets 2. A fixed count in an
+instruction is right when written and wrong after one workflow edit.
 
-**`total_count: 0` is a THIRD state, and it is not requeueable.** Billing-dead CI
-has two distinct shapes and the fix differs. A run that exists with `steps=0` can
-be re-run in place, which is what turned #190/#191 green. But a PR opened while
-the repo is private can have **no workflow run at all** — the rollup still shows
-several checks FAILING in 2–4s, so it renders identically, yet
-`actions/runs?head_sha=<sha>` returns `total_count: 0` and there is no run id to
-POST to. Measured on #193, 2026-08-14. Flip the repo public and push a commit (or
-re-open the PR) to get runs *created*; requeueing is not an option that exists
-yet. **Check `total_count` before reaching for `/rerun`**, or you will chase an
-empty list and conclude the API is broken.
+**When a flip happens, sweep EVERY open PR**, not just this one: the public window
+is a repo-wide event and it is the only moment other PRs' checks can run.
+Dependabot PRs are where this bites, because nobody is watching them.
 
-⚠ **`total_count: 0` is only meaningful with a FULL 40-char SHA — corrected 2026-08-18b.** The
-endpoint exact-matches, and a **short** SHA returns `total_count: 0` *silently, without erroring*,
-which renders identically to the un-requeueable third state above. Measured on #213:
-`?head_sha=990a4e5` returned **0** while `?head_sha=990a4e504fb1eb…` returned **2**, with the PR's
-rollup green 5-of-5 the whole time. `gh pr list --json headRefOid` already yields the full SHA, so
-the trap is not in the API — it is reintroduced by **abbreviating the SHA for display and then
-reusing the abbreviation**, which is exactly how this session hit it.
+Wait in the background; never a foreground `gh pr checks --watch`.
 
-**The discriminator is the rollup, and it is free: if the checks are green, the QUERY is wrong, not
-the CI.** A genuine third state has a failing-or-absent rollup *and* an empty run list; a truncated
-SHA has an empty run list alone. Never conclude "no runs were created" from the run list by itself.
-Cheaper still, `poetry run python tools/wait_ci.py --pr <n>` resolves the SHA itself and prints
-per-job `steps=`, settling the billing question without this endpoint at all.
+### The handoff
 
-**The transferable rule: an exact-match query that returns EMPTY rather than ERRORING on a
-malformed key is indistinguishable from a true negative.** Whenever an empty result would trigger a
-costly conclusion, confirm the key round-trips before believing the emptiness.
+Offer — don't auto-write — a fresh-conversation prompt at
+`docs/plans/next-conversation-prompt.md`. Gitignored but in-repo, so it survives
+a session delete. Keep updating that same file.
 
-**A PR opened while the repo was PRIVATE has never been tested**, and `UNSTABLE` on
-`steps=0` checks renders identically to a code failure. #190 and #191 both sat that way and
-turned fully green on a re-run inside the public window with no code change — found only
-because the operator asked, which is the gap this sweep closes.
+**Update with targeted `Edit`s. NEVER `Write` the whole file.** Its standing back
+half — the four groups, the queue, the NOT-queued list — is exactly what a
+template does not reproduce, so an overwrite destroys it silently and the loss is
+invisible until a session re-litigates something already ruled out.
 
-**WAITING for CI needs a FLOOR ON THE CHECK COUNT, not just "nothing pending".** The natural
-polling idiom asks whether any check is still unresolved — `[.statusCheckRollup[] | select(
-.conclusion == null)] | length == 0` — and that is **true of an EMPTY rollup**, which is
-exactly the state for the first ~30–60s after `gh pr create` (and permanently in the
-`total_count: 0` case above). So the loop exits immediately and renders identically to "all
-checks passed". Hit on #194. Same family as `total_count: 0`, and the same lesson as
-`until ! pgrep`: **a wait condition that is vacuously true at t=0 is not a wait.**
+Front-half shape: one-line context · PR-state table (a **snapshot**, with
+"re-verify first") · just shipped · state of the world · reference · 1–3
+suggested next tasks with file paths.
 
-Assert the expected number of checks as well as their settlement — here **5**, or **2–3**
-runs' worth if you are counting workflow runs (`Docker Build` is path-filtered). **Count with
-`jq 'length'`, never `wc -w`, and treat an EMPTY conclusion as pending**:
+**Carry the standing blocks forward verbatim**, refreshing only their dated "state
+at" lines: the free-data-arc honest exit, the TA freeze, the `gh` rules (never
+`gh auth switch`; `--repo` always), the daily operator check, the accumulated
+findings list, the skill-fix queue, and open questions.
 
-```bash
-for i in $(seq 1 40); do
-  J=$(GH_TOKEN=$(gh auth token --user s10023) gh pr view <PR#> \
-    --repo s10023/buibui-wifey-wall-street-bot --json statusCheckRollup)
-  N=$(echo "$J" | jq '.statusCheckRollup | length')
-  P=$(echo "$J" | jq '[.statusCheckRollup[] | select((.conclusion // "") == "")] | length')
-  [ "$N" -ge 5 ] && [ "$P" -eq 0 ] && break
-  sleep 30
-done
-```
+Keep them in **four labelled groups**, ordered by when they are needed — flattened
+into one blockquote they reached ~90 lines and a reader could no longer tell a
+prohibition from a `PYTHONPATH` reminder:
 
-**Both refinements are scars from #195, where the first version of this very snippet
-reported SETTLED on a still-running `lint-typecheck-test`.** `wc -w` counts *words*, and
-`Trivy filesystem scan` contains two spaces — so **4** checks scored **7** and cleared a
-floor of 5. And a queued check's `conclusion` comes back as the empty string, not `null`,
-so `// "RUNNING"` never fires and a `grep -q RUNNING` guard sees nothing pending. **A guard
-written against `null` must also handle `""`** — `(.conclusion // "") == ""` covers both.
+| Group | Holds | Read when |
+| --- | --- | --- |
+| **A — Settled** | Concluded arcs, freezes, ruled-out work | Before proposing a task |
+| **B — Workflow** | Ordering, `gh`, subagent cap, background tests, MEMORY cap | Before running one |
+| **C — Evidence** | Re-derive-the-mechanism, window anchors, multiplicity, provenance | Before quoting a number |
+| **D — Environment** | Script recipe, import paths, absent libraries | On demand |
 
-Background it (`run_in_background`) and do close-out work meanwhile — never a foreground
-`gh pr checks --watch` poll. Then apply the duration/`steps` discriminators above to the
-settled result; a floor proves the checks *arrived*, never that they *ran*.
+Append a new finding to the group it belongs to — a methodology lesson is **C**,
+not a new bullet at the end of **B**.
 
-Output one line per item. If everything is green, say so explicitly:
-`pre-merge: clean — ready when you are.`
+#### PRUNE every run — carry-forward is not append-only
 
-### 10b — Fresh-conversation handoff prompt
+**Measure at the open and refuse to finish higher.** A stamp only *measures*;
+with nothing gating, "capture this session's lesson" beats "prune" every run and
+the file ratchets — it reached 300 lines with the prune four runs overdue. A
+growth *refusal* rather than a cap, deliberately: a cap can force deleting a live
+rule, a refusal only forces you to pay for each new line by re-homing an old one.
+If a session genuinely must end higher, say so in the stamp.
 
-Offer (don't auto-write) to draft a self-contained prompt the user can
-paste into the next conversation. Same shape as `/pr-summary` —
-**file-only output, never inline**.
+**Re-homing is a separate pass and it runs FIRST**: move the rule to its durable
+home, `grep` the destination to confirm it landed, and only then cut the
+narrative. A prune that drops a guard is a regression disguised as hygiene.
 
-If the user accepts, write to **`docs/plans/next-conversation-prompt.md`** —
-gitignored, but inside the repo and therefore durable. **Not `/tmp`:** the
-user deletes conversations, and a handoff that evaporates on reboot defeats
-the point. Keep updating that same file rather than starting a new one; it is
-a standing document whose whole value is being current, and keeping it so is
-a final step of every task, not only of this skill.
+Delete every run: merged PRs beyond the most recent one or two · completed tasks
+and closed findings · "what #N found" narratives once the lesson is in group C ·
+shipped skill-fix items (**outright — no `DONE in #146` tombstones**) · answered
+open questions.
 
-**Update it with targeted `Edit`s. NEVER `Write` the whole file** (parent #577).
-Its standing back half — groups A–D, the skill-fix queue, the NOT-queued list,
-the scripts index — is exactly what the template below does **not** reproduce, so
-a wholesale overwrite destroys it silently and the loss is invisible until a
-future session re-litigates something already ruled out. The template is the
-shape of the *front* half, not a replacement for the file.
+The test for every line: **if the next session never reads this, does it do
+something wrong?** If no, cut it.
 
-**Step 3 has already swept this file for claims this branch falsified** (see its
-`next-conversation-prompt.md` subsection). Apply those corrections here — the
-PRUNE rules below decide what to *cut*, never what is still *true*.
+⚠ **Read a closed section before deleting it — live rules hide inside blocks
+headed "DONE" or "CLOSED".** Prune by MOVING to the durable home, never by
+deleting outright; if a rule has no committed home yet, that is a signal to write
+one, not to keep the block.
 
-Structure:
-
-```markdown
-# Next conversation — <one-line context>
-
-## Standing context — carry forward VERBATIM
-
-<See "Standing blocks" below — project-level rules and guardrails that
-outlive any one PR. Refresh only their dated "state at" lines.>
-
-## READ FIRST — PR state (snapshot, re-verify before acting)
-
-| PR | Branch | Contents | State at write time |
-| --- | --- | --- | --- |
-| #<num> | `<branch>` | <one line> | OPEN / MERGED |
-
-**This table is a snapshot, not live state.** First move:
-`gh pr view <num> --repo s10023/buibui-wifey-wall-street-bot --json state`.
-If MERGED, sync main, delete the branch, and start on a task below — do not
-re-litigate merged work.
-
-## Just shipped
-- PR #<num>: <title> — <one-line outcome / verdict / lift>
-- Key finding: <the surprising or load-bearing result, if any>
-
-## State of the world
-<2–4 bullets, drawn from MEMORY.md "Current State" + the PR body —
-what's live, what's in soft mode, what's still pending. Absolute dates.>
-
-## Reference
-- Memory: `~/.claude-personal/projects/<project-slug>/memory/MEMORY.md`
-- <Other docs / tools / branches the next session will need>
-
-## Suggested next tasks (pick one, or work in order)
-
-### Task 1 — <name>
-<2–4 sentences: what, why, where to start (file paths). Include the
-"cheapest move" or "recommended endgame" framing if there's a clear
-ranking.>
-
-### Task 2 — <name>
-<…>
-
-### Task 3 — <name>
-<…>
-```
-
-### Standing blocks — carry forward, never regenerate
-
-The template above covers the front half only, so anything below it is content a
-`Write` would silently delete — which is the whole reason the rule above says to
-use targeted `Edit`s. Some blocks are standing operational content that belongs
-to the project, not to this PR. **Before writing, read the existing
-`docs/plans/next-conversation-prompt.md` and carry these forward verbatim**,
-refreshing only their dated "state at" lines:
-
-- **The standing guardrails** — the free-data-edge-arc honest exit ("do not
-  start a #5 free-data hunt without an explicit user go"), the TA-detector
-  freeze, and the `gh` rules (**never `gh auth switch`** — the active account
-  stays on the work account and the token form attributes correctly on its own:
-  `GH_TOKEN=$(gh auth token --user s10023) gh <cmd> --repo
-  s10023/buibui-wifey-wall-street-bot`, and the `--repo` is always required
-  because the `gh` default repo points at the parent). These are
-  standing decisions; a handoff that drops them invites a fresh session to
-  redo work already ruled out.
-- **The daily operator check** (`CATCH_UP=1 make go-live`) whenever it is
-  live — there is no cron, so the handoff is the only thing that surfaces it.
-- **Standing findings** — the accumulated gotcha list. Append to it; do not
-  replace it with only this PR's findings.
-- **Skill-fix queue** and **open questions** — these outlive any one PR.
-
-This exists because a template that overwrites is a template that must name
-what survives.
-
-### PRUNE on every run — carry-forward is not append-only
-
-**Growth gate — measure at 10b's OPEN, before writing a word.**
-
-```bash
-wc -l docs/plans/next-conversation-prompt.md   # record this as the ceiling
-```
-
-**Refuse to finish 10b with more lines than you started with.** The file already
-carries a line-count stamp, but a stamp only *measures*; with nothing gating,
-"capture this session's lesson" beats "prune" every single run and the file
-ratchets. It reached **300 lines with the prune four runs overdue** before this
-gate existed.
-
-A growth *refusal* rather than an absolute cap, deliberately: a hard cap can
-force deleting a rule that is still live, whereas a refusal only forces you to
-pay for each new line by re-homing an old one — which is the behaviour wanted.
-When a session genuinely must end higher (a new blocking constraint landed),
-say so explicitly in the stamp line rather than silently exceeding it.
-
-**Re-homing is a separate pass, and it runs FIRST.** Move each rule to its
-durable home, verify it landed there (`grep` the destination), and only then cut
-the narrative. A prune that drops a guard is a regression disguised as hygiene.
-
-**Standing rule (user, 2026-08-07).** Carrying content forward is not the same
-as keeping all of it. Every run, delete from the handoff:
-
-- **Merged PRs** beyond the most recent one or two. The PR-state table is there
-  so the next session can verify what is *in flight*; a merged PR from four
-  branches ago is git history, not state.
-- **Completed tasks and closed findings.** A "Task 2 — ANSWERED, nothing to do"
-  entry has done its job once the answer is in group A; keep the *decision*, drop
-  the task slot.
-- **"What #N found" narratives** once their transferable lesson is in group C.
-  The lesson is the asset; the blow-by-blow belongs in the audit doc, which is
-  committed and linked.
-- **Skill-fix items that shipped.** Delete them outright — the code is the
-  record. Do not leave `DONE in #146` tombstones.
-- **Answered open questions.** Move the answer to group A, delete the question.
-
-The test to apply to every line: **"if the next session never reads this, does
-it do something wrong?"** If no, cut it. Anything worth keeping but not worth
-re-reading every session belongs in a memory topic file or an audit doc, linked
-by one line — not pasted here.
-
-**Read a closed section before deleting it — live rules hide inside blocks headed
-"DONE" or "CLOSED"** (parent #577, measured there 2026-08-07 when an uncoded item
-sat inside a block titled "DONE. Do NOT redo"). The same shape is live here: the
-`steps: []` billing discriminator — worth more than the duration heuristic, and
-recorded in **no** committed file — arrived inside 3a's "DONE, PR #181 MERGED"
-block. Deleting on the header alone loses it. **Prune by MOVING to the durable
-home, never by deleting outright**; if the rule has no committed home yet, that
-is a signal to write one, not to keep the block.
-
-Left unpruned this file grows monotonically, and past ~500 lines the standing
-blocks stop being read at all, which costs more than the deleted content ever
-would. **Report the before/after line count** when you rewrite it, so the trend
-is visible rather than discovered.
-
-**The stamp is ONE line, and it lives in the handoff itself** — near the top, so
-the next run sees the trend before it starts adding.
-
-**Write the stamp LAST — it is the final action of the rewrite, not part of it**
-(skill-fix filed 2026-08-13k, closed here). Reading `wc -l` first is necessary
-and **not sufficient**: a count is only true after the last edit, and one session
-got it wrong **twice in a single rewrite** (predicted 519, actual 582; then 589
-vs 599) because both figures were written while further edits were still pending.
-The order is fixed:
-
-1. `wc -l < docs/plans/next-conversation-prompt.md` — the *prev* number.
-2. Make every content edit. Leave the old stamp line untouched.
-3. `wc -l` again — the *new* number, now final.
-4. One last `Edit` replacing that single line.
-5. **Verify — re-read `wc -l` and confirm it equals what the stamp now claims.**
-
-⚠ **Step 4 is NOT line-neutral on the run that fixes a multi-line stamp**, and
-that is exactly the run where the rule is being applied for the first time. The
-"it is line-neutral, so it cannot invalidate the figure" reasoning this list used
-to carry holds only once the stamp is *already* one line: replacing a six-line
-stamp with one drops five, so the number is wrong the moment it is written.
-Measured on #206, which got it wrong twice — once converting the stamp, once
-because a later edit to "Read first" landed after the stamp was written.
-
-Step 5 is the whole fix, and it is the positive control the rule never had: the
-check is two seconds and it is the only thing that distinguishes "I followed the
-order" from "the number is true". Reconcile by editing the stamp again — it
-converges, because the second edit *is* line-neutral.
-
-Same class as "write derived numbers **after** producing the artifact", which has
-been wrong on first write ~13 runs running. The line:
+**The stamp is ONE line**, near the top. A multi-line stamp cannot describe the
+file containing it — adding lines changes the count, so the figure is stale the
+moment it is written, and the next run "corrects" it into a different wrong
+number. It was wrong eleven runs running for exactly this reason; the fix is the
+shape, not more care.
 
 ```markdown
 Line count: <new> (prev <n-1>, <n-2>, <n-3>, <n-4>) — <one clause: why up or down>.
 ```
 
-Keep the history to four priors; drop the oldest. **One line in, one line out** —
-the stamp is line-neutral, so it converges in a single pass and its own count
-never invalidates the number it just reported.
+Order is fixed: read `wc -l` → make every content edit → read `wc -l` again →
+one last `Edit` replacing the stamp line → **re-read and confirm it matches**.
+That last verification is the whole fix and the positive control the rule never
+had; `handoff-size` in phase 1 also catches a mismatch.
 
-**Do not reflow it into a paragraph.** A multi-line stamp cannot describe the
-file that contains it: adding lines changes the count, so the figure is stale the
-moment it is written and the next run "corrects" it into a different wrong
-number. That is not hypothetical — it was wrong **eleven runs running** (through
-2026-08-13) for exactly this reason, and the fix is the shape, not more care.
+#### Operator actions must resolve in THIS repo
 
-### Operator actions: verify the command resolves in THIS repo
+Name the exact command, target or unit, **and verify it exists here before
+writing it**. A previous handoff carried "restart signal watch" for a daemon this
+repo does not have — the `buibui-signal-watch` units belong to the crypto parent.
+Wifey dispatch is the manual one-shot `make go-live`. **A unit existing on the
+machine is not evidence it belongs to this repo**: read `WorkingDirectory`, check
+`grep -n '<target>:' Makefile`, check `wifey <cmd> --help`.
 
-When writing an operator action into the handoff, **name the exact command,
-target, or unit — and verify it exists here before writing it.** Prose like
-"restart the signal watcher" is not actionable and, worse, can be false.
-
-A previous handoff carried "restart signal watch to pick up new ratings" for a
-daemon **this repo does not have**. The `buibui-signal-watch.service`/`.timer`
-pair in `systemctl --user` belongs to the *crypto parent*
-(`WorkingDirectory=/home/kng/repo/buibui-moon-trader-bot`, `DATA_SOURCE=binance`).
-Wifey dispatch is the manual one-shot `make go-live`, and because
-`signal_runner.py` loads `confidence_ratings` "once at startup", a one-shot
-process picks up a ratings change on its next run automatically. The instruction
-was a non-instruction, and disproving it cost a full verification cycle.
-
-Cheap checks before writing one: `grep -n '<target>:' Makefile` for a make
-target, `systemctl --user cat <unit> | head -5` for a unit (read
-`WorkingDirectory` — not just whether the unit exists), `wifey <cmd> --help` for
-a CLI path. **A unit or command existing on the machine is not evidence it
-belongs to this repo.**
-
-**Keep the standing context in its four labelled groups — do not re-flatten it.**
-Carried verbatim into one undifferentiated blockquote it reached ~90 lines by
-2026-08-06, at which point a reader cannot tell a hard prohibition from a
-`PYTHONPATH` reminder, and the block's own instruction to read it stops being
-followed. The groups are ordered by when a session needs them:
-
-| Group | Holds | When it is read |
-| --- | --- | --- |
-| **A — Settled decisions** | Concluded arcs, freezes, ruled-out work | Before proposing any task |
-| **B — Workflow rules** | `/post-branch` ordering, `gh` invocation, subagent cap, background tests, MEMORY cap | Before running a task |
-| **C — Evidence rules** | Re-derive-the-mechanism, the two backtest paths, window anchors, multiplicity, provenance | Before quoting any number |
-| **D — Environment gotchas** | Ad-hoc script recipe, import paths, absent libraries | On demand, as a lookup table |
-
-Open the block with a short note saying what it is, why it is long, and which
-groups to skim versus read. Append new findings to the group they belong to —
-a methodology lesson is **C**, not a new bullet at the end of **B**.
-
-Source the content from:
-
-1. **MEMORY.md "Next focus" section** — the top 1–3 entries are usually the
-   right candidates. Convert any relative dates to absolute.
-2. **This PR's findings** — if the PR closed an option or unblocked one,
-   say so plainly so the next session doesn't re-ask.
-3. **Open questions / pending decisions** — pull anything that becomes
-   immediately actionable now that this PR shipped.
-
-Keep it tight: 1–3 task suggestions, not a backlog dump. The goal is a
-prompt that costs zero context to bring a fresh session up to speed.
-
-Print only the path + a one-line description. Do **not** echo the
-contents.
-
-### 10c — Re-verify PR state as the LAST action (never skip)
+### Re-verify PR state — LAST action, never skip
 
 This skill writes the handoff *before* the merge, so its most prominent
-instruction is the first thing to go stale. A PR that merges minutes after
-its handoff is written leaves the next session with a wrong opening move,
-and the handoff is the one artifact that survives a session delete — so a
-stale first line there is the most expensive kind of stale.
-
-Immediately before you report done — after **every** other step, including
-any commit and push — re-query every PR named in the handoff, not just the
-one this run created:
+instruction is the first thing to go stale, and the handoff is the artifact that
+survives a session delete.
 
 ```bash
 gh pr view <PR#> --repo s10023/buibui-wifey-wall-street-bot \
   --json state,mergedAt --jq '"\(.state) \(.mergedAt)"'
 ```
 
-Then rewrite the state table in place to match. If a PR merged in the
-meantime, update the "first move" line too: the next session should be told
-to start on a task, not to merge something already merged. If it merged and
-the local branch still exists, say so — deleting the merged local branch is
-standing habit here, and it is the natural first action for the next session.
-
-One API call per PR. That is the whole cost of the difference between a
-handoff that opens the next session productively and one that sends it down
-a dead path.
+Re-query **every** PR named in the handoff and rewrite the table to match. If one
+merged, update the "first move" line too — the next session should start on a
+task, not merge something already merged. If the local branch still exists, say
+so; deleting it is standing habit here.
 
 ---
 
-## Safety rails (always)
+## Output format
 
-- **Confirm every edit.** This skill is a proposer, not an applier. The
-  user always gets a chance to say no.
-- **Don't rename or move files.** Path churn breaks others' in-flight
-  work. If a doc lives at the wrong path, propose the edit in place and
-  flag the path issue separately for the user to triage.
-- **Never use `Write` to overwrite a doc.** Always targeted `Edit`.
-- **No force-push without explicit OK.** `--force-with-lease` only, after
-  the user types yes — and the `guard-destructive` hook blocks it even then,
-  so the operator runs it, not you. See Step 7's push rules.
-- **Stop on uncertainty.** If you can't tell whether a doc claim is stale,
-  show the user the doc snippet and the relevant diff hunk and ask.
-- **Draft-PR default:** if `gh pr create` was run with `--draft`, don't flip
-  it to ready-for-review as a side effect of this skill.
+```text
+phase 1 sweep      — <n> findings triaged: <what> | clean
+behaviour gate     — walked | skipped (<reason>)
+CLAUDE.md          — updated: <what> | no change needed: <reason>
+README.md          — …
+MEMORY.md          — Current State rolled 3-way  (never committed)
+SoT reconcile      — <row> closed | no SoT row affected  (never committed)
+claims audit       — <n> claims, each with its reproducing query | no new prose
+Makefile / compose — no change needed: <reason>
+.claude/context/*  — …
+.claude/skills/*   — …
+handoff            — <before> → <after> lines  (gitignored)
+PR body            — Documentation updates folded into the initial --body
+pre-merge          — clean | <blocker>
+PR state re-check  — #<num>: <OPEN | MERGED>, table rewritten to match
+```
 
----
+Be explicit. "no change needed: internal refactor only" is useful; silence is not.
 
-## When the skill should NOT run
+## Safety rails
 
-- The PR is closed or merged (too late — open a follow-up `docs:` PR).
-- The user said "skip docs" explicitly in the prompt.
-- The PR is from Dependabot or another bot.
-- The branch has no diff yet (PR was created against the wrong base).
+- **Confirm every edit.** This skill proposes; the user approves.
+- **Don't rename or move files.** Propose the edit in place, flag the path
+  separately.
+- **Never `Write` over a doc.** Always targeted `Edit`.
+- **No force-push without explicit OK**, and the guard blocks it regardless.
+- **Stop on uncertainty** — show the doc snippet and the diff hunk, and ask.
+- **Draft PRs stay draft.** Don't flip to ready as a side effect.
 
-In these cases, say so and stop.
+## When NOT to run
 
----
+The PR is closed or merged (open a follow-up `docs:` PR instead) · the user said
+"skip docs" · it is a bot PR · the branch has no diff. Say so and stop.
 
-## PR Summary template
+## PR summary
 
-The PR summary itself follows the template in
-`.claude/skills/pr-summary/SKILL.md` exactly — read that skill before
-writing. Do not compose from scratch or skip sections. The template
-requires: PR Title, Background, Summary, How it works, Params/Config,
-Test plan (CI items pre-ticked), Stats, and the Claude Code footer.
+Follows `.claude/skills/pr-summary/SKILL.md` exactly — read it rather than
+composing from scratch. ⚠ **The path flattens `/` to `-`**: every branch here is
+`docs/…`, `feat/…`, `fix/…` or `chore/…`, so a literal `docs/plans/pr-<branch>.md`
+names a directory that does not exist and the write fails.
