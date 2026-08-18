@@ -160,7 +160,11 @@ Examples in the current codebase:
 - `funding_extreme` — crypto-era leftover: the module still exists at `analytics/strategies/funding_extreme.py` but is **not registered**, and its `get_funding_rates` source was dropped at the fork. Equities have no funding rate; treat it as dead code, not a template
 - `seasonality` — returns stats DataFrame, not signals; uses `seasonality_stats` from `analytics/strategies/_seasonality.py`
 
-For these, also update `backtest_runner.detect_signals_for_strategy()` with a new branch.
+For these, also update `backtest_runner.detect_signals_for_strategy()` with a new branch, and add
+the name to `_REGISTRY_EXCLUDED` in `tests/test_signal_registry.py`. That set is the deliberate
+opt-out: `test_detector_registry_is_wired_to_the_other_two` set-diffs all three registries in both
+directions and checks that SIGNAL_REGISTRY and DETECTOR_REGISTRY bind the *same* function object,
+so an unlisted omission now fails `make test` rather than silently skipping backtest dispatch.
 
 ## After adding the strategy
 
@@ -212,6 +216,7 @@ tp_r = 3.0
 | `analytics/strategies/_registry.py` | Add the import, the `STRATEGY_REGISTRY` entry, and the `DETECTOR_REGISTRY` entry |
 | `analytics/strategies/__init__.py` | Add the import + `__all__` entry for eager re-export |
 | `signals/registry.py` | `SignalPlugin` entry (only if the strategy is actionable for live alerts — `seasonality` and `fibonacci_retracement` excluded) |
+| `tests/test_signal_registry.py` | Only when the strategy is a deliberate DETECTOR_REGISTRY exclusion — add it to `_REGISTRY_EXCLUDED` |
 | `tests/test_<name>.py` | Unit tests for the new detector |
 | `analytics/backtest_runner.py` | Only for strategies needing funding / secondary OHLCV data |
 

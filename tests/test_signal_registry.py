@@ -120,6 +120,16 @@ def test_tp_r_sweep_surface_is_inverted() -> None:
 # from DETECTOR_REGISTRY fires live alerts while being invisible to backtest dispatch,
 # the regression golden and `test_lookahead.py`'s causality property test — a silent
 # hole in exactly the direction /new-strategy warns about.
+#
+# `_REGISTRY_EXCLUDED` is the deliberate opt-out for both registries, not just for
+# SIGNAL_REGISTRY. A detector taking a second positional arg (funding rates, a
+# secondary OHLCV frame) cannot fit DETECTOR_REGISTRY's
+# `Callable[[pd.DataFrame], pd.DataFrame]` and is wired through explicit branches
+# in `backtest_runner.detect_signals_for_strategy` instead -- `seasonality` is the
+# one live instance. So a failure here has two legitimate resolutions, and the
+# messages below are worded to leave both open: wire the missing entry, or add the
+# name to `_REGISTRY_EXCLUDED` because it is one of those. See
+# `/new-strategy` section "Strategies needing extra data".
 # ---------------------------------------------------------------------------
 
 
