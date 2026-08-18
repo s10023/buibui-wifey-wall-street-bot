@@ -102,6 +102,17 @@ make test           # full pytest suite (make test-cov for coverage)
 MEMORY.md size and bullet count, audits, skills, tools. **Print these rather than writing any of
 them into a doc** — each has a history of being quoted stale.
 
+`make sanity-checks` runs the seven mechanical `/sanity-check` checks from
+`tools/sanity_checks.py`: fork drift against invocable artifacts, parent-repo leakage in skills,
+dead repo paths, package coverage in `.claude/context/`, the three hand-maintained router lists,
+`[strategy_params.X]` keys, and README's CLI coverage. ⚠ **It gates rather than advises** — it exits
+non-zero, `tests/test_sanity_checks.py` runs the same sweep inside `make test`, and CI's
+`markdownlint` job runs it **unconditionally**. That last placement is load-bearing: the test job
+sits behind a `**/*.py` paths filter, so on a docs-only PR the pytest gate never fires — on exactly
+the change the check exists to catch. Legs needing project imports or the gitignored watchlist
+degrade to `SKIPPED`/a note rather than a finding, because a check that is never green stops being
+read.
+
 `make wait-ci PR=<n>` waits for a PR's checks and reports whether they *ran*. `tools/wait_ci.py`
 exits **3** on `steps=0`, the Actions-allowance failure that renders exactly like a real one (flip
 the repo public, never debug it), and **1** on a genuine failure. ⚠ **Through `make` you see
@@ -560,8 +571,9 @@ facts that are not derivable from those descriptions live here:
 - **Invoke `/post-branch` before `gh pr create`**, while the branch is still local-only.
 - `/wfo-sweep` is the trusted production path for `tp_r`; `/config-refresh` covers the other config
   dimensions.
-- `/sanity-check` runs weekly or after a large refactor. Its §4a fork-drift sweep deliberately
-  excludes the dated trees, where a past-tense claim is correct by construction.
+- `/sanity-check` runs weekly or after a large refactor, and its mechanical half is
+  `make sanity-checks` — which **gates**, unlike `/post-branch`'s advisory sweep. The fork-drift
+  leg deliberately excludes the dated trees, where a past-tense claim is correct by construction.
 - The sweep skills (`atr-sweep`, `volume-sweep`, `wfo-sweep`, `param-sweep-apply`,
   `backtest-findings`) are dormant while the TA book is frozen.
 
