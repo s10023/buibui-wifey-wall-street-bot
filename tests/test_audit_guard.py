@@ -208,3 +208,38 @@ def test_powered_null_is_false_when_the_cell_was_never_tested() -> None:
     assert v.decision == audit_guard.DECISION_INSUFFICIENT
     assert v.ci_lo is None
     assert v.powered_null is False
+
+
+# --------------------------------------------------------------------------
+# powered_null — the extracted criterion, tested directly
+# --------------------------------------------------------------------------
+#
+# The two cases above reach the predicate through `evaluate_audit_cells`, which
+# only ever hands it two finite floats. The guard clause is therefore reachable
+# only from the other callers (`tools/distil_power.py`), so it needs its own
+# tests here rather than a fixture that cannot deliver the input.
+
+
+def test_powered_null_true_only_when_ci_inside_bar() -> None:
+    # Positive control: a genuinely contained CI. Without one of these the suite
+    # cannot distinguish "correct" from "always False".
+    assert audit_guard.powered_null(-0.02, 0.03, bar=0.05) is True
+    # Touching the bar is not inside it — the predicate is strict on both ends.
+    assert audit_guard.powered_null(-0.05, 0.03, bar=0.05) is False
+    assert audit_guard.powered_null(-0.02, 0.05, bar=0.05) is False
+    # Straddles the bar on one side.
+    assert audit_guard.powered_null(-0.02, 0.30, bar=0.05) is False
+
+
+def test_powered_null_untested_bound_is_never_powered() -> None:
+    """A missing or non-finite bound means untested, which establishes nothing."""
+    assert audit_guard.powered_null(None, 0.01, bar=0.05) is False
+    assert audit_guard.powered_null(-0.01, None, bar=0.05) is False
+    assert audit_guard.powered_null(float("-inf"), 0.01, bar=0.05) is False
+    assert audit_guard.powered_null(-0.01, float("nan"), bar=0.05) is False
+
+
+def test_powered_null_scales_with_the_bar() -> None:
+    """``bar`` carries the units, so the same CI flips with it."""
+    assert audit_guard.powered_null(-0.10, 0.10, bar=0.05) is False
+    assert audit_guard.powered_null(-0.10, 0.10, bar=0.50) is True

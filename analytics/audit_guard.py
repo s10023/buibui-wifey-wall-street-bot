@@ -81,13 +81,41 @@ class CellVerdict:
     """True iff the CI lies strictly INSIDE ±``bar`` — i.e. an effect worth
     acting on has been ruled out, not merely left uncalled.
 
+    Computed by :func:`powered_null`, which is the single definition — call it
+    rather than restating ``ci_lo > -bar and ci_hi < bar`` anywhere. Defaults
+    ``False``: a cell that was never tested (``n < min_n``, no CI) has
+    established nothing.
+    """
+
+
+def powered_null(ci_lo: float | None, ci_hi: float | None, *, bar: float) -> bool:
+    """True iff a two-sided CI lies strictly INSIDE ``±bar``.
+
     **This is the only honest test for a powered null, and ``n >= min_n`` is
     not a substitute for it.** A sample-size floor says a test *ran*; it never
     says the test could have *seen* anything, so it cannot distinguish "the
     effect is smaller than the bar" from "the CI is five times the bar and we
-    cannot tell". Defaults ``False``: a cell that was never tested
-    (``n < min_n``, no CI) has established nothing.
+    cannot tell". Only the bar carries the notion of "worth acting on", so only
+    a CI sized against the bar can license a negative claim.
+
+    The warning-value audit is this repo's own falsifier: awarding COSMETIC on
+    ``n >= min_n`` labelled 11 of 12 cells a null, and under this predicate
+    **0 of 11 survive** at a half-width median 4.1× the bar
+    (``docs/audits/2026-08-13-warning-value-audit.md``).
+
+    Returns ``False`` for a missing or non-finite bound: a cell that was never
+    tested has established nothing. That default is load-bearing — the failure
+    callers care about is a null claimed too easily, so the untested case must
+    fall to ``INSUFFICIENT``, never to ``powered``.
+
+    This predicate is two-sided. A best-of-k arm sweep needs a one-sided
+    variant, which this repo does not have; do not reach for this one there.
     """
+    if ci_lo is None or ci_hi is None:
+        return False
+    if not (math.isfinite(ci_lo) and math.isfinite(ci_hi)):
+        return False
+    return ci_lo > -bar and ci_hi < bar
 
 
 def _mean(arr: npt.NDArray[np.float64]) -> float:
@@ -237,7 +265,7 @@ def evaluate_audit_cells(
                 adj_p,
                 n_tests,
                 reasons,
-                powered_null=ci_lo > -bar and ci_hi < bar,
+                powered_null=powered_null(ci_lo, ci_hi, bar=bar),
             )
         )
     return out
