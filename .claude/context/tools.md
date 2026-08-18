@@ -157,6 +157,56 @@ that enumerates every sibling but one and reads as complete. The Makefile is del
 `PYTHONPATH=. poetry run python tools/post_branch_checks.py [--check NAME] [--exit-zero]`
 to let it exit 1 on findings.
 
+## sanity_checks.py — every mechanical `/sanity-check` check, in one run
+
+Seven checks: `fork-drift` (invocable artifacts a doc names but the code lacks — make targets,
+timeframes, `--strategy`, `SYMBOL`), `parent-leakage`, `missing-paths`, `context-coverage`,
+`router-wiring`, `config-strategies`, `cli-documented`. Same shape as `post_branch_checks.py` —
+pure functions over text, git injected as `runner`, one `Finding` per thing a human must look at —
+with two deliberate differences.
+
+**It GATES rather than advises**, and it runs in **two** CI places. `tests/test_sanity_checks.py`
+asserts the working tree is clean, which puts it inside `make test`; and CI's `markdownlint` job
+runs it **unconditionally** as well. The second placement is not redundancy: the test job sits
+behind a `**/*.py` paths filter, so on a docs-only PR — the exact change these checks guard — the
+pytest gate never fires at all. CLAUDE.md's *a self-check outside CI is not a check* is what forced
+both.
+
+**Every leg is CI-portable, and that constraint is what found the prose form's two bugs.** The old
+§4a shell block read the gitignored `config/stocks.json` directly, so it would have crashed in a
+clean checkout, and its `MISSING` allowlist was calibrated on a developer machine where
+`config/youtube_channels.toml` happens to exist. Now `check_missing_paths` asks **git** whether a
+path is expected to be absent, the watchlist leg degrades to a printed note, and the three legs
+needing project imports report `SKIPPED` where nothing is installed. ⚠ **A degraded leg is a note,
+never a finding** — counting it would leave the sweep permanently red in CI, and a check that is
+never green stops being read.
+
+⚠ **`parent-leakage` is scoped to `.claude/` while its siblings are not**, and that asymmetry is
+load-bearing. Widening it to CLAUDE.md / README / `docs/system-overview.md` returns four hits that
+are all *correct history* — the fork-lineage paragraph, the sister-memory pointer, the README's
+"forked from" line — which is the prose-marker grep that was built, measured and rejected. A skill
+instructs an *action*, so a parent artifact there is invocable rather than historical. Pinned by
+`test_scope_stops_at_dot_claude`.
+
+Extraction found three defects in the inherited code, none by reading:
+
+- The skill's documented expectations were stale in **two of three** legs — it claimed "no leakage
+  hits" and "exactly these ten `MISSING` paths"; the real numbers were **3** and **9**, and all
+  three leakage hits were legitimate. A check that reports known-good noise gets skimmed.
+- The symbol pattern capped at `[A-Z]{2,6}`, so a 7-character `BTCUSDT` was reported as
+  `symbol=BTCUSD` — a finding naming a string that appears nowhere, so triaging it means grepping
+  for something that does not exist.
+- `cli/main.py` built its argparse tree inside `main()`, so the CLI surface could not be read
+  without being run. Extracting `build_parser` was a prerequisite, not scope creep — and the check
+  immediately found `wifey param-audit` documented nowhere in README.
+
+Every allowlist entry carries its reason inline; an entry without one is how a check decays into a
+no-op.
+
+**Run:** `make sanity-checks`, or `PYTHONPATH=. poetry run python tools/sanity_checks.py
+[--check NAME] [--exit-zero]`. It runs stdlib-only too (`python3 tools/sanity_checks.py`), which is
+how the CI step works.
+
 ## docs_index.py — generated audit + spec indexes
 
 Generates `docs/audits/INDEX.md` (18 verdicts) and `docs/superpowers/specs/INDEX.md`
