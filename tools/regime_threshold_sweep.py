@@ -36,7 +36,7 @@ from tools.regime_gate_replay import (
     _REGIME_TF,
     _load_4h_ohlcv,
     _load_trades,
-    _regime_at_entry,
+    _regimes_at_entries,
     annotate_suppression,
 )
 
@@ -89,11 +89,8 @@ def _annotate_regime_for_threshold(
             parts.append(g)
             continue
         regimes = classify_series(ohlcv, _REGIME_TF, slope_threshold=threshold)
-        lookup = pd.Series(regimes.values, index=ohlcv["open_time"])
         g = group.copy()
-        g["regime_lookup_key"] = g["entry_time"].apply(_regime_at_entry)
-        g["regime"] = g["regime_lookup_key"].map(lookup).fillna("unknown")
-        g = g.drop(columns=["regime_lookup_key"])
+        g["regime"] = _regimes_at_entries(g["entry_time"], ohlcv["open_time"], regimes)
         parts.append(g)
     return (
         pd.concat(parts, ignore_index=True)

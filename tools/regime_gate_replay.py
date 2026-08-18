@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 import duckdb
+import numpy as np
 import pandas as pd
 
 from analytics.regime import Regime, classify_series
@@ -33,7 +34,6 @@ from analytics.strategies import STRATEGY_REGISTRY
 
 # Live gate uses 4h candles regardless of signal TF (per config/strategy_params.toml).
 _REGIME_TF = "4h"
-_FOUR_HOURS_MS = 4 * 60 * 60 * 1000
 
 # Decision rule thresholds (kept in sync with soft-mode flip criteria).
 _MIN_TRADES_FOR_DECISION = 100
@@ -70,14 +70,36 @@ def _load_4h_ohlcv(conn: duckdb.DuckDBPyConnection, symbol: str) -> pd.DataFrame
     ).df()
 
 
-def _regime_at_entry(entry_time_ms: int) -> int:
-    """Return the open_time of the most recent CLOSED 4h candle at entry_time.
+def _regimes_at_entries(
+    entry_times_ms: pd.Series,
+    bar_open_times: pd.Series,
+    bar_regimes: pd.Series,
+) -> pd.Series:
+    """Regime of the most recent CLOSED bar at each entry time.
 
-    Mirrors the live gate's `iloc[-2]` rule: skip the in-progress candle and
-    use the previous one's regime label.
+    Resolved POSITIONALLY against the bar index, never by arithmetic on the
+    timestamp. The previous implementation floored `entry_time` to a UTC 4h
+    boundary, which is correct only on a 24/7 tape: on an RTH equity tape 4h
+    bars stamp 13:30/17:30 UTC, so **0 of 105,708** bars in this repo's DB are
+    UTC-4h aligned. The floor therefore produced a key no bar could have, every
+    lookup missed, and `fillna("unknown")` turned that into a fall-open — the
+    replay reported 0 suppressed of 2,849 trades and printed a verdict
+    indistinguishable from a genuine sample shortage.
+
+    Mirrors live's `iloc[-2]` rule by stepping back one bar from the bar
+    containing the entry. Entries before the second bar have no closed
+    predecessor and resolve to "unknown", matching live's cache-miss fall-open.
     """
-    bin_open = entry_time_ms - (entry_time_ms % _FOUR_HOURS_MS)
-    return bin_open - _FOUR_HOURS_MS
+    labels = np.asarray(bar_regimes, dtype=object)
+    index = entry_times_ms.index
+    if labels.size == 0:
+        return pd.Series("unknown", index=index, dtype=object)
+    opens = np.asarray(bar_open_times, dtype="int64")
+    entries = np.asarray(entry_times_ms, dtype="int64")
+    # searchsorted(right) - 1 = bar containing the entry; one more back = last CLOSED bar.
+    pos = np.searchsorted(opens, entries, side="right") - 2
+    resolved = np.where(pos >= 0, labels[np.clip(pos, 0, None)], "unknown")
+    return pd.Series(resolved, index=index, dtype=object)
 
 
 def annotate_regime_4h(
@@ -97,11 +119,10 @@ def annotate_regime_4h(
             parts.append(g)
             continue
         ohlcv["regime"] = classify_series(ohlcv, _REGIME_TF)
-        lookup = ohlcv.set_index("open_time")["regime"]
         g = group.copy()
-        g["regime_lookup_key"] = g["entry_time"].apply(_regime_at_entry)
-        g["regime"] = g["regime_lookup_key"].map(lookup).fillna("unknown")
-        g = g.drop(columns=["regime_lookup_key"])
+        g["regime"] = _regimes_at_entries(
+            g["entry_time"], ohlcv["open_time"], ohlcv["regime"]
+        )
         parts.append(g)
     return (
         pd.concat(parts, ignore_index=True)
