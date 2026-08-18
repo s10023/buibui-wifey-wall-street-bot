@@ -170,6 +170,52 @@ upstream, and that case is a regression test here.
 **Run:** `make docs-index` (write) / `make docs-index-check` (verify, writes nothing), or
 `poetry run python tools/docs_index.py [--check] [--audit-dir PATH] [--spec-dir PATH]`
 
+## distil_power.py — price a hypothesis BEFORE it is written into the inbox
+
+The **G3 gate of `/research-distil`**. Prints the effect size the gate demands at the
+declared `n` and trial family, so a claim is *priced* rather than estimated. Ported
+verbatim from parent HEAD, with only the module docstring's precedent re-flavored;
+`tests/test_distil_power.py` + `tests/test_research_guards_power.py` (48 cases) passed
+here with **zero** code adaptation, because `dsr.py` and `psr.py` are byte-identical
+across the two repos.
+
+```bash
+PYTHONPATH=. poetry run python tools/distil_power.py \
+  --units {per_trade|per_alert|per_book_day} \
+  --n-obs N --n-trials K --sr-variance V \
+  [--n-series S --n-eff E] [--sd SD] [--bar R] [--corpus-best C]
+```
+
+`PYTHONPATH=.` is required — the bare invocation dies on `ModuleNotFoundError`, the same
+shape as `route_dedup.py`. Exit 2 on a declared-error argument combination.
+
+**Why it exists at all**: trial count dominates n, and it is not close. Re-derived here
+against wifey's own `required_sharpe` — holding the trial family at 20, a **21× range of
+n** (100 → 2,100) moves the bar **1.17×**; holding n at the live ledger's 267, going from
+**1 to 320 trials** moves it **15.9×** (0.101 → 1.611). So a skill that reads three books
+and emits forty hypotheses inflates the trial family until every cell is unreachable,
+including ones that would have passed alone. The tool is what makes that arithmetic
+tracked rather than recalled. Reproduce:
+
+```python
+from analytics.research_guards import required_sharpe
+required_sharpe(100, n_trials=20, sr_variance=0.25) / required_sharpe(2100, n_trials=20, sr_variance=0.25)
+required_sharpe(267, n_trials=320, sr_variance=0.25) / required_sharpe(267, n_trials=1, sr_variance=0.25)
+```
+
+**Three flags carry the traps.** `--units` is mandatory with **no default**, because a
+figure that looks portable silently changes meaning with the panel — `regime.py` carried
+crypto bar counts across the fork, so its "90-day" ATR window really spanned ~270 sessions
+on `4h` (RTH is 2 bars/day, not 6) and 12.02% of `4h` labels moved when it was corrected.
+`--n-series`/`--n-eff` must be supplied together — one alone raises, and omitting both on
+a pooled multi-symbol panel overstates `n`. ⚠ **This repo has no measured `n_eff`**, so
+every undeflated run prints an **upper bound** on n and therefore a bar smaller than the
+true one; never present such a pass as having margin it did not measure.
+
+`UNREACHABLE` is a **successful output**, not a failure: more data of that shape cannot
+fix it, only a smaller trial family can. The null-containment verdict is delegated to
+`analytics.audit_guard.powered_null` and is never restated in the tool.
+
 ## live_outcomes_report.py — read-only signal_alert_outcomes spot-check
 
 Read-only spot-check of `signal_alert_outcomes` after the T2 backfill worker runs; reports the
