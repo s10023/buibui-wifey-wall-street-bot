@@ -116,6 +116,47 @@ tree, where it isolates `TestEvGate` and names `_passes_ev_gate`; clean on HEAD.
 **Run:** `make check-orphan-tests` or
 `poetry run python tools/orphan_test_audit.py [--strict]`
 
+## post_branch_checks.py — every mechanical `/post-branch` check, in one run
+
+Ten checks that used to be **16 shell blocks embedded in `post-branch/SKILL.md`**, which a
+session had to notice and copy by hand. That is the failure CLAUDE.md names as *a hand walk
+is not the walk*, and it is why the same defects kept recurring: the skill's answer to each
+one was more prose, and prose cannot enforce. Extracting them cut the skill from **1,649 to
+~600 lines** and made the checks testable — `tests/test_post_branch_checks.py` gives each a
+**positive control**, which the prose versions never had.
+
+Checks: `queue-items` · `handoff-symbols` · `new-files` · `new-modules` · `new-targets` ·
+`negative-claims` · `doc-indexes` · `md-atx` · `memory-cap` · `handoff-size`.
+
+Two are new and fix defects the prose form structurally could not:
+
+- **`queue-items`** — nothing swept the handoff's own task list for work the branch just
+  finished, so a completed item survived under a heading reading *"Settled — do not
+  re-litigate"*, i.e. as an instruction to redo it. Confirmed three times. The earlier
+  mitigation keyed on added Python **symbols**, so a docs-only branch defeated it entirely;
+  this keys the handoff's own distinctive tokens against the diff **content**, which every
+  branch has. It fired correctly on its own introducing branch.
+- **`new-files`** — the prose probed `basename`, and every skill's basename is the shared
+  constant `SKILL.md`, which matches CLAUDE.md's generic *"Skills live in
+  `.claude/skills/<name>/SKILL.md`"*. A fabricated skill therefore reported COVERED — the
+  exact false positive that check's own `-w` rule exists to prevent. `probe_names` probes
+  the **parent directory** when the basename names a role rather than a file
+  (`SKILL.md`, `README.md`, `__init__.py`, `INDEX.md`).
+
+⚠ **Untracked files count as added.** `git diff` cannot see them in any form, so the
+presence checks used to report zero on precisely the branch they existed for; the skill
+answered that with "remember to `git add -A` first", one more hand-step to forget. Reading
+`git status --porcelain` makes them correct either way.
+
+Advisory by design — a finding is a candidate to dismiss in seconds, never an automatic
+edit. The asymmetry is the point: a false positive costs a glance, a silent miss ships a doc
+that enumerates every sibling but one and reads as complete. The Makefile is deliberately
+**not** an enumerating doc; a build rule is not documentation.
+
+**Run:** `make post-branch-checks` (passes `--exit-zero`), or
+`PYTHONPATH=. poetry run python tools/post_branch_checks.py [--check NAME] [--exit-zero]`
+to let it exit 1 on findings.
+
 ## docs_index.py — generated audit + spec indexes
 
 Generates `docs/audits/INDEX.md` (18 verdicts) and `docs/superpowers/specs/INDEX.md`

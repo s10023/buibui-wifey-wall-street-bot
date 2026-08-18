@@ -12,7 +12,7 @@ PYTHON_FILES = $(shell find . -name "*.py" -not -path "./venv/*" -not -path "./.
 DOCKER_IMAGE = wifey-bot
 MEMORY = $(HOME)/.claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot/memory/MEMORY.md
 
-.PHONY: status wait-ci lint lint-md lint-md-fix docs-index docs-index-check lint-py-check lint-py typecheck test test-cov test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-pundit-sync wifey-pundit-backfill wifey-universe-backfill universe-coverage universe-stamp-listed wifey-forecast-audit wifey-xsmom-audit wifey-xsmom-residual-audit wifey-lowvol-audit wifey-xasset-audit wifey-xasset-backfill wifey-pead-audit wifey-pead-backfill wifey-velocity-audit wifey-exit-audit wifey-exit-replay wifey-warning-value-audit wifey-pundit-score wifey-check-levels wifey-route-dedup-seed wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep backup backup-dry-run backup-offsite backup-offsite-dry-run wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent check-dead-surfaces check-orphan-tests wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
+.PHONY: status wait-ci lint lint-md lint-md-fix docs-index docs-index-check lint-py-check lint-py typecheck test test-cov test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-pundit-sync wifey-pundit-backfill wifey-universe-backfill universe-coverage universe-stamp-listed wifey-forecast-audit wifey-xsmom-audit wifey-xsmom-residual-audit wifey-lowvol-audit wifey-xasset-audit wifey-xasset-backfill wifey-pead-audit wifey-pead-backfill wifey-velocity-audit wifey-exit-audit wifey-exit-replay wifey-warning-value-audit wifey-pundit-score wifey-check-levels wifey-route-dedup-seed wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep backup backup-dry-run backup-offsite backup-offsite-dry-run wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent check-dead-surfaces check-orphan-tests post-branch-checks wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
 
 lint: lint-md lint-py
 
@@ -351,9 +351,9 @@ status:
 	@printf '  tests collected   %s  (incl. 2 regression that `make test` ignores)\n' "$$(poetry run pytest tests/ --collect-only -q 2>/dev/null | tail -1 | grep -oE '^[0-9]+' || echo '?')"
 	@printf '  python files      %s\n' "$$(git ls-files '*.py' | wc -l)"
 	@printf '  markdown files    %s\n' "$$(npx markdownlint-cli2 2>&1 | grep -oE 'Linting: [0-9]+' | grep -oE '[0-9]+' || echo '?')"
-	@printf '  CLAUDE.md         %s KB\n' "$$(du -k CLAUDE.md | cut -f1)"
+	@printf '  CLAUDE.md         %s KB\n' "$$(wc -c < CLAUDE.md | awk '{printf "%.1f", $$1/1024}')"
 	@printf '  handoff           %s lines\n' "$$(wc -l < docs/plans/next-conversation-prompt.md)"
-	@printf '  MEMORY.md         %s KB, %s Current State bullets\n' "$$(du -k $(MEMORY) | cut -f1)" "$$(awk '/^## Current State/,0' $(MEMORY) | grep -c '^- ')"
+	@printf '  MEMORY.md         %s KB, %s Current State bullets\n' "$$(wc -c < $(MEMORY) | awk '{printf "%.1f", $$1/1024}')" "$$(awk '/^## Current State/,0' $(MEMORY) | grep -c '^- ')"
 	@printf '  audits            %s\n' "$$(ls docs/audits/*.md | grep -vc INDEX)"
 	@printf '  skills            %s\n' "$$(ls -d .claude/skills/*/ | wc -l)"
 	@printf '  context docs      %s\n' "$$(ls .claude/context/*.md | wc -l)"
@@ -366,6 +366,13 @@ status:
 check-orphan-tests:
 	@echo "🔍 Checking for test classes that name a unit but never call it..."
 	@poetry run python tools/orphan_test_audit.py
+
+## Every mechanical /post-branch check in one run. Advisory by design: a finding
+## is a candidate to dismiss in seconds, not an automatic edit. Exits non-zero on
+## any finding so it can gate if a caller wants it to; pass --exit-zero not to.
+post-branch-checks:
+	@echo "🔍 Running the mechanical /post-branch sweep..."
+	@PYTHONPATH=. poetry run python tools/post_branch_checks.py --exit-zero
 
 ## The completion banner is CONDITIONAL on the surface check. It used to print
 ## an unqualified ✅ beside nine orphaned confidence_ratings rows, one of them
