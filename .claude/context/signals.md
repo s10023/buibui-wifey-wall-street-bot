@@ -16,6 +16,13 @@ alert formatting, cooldown, the signal registry, Telegram dispatch, or config/un
   (the two unregistered ones include the legacy `fibonacci_retracement`).
 - Excluded from dispatch: `seasonality` (inactive by design), `fibonacci_retracement` (legacy),
   `fib_golden_zone` (removed — no_edge across 3 sweeps).
+- **Those counts are pinned by a test, so re-verify by running it rather than by hand.**
+  `tests/test_signal_registry.py::test_detector_registry_is_wired_to_the_other_two` set-diffs all
+  three registries in both directions, checks `SIGNAL_REGISTRY` and `DETECTOR_REGISTRY` bind the
+  *same* function object, and checks `backtest_runner._SWEEP_STRATEGIES` is dispatchable. The two
+  dicts are hand-maintained duplicates in different files — `signals/registry.py` builds
+  `_DETECTORS` from direct `detect_*` imports and never reads `DETECTOR_REGISTRY` — so nothing but
+  that test can see them diverge. `_REGISTRY_EXCLUDED` in the test is the deliberate opt-out.
 - `confidence` field removed — resolved per-TF at dispatch via `STRATEGY_REGISTRY[name].get_confidence(tf)`
 - **Detectors always run at their module defaults — both dispatch sites pass no params**, so a
   detector's own keyword arguments are dead on every live and backtest path.

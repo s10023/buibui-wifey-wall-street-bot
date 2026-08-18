@@ -1,6 +1,11 @@
 """Tests for signal registry completeness and correctness."""
 
+from collections.abc import Mapping
+from collections.abc import Set as AbstractSet
+
+from analytics.backtest_runner import _SWEEP_STRATEGIES
 from analytics.strategies import (
+    DETECTOR_REGISTRY,
     KNOWN_STRATEGIES,
     KNOWN_STRATEGY_TYPES,
     STRATEGY_REGISTRY,
@@ -103,3 +108,150 @@ def test_tp_r_sweep_surface_is_inverted() -> None:
     }
     assert declared == _TP_R_DECLARED_BUT_IGNORED
     assert declared.isdisjoint(_TP_R_USED_BUT_UNDECLARED)
+
+
+# ---------------------------------------------------------------------------
+# DETECTOR_REGISTRY wiring
+#
+# `signals/registry.py` builds `_DETECTORS` from direct `from analytics.strategies
+# import detect_*` statements; it never reads `DETECTOR_REGISTRY`. The two dicts are
+# hand-maintained duplicates in different files, so nothing above this point can see
+# them diverge: `test_registry_covers_all_active_strategies` ties SIGNAL_REGISTRY to
+# STRATEGY_REGISTRY and stops there. A strategy present in both of those but absent
+# from DETECTOR_REGISTRY fires live alerts while being invisible to backtest dispatch,
+# the regression golden and `test_lookahead.py`'s causality property test — a silent
+# hole in exactly the direction /new-strategy warns about.
+#
+# `_REGISTRY_EXCLUDED` is the deliberate opt-out for both registries, not just for
+# SIGNAL_REGISTRY. A detector taking a second positional arg (funding rates, a
+# secondary OHLCV frame) cannot fit DETECTOR_REGISTRY's
+# `Callable[[pd.DataFrame], pd.DataFrame]` and is wired through explicit branches
+# in `backtest_runner.detect_signals_for_strategy` instead -- `seasonality` is the
+# one live instance. So a failure here has two legitimate resolutions, and the
+# messages below are worded to leave both open: wire the missing entry, or add the
+# name to `_REGISTRY_EXCLUDED` because it is one of those. See
+# `/new-strategy` section "Strategies needing extra data".
+#
+# The sweep leg is the crash path rather than a silent one: `_SWEEP_STRATEGIES`
+# re-derives that same exclusion inline instead of importing it, so an opt-out
+# added in one place and not the other KeyErrors mid-sweep.
+# ---------------------------------------------------------------------------
+
+
+def _wiring_errors(
+    strategy: Mapping[str, object],
+    detector: Mapping[str, object],
+    signal: Mapping[str, Mapping[str, object]],
+    sweep: AbstractSet[str],
+    excluded: AbstractSet[str],
+) -> list[str]:
+    """Report every way the three registries can disagree, in both directions.
+
+    Pure over its arguments so the live check and its positive controls run the
+    same comparison — a guard tested only against the real registries proves
+    nothing, because those are currently consistent.
+    """
+    errors: list[str] = []
+    dispatchable = set(strategy) - set(excluded)
+    for name in sorted(dispatchable - set(detector)):
+        errors.append(f"{name}: in STRATEGY_REGISTRY, missing from DETECTOR_REGISTRY")
+    for name in sorted(set(detector) - dispatchable):
+        errors.append(f"{name}: in DETECTOR_REGISTRY, not an active strategy")
+    for name in sorted(set(signal) - set(detector)):
+        errors.append(f"{name}: in SIGNAL_REGISTRY, missing from DETECTOR_REGISTRY")
+    for name in sorted(set(detector) - set(signal)):
+        errors.append(f"{name}: in DETECTOR_REGISTRY, missing from SIGNAL_REGISTRY")
+    for name in sorted(set(signal) & set(detector)):
+        if signal[name]["detector"] is not detector[name]:
+            errors.append(
+                f"{name}: SIGNAL_REGISTRY and DETECTOR_REGISTRY bind different functions"
+            )
+    for name in sorted(set(sweep) - set(detector)):
+        errors.append(f"{name}: swept by the backtest runner, not dispatchable")
+    return errors
+
+
+def test_detector_registry_is_wired_to_the_other_two() -> None:
+    """The live gate: all three registries agree on names and on bindings."""
+    assert (
+        _wiring_errors(
+            STRATEGY_REGISTRY,
+            DETECTOR_REGISTRY,
+            SIGNAL_REGISTRY,
+            set(_SWEEP_STRATEGIES),
+            _REGISTRY_EXCLUDED,
+        )
+        == []
+    )
+
+
+def test_wiring_check_catches_a_strategy_missing_its_detector() -> None:
+    """Positive control: the /new-strategy failure mode this gate exists for."""
+    detector = {k: v for k, v in DETECTOR_REGISTRY.items() if k != "doji"}
+    errors = _wiring_errors(
+        STRATEGY_REGISTRY,
+        detector,
+        SIGNAL_REGISTRY,
+        set(_SWEEP_STRATEGIES),
+        _REGISTRY_EXCLUDED,
+    )
+    assert "doji: in STRATEGY_REGISTRY, missing from DETECTOR_REGISTRY" in errors
+    assert "doji: in SIGNAL_REGISTRY, missing from DETECTOR_REGISTRY" in errors
+
+
+def test_wiring_check_catches_a_detector_outliving_its_strategy() -> None:
+    """Positive control: the other direction — a stale detector entry."""
+    detector = {**DETECTOR_REGISTRY, "retired_pattern": DETECTOR_REGISTRY["doji"]}
+    errors = _wiring_errors(
+        STRATEGY_REGISTRY,
+        detector,
+        SIGNAL_REGISTRY,
+        set(_SWEEP_STRATEGIES),
+        _REGISTRY_EXCLUDED,
+    )
+    assert "retired_pattern: in DETECTOR_REGISTRY, not an active strategy" in errors
+    assert (
+        "retired_pattern: in DETECTOR_REGISTRY, missing from SIGNAL_REGISTRY" in errors
+    )
+
+
+def test_wiring_check_catches_a_divergent_binding() -> None:
+    """Positive control: same name on both sides, different function.
+
+    Key-set equality cannot see this, and it is reachable: the two dicts import
+    their detectors independently, so live alerts and backtests would silently
+    disagree about what the strategy is.
+    """
+    detector = {**DETECTOR_REGISTRY, "doji": DETECTOR_REGISTRY["pin_bar"]}
+    errors = _wiring_errors(
+        STRATEGY_REGISTRY,
+        detector,
+        SIGNAL_REGISTRY,
+        set(_SWEEP_STRATEGIES),
+        _REGISTRY_EXCLUDED,
+    )
+    assert errors == [
+        "doji: SIGNAL_REGISTRY and DETECTOR_REGISTRY bind different functions"
+    ]
+
+
+def test_wiring_check_catches_a_swept_strategy_that_cannot_dispatch() -> None:
+    """Positive control for the sweep leg, which is a real crash path.
+
+    `backtest_runner._SWEEP_STRATEGIES` re-derives its own exclusion inline
+    (`KNOWN_STRATEGIES` minus a hard-coded `"seasonality"`) rather than reading
+    `_REGISTRY_EXCLUDED`, so adding a second extra-data strategy to the opt-out
+    without touching that comprehension leaves the sweep dispatching a name
+    `_SIMPLE_DETECTORS[strategy]` cannot resolve — a KeyError mid-sweep, not a
+    silent skip.
+    """
+    errors = _wiring_errors(
+        STRATEGY_REGISTRY,
+        DETECTOR_REGISTRY,
+        SIGNAL_REGISTRY,
+        set(_SWEEP_STRATEGIES) | {"extra_data_strategy"},
+        _REGISTRY_EXCLUDED,
+    )
+    assert errors == [
+        "extra_data_strategy: swept by the backtest runner, not dispatchable"
+    ]
