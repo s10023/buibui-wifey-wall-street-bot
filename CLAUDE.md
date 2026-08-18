@@ -619,11 +619,11 @@ a preference rather than a bug to fix, so leave `gh repo set-default` alone.
 **Invoke `/post-branch` before `gh pr create`, while the branch is still local-only**, and fold its
 "Documentation updates" section into the initial `--body`. These are private repos on the free tier
 and Actions minutes are a hard budget, so a doc-sync commit pushed to an already-open PR re-runs the
-whole 5-check matrix for what is usually a two-file edit. Step 10c (re-verify PR state) still runs
-last. A local `PreToolUse` hook on `Bash` greps for `gh pr create` and emits an advisory reminder.
-It has to be `PreToolUse`: a `PostToolUse` hook cannot fire before the PR exists, so it could not
-enforce this ordering at all. The hook is machine-local because `.gitignore` excludes `.claude/*`,
-so re-add it after a reclone.
+whole 5-check matrix for what is usually a two-file edit. Phase 6's zero-commit tail still runs
+last: re-verify PR state, then stamp the handoff, in that order. A local `PreToolUse` hook on
+`Bash` greps for `gh pr create` and emits an advisory reminder. It has to be `PreToolUse`: a
+`PostToolUse` hook cannot fire before the PR exists, so it could not enforce this ordering at all.
+The hook is machine-local because `.gitignore` excludes `.claude/*`, so re-add it after a reclone.
 
 ### CI quota
 
@@ -669,10 +669,10 @@ any externally pasted content in a doc before committing it.
 
 CI's markdownlint glob is **not** wider than local's, despite the workflow appearing to say so. The
 job passes `globs: **/*.md !venv`, but markdownlint-cli2 still applies the negations in
-`.markdownlint-cli2.jsonc`. The falsifier is arithmetic: 99 tracked `.md` files, CI reports
-`Linting: 98 files`, and the one omitted is `.github/pull_request_template.md`, which carries a live
-MD041 error. Local's 99 is the same 98 plus untracked `.pytest_cache/README.md`, so local is a
-superset. Re-run that count before "fixing" a divergence here.
+`.markdownlint-cli2.jsonc`. The falsifier is arithmetic: 113 tracked `.md` files and none inside a
+negated path, so CI lints 112 — the one omitted is `.github/pull_request_template.md`, which carries
+a live MD041 error. Local's observed 113 is that same 112 plus untracked `.pytest_cache/README.md`,
+so local is a superset. Re-run that count before "fixing" a divergence here.
 
 ⚠ **Know what the public window costs, because flipping back does not undo it.** wifey is not a
 GitHub fork — its history was copied — so 389 of 541 commits are the still-private parent's pre-fork
