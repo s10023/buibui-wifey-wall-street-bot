@@ -50,9 +50,11 @@ Services (2) × defensives = Staples+Utilities or +Health Care (2) × `thr` ∈
 trials**.
 
 `1wk` is excluded as redundant with `1d` on an episode-conditioned study. `4h`
-is excluded on a hard constraint: it reaches only 105 of 505 members and that
-subset is size-tilted with sector coverage running 4–40%, so a 4h *sector*
-aggregate is confounded by construction.
+is excluded on a hard constraint: it reaches only 105 of 505 members
+(re-derived here), and that subset is size-tilted rather than random, so a 4h
+*sector* aggregate is confounded by construction. The size-tilt and its 4–40%
+per-sector coverage are **inherited, not re-derived on this branch** — see
+memory `reference_ohlcv_timeframe_coverage.md`.
 
 ## The n, and why the naive count is an artifact
 
@@ -147,10 +149,16 @@ A maximal free-data backfill does not reach either bar:
   backfill `--since`, not because data is unavailable.
 - Deep history to 2007-03-01 exists in the DB for index and macro ETF symbols
   only (`^GSPC`, `^NDX`, SPY, QQQ, TLT, GLD, SLV, and the `xasset/` set).
-- **There are no sector ETFs in the DB.** The universe's four ETFs are DIA,
-  IWM, QQQ, SPY — all broad index. XLK/XLP/XLU/XLV/XLE/XLI and siblings would
-  have to be added, and they only list from December 1998, so the ceiling is a
-  ~27-year panel ≈ 10 episodes. Still short of 16.
+- **There are no sector ETFs in the DB — column-scanned, not spot-checked.**
+  All 524 `1d` symbols were listed and probed against 16 sector/thematic
+  tickers (XLK/XLP/XLU/XLV/XLE/XLI/XLF/XLY/XLB/XLRE/XLC, XBI, SMH, IYW, VGT,
+  RSP): **0 present**. The universe's four ETFs are DIA, IWM, QQQ, SPY, all
+  broad index, and the 19 non-universe symbols are macro, commodity and rate
+  proxies plus three share-class duplicates. Reproduce with
+  `docs/plans/scripts/` or the query in this section's commit.
+  Sector SPDRs would have to be added, and their December 1998 inception —
+  an **external fact, not measured here** — caps the ceiling at a ~27-year
+  panel ≈ 10 episodes. Still short of 16.
 
 ## The G2 conflict, stated rather than resolved quietly
 
