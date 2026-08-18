@@ -1206,6 +1206,7 @@ def run_scan_cycle(
                         sl_pct=sl_pct,
                         tp_r=eff_alert_tp_r,
                         min_sl_pct=min_sl_pct,
+                        ohlcv_df=ohlcv_df,
                     )
                     sent = dispatch_to_channel(wife_msg, "wife")
                     if sent:

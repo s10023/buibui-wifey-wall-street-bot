@@ -67,7 +67,7 @@ def detect_ote_entry(
                         "context": (
                             f"OTE: swing_low={sl_price_bos:.2f} "
                             f"swing_high={sh_price_bos:.2f} "
-                            f"TP={tp:.2f} (1.618 ext)"
+                            "TP at 1.618 ext"
                         ),
                     }
                 )
@@ -90,7 +90,7 @@ def detect_ote_entry(
                         "context": (
                             f"OTE: swing_high={sh_price_bos:.2f} "
                             f"swing_low={sl_price_bos:.2f} "
-                            f"TP={tp:.2f} (1.618 ext)"
+                            "TP at 1.618 ext"
                         ),
                     }
                 )

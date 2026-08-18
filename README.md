@@ -1,6 +1,6 @@
 # Buibui Wifey Wall Street Bot
 
-A yfinance-backed US-equities **signal bot** (Phase A: signals only). Multi-strategy detection on 4h / 1d / 1wk bars, dual-channel Telegram alerts with statistical context (primary trader-facing + minimal BUY/HOLD-relabelled wife channel), and a FastAPI + Svelte web UI for charts, backtests, signal history, and stats. Phase B (order layer + equities broker) is deferred.
+A yfinance-backed US-equities **signal bot** (Phase A: signals only). Multi-strategy detection on 4h / 1d / 1wk bars, dual-channel Telegram alerts with statistical context (primary trader-facing + condensed BUY/WAIT-relabelled wife channel), and a FastAPI + Svelte web UI for charts, backtests, signal history, and stats. Phase B (order layer + equities broker) is deferred.
 
 Forked from the parent `buibui-moon-trader-bot` (crypto / Binance Futures); the analytics + signals engine carries over, the data source is yfinance, and the live order layer has been removed.
 
@@ -247,7 +247,7 @@ API_TOKEN=your_web_api_token_here
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
 TELEGRAM_CHAT_ID=your_telegram_chat_id_here
 
-# Wife Telegram channel — minimal BUY/HOLD alert
+# Wife Telegram channel — condensed BUY/WAIT alert
 TELEGRAM_BOT_TOKEN_2=your_wife_telegram_bot_token_here
 TELEGRAM_CHAT_ID_2=your_wife_telegram_chat_id_here
 TELEGRAM_WIFE_DRY_RUN=1   # 1 = log instead of send (rollout safety)
@@ -694,16 +694,43 @@ HTF candles. Regime reads from a `dict[symbol, Regime]` classified once per cycl
 `htf_tf` candles. If any data is unavailable for a symbol, the corresponding gate is silently
 skipped (fall-open).
 
-**Example alert (Telegram, soft mode):**
+**Example alert (Telegram, soft mode)** — primary channel, as rendered:
 
 ```text
-SIGNAL — AAPL 4h
-Direction: LONG 🟢  Strategy: `fvg`  ★★★★☆
-Reason: `fvg_long@212.00-213.50`
-Price: 212.60  |  01-Apr 21:00 SGT
-SL: 208.35 (2.0%)  TP: 221.10 (4.0% | 2.0x R)
-📊 Backtest 90d [↑]: 62% win · avg +1.4R (18 longs)
+SIGNAL — $AAPL 4h  ·  LONG 🟢
+ema · pullback  ★★★☆☆
+
+333.85  ·  31-Jul 01:30 MYT
+🏛️ RTH
+
+SL: 324.26  (2.9%)
+TP: 348.24  (4.3%  ·  1.5R)
+
+⚠️ Low volume — weaker conviction
+
+📊 Backtest 365d [↑]: 62% win · avg +1.4R (18 longs)
+
+📐 Tue closes bullish 58% (+0.3% avg) · Low still ahead 50% of Tuesdays · ADR [█████░░░░░] 53% of 2.0%
+🎯 TP window: high ~21:00 MYT on Tuesdays · Weekly low: 46% still ahead
 ```
+
+The header is `strategy · variant`: the detector's reason contributes only what the
+alert does not already state, so `ema_pullback_long@333.85` renders as `ema · pullback`.
+
+The **wife channel** carries the same trade, condensed — BUY for long, WAIT for short
+(no levels, since a short means "take no action"):
+
+```text
+BUY — $AAPL 4h  ★★★☆☆              WAIT — $AAPL 4h
+Entry 333.85  ·  31-Jul 01:30 MYT  306.47  ·  10-Aug 21:30 MYT
+                                   Sit tight — conditions look weak
+Stop 324.26 (−2.9%)  ·  Target 348.24 (+4.3%)
+
+⚠️ Low volume — weaker conviction
+```
+
+Both renders print on every `wifey signal test`, so either can be reviewed without
+dispatching anything.
 
 Two-layer dedup prevents alert spam:
 
@@ -728,7 +755,7 @@ make go-live-prep                       # SINCE=2023-01-01 by default; override 
 
 # 1. Confirm Telegram creds in .env:
 #      TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID            (primary long+short channel)
-#      TELEGRAM_BOT_TOKEN_2 / TELEGRAM_CHAT_ID_2        (wife BUY/HOLD channel)
+#      TELEGRAM_BOT_TOKEN_2 / TELEGRAM_CHAT_ID_2        (wife BUY/WAIT channel)
 #      TELEGRAM_WIFE_DRY_RUN=0                          (flip from 1 to actually send to wife)
 
 # 2. Run ONE scan cycle and exit (Telegram ON). Run it once a day, pre-market

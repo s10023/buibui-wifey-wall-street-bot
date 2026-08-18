@@ -22,7 +22,8 @@ def detect_engulfing(
     bullish candle body (current open > prior close AND current close < prior open).
 
     SL: entry_price * (1 - sl_pct) for long, * (1 + sl_pct) for short.
-    TP: entry_price ± sl_distance * tp_r.
+    No structural TP: the detector sets no `tp_price`, so the alert and the
+    backtest engine each derive the target from the config-resolved tp_r.
     Signal open_time is the engulfing candle's open_time.
     """
     n = len(df)
@@ -54,17 +55,14 @@ def detect_engulfing(
         ):
             entry = curr_close
             sl = entry * (1 - sl_pct)
-            sl_dist = entry - sl
-            tp = entry + sl_dist * tp_r
             vol_ok = volume_confirm(df, i)
-            ctx = f"TP={tp:.2f}"
             signals.append(
                 {
                     "open_time": open_time,
                     "direction": "long",
                     "reason": f"bullish_engulfing@{entry:.2f}",
                     "sl_price": sl,
-                    "context": ctx,
+                    "context": "",
                     "low_volume": not vol_ok,
                 }
             )
@@ -78,17 +76,14 @@ def detect_engulfing(
         ):
             entry = curr_close
             sl = entry * (1 + sl_pct)
-            sl_dist = sl - entry
-            tp = entry - sl_dist * tp_r
             vol_ok = volume_confirm(df, i)
-            ctx = f"TP={tp:.2f}"
             signals.append(
                 {
                     "open_time": open_time,
                     "direction": "short",
                     "reason": f"bearish_engulfing@{entry:.2f}",
                     "sl_price": sl,
-                    "context": ctx,
+                    "context": "",
                     "low_volume": not vol_ok,
                 }
             )

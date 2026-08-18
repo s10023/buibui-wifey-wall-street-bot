@@ -97,8 +97,7 @@ def detect_fibonacci_retracement(
                         "reason": f"fib_golden_zone@{curr_close:.2f} (0.618={fib_0_618:.2f})",
                         "sl_price": fib_0_786,
                         "context": (
-                            f"Fib: swing_low={sl_price:.2f} swing_high={sh_price:.2f} "
-                            f"TP={sh_price:.2f}"
+                            f"Fib: swing_low={sl_price:.2f} swing_high={sh_price:.2f}"
                         ),
                     }
                 )
@@ -120,8 +119,7 @@ def detect_fibonacci_retracement(
                         "reason": f"fib_golden_zone@{curr_close:.2f} (0.618={short_fib_0_618:.2f})",
                         "sl_price": short_fib_0_786,
                         "context": (
-                            f"Fib: swing_high={sh_price:.2f} swing_low={sl_price:.2f} "
-                            f"TP={sl_price:.2f}"
+                            f"Fib: swing_high={sh_price:.2f} swing_low={sl_price:.2f}"
                         ),
                     }
                 )

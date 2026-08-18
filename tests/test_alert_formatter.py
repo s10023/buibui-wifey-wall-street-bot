@@ -2,11 +2,14 @@
 
 from datetime import UTC, datetime
 
+import pandas as pd
+
 from signals.alert_formatter import (
     SignalEvent,
     StatsContext,
     _format_stats_line,
     _get_session_label,
+    _reason_detail,
     format_signal_alert,
     format_wife_alert,
 )
@@ -330,9 +333,17 @@ class TestLowVolumeWarning:
 
 
 class TestWifeAlert:
-    """Minimal BUY / HOLD wife-channel formatter."""
+    """BUY / WAIT wife-channel formatter — the primary layout, condensed.
 
-    def _event(self, direction: str) -> SignalEvent:
+    Design: `docs/superpowers/specs/2026-08-18-wife-alert-layout-design.md`.
+    """
+
+    def _event(
+        self,
+        direction: str,
+        low_volume: bool = False,
+        volume_spike: bool = False,
+    ) -> SignalEvent:
         # 2024-01-15 14:30 UTC = 09:30 ET = 22:30 MYT (no DST in MYT)
         dt = datetime(2024, 1, 15, 14, 30, tzinfo=_UTC)
         return SignalEvent(
@@ -346,25 +357,51 @@ class TestWifeAlert:
             sl_price=196.00 if direction == "long" else 204.00,
             confidence=4,
             tp_price=0.0,
+            low_volume=low_volume,
+            volume_spike=volume_spike,
         )
 
-    def test_long_renders_buy_with_sl_tp(self) -> None:
+    def _inside_bar_df(self) -> pd.DataFrame:
+        """Prior bar engulfs the signal bar — fires the inside-range warning."""
+        return pd.DataFrame(
+            [
+                {"open": 190.0, "high": 210.0, "low": 185.0, "close": 205.0},
+                {"open": 199.0, "high": 201.0, "low": 198.0, "close": 200.0},
+            ]
+        )
+
+    def test_long_renders_buy_with_stop_and_target(self) -> None:
         msg = format_wife_alert(self._event("long"))
         assert "BUY — $AAPL 1d" in msg
-        assert "SL:" in msg
-        assert "TP:" in msg
-        # No primary-channel content leaks through
-        for token in ("engulfing", "bullish_engulfing", "★", "SIGNAL", "LONG"):
+        assert "Entry 200.00" in msg
+        assert "Stop 196.00" in msg
+        assert "Target " in msg
+
+    def test_buy_header_carries_stars(self) -> None:
+        msg = format_wife_alert(self._event("long"))
+        assert "★★★★☆" in msg
+
+    def test_buy_uses_signed_percentages_not_r_multiples(self) -> None:
+        """R is trader jargon; a signed percentage is directly readable."""
+        msg = format_wife_alert(self._event("long"))
+        assert "(−2.0%)" in msg
+        assert "(+4.0%)" in msg
+        assert "R)" not in msg
+        assert "SL:" not in msg and "TP:" not in msg
+
+    def test_short_renders_wait_without_levels(self) -> None:
+        """WAIT, not HOLD: 'hold' presumes an open position she may not have."""
+        msg = format_wife_alert(self._event("short"))
+        assert "WAIT — $AAPL 1d" in msg
+        assert "Sit tight — conditions look weak" in msg
+        assert "HOLD" not in msg
+        for token in ("Stop", "Target", "★", "SHORT"):
             assert token not in msg
 
-    def test_short_renders_hold_without_sl_tp(self) -> None:
-        msg = format_wife_alert(self._event("short"))
-        assert "HOLD — $AAPL 1d" in msg
-        assert "(regime caution — sit tight)" in msg
-        # HOLD is informational only — no actionable levels for the spouse
-        assert "SL:" not in msg
-        assert "TP:" not in msg
-        for token in ("engulfing", "SHORT", "★"):
+    def test_no_primary_channel_content_leaks(self) -> None:
+        """Everything dropped stays recoverable from `signal_alert_outcomes`."""
+        msg = format_wife_alert(self._event("long"))
+        for token in ("engulfing", "bullish_engulfing", "SIGNAL", "LONG", "Backtest"):
             assert token not in msg
 
     def test_buy_uses_html_bold(self) -> None:
@@ -372,3 +409,87 @@ class TestWifeAlert:
         msg = format_wife_alert(self._event("long"))
         assert msg.startswith("<b>BUY")
         assert "</b>" in msg
+
+    def test_carries_at_most_one_warning_the_most_severe(self) -> None:
+        """Low volume outranks the structural note, and only one is rendered."""
+        msg = format_wife_alert(
+            self._event("long", low_volume=True), ohlcv_df=self._inside_bar_df()
+        )
+        primary = format_signal_alert(
+            self._event("long", low_volume=True), ohlcv_df=self._inside_bar_df()
+        )
+        assert primary.count("⚠️") > 1, "fixture must fire more than one warning"
+        assert msg.count("⚠️") == 1
+        assert "Low volume — weaker conviction" in msg
+        assert "Signal inside prior range" not in msg
+
+    def test_volume_spike_never_renders(self) -> None:
+        """It is an encouragement, and it is the builder's first entry — so
+        taking the head of the list would render it under a warning heading."""
+        msg = format_wife_alert(self._event("long", volume_spike=True))
+        assert "Volume spike" not in msg
+        assert "⚡" not in msg
+
+    def test_without_a_frame_only_the_volume_note_can_appear(self) -> None:
+        """The frame is not all-or-nothing: volume comes off the event flags."""
+        assert "Low volume" in format_wife_alert(self._event("long", low_volume=True))
+        assert "⚠️" not in format_wife_alert(self._event("long"))
+
+
+class TestReasonDetail:
+    """`_reason_detail` strips what the alert already states elsewhere.
+
+    The header carries the strategy and the direction; the entry line carries
+    the price. What is left is the variant that actually fired.
+    """
+
+    def _event(self, strategy: str, reason: str, price: float) -> SignalEvent:
+        return SignalEvent(
+            symbol="AAPL",
+            timeframe="4h",
+            strategy=strategy,
+            direction="long",
+            reason=reason,
+            open_time=0,
+            price=price,
+        )
+
+    def test_drops_entry_price_and_direction(self) -> None:
+        ev = self._event("ema", "ema_pullback_long@333.85", 333.85)
+        assert _reason_detail(ev) == "pullback"
+
+    def test_empty_when_reason_adds_nothing(self) -> None:
+        """`doji_bull@326.99` is strategy + direction + entry, all repeats."""
+        ev = self._event("doji", "doji_bull@326.99", 326.99)
+        assert _reason_detail(ev) == ""
+
+    def test_strips_strategy_named_as_a_suffix(self) -> None:
+        ev = self._event("engulfing", "bullish_engulfing@200.00", 200.00)
+        assert _reason_detail(ev) == ""
+
+    def test_keeps_a_variant_that_merely_contains_the_strategy(self) -> None:
+        """`evening_star` names which half of the pattern fired."""
+        ev = self._event("morning_evening_star", "evening_star@306.47", 306.47)
+        assert _reason_detail(ev) == "evening_star"
+
+    def test_keeps_a_zone_whose_price_is_not_the_entry(self) -> None:
+        """A blunt `@`-strip would delete the upper bound and leave `-307.23`."""
+        ev = self._event("order_block", "ob_long@303.27-307.23", 305.00)
+        assert _reason_detail(ev) == "ob@303.27-307.23"
+
+    def test_keeps_a_trailing_parenthetical(self) -> None:
+        ev = self._event(
+            "fibonacci_retracement",
+            "fib_golden_zone@333.85 (0.618=326.10)",
+            333.85,
+        )
+        assert _reason_detail(ev) == "fib_golden_zone (0.618=326.10)"
+
+    def test_direction_stripped_ahead_of_a_retained_level(self) -> None:
+        ev = self._event("bos", "bos_choch_short@300.00", 312.00)
+        assert _reason_detail(ev) == "choch@300.00"
+
+    def test_direction_kept_when_stripping_would_dangle_the_level(self) -> None:
+        """`short@305.67` must not become a bare `@305.67`."""
+        ev = self._event("orb", "orb_short@305.67", 312.00)
+        assert _reason_detail(ev) == "short@305.67"

@@ -60,7 +60,7 @@ alert formatting, cooldown, the signal registry, Telegram dispatch, or config/un
 
 ### Alert layout (6 sections)
 
-1. Header — strategy/stars/reason
+1. Header — `strategy · variant` + stars, one line. `_reason_detail` strips from the detector reason whatever the alert already states elsewhere: the `@<price>` token **only when that price is the entry**, then the strategy name and the direction word on an underscore boundary. So `ema_pullback_long@333.85` renders `ema · pullback`, `doji_bull@326.99` collapses to bare `doji`, and `ob_long@303.27-307.23` keeps its zone — a blunt `@`-strip would delete the upper bound and leave `-307.23` dangling.
 2. Entry — price/time/session
 3. Levels — SL/TP
 4. Warnings — all notes consolidated (silent unless triggered)
@@ -76,6 +76,7 @@ alert formatting, cooldown, the signal registry, Telegram dispatch, or config/un
 - W7 `_is_doji` — body < 10% of range (takes priority over W1)
 - W8 `_is_inside_bar` — signal inside prior candle range
 - Volume spike/low-volume moved from header into warnings block
+- An empty sample says which emptiness it is: `no closed longs yet` (n=0) vs `3 longs — too few to judge` (n below `min_trades`). `n/a` read as "broken" rather than "checked, nothing there".
 
 ### Other
 
@@ -87,9 +88,11 @@ alert formatting, cooldown, the signal registry, Telegram dispatch, or config/un
 
 ### Wife-channel formatter (Task D, 2026-05-20)
 
-- `format_wife_alert()` / `format_wife_confluence_alert()` — minimal BUY/HOLD wife-channel variant. Strips strategy name, reason, stars, candle warnings, edge backtest summary, and stats line.
-- LONG → header `BUY — $SYM TF` + entry price + time + SL/TP block (same widest-structural-SL / floor / structural-TP-or-tp_r logic as the primary formatter).
-- SHORT → header `HOLD — $SYM TF` + price + time + `(regime caution — sit tight)`. No SL/TP — wife is not expected to action shorts; HOLD is regime context only.
+- `format_wife_alert()` / `format_wife_confluence_alert()` — BUY/WAIT wife-channel variant: the primary layout condensed, not a different one. Strips strategy name, reason, edge backtest summary and stats line; keeps stars and **one** warning. Design: `docs/superpowers/specs/2026-08-18-wife-alert-layout-design.md`.
+- LONG → header `BUY — $SYM TF` + stars, `Entry <price> · <time> MYT`, one `Stop … · Target …` line with signed percentages and no R multiple (same widest-structural-SL / floor / structural-TP-or-tp_r logic as the primary formatter), then at most one warning.
+- SHORT → header `WAIT — $SYM TF` + price + time + `Sit tight — conditions look weak`. No levels — wife is not expected to action shorts. ⚠ **`WAIT`, not `HOLD`**: "hold" is a position instruction presuming she is already in, when the intent is "take no action".
+- The single warning is ranked by `_WIFE_WARNING_RANK`, because `_build_candle_warnings` appends in source order and never sorts. `⚡ Volume spike` is excluded outright — it is an encouragement *and* the builder's first entry, so taking the head of the list would render it under a warning heading.
+- ⚠ **Both renders print on every `wifey signal test`**, so the wife body is reviewable without a send. It used to be built only inside the `send_telegram` branch, and the wife dry-run logs only the first line.
 - Dispatched via `utils.telegram_router.dispatch_to_channel(msg, "wife")`; `TELEGRAM_WIFE_DRY_RUN=1` logs the first line at INFO instead of sending.
 
 ## utils/ — shared utilities

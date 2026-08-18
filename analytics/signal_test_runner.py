@@ -178,7 +178,7 @@ def run_signal_test(
     print()
 
     # Collect (open_time, alert_text) for all signals found.
-    all_found: list[tuple[int, str, SignalEvent, float, float, float]] = []
+    all_found: list[tuple[int, str, str]] = []
     found_combos = 0
 
     with duckdb.connect(str(db_path), read_only=True) as conn:
@@ -376,11 +376,24 @@ def run_signal_test(
                         ohlcv_df=ohlcv_df,
                     )
 
+                    # Render the wife variant here, where `ohlcv_df` is in
+                    # scope, and print it unconditionally. It used to be built
+                    # only inside the `send_telegram` branch, which made the
+                    # body unreadable without dispatching it to the real
+                    # channel — the wife dry-run logs only its first line.
+                    wife_text = format_wife_confluence_alert(
+                        [event],
+                        sl_pct=sl_pct,
+                        tp_r=tp_r,
+                        min_sl_pct=min_sl_pct,
+                        ohlcv_df=ohlcv_df,
+                    )
+
                     print(f"\n{'─' * 60}")
                     print(alert_text)
-                    all_found.append(
-                        (event.open_time, alert_text, event, sl_pct, tp_r, min_sl_pct)
-                    )
+                    print("\n  ── wife channel ──")
+                    print(wife_text)
+                    all_found.append((event.open_time, alert_text, wife_text))
                     found_combos += 1
 
     print(f"\n{'─' * 60}")
@@ -391,12 +404,7 @@ def run_signal_test(
 
     if send_telegram:
         print(f"\nSending {len(all_found)} alert(s) to Telegram...")
-        for _, alert_text, ev, _sl, _tp, _min_sl in sorted(
-            all_found, key=lambda x: x[0]
-        ):
+        for _, alert_text, wife_text in sorted(all_found, key=lambda x: x[0]):
             send_telegram_message(alert_text)
-            wife_msg = format_wife_confluence_alert(
-                [ev], sl_pct=_sl, tp_r=_tp, min_sl_pct=_min_sl
-            )
-            dispatch_to_channel(wife_msg, "wife")
+            dispatch_to_channel(wife_text, "wife")
         print("[Telegram] Done.")

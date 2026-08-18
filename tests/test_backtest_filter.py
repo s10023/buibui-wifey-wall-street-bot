@@ -85,8 +85,9 @@ class TestBacktestSummary:
     def test_single_strategy_insufficient_trades(self) -> None:
         result = _make_result(win=2, loss=1)
         summary = _backtest_summary({"fvg": result}, ["fvg"], self._cfg(min_trades=20))
-        assert "n/a" in summary
-        assert "3 trades" in summary
+        # "too few to judge", not "n/a": the sample was checked and is thin,
+        # which is a different claim from the lookup having failed.
+        assert "3 trades — too few to judge" in summary
 
     def test_single_strategy_none_result(self) -> None:
         summary = _backtest_summary({"fvg": None}, ["fvg"], self._cfg())

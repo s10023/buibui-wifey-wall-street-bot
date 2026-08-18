@@ -177,7 +177,21 @@ def _backtest_summary(
         hold_str = f" {_fmt_hold(dir_median_h)}" if dir_median_h is not None else ""
         hold_suffix = f" · hold{hold_str}" if single and hold_str else ""
         if n < min_trades or dir_win_rate is None:
-            label = f"n/a ({n} {trade_noun}s)" if single else f"{s}: n/a ({n})"
+            # Say which of the two it is. `n/a` reads as "broken"; these read as
+            # "checked, and there is nothing there yet" — a different claim.
+            noun = trade_noun if n == 1 else f"{trade_noun}s"
+            if n == 0:
+                label = f"no closed {noun} yet" if single else f"{s}: none yet"
+            elif n < min_trades:
+                label = (
+                    f"{n} {noun} — too few to judge"
+                    if single
+                    else f"{s}: too few ({n})"
+                )
+            else:
+                label = (
+                    f"no win rate yet ({n} {noun})" if single else f"{s}: no rate ({n})"
+                )
         else:
             pct = f"{dir_win_rate:.0%}"
             if dir_avg_r is not None:
