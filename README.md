@@ -694,16 +694,43 @@ HTF candles. Regime reads from a `dict[symbol, Regime]` classified once per cycl
 `htf_tf` candles. If any data is unavailable for a symbol, the corresponding gate is silently
 skipped (fall-open).
 
-**Example alert (Telegram, soft mode):**
+**Example alert (Telegram, soft mode)** — primary channel, as rendered:
 
 ```text
-SIGNAL — AAPL 4h
-Direction: LONG 🟢  Strategy: `fvg`  ★★★★☆
-Reason: `fvg_long@212.00-213.50`
-Price: 212.60  |  01-Apr 21:00 SGT
-SL: 208.35 (2.0%)  TP: 221.10 (4.0% | 2.0x R)
-📊 Backtest 90d [↑]: 62% win · avg +1.4R (18 longs)
+SIGNAL — $AAPL 4h  ·  LONG 🟢
+ema · pullback  ★★★☆☆
+
+333.85  ·  31-Jul 01:30 MYT
+🏛️ RTH
+
+SL: 324.26  (2.9%)
+TP: 348.24  (4.3%  ·  1.5R)
+
+⚠️ Low volume — weaker conviction
+
+📊 Backtest 365d [↑]: 62% win · avg +1.4R (18 longs)
+
+📐 Tue closes bullish 58% (+0.3% avg) · Low still ahead 50% of Tuesdays · ADR [█████░░░░░] 53% of 2.0%
+🎯 TP window: high ~21:00 MYT on Tuesdays · Weekly low: 46% still ahead
 ```
+
+The header is `strategy · variant`: the detector's reason contributes only what the
+alert does not already state, so `ema_pullback_long@333.85` renders as `ema · pullback`.
+
+The **wife channel** carries the same trade, condensed — BUY for long, WAIT for short
+(no levels, since a short means "take no action"):
+
+```text
+BUY — $AAPL 4h  ★★★☆☆              WAIT — $AAPL 4h
+Entry 333.85  ·  31-Jul 01:30 MYT  306.47  ·  10-Aug 21:30 MYT
+                                   Sit tight — conditions look weak
+Stop 324.26 (−2.9%)  ·  Target 348.24 (+4.3%)
+
+⚠️ Low volume — weaker conviction
+```
+
+Both renders print on every `wifey signal test`, so either can be reviewed without
+dispatching anything.
 
 Two-layer dedup prevents alert spam:
 
