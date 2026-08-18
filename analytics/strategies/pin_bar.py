@@ -48,17 +48,14 @@ def detect_pin_bar(
         if lower_wick >= wick_ratio * body and upper_wick <= body:
             entry = c
             sl = entry * (1 - sl_pct)
-            sl_dist = entry - sl
-            tp = entry + sl_dist * tp_r
             vol_ok = volume_confirm(df, i)
-            ctx = f"TP={tp:.2f}"
             signals.append(
                 {
                     "open_time": open_time,
                     "direction": "long",
                     "reason": f"pin_bar_bull@{entry:.2f}",
                     "sl_price": sl,
-                    "context": ctx,
+                    "context": "",
                     "low_volume": not vol_ok,
                 }
             )
@@ -67,17 +64,14 @@ def detect_pin_bar(
         elif upper_wick >= wick_ratio * body and lower_wick <= body:
             entry = c
             sl = entry * (1 + sl_pct)
-            sl_dist = sl - entry
-            tp = entry - sl_dist * tp_r
             vol_ok = volume_confirm(df, i)
-            ctx = f"TP={tp:.2f}"
             signals.append(
                 {
                     "open_time": open_time,
                     "direction": "short",
                     "reason": f"pin_bar_bear@{entry:.2f}",
                     "sl_price": sl,
-                    "context": ctx,
+                    "context": "",
                     "low_volume": not vol_ok,
                 }
             )

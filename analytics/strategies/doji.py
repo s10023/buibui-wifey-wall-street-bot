@@ -66,29 +66,25 @@ def detect_doji(
         if nxt_c > nxt_o:
             entry = nxt_c
             sl = entry * (1 - sl_pct)
-            sl_dist = entry - sl
-            tp = entry + sl_dist * tp_r
             signals.append(
                 {
                     "open_time": open_time,
                     "direction": "long",
                     "reason": f"doji_bull@{entry:.2f}",
                     "sl_price": sl,
-                    "context": f"TP={tp:.2f}",
+                    "context": "",
                 }
             )
         else:
             entry = nxt_c
             sl = entry * (1 + sl_pct)
-            sl_dist = sl - entry
-            tp = entry - sl_dist * tp_r
             signals.append(
                 {
                     "open_time": open_time,
                     "direction": "short",
                     "reason": f"doji_bear@{entry:.2f}",
                     "sl_price": sl,
-                    "context": f"TP={tp:.2f}",
+                    "context": "",
                 }
             )
 

@@ -61,15 +61,13 @@ def detect_morning_evening_star(
                 open_time = open_times[i]
                 entry = b_c
                 sl = entry * (1 - sl_pct)
-                sl_dist = entry - sl
-                tp = entry + sl_dist * tp_r
                 signals.append(
                     {
                         "open_time": open_time,
                         "direction": "long",
                         "reason": f"morning_star@{entry:.2f}",
                         "sl_price": sl,
-                        "context": f"TP={tp:.2f}",
+                        "context": "",
                     }
                 )
 
@@ -80,15 +78,13 @@ def detect_morning_evening_star(
                 open_time = open_times[i]
                 entry = b_c
                 sl = entry * (1 + sl_pct)
-                sl_dist = sl - entry
-                tp = entry - sl_dist * tp_r
                 signals.append(
                     {
                         "open_time": open_time,
                         "direction": "short",
                         "reason": f"evening_star@{entry:.2f}",
                         "sl_price": sl,
-                        "context": f"TP={tp:.2f}",
+                        "context": "",
                     }
                 )
 

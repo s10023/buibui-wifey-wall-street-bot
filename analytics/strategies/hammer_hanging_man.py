@@ -56,16 +56,13 @@ def detect_hammer_hanging_man(
             # Downtrend context → Hammer (bullish)
             entry = c
             sl = entry * (1 - sl_pct)
-            sl_dist = entry - sl
-            tp = entry + sl_dist * tp_r
-            ctx = f"TP={tp:.2f}"
             signals.append(
                 {
                     "open_time": open_time,
                     "direction": "long",
                     "reason": f"hammer@{entry:.2f}",
                     "sl_price": sl,
-                    "context": ctx,
+                    "context": "",
                     "low_volume": not vol_ok,
                 }
             )
@@ -73,16 +70,13 @@ def detect_hammer_hanging_man(
             # Uptrend context → Hanging Man (bearish)
             entry = c
             sl = entry * (1 + sl_pct)
-            sl_dist = sl - entry
-            tp = entry - sl_dist * tp_r
-            ctx = f"TP={tp:.2f}"
             signals.append(
                 {
                     "open_time": open_time,
                     "direction": "short",
                     "reason": f"hanging_man@{entry:.2f}",
                     "sl_price": sl,
-                    "context": ctx,
+                    "context": "",
                     "low_volume": not vol_ok,
                 }
             )

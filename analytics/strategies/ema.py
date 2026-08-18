@@ -149,7 +149,7 @@ def detect_ema(
                 "direction": direction,
                 "reason": reason,
                 "sl_price": sl,
-                "context": f"TP={tp:.2f}",
+                "context": "",
                 "low_volume": not vol_ok,
                 "tp_price": tp,
             }
