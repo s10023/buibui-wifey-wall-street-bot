@@ -220,8 +220,27 @@ Three outcomes:
   that saves a multi-session build. It is *not* underpowered — more data of that
   shape cannot fix it, only a smaller trial family can.
 
-If `sr_variance` for the trial family is unknown, **G3 cannot run and the claim
-is `INSUFFICIENT`, not a pass.** Never default it.
+If `sr_variance` for the trial family is unknown, **the REACHABILITY leg cannot
+run and the claim is `INSUFFICIENT`, not a pass.** Never default it.
+
+⚠ **That bar does not apply to the powered-null leg, and for a null-shaped claim
+the null leg is the decisive one.** `--bar`/`--sd` compute the CI half-width from
+`n` alone (`Z_95 * sd / sqrt(n)`), so `powered_null` returns a verdict whether or
+not `sr_variance` is known — the two legs fail independently. **A claim whose
+falsifiable form is a NULL — "X is *not* accompanied by Y" — is confirmed only by
+licensing a null**, so read that leg first and do not report `INSUFFICIENT` on an
+unknown `sr_variance` before you have. H-004 was settled entirely this way:
+NOT LICENSABLE at n=5 across every `sr_variance` in {0.10, 0.25, 0.50, 1.00},
+which is a **BLOCKED** verdict the three outcomes above have no slot for.
+Audit: `docs/audits/2026-08-18-h004-sector-rotation-power.md`.
+
+⚠ **Price the unit before the n.** A panel study's naive observation count is
+usually the wrong unit by two orders of magnitude, and the inflated one flips
+`powered_null` to LICENSABLE — it buys the *confident* answer, not merely a wrong
+one. H-004's honest unit gave n=5 against 1,020 episode-days, half of which were
+a single 2022 episode. Same defect as the exit A/B's alerts-vs-session-days
+(`docs/audits/2026-08-14-exit-policy-ab-v1.md`). State the unit, then justify why
+its members are independent, then read n.
 
 ### G4 — Cost
 
