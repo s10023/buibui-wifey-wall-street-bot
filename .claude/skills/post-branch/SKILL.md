@@ -428,6 +428,26 @@ Flag, do not fix: uncommitted changes, unpushed commits, `CONFLICTING` /
 poetry run python tools/wait_ci.py --pr <n>     # resolves the SHA, prints steps=
 ```
 
+### The post-merge FLIP-BACK gate — this phase used to stop before it
+
+⚠ **Merging is not the last step when the repo was flipped public.** Merging starts
+a *fresh* run on `main`, and flipping to private kills whatever is created after
+the flip — `Regression tests` `needs:` lint-typecheck-test and is not created until
+~4 minutes in, so an early flip leaves it at `steps=0` and main looks red for
+billing reasons rather than code ones.
+
+```bash
+make wait-ci-main          # waits for >=5 COMPLETED push jobs on main, then says
+                           # "safe to flip the repo back to private."
+```
+
+**Do not hand-roll this waiter.** One session's version reported `jobs=0` against
+a live `total_count=2` by swallowing a `gh` failure into "empty means zero". The
+other trap — exiting on "nothing pending", which is vacuously true while the
+chained job does not yet exist — is the one the `--pr` gate hit as #194. Both are
+already encoded in the tool, which is exactly why the flip-back gate should be
+that same tested tool rather than fresh shell.
+
 **Use that tool rather than hand-querying `gh`.** It settles the billing question
 directly, and the manual path has three traps that all render identically to a
 real failure:

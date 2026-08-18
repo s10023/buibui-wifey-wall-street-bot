@@ -158,6 +158,41 @@ that enumerates every sibling but one and reads as complete. The Makefile is del
 `PYTHONPATH=. poetry run python tools/post_branch_checks.py [--check NAME] [--exit-zero]`
 to let it exit 1 on findings.
 
+## wait_ci.py — did CI settle, and did it actually RUN?
+
+Two gates in one tool. `--pr <n>` (`make wait-ci PR=<n>`) waits on a PR's own checks; `--branch main
+--min-jobs 5` (`make wait-ci-main`) is the **flip-back gate** — main's push run must reach a
+job-count floor before the repo goes private again, because flipping kills whatever is created after
+it and `Regression tests` is not created until ~4 minutes in.
+
+The branch mode existed only as hand-rolled shell, at exactly the step with a documented trap. One
+such waiter **was** wrong — it reported `jobs=0` against a live `total_count=2` — and the two traps
+below are recorded against the PR gate as #194 and #195. Both are encoded here, so the flip-back
+gate is the same tested tool rather than fresh shell each time:
+
+- **A job-count FLOOR, never "nothing pending".** An empty result satisfies "no check is
+  unresolved", so the naive loop exits instantly and renders identically to all-green. `is_settled`
+  requires the floor **and** `completed == total`; dropping either half restores a real defect, and
+  `TestIsSettled` pins both plus the vacuous input.
+- ⚠ **A `gh` failure RAISES; it is never turned into data.** The previous `gh()` returned `""` on a
+  non-zero exit, so an unreadable `actions/runs` response left every step count `None` and the tool
+  printed **"all green, all executed real steps"** — a false green asserting exactly what it had
+  failed to observe. That state is now exit **4**. Transient failures are retried inside the poll
+  loop; an unrecoverable one propagates.
+
+⚠ **The branch gate counts `push`-event runs only, and this was found by RUNNING it.** A `main` SHA
+also carries a GitHub-managed `dynamic` run — "Configured Graph Update: pip in /." — created several
+minutes after the push runs finish. Unfiltered, the first live run reported `jobs=6` where CLAUDE.md,
+this file and the tool's own constant all say 5. Reading the code would not have shown it; the
+characterization test `test_unfiltered_includes_the_dependency_graph_job` keeps the reason visible.
+
+Exit codes: `0` green and observed · `1` genuine failure · `2` timeout · `3` billing (`steps=0`) ·
+`4` settled green but step counts unreadable. ⚠ **`make` collapses all of them to its own `2`**, so
+call the script directly when the code matters.
+
+**Run:** `make wait-ci PR=<n>` · `make wait-ci-main` · or
+`PYTHONPATH=. poetry run python tools/wait_ci.py --branch main --min-jobs 5 [--timeout-min N]`.
+
 ## stale_anchors.py — citations of a section number that no longer exists
 
 The engine behind `post_branch_checks`'s `stale-anchors` leg. Document A cites a numbered

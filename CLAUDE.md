@@ -113,11 +113,16 @@ the change the check exists to catch. Legs needing project imports or the gitign
 degrade to `SKIPPED`/a note rather than a finding, because a check that is never green stops being
 read.
 
-`make wait-ci PR=<n>` waits for a PR's checks and reports whether they *ran*. `tools/wait_ci.py`
+`make wait-ci PR=<n>` waits for a PR's checks and `make wait-ci-main` is the **flip-back gate**
+(`--branch main --min-jobs 5`); both report whether the checks actually *ran*. `tools/wait_ci.py`
 exits **3** on `steps=0`, the Actions-allowance failure that renders exactly like a real one (flip
-the repo public, never debug it), and **1** on a genuine failure. ⚠ **Through `make` you see
-neither** — GNU make collapses any recipe failure to its own exit **2**, so branch on the printed
-banner, or call `poetry run python tools/wait_ci.py --pr <n>` directly when you need the code.
+the repo public, never debug it), **1** on a genuine failure, and **4** when it settles green but
+could not read the step counts — that last state used to print "all green, all executed real
+steps", asserting the one thing it had failed to observe. A `gh` failure now **raises**; it is
+never turned into data, which is how a hand-rolled waiter once reported `jobs=0` against a live
+`total_count=2`. ⚠ **Through `make` you see none of these codes** — GNU make collapses any recipe
+failure to its own exit **2**, so branch on the printed banner, or call
+`poetry run python tools/wait_ci.py --pr <n>` / `--branch main` directly when you need the code.
 
 ⚠ **Never write a `pgrep` waiter for a background job — wait for the task notification.**
 `until ! pgrep -f 'pytest tests/'` matches the polling shell's own argv and waits on itself; the
@@ -643,11 +648,14 @@ GH_TOKEN=$(gh auth token --user s10023) gh repo edit s10023/buibui-wifey-wall-st
 `main` (`lint.yaml` and `security-scan.yaml` also trigger on `push: branches:[main]`), and flipping
 to private kills whichever jobs are created after the flip. `Regression tests` needs
 `lint-typecheck-test` and is not created until ~4 minutes in, so an early flip leaves it at
-`steps=0` and main looks red for billing reasons rather than code ones. Poll the run's jobs until
-all report `status == completed` rather than flipping when the chained job is merely created, and
-never sleep blindly. **Gate on a job-count floor, not on "nothing pending"** — the status check is
-vacuously true while a chained job does not yet exist, so wait for the count to reach 5 (it arrives
-as 3, then 5). After a corrective push, confirm `headRefOid` changed before trusting a check
+`steps=0` and main looks red for billing reasons rather than code ones. **Run `make wait-ci-main`
+rather than hand-rolling a waiter** — it encodes the rest of this paragraph, and the hand-rolled
+version has been wrong twice. It gates on a job-count floor, not on "nothing pending", because the
+status check is vacuously true while a chained job does not yet exist; the count arrives as 3, then
+5. ⚠ **It counts `push`-event runs only.** A `main` SHA also carries a GitHub-managed `dynamic`
+run ("Configured Graph Update: pip in /.") created minutes *after* the push runs, so an unfiltered
+count reads 6 where this paragraph says 5 and the gate waits on dependency-graph submission it has
+no interest in. After a corrective push, confirm `headRefOid` changed before trusting a check
 rollup, which can otherwise report the previous run.
 
 **A merge-run failure at ~3s with `steps=0` and `visibility=PRIVATE` is billing.** Verify duration,
