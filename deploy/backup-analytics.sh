@@ -3,7 +3,7 @@
 #
 # WHAT THIS PROTECTS AGAINST, AND WHAT IT DOES NOT
 # ------------------------------------------------
-# Two single-copy trees, both gitignored:
+# Three single-copy trees, none of them reachable by git:
 #
 #   analytics.db   ~160MB. Holds `signal_alert_outcomes` -- the live out-of-sample
 #                  ledger. Those rows are NOT reconstructible: yfinance will not
@@ -13,6 +13,15 @@
 #   docs/plans/    ~1MB. The entire research pipeline's output: the pundit ledger,
 #                  the routing watermark, Streams A/B, the video notes, the
 #                  parent-sync triage, the measurement scripts, the handoff.
+#   memory/        ~1MB, and the only one that lives OUTSIDE the repo. Holds
+#                  `project_todo_master.md` -- the single source of truth to-do,
+#                  carrying the north star and gates G1-G4 -- plus MEMORY.md and
+#                  ~70 topic files. `git clean` cannot reach it, but until the
+#                  EXTERNAL ROOTS section below neither could this script: every
+#                  BACKUP_DIRS/BACKUP_FILES entry is resolved against $REPO, so
+#                  anything above it was invisible by construction. It is the one
+#                  tree here whose loss costs INTENT rather than output, and
+#                  intent is the part no re-run reconstructs.
 #
 # `.gitignore:20` is the single line `docs/plans/`, written for scratch files
 # before the ingest pipeline was built to write into that directory. To git,
@@ -59,11 +68,25 @@
 #      WIFEY_KEEP_DAILY  (default 14)
 #      WIFEY_KEEP_WEEKLY (default 8)
 #      WIFEY_LOCK_RETRIES (default 10)  WIFEY_LOCK_SLEEP (default 30s)
+#      WIFEY_MEMORY_DIR  (default derived from $REPO -- see EXTERNAL ROOTS)
+#      WIFEY_REPO_ROOT   (default: the script's own repo) the tree to back UP
+#      WIFEY_PYTHON      (default: that repo's .venv, else python3)
+#
+# The last two exist so `tests/test_backup_local_coverage.py` can drive a REAL
+# end-to-end run against a fixture tree. Without them the only testable surface
+# is --dry-run, which reports what it *would* copy and would pass whether or not
+# the copy loop ran at all -- the vacuous-guard shape this repo has been bitten
+# by before. Both default to today's behaviour; nothing in normal use sets them.
 
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
-REPO="$PWD"
+SCRIPT_REPO="$PWD"
+
+# The tree this run backs UP. Separate from $SCRIPT_REPO -- which is where the
+# code and its interpreter live -- because the two are the same thing in every
+# real run and different only under test.
+REPO="${WIFEY_REPO_ROOT:-$SCRIPT_REPO}"
 
 # Deliberately NOT the parent's ~/backups/buibui. The two repos share this
 # script's SHAPE, not its storage: both write a file called `analytics.db`, so a
@@ -106,6 +129,33 @@ BACKUP_FILES=(
     ".claude/settings.local.json"
 )
 
+# EXTERNAL ROOTS -- single-copy trees that live OUTSIDE $REPO.
+#
+# BACKUP_DIRS and BACKUP_FILES are both resolved against $REPO, so the denylist
+# reasoning above -- "default to COVERED" -- only ever applied WITHIN the repo.
+# Anything above it was uncovered not by judgement but by construction, which is
+# the same structural blind spot the parent's allowlist was rejected for, one
+# level up. The memory tree is the member that matters: it holds the SoT to-do,
+# and the script's own comments show the author reasoning about exactly this
+# class ("single-copy gitignored files that live OUTSIDE docs/plans") and taking
+# the two smaller members while the largest sat one directory further out.
+#
+# Entries are "label|absolute-path". `label` names the destination directory
+# INSIDE each snapshot and is deliberately NOT a path mirror: a flat snapshot
+# top level means $BACKUP_ROOT still contains only daily/ and weekly/, so
+# backup-offsite.sh's intruder guard -- which compares TOP-LEVEL entries only --
+# keeps working unchanged. Encoding the absolute source path into the tree shape
+# would have broken it.
+#
+# The default is DERIVED from $REPO rather than hardcoded so a clone at another
+# path still resolves its own memory tree, and is overridable for a layout the
+# derivation does not predict.
+MEMORY_DIR="${WIFEY_MEMORY_DIR:-$HOME/.claude-personal/projects/$(printf '%s' "$REPO" | tr '/' '-')/memory}"
+
+EXTERNAL_ROOTS=(
+    "memory|$MEMORY_DIR"
+)
+
 # Pruned from the copy after the fact. Build artifacts only -- anything a tool
 # regenerates for free. Keep this list SHORT: every entry is a decision that a
 # future file matching it is worthless, and that is the judgement the parent's
@@ -136,7 +186,9 @@ BACKUP_DIRS_WARN_MB=50
 
 # The venv interpreter is named directly rather than via `poetry run` -- one less
 # moving part on the minimal PATH a systemd user unit gets.
-PY="$REPO/.venv/bin/python"
+# Resolved against $SCRIPT_REPO, never $REPO: the interpreter is a property of
+# the INSTALLATION, not of the tree being copied.
+PY="${WIFEY_PYTHON:-$SCRIPT_REPO/.venv/bin/python}"
 [ -x "$PY" ] || PY="python3"
 
 want_weekly=0
@@ -207,6 +259,15 @@ if [ "$dry_run" -eq 1 ]; then
             log "  file       $f ($(du -h "$REPO/$f" | cut -f1))"
         else
             log "  file       $f -- ABSENT, will be skipped"
+        fi
+    done
+    for entry in "${EXTERNAL_ROOTS[@]}"; do
+        ext_label="${entry%%|*}"
+        ext_src="${entry#*|}"
+        if [ -d "$ext_src" ]; then
+            log "  external   $ext_label <- $ext_src ($(du -sh "$ext_src" | cut -f1), $(find "$ext_src" -type f | wc -l) files)"
+        else
+            log "  external   $ext_label <- $ext_src -- ABSENT, will be skipped"
         fi
     done
     exit 0
@@ -355,10 +416,65 @@ for f in "${BACKUP_FILES[@]}"; do
     fi
 done
 
+# --- external roots -----------------------------------------------------------
+# An ABSENT external root is RECORDED, not merely logged. A tree that silently
+# stops being copied is the exact failure this section exists to fix, and a
+# warning on stderr is read once while a manifest field is read by every later
+# audit -- `files: 0` in a snapshot is loud in a way a scrolled-past line is not.
+#
+# Absence is deliberately NOT fatal. A clone on another machine legitimately has
+# no memory tree yet, and refusing the whole run over that would trade a real
+# backup for no backup -- the guard costing more than the thing it guards.
+external_labels=()
+external_paths=()
+external_counts=()
+external_total=0
+for entry in "${EXTERNAL_ROOTS[@]}"; do
+    label="${entry%%|*}"
+    src="${entry#*|}"
+    if [ -d "$src" ]; then
+        size_mb=$(( $(du -sk "$src" | cut -f1) / 1024 ))
+        if [ "$size_mb" -ge "$BACKUP_DIRS_WARN_MB" ]; then
+            log "WARNING: external root $label is ${size_mb}MB (>= ${BACKUP_DIRS_WARN_MB}MB) -- it is copied whole into EVERY snapshot"
+        fi
+        mkdir -p "$daily_dir/$label"
+        cp -Rp "$src/." "$daily_dir/$label/" || die "could not copy external root $label from $src"
+        for g in "${PRUNE_GLOBS[@]}"; do
+            find "$daily_dir/$label" -name "$g" -exec rm -rf {} + 2>/dev/null
+        done
+        n="$(find "$daily_dir/$label" -type f | wc -l)"
+    else
+        n=0
+        log "WARNING: external root $label ABSENT at $src -- NOT backed up"
+    fi
+    external_labels+=("$label")
+    external_paths+=("$src")
+    external_counts+=("$n")
+    external_total=$(( external_total + n ))
+done
+
 # --- manifest -----------------------------------------------------------------
 # `files` is recorded so a later run can be diffed against an earlier one without
 # re-reading the tree: a coverage regression shows up as a count that dropped.
-tree_files="$(find "$daily_dir" -type f ! -name 'analytics.db*' | wc -l)"
+# Subtracting $external_total keeps `research_files` meaning what it meant
+# before this section existed -- repo-derived trees only. Letting it absorb the
+# external roots would have redefined a field that earlier snapshots already
+# recorded, turning a coverage WIN into an unexplained jump in every diff.
+tree_files=$(( $(find "$daily_dir" -type f ! -name 'analytics.db*' | wc -l) - external_total ))
+
+external_json="$( { for i in "${!external_labels[@]}"; do
+        printf '%s\t%s\t%s\n' "${external_labels[$i]}" "${external_paths[$i]}" "${external_counts[$i]}"
+    done; } | "$PY" -c '
+import sys, json
+d = {}
+for line in sys.stdin:
+    line = line.rstrip("\n")
+    if not line:
+        continue
+    label, path, n = line.split("\t")
+    d[label] = {"path": path, "files": int(n)}
+print(json.dumps(d, sort_keys=True))
+')"
 {
     printf '{\n'
     printf '  "captured_at_utc": "%s",\n' "$now"
@@ -367,7 +483,8 @@ tree_files="$(find "$daily_dir" -type f ! -name 'analytics.db*' | wc -l)"
     printf '  "source_bytes": %s,\n' "$(stat -c %s "$DB")"
     printf '  "snapshot_bytes": %s,\n' "$(stat -c %s "$daily_dir/analytics.db")"
     printf '  "research_files": %s,\n' "$tree_files"
-    printf '  "git_commit": "%s",\n' "$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+    printf '  "external_roots": %s,\n' "$external_json"
+    printf '  "git_commit": "%s",\n' "$(git -C "$SCRIPT_REPO" rev-parse --short HEAD 2>/dev/null || echo unknown)"
     printf '  "duckdb": "%s",\n' "$("$PY" -c 'import duckdb; print(duckdb.__version__)' 2>/dev/null || echo unknown)"
     printf '  "row_counts": %s\n' "$verify_json"
     printf '}\n'
@@ -385,6 +502,9 @@ trap 'rm -f "${err_file:-}"' EXIT   # staging is gone; stop trying to remove it
 log "daily snapshot ok  [$method]  $final_dir"
 log "  signal_alert_outcomes = $outcomes rows"
 log "  research files        = $tree_files"
+for i in "${!external_labels[@]}"; do
+    log "  external ${external_labels[$i]}$(printf '%*s' $(( 14 - ${#external_labels[$i]} )) '')= ${external_counts[$i]} files"
+done
 
 # --- weekly parquet export ----------------------------------------------------
 # A raw .db snapshot is hostage to the DuckDB storage format, which has broken
