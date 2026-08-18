@@ -11,12 +11,29 @@ import pandas as pd
 
 from analytics.signal_config import BiasConfig
 from tools.regime_gate_replay import (
-    _FOUR_HOURS_MS,
-    _regime_at_entry,
+    _regimes_at_entries,
     aggregate,
     annotate_regime_4h,
     annotate_suppression,
 )
+
+# An RTH equity 4h tape: two bars a day, stamped 13:30 and 17:30 UTC. NONE of
+# these is a multiple of 4h from UTC midnight — 0 of 105,708 such bars in the
+# live DB are — which is precisely what the old modulo floor assumed.
+_MIDNIGHT_2026_01_01 = 1_767_225_600_000
+_DAY_MS = 86_400_000
+_RTH_OFFSETS_MS = (48_600_000, 63_000_000)  # 13:30, 17:30
+_FOUR_HOURS_MS = 4 * 60 * 60 * 1000  # crypto tape, for the non-regression case
+
+
+def _rth_open_times(n_bars: int) -> list[int]:
+    out: list[int] = []
+    day = 0
+    while len(out) < n_bars:
+        for off in _RTH_OFFSETS_MS:
+            out.append(_MIDNIGHT_2026_01_01 + day * _DAY_MS + off)
+        day += 1
+    return out[:n_bars]
 
 
 def _bias() -> BiasConfig:
@@ -33,50 +50,117 @@ def _bias() -> BiasConfig:
     )
 
 
-class TestTimeAlignment:
-    def test_entry_time_lands_in_middle_of_4h_bin(self) -> None:
-        # 4h bin starts at T=0; entry at T+30min → most recent CLOSED candle is
-        # the one before bin 0 (i.e. open_time = -4h).
-        bin_start = 1_700_000_000_000 - (1_700_000_000_000 % _FOUR_HOURS_MS)
-        entry = bin_start + 30 * 60_000  # 30 min into the bin
-        assert _regime_at_entry(entry) == bin_start - _FOUR_HOURS_MS
+class TestRegimesAtEntries:
+    """The bar-alignment contract. Every case here is an RTH tape unless named
+    otherwise, because the tape this repo actually reads is never UTC-aligned."""
 
-    def test_entry_at_exact_4h_boundary(self) -> None:
-        # Entry at the open of a new 4h candle → most recent CLOSED is the
-        # candle that just closed, i.e. open_time = entry - 4h.
-        bin_start = 1_700_000_000_000 - (1_700_000_000_000 % _FOUR_HOURS_MS)
-        assert _regime_at_entry(bin_start) == bin_start - _FOUR_HOURS_MS
+    def _labels(self, n: int) -> pd.Series:
+        return pd.Series([f"r{i}" for i in range(n)], dtype=object)
+
+    def test_rth_entry_resolves_to_previous_closed_bar(self) -> None:
+        opens = _rth_open_times(6)
+        entry = opens[3] + 42 * 60_000  # 42 min into bar 3
+        got = _regimes_at_entries(pd.Series([entry]), pd.Series(opens), self._labels(6))
+        assert got.iloc[0] == "r2"  # bar 3 is in progress → last CLOSED is bar 2
+
+    def test_rth_entry_does_NOT_fall_open(self) -> None:
+        """Positive control for the defect this replaces.
+
+        The modulo floor returned a key no RTH bar has, so every lookup missed
+        and `fillna` produced "unknown" — a fall-open indistinguishable from a
+        genuine cache miss. Asserting "not unknown" is the only assertion that
+        fails on the old implementation, so it is the one that must exist.
+        """
+        opens = _rth_open_times(8)
+        entries = pd.Series([o + 60_000 for o in opens[2:]])
+        got = _regimes_at_entries(entries, pd.Series(opens), self._labels(8))
+        assert (got != "unknown").all()
+
+    def test_entry_at_exact_bar_open_uses_the_prior_bar(self) -> None:
+        opens = _rth_open_times(5)
+        got = _regimes_at_entries(
+            pd.Series([opens[4]]), pd.Series(opens), self._labels(5)
+        )
+        assert got.iloc[0] == "r3"
+
+    def test_entry_before_any_closed_bar_is_unknown(self) -> None:
+        opens = _rth_open_times(4)
+        got = _regimes_at_entries(
+            pd.Series([opens[0] - 1]), pd.Series(opens), self._labels(4)
+        )
+        assert got.iloc[0] == "unknown"
+
+    def test_empty_bar_series_is_unknown(self) -> None:
+        got = _regimes_at_entries(
+            pd.Series([_MIDNIGHT_2026_01_01]),
+            pd.Series([], dtype="int64"),
+            pd.Series([], dtype=object),
+        )
+        assert got.iloc[0] == "unknown"
+
+    def test_utc_aligned_crypto_tape_still_resolves(self) -> None:
+        """Non-regression for the 24/7 shape the old floor was written for."""
+        opens = [i * _FOUR_HOURS_MS for i in range(6)]
+        entry = opens[3] + 30 * 60_000
+        got = _regimes_at_entries(pd.Series([entry]), pd.Series(opens), self._labels(6))
+        assert got.iloc[0] == "r2"
 
 
 class TestRegimeAnnotation:
-    def test_lookup_hits_previous_closed_candle(self) -> None:
-        # Build a tiny in-memory DB with 4h OHLCV producing all-"unknown"
-        # regimes (insufficient history). The annotation should still
-        # populate the column, just with the fallback label.
+    def _conn_with_rth_bars(self, n_bars: int) -> duckdb.DuckDBPyConnection:
         conn = duckdb.connect(":memory:")
         conn.execute(
             "CREATE TABLE ohlcv (symbol TEXT, timeframe TEXT, open_time BIGINT, "
             "open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE, volume DOUBLE)"
         )
-        # Only 5 4h bars — far below classify_series's min_history (50).
-        for i in range(5):
+        for i, ot in enumerate(_rth_open_times(n_bars)):
+            close = 100.0 + i  # steady uptrend so the classifier commits a label
             conn.execute(
-                "INSERT INTO ohlcv VALUES ('BTCUSDT', '4h', ?, 100, 101, 99, 100, 1000)",
-                [i * _FOUR_HOURS_MS],
+                "INSERT INTO ohlcv VALUES ('AAPL', '4h', ?, ?, ?, ?, ?, 1000)",
+                [ot, close, close + 1.0, close - 1.0, close],
             )
+        return conn
+
+    def test_rth_trade_resolves_to_a_real_regime(self) -> None:
+        """End-to-end positive control: the replay must SEE a regime.
+
+        The predecessor asserted "unknown" on 5 bars — below the classifier's
+        minimum — so it passed both before and after the bug, and the tool
+        shipped reporting 0 suppressed of 2,849 live trades.
+        """
+        n = 400
+        conn = self._conn_with_rth_bars(n)
+        entry = _rth_open_times(n)[-1] + 60_000
         trades = pd.DataFrame(
             {
                 "strategy": ["ema"],
-                "symbol": ["BTCUSDT"],
-                "timeframe": ["1h"],
+                "symbol": ["AAPL"],
+                "timeframe": ["4h"],
                 "direction": ["long"],
-                "entry_time": [3 * _FOUR_HOURS_MS + 60_000],
+                "entry_time": [entry],
                 "pnl_r": [0.5],
             }
         )
         out = annotate_regime_4h(trades, conn)
-        assert "regime" in out.columns
-        # 5 bars is below classify_series min_history → all rows label "unknown".
+        assert out["regime"].iloc[0] != "unknown"
+
+    def test_missing_ohlcv_falls_open(self) -> None:
+        conn = duckdb.connect(":memory:")
+        conn.execute(
+            "CREATE TABLE ohlcv (symbol TEXT, timeframe TEXT, open_time BIGINT, "
+            "open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE, volume DOUBLE)"
+        )
+        trades = pd.DataFrame(
+            {
+                "strategy": ["ema"],
+                "symbol": ["NOSUCH"],
+                "timeframe": ["4h"],
+                "direction": ["long"],
+                "entry_time": [_MIDNIGHT_2026_01_01],
+                "pnl_r": [0.5],
+            }
+        )
+        out = annotate_regime_4h(trades, conn)
         assert out["regime"].iloc[0] == "unknown"
 
 

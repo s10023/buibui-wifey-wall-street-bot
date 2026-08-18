@@ -608,12 +608,39 @@ Replays the v2 Phase 2 regime gate against historical `backtest_trades`, computi
 subset hard mode would have suppressed vs the subset it would have kept. Deliberately the
 **empirical substitute for "wait 2 weeks in soft mode"** — same decision data from history rather
 than forward observation. Regime is classified off the most recent **CLOSED** 4h candle at entry
-(`_regime_at_entry`), mirroring the live drop-the-in-progress-bar rule.
+(`_regimes_at_entries`), mirroring the live drop-the-in-progress-bar rule.
+
+⚠ **That resolution is POSITIONAL and must stay so.** It was arithmetic until 2026-08-18:
+`_regime_at_entry` floored `entry_time` to a UTC 4h boundary — correct on a 24/7 tape, impossible on
+an RTH equity one, where 4h bars stamp 13:30/17:30 UTC and **0 of 105,708** 4h bars in the DB are
+UTC-4h aligned (a single offset, 90 minutes). Every lookup missed, `fillna("unknown")` turned each
+miss into a fall-open, and the tool reported **0 suppressed of 2,849 trades** under
+`HOLD — insufficient suppressed trades`, which is exactly what a genuine sample shortage prints.
+`regime_threshold_sweep.py` imports the same helper and was equally blind;
+`direction_filter_replay.py` does no bar alignment and was never affected; a repo-wide scan finds no
+other timestamp floor. **Live was never affected** — `scanner.py` reads `_series.iloc[-2]`.
+
+⚠ **Its own test could not have caught it**, which is why the fix is a test shape rather than a
+patch. `test_lookup_hits_previous_closed_candle` built 5 bars on a UTC-aligned grid, below the
+classifier's minimum history, then asserted the result was `"unknown"` — the bug's own output, so it
+passed identically before and after. The replacement pivots on `test_rth_entry_does_NOT_fall_open`,
+the only assertion that fails against the old implementation (mutation-checked: **0 of 6** RTH
+lookups hit under the modulo). A UTC-aligned case is retained as a non-regression for the crypto
+shape.
 
 Its stated decision rule: suppressed `avg_r <= 0` at `n >= 100` justifies the flip; kept >
 suppressed means the gate concentrates edge; suppressed `avg_r > 0` at `n >= 100` means the gate
 drops winners. **A raw split like this is a point estimate** — pair it with a significance test
 before quoting a delta. → [[project_flag_deltas_need_significance_tests]]
+
+⚠ **The rule pools across strategy AND regime, so its banner can invert the per-cell reading.** The
+first honest run (2026-08-18, once the lookup worked) printed `FLIP justified` while **three of six
+cells pointed the other way**: flipping would suppress `ema`/`high_vol` (**+0.5497**, n=172) and
+`ema`/`range` (**+0.3291**, n=110) while keeping `bos`/`high_vol` (**−0.3852**, n=655), the worst
+cell in the table. One large bad cell — `bos`/`trend`, n=897, −0.3540 — carries the aggregate.
+**Read the per-cell table, never the banner.** The same run refutes the inherited crypto
+calibration in the opposite direction: the `bos` override exists because a 2026-05-13 crypto audit
+found `high_vol` was bos's best regime, and on equities it is bos's worst.
 
 **Run:** `PYTHONPATH=. poetry run python tools/regime_gate_replay.py [--db PATH]`
 
