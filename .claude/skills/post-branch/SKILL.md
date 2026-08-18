@@ -34,6 +34,11 @@ is one CI run instead of two, with identical review signal.
 Phases, not step numbers. (Earlier versions numbered steps in one order and ran
 them in another, which was a standing source of error.)
 
+⚠ **Watch for a phase whose output depends on a fact a LATER phase creates.**
+Three found so far — the handoff stamp before the PR-state rewrite, the claims
+audit before the commit it audits, and MEMORY.md's `#NNN` before the PR exists. Do not reorder the whole step to fix one: name the single
+field that lands later, and the phase that lands it.
+
 | Phase | What | Costs CI? |
 | --- | --- | --- |
 | **1** | `make post-branch-checks` — every mechanical check | no |
@@ -41,7 +46,7 @@ them in another, which was a standing source of error.)
 | **3** | Doc walk — judgement, keyed off the diff | no |
 | **4** | Always-run: MEMORY.md, SoT reconcile, claims audit | no |
 | **5** | Commit + push, then compose the PR body, then `gh pr create` | one run |
-| **6** | Pre-merge check, handoff, **re-verify PR state LAST** | no |
+| **6** | Pre-merge check, handoff, re-verify PR state, **stamp LAST** | no |
 
 Phases 1 and 4 run **regardless** of the phase-2 gate. MEMORY.md and the SoT live
 outside the repo and the handoff is gitignored, so none of them ever costs CI.
@@ -330,6 +335,11 @@ session**, the existing Prior session → verbatim into
 landed. Convert relative dates to absolute. Update
 `memory/project_open_questions.md`.
 
+⚠ **The `#NNN` is the one field this phase cannot know** — phase 5 creates the
+PR. Do the roll here regardless: the roll is the part that gets skipped, and it
+needs nothing from the PR. Write the bullet with the number left out, and phase
+6's re-verify fills it from the same `gh` query that rewrites the handoff.
+
 Respect the cap — this step is where it gets broken. Current State holds at most
 **6 bullets**, "Last session" at most 2 lines, every other bullet exactly 1.
 `memory-cap` in phase 1 checks it. Writing a rich multi-sentence entry feels like
@@ -606,6 +616,10 @@ Re-query **every** PR named in the handoff and rewrite the table to match. If on
 merged, update the "first move" line too — the next session should start on a
 task, not merge something already merged. If the local branch still exists, say
 so; deleting it is standing habit here.
+
+**Fill MEMORY.md's `#NNN` here too**, from this same query — phase 4 wrote that
+bullet before the PR existed. MEMORY.md lives outside the repo, so this costs no
+commit and no CI.
 
 **The stamp follows this**, and it is the last action of all.
 
