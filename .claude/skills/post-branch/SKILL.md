@@ -494,6 +494,51 @@ to know the answer, and they still do.
 
 ---
 
+## Step 3c — Discovered-fact sweep (run whenever the branch INVESTIGATED something)
+
+Every step so far asks the same question in a different place: **did the docs
+drift from the code?** None asks the inverse — **did the branch LEARN something
+durable about behaviour that did not change?** A fix usually costs an
+investigation, and the investigation's findings are the expensive part. They are
+also the part with no artifact: the diff records the repair and the commit
+message records the reasoning, and neither is a surface a future session reads.
+
+PR #212 is the worked example. Fixing one alert-header contradiction established
+that **detectors are always called with no params**, so every detector's own
+keyword arguments are dead and config `tp_r` only lands downstream. Nothing in
+the diff changed that — it was already true — so no name grep, no negative-claim
+sweep and no surface check could reach it. It landed in a commit message and
+stopped there, and the doc edit was still owed a session later.
+
+**Ask it explicitly: what does this branch now know about existing behaviour that
+it did not know when it started?** Then, for each answer:
+
+1. **Is it durable, or is it session state?** How the code behaves is durable.
+   "The DB was stale on this machine" is not.
+2. **Would a future session go looking for it?** If yes it belongs in
+   `.claude/context/*.md` behind the Project Structure pointer; if it would
+   silently damage a session that never thought to ask, it belongs in CLAUDE.md's
+   footgun block. That is CLAUDE.md's "Where knowledge goes" rule applied to a
+   finding rather than to a feature.
+3. **Is it already pinned by a test?** Then the test is the enforcement and the
+   doc is the *pointer* — write the pointer, do not restate the test's whole
+   rationale. #212 pinned its finding in `tests/test_signal_registry.py` and
+   still owed the pointer.
+
+Two shapes recur and are easy to miss:
+
+- **A fact established by ruling something OUT.** "Both call sites pass no
+  params" is a scan over an empty set, so nothing keyed on the diff can find it.
+- **A near-miss you did not ship.** Where the branch nearly changed something and
+  backed off because the repair is a *decision* rather than a cleanup, record the
+  decision and its cost — otherwise the next session re-derives the same dead end.
+
+⚠ **A discovered fact is a claim, so it goes through Step 5c like any other.**
+Re-derive it from the code before writing it down: the branch that found it was
+optimising for a fix, not for the generality of the sentence.
+
+---
+
 ## Step 4 — Surface-specific checks
 
 ### CLAUDE.md
