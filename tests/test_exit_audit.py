@@ -115,7 +115,7 @@ def _rth_4h_bars(
     return rows
 
 
-class TestEffectiveTpR:
+class TestImpliedTpR:
     """The declared `rr_ratio` is not the effective target on a structural TP."""
 
     def test_structural_tp_overrides_declared_rr_long(self) -> None:
