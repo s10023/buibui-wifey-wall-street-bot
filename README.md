@@ -463,6 +463,23 @@ NVDA          1wk   bos                  54.1%      85  +1.42R
 
 > **Note:** Requires backfill to be run first for each symbol/timeframe.
 
+### WFO Parameter Tools — `param-sweep` and `param-audit`
+
+Two subcommands, and the difference is which direction they run:
+
+```bash
+wifey param-sweep --config config/signal_watch.toml    # search: grid over tp_r, pick a winner
+wifey param-audit --config config/signal_watch.toml    # verify: score the values already in TOML
+```
+
+`param-sweep` walks a `tp_r` grid per strategy × timeframe out-of-sample and reports DSR, PBO
+and the commit-gate verdict for each cell. `param-audit` takes no grid — it scores the values
+the config already carries, so it answers "is what we shipped still the right choice" rather
+than "what should we ship". Both are wrapped by `/wfo-sweep`, which is the trusted production
+path for `tp_r`; run them directly only outside that chain.
+
+⚠ Both are dormant while the TA book is frozen (see CLAUDE.md).
+
 ### Recalibrate — Update Confidence Star Ratings
 
 Reads `backtest_runs` from `analytics.db` and maps real avg R per strategy to 1–5 star

@@ -55,6 +55,15 @@ jobs:
         if: steps.changes.outputs.skills == 'true'
         run: ./.github/scripts/update-skills.sh
 
+      # Deliberately UNCONDITIONAL and deliberately in THIS job. The same sweep
+      # runs in `make test` via tests/test_sanity_checks.py, but that job sits
+      # behind a `**/*.py` path filter — so on a docs-only PR, which is exactly
+      # the change this check guards against, it would never run at all. This
+      # job installs no dependencies, so the three legs needing the project's
+      # imports report SKIPPED here and the four pure-text ones still gate.
+      - name: Doc-drift sanity checks
+        run: python3 tools/sanity_checks.py
+
   lint-typecheck-test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
