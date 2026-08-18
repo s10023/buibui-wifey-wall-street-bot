@@ -1238,7 +1238,8 @@ run. Dependabot PRs are where this bites, because nobody is watching them.
 ```bash
 GH_TOKEN=$(gh auth token --user s10023) gh pr list --state open \
   --repo s10023/buibui-wifey-wall-street-bot --json number,headRefOid,title
-# ENUMERATE the runs for that head SHA — never assume how many there are:
+# ENUMERATE the runs for that head SHA — never assume how many there are.
+# headRefOid is the FULL 40-char SHA; pass it WHOLE (see the total_count note below):
 GH_TOKEN=$(gh auth token --user s10023) gh api \
   "repos/s10023/buibui-wifey-wall-street-bot/actions/runs?head_sha=<sha>" \
   --jq '.workflow_runs[] | "\(.id) \(.name) \(.conclusion)"'
@@ -1264,6 +1265,24 @@ POST to. Measured on #193, 2026-08-14. Flip the repo public and push a commit (o
 re-open the PR) to get runs *created*; requeueing is not an option that exists
 yet. **Check `total_count` before reaching for `/rerun`**, or you will chase an
 empty list and conclude the API is broken.
+
+⚠ **`total_count: 0` is only meaningful with a FULL 40-char SHA — corrected 2026-08-18b.** The
+endpoint exact-matches, and a **short** SHA returns `total_count: 0` *silently, without erroring*,
+which renders identically to the un-requeueable third state above. Measured on #213:
+`?head_sha=990a4e5` returned **0** while `?head_sha=990a4e504fb1eb…` returned **2**, with the PR's
+rollup green 5-of-5 the whole time. `gh pr list --json headRefOid` already yields the full SHA, so
+the trap is not in the API — it is reintroduced by **abbreviating the SHA for display and then
+reusing the abbreviation**, which is exactly how this session hit it.
+
+**The discriminator is the rollup, and it is free: if the checks are green, the QUERY is wrong, not
+the CI.** A genuine third state has a failing-or-absent rollup *and* an empty run list; a truncated
+SHA has an empty run list alone. Never conclude "no runs were created" from the run list by itself.
+Cheaper still, `poetry run python tools/wait_ci.py --pr <n>` resolves the SHA itself and prints
+per-job `steps=`, settling the billing question without this endpoint at all.
+
+**The transferable rule: an exact-match query that returns EMPTY rather than ERRORING on a
+malformed key is indistinguishable from a true negative.** Whenever an empty result would trigger a
+costly conclusion, confirm the key round-trips before believing the emptiness.
 
 **A PR opened while the repo was PRIVATE has never been tested**, and `UNSTABLE` on
 `steps=0` checks renders identically to a code failure. #190 and #191 both sat that way and
