@@ -726,7 +726,7 @@ to **65,000** on a long and **68,000** on a short. **Correcting the upstream not
 says the error "only ever pushes the target further away":** the zone resolves to whichever
 edge price reaches *first*, so a long lands nearer and manufactures an optimistic WIN while
 a short lands further and strands the row OPEN. Both directions, neither safe. This is the
-same rule `/ingest-x` step 5 states — both skills write this file, one parser scores both.
+same rule `/ingest-x` step 4 states — both skills write this file, one parser scores both.
 
 **Run `make wifey-pundit-score` as the last action of the round** — reading the row back
 does not show you the parse, and at round-end every row is still OPEN, so a bad parse is

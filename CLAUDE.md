@@ -485,13 +485,18 @@ prose did not enforce these constraints:
 - `make check-orphan-tests` (advisory, heuristic, not in `make test`) reports `Test*` classes that
   name a unit but never call it. Its `not-importable` verdict means the unit is a closure and no
   test can reach it, so extraction becomes a prerequisite for a fix.
-- `make post-branch-checks` (advisory, not in `make test`) runs the ten mechanical `/post-branch`
-  checks — queue items the branch closed, handoff claims, undocumented new files/modules/targets,
-  negative claims, stale doc indexes, MD018 headings, the MEMORY.md cap and the handoff stamp.
+- `make post-branch-checks` (advisory, not in `make test`) runs the eleven mechanical
+  `/post-branch` checks — queue items the branch closed, handoff claims, undocumented new
+  files/modules/targets, negative claims, stale doc indexes, MD018 headings, the MEMORY.md cap,
+  the handoff stamp, and **dead cross-document section anchors** (`stale-anchors`).
   They were **16 shell blocks inside `post-branch/SKILL.md`** until 2026-08-18, i.e. a check that
   only ran when a session remembered to copy it. **A skill that answers each new defect with more
   prose accumulates defects**: two of these had shipped broken, and the fix in both cases was to
   make them code with a positive control (`tests/test_post_branch_checks.py`).
+  ⚠ **`stale-anchors` sweeps the memory tree as well as the repo** — a section number is not a
+  symbol, so no symbol-keyed check can see this class, and **2 of the 6 dead citations observed
+  when it was built sat in the memory tree**, which no repo-scoped check can reach. Engine and
+  its named hole: `.claude/context/tools.md`.
 - `tests/test_outcome_backfill.py::TestMaxHoldCalibrationCoverage` (in `make test`) walks every
   `config/signal_watch*.toml` and fails if a declared timeframe has no `DEFAULT_MAX_HOLD_BARS`
   entry. The outcome resolver refuses an unlisted timeframe (`counts["no_hold_cap"]`) rather than

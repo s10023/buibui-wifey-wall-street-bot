@@ -54,7 +54,7 @@ outside the repo and the handoff is gitignored, so none of them ever costs CI.
 make post-branch-checks
 ```
 
-Ten checks, one command, in `tools/post_branch_checks.py`. They used to be
+Eleven checks, one command, in `tools/post_branch_checks.py`. They used to be
 sixteen shell blocks embedded in this file, which a session had to notice and
 copy by hand — *a hand walk is not the walk*, and the same defects recurred
 because prose cannot enforce.
@@ -71,6 +71,7 @@ because prose cannot enforce.
 | `md-atx` | Did a wrapped `#123` land in column 1 and become an MD018 heading? |
 | `memory-cap` | Is MEMORY.md over 6 Current State bullets or ~17KB? |
 | `handoff-size` | Does the handoff's line-count stamp match the file? |
+| `stale-anchors` | Does a doc cite a numbered section (`Step 3`, `§4a`) its target no longer has? |
 
 **Every finding is a candidate to dismiss in seconds, never an automatic edit.**
 The asymmetry is deliberate: a false positive costs a glance, a silent miss ships

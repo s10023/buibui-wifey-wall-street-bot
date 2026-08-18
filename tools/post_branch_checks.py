@@ -36,12 +36,28 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from tools.stale_anchors import default_resolver, describe, scan
+
 Runner = Callable[[Sequence[str]], str]
 
 HANDOFF = Path("docs/plans/next-conversation-prompt.md")
 MEMORY = Path.home() / (
     ".claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot"
     "/memory/MEMORY.md"
+)
+MEMORY_DIR = MEMORY.parent
+
+#: Current-state doc surfaces swept for dead anchor citations. Deliberately the
+#: same shape as `sanity_checks.SURFACE_ROOTS` — the dated trees are excluded by
+#: `stale_anchors.is_dated_path`, because a citation in a dated record was
+#: correct when written. Hand-sweeping this class found 2 such correct
+#: citations against 4 live ones, so the exclusion is load-bearing.
+ANCHOR_ROOTS = (".claude",)
+ANCHOR_FILES = (
+    "CLAUDE.md",
+    "README.md",
+    "docs/system-overview.md",
+    "docs/plans/next-conversation-prompt.md",
 )
 
 #: Basenames that identify a *role* rather than a file. Probing these by name
@@ -411,6 +427,7 @@ def gather(runner: Runner = _run) -> list[CheckResult]:
         CheckResult("md-atx", _check_md_atx(changed_md)),
         CheckResult("memory-cap", _check_memory_cap()),
         CheckResult("handoff-size", _check_handoff_size(handoff)),
+        CheckResult("stale-anchors", _check_stale_anchors()),
     ]
     return results
 
@@ -477,6 +494,34 @@ def _check_memory_cap() -> list[Finding]:
         findings.append(
             Finding("memory-cap", f"MEMORY.md is {size:,} bytes (~17KB soft cap)")
         )
+    return findings
+
+
+def _check_stale_anchors() -> list[Finding]:
+    """Citations of a numbered section that the cited document no longer has.
+
+    ⚠ **Scope is wider than the repo, and that is the point.** Of the four live
+    dead `§4a` citations found by hand when this class recurred a third time,
+    **two were in the memory tree** — which no repo-scoped check can reach, and
+    which is why this leg lives here rather than in the CI-gating
+    ``sanity_checks``. The repo half alone would have reported clean.
+    """
+    repo_root = Path.cwd()
+    sources = [p for root in ANCHOR_ROOTS for p in sorted(Path(root).rglob("*.md"))]
+    sources += [Path(f) for f in ANCHOR_FILES if Path(f).is_file()]
+    resolve = default_resolver(repo_root, MEMORY_DIR if MEMORY_DIR.is_dir() else None)
+
+    findings = [
+        Finding("stale-anchors", describe(cite, target, repo_root))
+        for cite, target in scan(sources, resolve)
+    ]
+    if MEMORY_DIR.is_dir():
+        findings += [
+            Finding("stale-anchors", describe(cite, target, repo_root))
+            for cite, target in scan(
+                sorted(MEMORY_DIR.glob("*.md")), resolve, root=MEMORY_DIR.parent
+            )
+        ]
     return findings
 
 
