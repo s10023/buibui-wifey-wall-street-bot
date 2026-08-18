@@ -317,7 +317,7 @@ universe FAILED their gates; the free-data edge arc is CONCLUDED (honest exit,
 - Never auto-write a stream file before the user approves the digest — one approval
   covers the whole batch.
 - Scope: text + still images + quoted-tweet surfacing + **upward** self-thread
-  recovery (step 1a). Video is **handed to `/ingest-video`** (step 1b), not skipped.
+  recovery (1a). Video is **handed to `/ingest-video`** (1b), not skipped.
   Still out of scope: downward thread expansion (the endpoint has no children
   field — structurally impossible), reply bodies from other authors, and scraping.
   Syndication + manual-paste are the only two fetch paths.

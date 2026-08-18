@@ -118,7 +118,7 @@ tree, where it isolates `TestEvGate` and names `_passes_ev_gate`; clean on HEAD.
 
 ## post_branch_checks.py — every mechanical `/post-branch` check, in one run
 
-Ten checks that used to be **16 shell blocks embedded in `post-branch/SKILL.md`**, which a
+Eleven checks that used to be **16 shell blocks embedded in `post-branch/SKILL.md`**, which a
 session had to notice and copy by hand. That is the failure CLAUDE.md names as *a hand walk
 is not the walk*, and it is why the same defects kept recurring: the skill's answer to each
 one was more prose, and prose cannot enforce. Extracting them cut the skill from **1,649 to
@@ -126,7 +126,8 @@ one was more prose, and prose cannot enforce. Extracting them cut the skill from
 **positive control**, which the prose versions never had.
 
 Checks: `queue-items` · `handoff-symbols` · `new-files` · `new-modules` · `new-targets` ·
-`negative-claims` · `doc-indexes` · `md-atx` · `memory-cap` · `handoff-size`.
+`negative-claims` · `doc-indexes` · `md-atx` · `memory-cap` · `handoff-size` ·
+`stale-anchors` (engine in `stale_anchors.py`, below).
 
 Two are new and fix defects the prose form structurally could not:
 
@@ -156,6 +157,59 @@ that enumerates every sibling but one and reads as complete. The Makefile is del
 **Run:** `make post-branch-checks` (passes `--exit-zero`), or
 `PYTHONPATH=. poetry run python tools/post_branch_checks.py [--check NAME] [--exit-zero]`
 to let it exit 1 on findings.
+
+## stale_anchors.py — citations of a section number that no longer exists
+
+The engine behind `post_branch_checks`'s `stale-anchors` leg. Document A cites a numbered
+section of document B — `/post-branch` "Step 10b", `/sanity-check` "§4a" — and B
+later renumbers itself. Nothing noticed: this recurred **three times**, the third caused by
+the branch that shipped `/sanity-check`, and no existing check could see it because
+`handoff-symbols` keys on symbols and **a section number is not a symbol**.
+
+Two decisions carry it:
+
+- **Kinds must agree, unless the citation is untyped.** `§4a` names "the section numbered
+  4a" without claiming a kind, so it matches any declaration; `Step 6` and `Phase 6` are
+  typed and must agree. A label-only comparison would call those two a match — and
+  Step → Phase is the exact rename that keeps breaking.
+- **The ordered-list fallback is CONDITIONAL**, and the real corpus is what forced it. A
+  document with no numbered heading (`/db-update`, `/ingest-x`) numbers itself through its
+  column-0 ordered list, so those items are its steps. But `/post-branch` says *"Phases, not
+  step numbers"* while carrying three column-0 **rubric** lists numbered 1..5 — harvesting
+  those unconditionally would have silently validated every dead `/post-branch` "Step N"
+  citation, i.e. blinded the check to its own founding defect.
+
+⚠ **Scope is wider than the repo**, and the build measured why: of the **6** dead (or, under
+the mutation below, would-be-dead) citations observed, **2 sat in the memory tree** — which no
+repo-scoped check can reach. So this runs over `.claude/`, the four current-state files *and*
+`memory/*.md`. It is also why the check is not in CI-gating `sanity_checks`: CI cannot see the
+memory tree at all, and the named hole below would make a gate red by construction. Dated trees
+are excluded (`is_dated_path`) on the fork-drift leg's reasoning — a citation in a dated record
+was correct when written, and the hand sweep that preceded this found 2 such correct ones.
+
+⚠ **Do not repeat the pre-build claim that "two of four live instances were in the memory
+tree".** The handoff that filed this check said so, but its own enumeration lists CLAUDE.md,
+two handoff blocks and one memory file — i.e. **one**. The figure above is this branch's own
+measurement and is reproducible; the inherited one is not.
+
+**First run found 3 real dead citations** the hand sweep had missed: `/ingest-x` "step 5"
+cited twice (`.claude/context/tools.md`, `/ingest-video`) when that skill's Flow stops at
+step 4, and a surviving `/post-branch` "step 10b" in
+`memory/feedback_handoff_prompt_location.md`.
+Mutation-checked against the live tree by renumbering post-branch's `Phase 6` heading, which
+surfaced 3 further live citations — one of them in the memory tree, which is the proof that
+the wider scope is load-bearing rather than decorative.
+
+⚠ **Known hole, named rather than papered over** (`TestKnownHoles`): a document's own
+sub-label sitting beside another document's name is syntactically indistinguishable from a
+citation of it — `/ingest-x` wrote *handed to `/ingest-video` (1b)* where the label 1b was
+`/ingest-x`'s own. Suppressing that by "the source declares this anchor too" was built,
+measured, and **reverted**: documents share small integers, and it dropped a real cross-doc
+finding. Only target-then-anchor is read, within a bounded window, so a citation far from
+its target is invisible.
+
+**Run:** via `make post-branch-checks`, or
+`PYTHONPATH=. poetry run python tools/post_branch_checks.py --check stale-anchors`.
 
 ## sanity_checks.py — every mechanical `/sanity-check` check, in one run
 
@@ -653,7 +707,7 @@ directions: a long lands nearer (manufacturing an optimistic WIN) and a short la
 (stranding the row OPEN). **This corrects the upstream note in parent #616**, which states
 the error "only ever pushes the target further away" — true of its short example, not of
 the mechanism. Write-side rule and the `make wifey-pundit-score` round-end check live in
-`/ingest-video` step 8 and `/ingest-x` step 5.
+`/ingest-video` step 8 and `/ingest-x` step 4.
 
 ### The level-negation guard (parent #589, ported 2026-08-12)
 
