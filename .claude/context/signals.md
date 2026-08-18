@@ -17,6 +17,28 @@ alert formatting, cooldown, the signal registry, Telegram dispatch, or config/un
 - Excluded from dispatch: `seasonality` (inactive by design), `fibonacci_retracement` (legacy),
   `fib_golden_zone` (removed — no_edge across 3 sweeps).
 - `confidence` field removed — resolved per-TF at dispatch via `STRATEGY_REGISTRY[name].get_confidence(tf)`
+- **Detectors always run at their module defaults — both dispatch sites pass no params**, so a
+  detector's own keyword arguments are dead on every live and backtest path.
+  `analytics/signal/scanner.py:219`/`:221` call `plugin["detector"](closed_df[, funding_df])`, and
+  `analytics/backtest_runner.py:325` calls `_SIMPLE_DETECTORS[strategy](ohlcv)`; `DETECTOR_REGISTRY`
+  is typed `Callable[[pd.DataFrame], pd.DataFrame]`, which has no params slot at all. Config `tp_r`
+  is real, but it lands **downstream** — the alert formatter and the backtest engine each derive the
+  target from the config-resolved value, never from the detector.
+- **`tp_r` is declared sweepable on exactly the six detectors where it controls nothing, and is
+  undeclared on both where a target is actually produced — the intersection is empty.** `engulfing`,
+  `pin_bar`, `inside_bar`, `hammer_hanging_man`, `doji` and `morning_evening_star` each carry a
+  `tp_r: float = 2.0` signature argument that appears nowhere in the body, plus a matching
+  `ParamSpec("tp_r", …)` in `_registry.py`; the two that emit a `tp_price` column, `ema` and
+  `ote_entry`, declare neither. So **a `tp_r` sweep on those six returns a flat surface, which is
+  indistinguishable from a knob already at its optimum** — read
+  `tests/test_signal_registry.py::test_tp_r_sweep_surface_is_inverted` before interpreting one. The
+  inversion is pinned rather than fixed, because both repairs are decisions: dropping the
+  declarations turns the flat surface into a `KeyError` at `tools/multi_symbol_wfo.py`'s unguarded
+  `row.params["tp_r"]`, and re-homing them changes the sweep surface while the TA book is frozen.
+- **A third shape spends a target on prose.** `orb_breakout` computes a TP and interpolates it into
+  its `context` **string** only, never the `tp_price` column, so the rendered header could contradict
+  the levels block beneath it (fixed #212). When auditing a detector's target, grep for the column
+  write, not for the concept — `grep -c tp_price` counts docstrings and local variables too.
 
 `DEFAULT_DB_PATH` lives in `analytics/store/_common.py` (re-exported via `analytics.store` and
 `analytics.data_store`) — import from either re-export, never redefine it in a runner.
