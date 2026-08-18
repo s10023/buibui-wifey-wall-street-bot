@@ -9,6 +9,7 @@ from signals.alert_formatter import (
     StatsContext,
     _format_stats_line,
     _get_session_label,
+    _reason_detail,
     format_signal_alert,
     format_wife_alert,
 )
@@ -433,3 +434,62 @@ class TestWifeAlert:
         """The frame is not all-or-nothing: volume comes off the event flags."""
         assert "Low volume" in format_wife_alert(self._event("long", low_volume=True))
         assert "⚠️" not in format_wife_alert(self._event("long"))
+
+
+class TestReasonDetail:
+    """`_reason_detail` strips what the alert already states elsewhere.
+
+    The header carries the strategy and the direction; the entry line carries
+    the price. What is left is the variant that actually fired.
+    """
+
+    def _event(self, strategy: str, reason: str, price: float) -> SignalEvent:
+        return SignalEvent(
+            symbol="AAPL",
+            timeframe="4h",
+            strategy=strategy,
+            direction="long",
+            reason=reason,
+            open_time=0,
+            price=price,
+        )
+
+    def test_drops_entry_price_and_direction(self) -> None:
+        ev = self._event("ema", "ema_pullback_long@333.85", 333.85)
+        assert _reason_detail(ev) == "pullback"
+
+    def test_empty_when_reason_adds_nothing(self) -> None:
+        """`doji_bull@326.99` is strategy + direction + entry, all repeats."""
+        ev = self._event("doji", "doji_bull@326.99", 326.99)
+        assert _reason_detail(ev) == ""
+
+    def test_strips_strategy_named_as_a_suffix(self) -> None:
+        ev = self._event("engulfing", "bullish_engulfing@200.00", 200.00)
+        assert _reason_detail(ev) == ""
+
+    def test_keeps_a_variant_that_merely_contains_the_strategy(self) -> None:
+        """`evening_star` names which half of the pattern fired."""
+        ev = self._event("morning_evening_star", "evening_star@306.47", 306.47)
+        assert _reason_detail(ev) == "evening_star"
+
+    def test_keeps_a_zone_whose_price_is_not_the_entry(self) -> None:
+        """A blunt `@`-strip would delete the upper bound and leave `-307.23`."""
+        ev = self._event("order_block", "ob_long@303.27-307.23", 305.00)
+        assert _reason_detail(ev) == "ob@303.27-307.23"
+
+    def test_keeps_a_trailing_parenthetical(self) -> None:
+        ev = self._event(
+            "fibonacci_retracement",
+            "fib_golden_zone@333.85 (0.618=326.10)",
+            333.85,
+        )
+        assert _reason_detail(ev) == "fib_golden_zone (0.618=326.10)"
+
+    def test_direction_stripped_ahead_of_a_retained_level(self) -> None:
+        ev = self._event("bos", "bos_choch_short@300.00", 312.00)
+        assert _reason_detail(ev) == "choch@300.00"
+
+    def test_direction_kept_when_stripping_would_dangle_the_level(self) -> None:
+        """`short@305.67` must not become a bare `@305.67`."""
+        ev = self._event("orb", "orb_short@305.67", 312.00)
+        assert _reason_detail(ev) == "short@305.67"

@@ -1,5 +1,6 @@
 """Signal event model and Telegram alert formatter."""
 
+import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -120,7 +121,12 @@ def _format_stats_line(ctx: "StatsContext", direction: str) -> str:
         p1_str = f"High still ahead {ctx.p1_low_pct_today:.0%} of {dow_plural}"
 
     if ctx.adr_consumed_pct is not None:
-        adr_str = f"ADR {_adr_bar(ctx.adr_consumed_pct)} {ctx.adr_consumed_pct:.0%} · {ctx.adr_14:.1%}"
+        # "53% of 2.0%", not "53% · 2.0%" — the separator elsewhere on this
+        # line joins unrelated clauses, so it read as a second statistic.
+        adr_str = (
+            f"ADR {_adr_bar(ctx.adr_consumed_pct)} "
+            f"{ctx.adr_consumed_pct:.0%} of {ctx.adr_14:.1%}"
+        )
     else:
         adr_str = f"ADR {ctx.adr_14:.1%}"
 
@@ -359,6 +365,59 @@ def _format_cofire_block(cofire: "ConfluenceData") -> str:
     return block
 
 
+_REASON_ENTRY_RE = re.compile(r"@(\d[\d,]*\.?\d*)")
+# Direction words the header already carries. Longest first, so `bullish` is
+# matched whole rather than leaving `ish` behind.
+_DIRECTION_TOKENS = ("bullish", "bearish", "long", "short", "bull", "bear")
+
+
+def _reason_detail(ev: "SignalEvent") -> str:
+    """Strip from a detector reason whatever the alert already states elsewhere.
+
+    Removes the `@<price>` token only when that price *is* the entry, so
+    `ema_pullback_long@333.85` loses it while `ob_long@302.10-307.23` keeps its
+    zone — a blunt strip would delete the upper bound and leave `-307.23`
+    dangling. Then drops the strategy name and the direction word, both matched
+    on an underscore boundary: a reason that merely *contains* the strategy is
+    left intact, since `evening_star` under `morning_evening_star` is naming
+    which variant fired rather than repeating itself.
+    """
+    detail = ev.reason
+    match = _REASON_ENTRY_RE.search(detail)
+    if match and match.group(1) == f"{ev.price:.2f}":
+        detail = detail[: match.start()] + detail[match.end() :]
+    detail = re.sub(r"\s{2,}", " ", detail).strip()
+
+    if detail.startswith(f"{ev.strategy}_"):
+        detail = detail[len(ev.strategy) + 1 :]
+    elif detail.endswith(f"_{ev.strategy}"):
+        detail = detail[: -len(ev.strategy) - 1]
+
+    # Strip the direction from the part before any retained level, so
+    # `choch_short@300.00` reads `choch@300.00`. A head that would empty is left
+    # alone: `short@305.67` must not become a dangling `@305.67`.
+    head, at, tail = detail.partition("@")
+    for token in _DIRECTION_TOKENS:
+        if head == token:
+            head = "" if not at else head
+            break
+        if head.endswith(f"_{token}"):
+            head = head[: -len(token) - 1]
+            break
+        if head.startswith(f"{token}_"):
+            head = head[len(token) + 1 :]
+            break
+    detail = head + at + tail
+
+    return "" if detail == ev.strategy else detail
+
+
+def _strategy_label(ev: "SignalEvent") -> str:
+    """`strategy · variant`, or the bare strategy when the reason adds nothing."""
+    detail = _reason_detail(ev)
+    return f"{ev.strategy} · {detail}" if detail else ev.strategy
+
+
 def _format_header(events: list["SignalEvent"], direction_label: str) -> str:
     """Section 1 header — single-strategy layout or stacked confluence layout."""
     first = events[0]
@@ -368,8 +427,7 @@ def _format_header(events: list["SignalEvent"], direction_label: str) -> str:
         conflict_tag = " ⚠️ conflict" if ev.conflict else ""
         header = (
             f"<b>SIGNAL — ${ev.symbol} {ev.timeframe}  ·  {direction_label}</b>\n"
-            f"<code>{ev.strategy}</code>{stars}{conflict_tag}\n"
-            f"<code>{ev.reason}</code>\n"
+            f"<code>{_strategy_label(ev)}</code>{stars}{conflict_tag}\n"
         )
         if ev.context:
             header += f"{ev.context}\n"
@@ -382,7 +440,7 @@ def _format_header(events: list["SignalEvent"], direction_label: str) -> str:
     for ev in events:
         stars = f" {_stars(ev.confidence)}" if ev.confidence else ""
         conflict_tag = " ⚠️ conflict" if ev.conflict else ""
-        line = f"• <code>{ev.strategy}</code>{stars} — <code>{ev.reason}</code>{conflict_tag}"
+        line = f"• <code>{_strategy_label(ev)}</code>{stars}{conflict_tag}"
         if ev.context:
             line += f"  ({ev.context})"
         header += line + "\n"

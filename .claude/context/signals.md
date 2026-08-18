@@ -60,7 +60,7 @@ alert formatting, cooldown, the signal registry, Telegram dispatch, or config/un
 
 ### Alert layout (6 sections)
 
-1. Header — strategy/stars/reason
+1. Header — `strategy · variant` + stars, one line. `_reason_detail` strips from the detector reason whatever the alert already states elsewhere: the `@<price>` token **only when that price is the entry**, then the strategy name and the direction word on an underscore boundary. So `ema_pullback_long@333.85` renders `ema · pullback`, `doji_bull@326.99` collapses to bare `doji`, and `ob_long@303.27-307.23` keeps its zone — a blunt `@`-strip would delete the upper bound and leave `-307.23` dangling.
 2. Entry — price/time/session
 3. Levels — SL/TP
 4. Warnings — all notes consolidated (silent unless triggered)
@@ -76,6 +76,7 @@ alert formatting, cooldown, the signal registry, Telegram dispatch, or config/un
 - W7 `_is_doji` — body < 10% of range (takes priority over W1)
 - W8 `_is_inside_bar` — signal inside prior candle range
 - Volume spike/low-volume moved from header into warnings block
+- An empty sample says which emptiness it is: `no closed longs yet` (n=0) vs `3 longs — too few to judge` (n below `min_trades`). `n/a` read as "broken" rather than "checked, nothing there".
 
 ### Other
 

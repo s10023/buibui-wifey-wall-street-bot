@@ -289,7 +289,10 @@ class TestFormatConfluenceAlert:
     def test_single_event_shows_strategy_in_code_tags(self) -> None:
         event = self._make_event("fvg", sl_price=90.0)
         msg = format_confluence_alert([event])
-        assert "<code>fvg</code>" in msg
+        assert "<code>fvg" in msg
+        # The reason folded into the strategy line, so the single-event header
+        # carries one code span rather than two.
+        assert msg.count("<code>") == 1
         assert "Confluence" not in msg
 
     def test_two_events_shows_confluence_header(self) -> None:
@@ -1483,8 +1486,10 @@ class TestConflictResolution:
 
         assert len(alerts) == 1
         # Conflict tag appears outside the code-tagged reason field
-        assert "fvg_long@104.00</code>" in alerts[0]
+        assert "<code>fvg</code>" in alerts[0]
         assert "⚠️ conflict" in alerts[0]
+        # The tag sits outside the code span, which is what this test is for.
+        assert "conflict</code>" not in alerts[0]
 
     def test_no_conflict_no_tag(self, tmp_path: Any) -> None:
         """Signals without a conflict must NOT have ⚠️ conflict in the alert."""
@@ -2140,15 +2145,14 @@ class TestBacktestSummary:
         assert "4 shorts" in summary
         assert "[↑]" not in summary
 
-    def test_directional_n_a_when_below_min_trades(self) -> None:
+    def test_directional_too_few_when_below_min_trades(self) -> None:
         """Shows n/a when directional trade count is below min_trades threshold."""
         # Only 1 long trade but min_trades=3 → n/a
         result = self._make_result(long_wins=1, short_wins=5)
         summary = _backtest_summary(
             {"fvg": result}, ["fvg"], self._cfg(min_trades=3), direction="long"
         )
-        assert "n/a" in summary
-        assert "1 long" in summary
+        assert "1 long — too few to judge" in summary
 
     def test_no_direction_shows_overall_win_rate(self) -> None:
         """Backward compat: no direction arg → overall win rate, no arrow."""
@@ -2264,7 +2268,7 @@ class TestBacktestSummary:
         assert summary.count("~0h") == 2
 
     def test_hold_time_not_shown_when_below_min_trades(self) -> None:
-        """No hold time when trade count < min_trades (n/a path)."""
+        """No hold time when trade count < min_trades (the too-few path)."""
         from analytics.backtest_lib import BacktestResult, Trade
 
         base = 1_700_000_000_000
@@ -2288,7 +2292,7 @@ class TestBacktestSummary:
         summary = _backtest_summary(
             {"fvg": result}, ["fvg"], self._cfg(min_trades=3), direction="long"
         )
-        assert "n/a" in summary
+        assert "too few to judge" in summary
         assert "hold" not in summary
 
 
