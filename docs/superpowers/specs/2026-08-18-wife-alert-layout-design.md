@@ -76,7 +76,8 @@ The `n/a (0 longs)` edge line in particular ships a null as a headline and must 
   to `format_wife_confluence_alert`, so the layout has exactly one implementation site.
 - Warning selection reuses `_build_candle_warnings`, which the personal channel already calls. The
   wife formatter currently takes no `ohlcv_df`, so the parameter has to be threaded from both call
-  sites for warnings to be available; with no frame passed, the warning line is simply absent.
+  sites. Note the frame is not all-or-nothing: the volume note is read off the event flags and
+  renders without it, while every candle-shape and structural warning needs it.
 - Severity ordering does not exist yet — `_build_candle_warnings` appends in a fixed source order
   and never sorts. "Most severe first" therefore needs an explicit rank; it cannot reduce to "the
   first entry", because the first entry is `⚡ Volume spike — high conviction`, a *positive* note.

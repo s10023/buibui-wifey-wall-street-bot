@@ -1,6 +1,6 @@
 # Buibui Wifey Wall Street Bot
 
-A yfinance-backed US-equities **signal bot** (Phase A: signals only). Multi-strategy detection on 4h / 1d / 1wk bars, dual-channel Telegram alerts with statistical context (primary trader-facing + minimal BUY/HOLD-relabelled wife channel), and a FastAPI + Svelte web UI for charts, backtests, signal history, and stats. Phase B (order layer + equities broker) is deferred.
+A yfinance-backed US-equities **signal bot** (Phase A: signals only). Multi-strategy detection on 4h / 1d / 1wk bars, dual-channel Telegram alerts with statistical context (primary trader-facing + condensed BUY/WAIT-relabelled wife channel), and a FastAPI + Svelte web UI for charts, backtests, signal history, and stats. Phase B (order layer + equities broker) is deferred.
 
 Forked from the parent `buibui-moon-trader-bot` (crypto / Binance Futures); the analytics + signals engine carries over, the data source is yfinance, and the live order layer has been removed.
 
@@ -247,7 +247,7 @@ API_TOKEN=your_web_api_token_here
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
 TELEGRAM_CHAT_ID=your_telegram_chat_id_here
 
-# Wife Telegram channel — minimal BUY/HOLD alert
+# Wife Telegram channel — condensed BUY/WAIT alert
 TELEGRAM_BOT_TOKEN_2=your_wife_telegram_bot_token_here
 TELEGRAM_CHAT_ID_2=your_wife_telegram_chat_id_here
 TELEGRAM_WIFE_DRY_RUN=1   # 1 = log instead of send (rollout safety)
@@ -728,7 +728,7 @@ make go-live-prep                       # SINCE=2023-01-01 by default; override 
 
 # 1. Confirm Telegram creds in .env:
 #      TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID            (primary long+short channel)
-#      TELEGRAM_BOT_TOKEN_2 / TELEGRAM_CHAT_ID_2        (wife BUY/HOLD channel)
+#      TELEGRAM_BOT_TOKEN_2 / TELEGRAM_CHAT_ID_2        (wife BUY/WAIT channel)
 #      TELEGRAM_WIFE_DRY_RUN=0                          (flip from 1 to actually send to wife)
 
 # 2. Run ONE scan cycle and exit (Telegram ON). Run it once a day, pre-market

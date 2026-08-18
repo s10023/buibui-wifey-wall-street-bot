@@ -87,9 +87,11 @@ alert formatting, cooldown, the signal registry, Telegram dispatch, or config/un
 
 ### Wife-channel formatter (Task D, 2026-05-20)
 
-- `format_wife_alert()` / `format_wife_confluence_alert()` — minimal BUY/HOLD wife-channel variant. Strips strategy name, reason, stars, candle warnings, edge backtest summary, and stats line.
-- LONG → header `BUY — $SYM TF` + entry price + time + SL/TP block (same widest-structural-SL / floor / structural-TP-or-tp_r logic as the primary formatter).
-- SHORT → header `HOLD — $SYM TF` + price + time + `(regime caution — sit tight)`. No SL/TP — wife is not expected to action shorts; HOLD is regime context only.
+- `format_wife_alert()` / `format_wife_confluence_alert()` — BUY/WAIT wife-channel variant: the primary layout condensed, not a different one. Strips strategy name, reason, edge backtest summary and stats line; keeps stars and **one** warning. Design: `docs/superpowers/specs/2026-08-18-wife-alert-layout-design.md`.
+- LONG → header `BUY — $SYM TF` + stars, `Entry <price> · <time> MYT`, one `Stop … · Target …` line with signed percentages and no R multiple (same widest-structural-SL / floor / structural-TP-or-tp_r logic as the primary formatter), then at most one warning.
+- SHORT → header `WAIT — $SYM TF` + price + time + `Sit tight — conditions look weak`. No levels — wife is not expected to action shorts. ⚠ **`WAIT`, not `HOLD`**: "hold" is a position instruction presuming she is already in, when the intent is "take no action".
+- The single warning is ranked by `_WIFE_WARNING_RANK`, because `_build_candle_warnings` appends in source order and never sorts. `⚡ Volume spike` is excluded outright — it is an encouragement *and* the builder's first entry, so taking the head of the list would render it under a warning heading.
+- ⚠ **Both renders print on every `wifey signal test`**, so the wife body is reviewable without a send. It used to be built only inside the `send_telegram` branch, and the wife dry-run logs only the first line.
 - Dispatched via `utils.telegram_router.dispatch_to_channel(msg, "wife")`; `TELEGRAM_WIFE_DRY_RUN=1` logs the first line at INFO instead of sending.
 
 ## utils/ — shared utilities

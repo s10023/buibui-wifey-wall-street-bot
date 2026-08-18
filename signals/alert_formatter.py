@@ -521,8 +521,37 @@ def format_confluence_alert(
 
 
 # ---------------------------------------------------------------------------
-# Wife-channel formatter (BUY / HOLD lexicon, minimal layout)
+# Wife-channel formatter (BUY / WAIT lexicon, condensed mirror of the primary)
 # ---------------------------------------------------------------------------
+
+# Severity order for the single warning a wife alert carries, most severe first.
+# `_build_candle_warnings` appends in a fixed source order and never sorts, so
+# without an explicit rank "most severe" has nothing to sort by. The volume-spike
+# note is deliberately absent: it is an encouragement rather than a warning, and
+# it is the first entry the builder appends, so taking the head of the list would
+# routinely render it under a warning heading.
+_WIFE_WARNING_RANK: tuple[str, ...] = (
+    "Doji signal candle",
+    "wick rejection",
+    "Low volume",
+    "Signal inside prior range",
+    "Equal lows below",
+    "Equal highs above",
+    "candles in a row",
+)
+
+
+def _wife_warning(
+    events: list["SignalEvent"], ohlcv_df: "pd.DataFrame | None"
+) -> str | None:
+    """Return the most severe candle warning for the wife alert, or None."""
+    ranked = [
+        (rank, note)
+        for note in _build_candle_warnings(events, ohlcv_df)
+        for rank, key in enumerate(_WIFE_WARNING_RANK)
+        if key in note
+    ]
+    return min(ranked)[1] if ranked else None
 
 
 def format_wife_alert(
@@ -530,10 +559,15 @@ def format_wife_alert(
     sl_pct: float = 0.02,
     tp_r: float = 2.0,
     min_sl_pct: float = 0.0,
+    ohlcv_df: "pd.DataFrame | None" = None,
 ) -> str:
     """Render a single SignalEvent for the wife channel."""
     return format_wife_confluence_alert(
-        [event], sl_pct=sl_pct, tp_r=tp_r, min_sl_pct=min_sl_pct
+        [event],
+        sl_pct=sl_pct,
+        tp_r=tp_r,
+        min_sl_pct=min_sl_pct,
+        ohlcv_df=ohlcv_df,
     )
 
 
@@ -542,46 +576,57 @@ def format_wife_confluence_alert(
     sl_pct: float = 0.02,
     tp_r: float = 2.0,
     min_sl_pct: float = 0.0,
+    ohlcv_df: "pd.DataFrame | None" = None,
 ) -> str:
-    """Render the minimal BUY / HOLD wife-channel alert.
+    """Render the BUY / WAIT wife-channel alert — the primary layout, condensed.
 
-    Layout for LONG (BUY): header, price + time, SL/TP block.
-    Layout for SHORT (HOLD): header, price + time, "sit tight" line — no SL/TP
-    since the spouse is not expected to action short signals; HOLD is regime
-    context only.
+    LONG (BUY): header + stars, entry, one levels line, at most one warning.
+    SHORT (WAIT): header, price + time, a sit-tight line and no levels, since
+    the reader is long-only and a short signal means "take no action". WAIT
+    rather than HOLD, because "hold" is a position instruction that presumes
+    she is already in.
 
-    Drops all primary-channel sections that aren't actionable for the spouse:
-    strategy/reason/stars, candle warnings, edge backtest summary, stats line.
+    Deliberately absent, each recoverable from `signal_alert_outcomes`: the
+    backtest edge line, the stats block, the strategy name, the reason string
+    and the session tag. Without an `ohlcv_df` only the volume note can appear,
+    since it is read off the event flags; every candle-shape and structural
+    warning needs the frame.
+
+    Design: `docs/superpowers/specs/2026-08-18-wife-alert-layout-design.md`.
     """
     first = events[0]
     direction = first.direction
     price = first.price
-
     signal_dt_str = _fmt_time(first.open_time)
 
-    if direction == "long":
-        sl_price = _apply_min_sl_floor(
-            price,
-            _widest_sl(events, direction, price, sl_pct),
-            direction,
-            min_sl_pct,
-        )
-        sl_dist = price - sl_price
-        structural_tp = first.tp_price if first.tp_price > price else 0.0
-        tp_price = structural_tp if structural_tp > 0 else price + sl_dist * tp_r
-        sl_pct_display = abs(sl_dist / price) * 100
-        actual_r = abs(tp_price - price) / sl_dist if sl_dist > 0 else tp_r
-        tp_pct_display = abs(tp_price - price) / price * 100
-
+    if direction != "long":
         return (
-            f"<b>BUY — ${first.symbol} {first.timeframe}</b>\n"
+            f"<b>WAIT — ${first.symbol} {first.timeframe}</b>\n"
             f"{price:,.2f}  ·  {signal_dt_str} MYT\n"
-            f"\nSL: {sl_price:,.2f}  ({sl_pct_display:.1f}%)\n"
-            f"TP: {tp_price:,.2f}  ({tp_pct_display:.1f}%  ·  {actual_r:.1f}R)"
+            f"Sit tight — conditions look weak"
         )
 
-    return (
-        f"<b>HOLD — ${first.symbol} {first.timeframe}</b>\n"
-        f"{price:,.2f}  ·  {signal_dt_str} MYT\n"
-        f"(regime caution — sit tight)"
+    sl_price = _apply_min_sl_floor(
+        price, _widest_sl(events, direction, price, sl_pct), direction, min_sl_pct
     )
+    sl_dist = price - sl_price
+    structural_tp = first.tp_price if first.tp_price > price else 0.0
+    tp_price = structural_tp if structural_tp > 0 else price + sl_dist * tp_r
+    sl_pct_display = abs(sl_dist / price) * 100
+    tp_pct_display = abs(tp_price - price) / price * 100
+
+    # Confluence: the most confident strategy in the group speaks for it,
+    # matching the scanner's max-across-events rule for the effective tp_r.
+    confidence = max((e.confidence for e in events), default=0)
+    stars = f"  {_stars(confidence)}" if confidence else ""
+
+    msg = (
+        f"<b>BUY — ${first.symbol} {first.timeframe}{stars}</b>\n"
+        f"Entry {price:,.2f}  ·  {signal_dt_str} MYT\n"
+        f"\nStop {sl_price:,.2f} (−{sl_pct_display:.1f}%)"
+        f"  ·  Target {tp_price:,.2f} (+{tp_pct_display:.1f}%)"
+    )
+    warning = _wife_warning(events, ohlcv_df)
+    if warning:
+        msg += f"\n\n{warning}"
+    return msg
