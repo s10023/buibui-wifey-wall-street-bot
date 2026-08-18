@@ -6,12 +6,20 @@ or cron here — dispatch is the manual one-shot `make go-live`.
 
 ## What is at risk, and why git does not cover it
 
-Two trees are single-copy and gitignored:
+Three trees are single-copy and unreachable by git:
 
 | Tree | Size | Why it cannot be rebuilt |
 | --- | --- | --- |
 | `analytics.db` | ~153MB | `signal_alert_outcomes` is the live out-of-sample ledger. yfinance will not re-serve a historical signal fire, and restarting the ledger yields a differently-*biased* sample, not an equivalent one. |
 | `docs/plans/` | ~1MB | The whole research pipeline's output: the pundit ledger, the routing watermark, Streams A/B, the video notes, the parent-sync triage, the measurement scripts, the handoff. |
+| the memory tree | ~1MB | `project_todo_master.md` (the single source of truth to-do, carrying the north star and gates G1–G4), `MEMORY.md` and ~70 topic files. It records *intent* — what was ruled out and why — which is the one thing no re-run reconstructs. |
+
+⚠ **The memory tree lives OUTSIDE the repo**, at
+`~/.claude-personal/projects/<repo-path-slug>/memory`. That is why it was
+uncovered until 2026-08-18: `BACKUP_DIRS` and `BACKUP_FILES` are both resolved
+against `$REPO`, so the "default to COVERED" denylist reasoning below only ever
+applied *within* the repo, and anything above it was invisible by construction
+rather than by judgement. It is now carried by the EXTERNAL ROOTS section.
 
 `.gitignore:20` is the single line `docs/plans/`, written for scratch files
 before the ingest pipeline was built to write into that directory. `git ls-files
@@ -62,8 +70,10 @@ repo's `daily/<date>/` overwrite the other's.
 ~/backups/wifey/
   daily/2026-08-12/
     analytics.db          verified snapshot (repacked, ~11% smaller than source)
-    MANIFEST.json         method, sizes, git commit, duckdb version, row counts
+    MANIFEST.json         method, sizes, git commit, duckdb version, row
+                          counts, and external_roots (path + file count each)
     docs/plans/...        the research tree, copied whole
+    memory/...            the memory tree, copied whole from OUTSIDE the repo
     config/stocks.json
     .claude/settings.json
   weekly/2026-08-12/
@@ -104,6 +114,64 @@ The one weak point of a denylist is the opposite: a large artifact dropped into
 `docs/plans/` rides into every snapshot from then on. The script warns (never
 fails) once that tree passes 50MB.
 
+### External roots — the denylist's other blind spot
+
+A denylist defaults to covered only **within the tree it is applied to**. Both
+`BACKUP_DIRS` and `BACKUP_FILES` resolve against `$REPO`, so the memory tree —
+one directory further out — was uncovered by construction. `EXTERNAL_ROOTS`
+closes that: entries are `label|absolute-path`, and `label` names the
+destination **inside each snapshot**.
+
+Inside, not beside, is the load-bearing part. It buys three properties for free:
+the tree is published by the snapshot's atomic rename so it is never half-copied
+under a name a freshness check trusts, it ages out under the same retention, and
+`$BACKUP_ROOT`'s top level stays `daily/` + `weekly/` so the off-site leg mirrors
+it with no change at all.
+
+The default path is **derived** from `$REPO` (`/` → `-`) rather than hardcoded,
+so a clone at another path resolves its own tree; `WIFEY_MEMORY_DIR` overrides it.
+
+⚠ **`EXTERNAL_ROOTS` is an allowlist, and it inherits that shape's weakness** —
+the one this repo rejected for in-repo coverage, on the grounds that *"an
+allowlist over a single-copy tree defaults to UNCOVERED"*. A second tree outside
+`$REPO` would be invisible until someone adds it, exactly as the memory tree was.
+That is accepted rather than solved: outside the repo there is no bounded tree to
+denylist *against*, so there is no "copy everything and prune" option to take.
+What the design buys instead is **auditability** — `MANIFEST.json` names every
+external root and its file count, so what is covered is readable from the artifact
+rather than inferable only from the script. It does not tell you what is missing.
+Adding a single-copy tree outside the repo therefore means adding it here too.
+This is **not** the SoT's ruled-out "switching `make backup` to an allowlist":
+in-repo coverage is still the wholesale denylist copy, unchanged.
+
+An absent root **warns and is recorded as `files: 0` in `MANIFEST.json`** — it is
+never fatal, because a fresh clone legitimately has no memory tree yet and
+refusing the whole run over that would trade a real backup for none. The manifest
+field is the point: a warning is read once, while `files: 0` is visible to every
+later audit. ⚠ `research_files` deliberately **excludes** the external roots, so
+that field keeps meaning what it meant in every earlier snapshot.
+
+⚠ **The memory tree rides to the off-site remote**, since that leg syncs
+`$BACKUP_ROOT` wholesale. It was scanned for credential *values* before being
+added, and came back clean: every match was a variable *name* (`TELEGRAM_BOT_TOKEN_2`)
+or prose *about* credentials, never a value. Re-run both legs if the tree ever
+starts holding anything but notes — the second is the one that matters, since a
+name scan alone would miss an unlabelled secret:
+
+```bash
+cd ~/.claude-personal/projects/<repo-path-slug>/memory
+# 1. named-credential shapes
+grep -rEin "refresh_token|client_secret|api[_-]?key *[:=]|bot_token|password *[:=]|\
+BEGIN [A-Z ]*PRIVATE KEY|ghp_|sk-[A-Za-z0-9]{20}|AKIA[0-9A-Z]{16}" .
+# 2. value shapes — telegram tokens, then any high-entropy blob
+grep -rEn "[0-9]{8,10}:[A-Za-z0-9_-]{30,}" . | wc -l          # expect 0
+grep -rEoh "[A-Za-z0-9+/=_-]{40,}" . | sort -u \
+  | grep -vE "^[A-Za-z0-9_./-]*$"                              # expect paths/tickers only
+```
+
+Measured 2026-08-18: 0 token-shaped values; 123 unique long strings of which 122
+are path- or word-like and the remaining one is a ticker list.
+
 Deliberately **not** covered, so a future audit does not re-find them as misses:
 
 - `.cache/` — 102MB and refetchable. Note this differs from the parent, where
@@ -128,6 +196,10 @@ cp ~/backups/wifey/daily/2026-08-12/analytics.db analytics.db
 
 # research tree (--no-clobber so an existing live file always wins)
 cp -Rn ~/backups/wifey/daily/2026-08-12/docs/plans/. docs/plans/
+
+# memory tree — note the destination is OUTSIDE the repo
+cp -Rn ~/backups/wifey/daily/2026-08-12/memory/. \
+  ~/.claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot/memory/
 ```
 
 From the weekly parquet export instead, when the `.db` will not open on a newer

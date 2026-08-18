@@ -174,13 +174,23 @@ falsifier (`git checkout -- tests/fixtures/ && make test-regression`); if it pas
 goldens rather than shipping them. This does not cover a `confidence_ratings` star move — attribute
 those by re-running the sweep twice over one fixed window (`/db-update` step 3).
 
-`make backup` writes a verified copy of `analytics.db` plus all of `docs/plans/` to
-`~/backups/wifey` (`make backup-dry-run` to preview). Both trees are gitignored and single-copy:
-`git ls-files docs/plans/ | wc -l` returns 0, so `git clean -xdf` deletes the entire research
+`make backup` writes a verified copy of `analytics.db`, all of `docs/plans/` and the **memory tree**
+to `~/backups/wifey` (`make backup-dry-run` to preview). All three are single-copy and unreachable
+by git: `git ls-files docs/plans/ | wc -l` returns 0, so `git clean -xdf` deletes the entire research
 pipeline's output with no prompt, and `analytics.db.bak` is an undated unverified byte copy rather
 than a backup. Coverage is a denylist over a wholesale copy, deliberately not the parent's
 allowlist, because an allowlist over a single-copy tree defaults to uncovered. Rationale, restore
 procedure and the opt-in timer live in `deploy/README.md`.
+
+⚠ **A denylist defaults to covered only within the tree it is applied to.** `BACKUP_DIRS` and
+`BACKUP_FILES` both resolve against `$REPO`, so the memory tree — which holds the SoT to-do — sat
+uncovered by construction rather than by judgement until `EXTERNAL_ROOTS` was added. Anything
+outside `$REPO` needs an entry there, landing **inside** each snapshot so it inherits the atomic
+publish and retention and the off-site leg needs no change. An absent root warns and records
+`files: 0` in `MANIFEST.json` rather than failing the run, because a guard that costs you the
+backup is worse than the gap it closes. Pinned by `tests/test_backup_local_coverage.py`; the two
+env knobs it steers with (`WIFEY_REPO_ROOT`, `WIFEY_PYTHON`) exist so the test can drive a real run
+instead of `--dry-run`, which would pass whether or not the copy happened.
 
 `make backup-offsite` is the leg that survives disk death: an `rclone sync` of that same root to
 `$WIFEY_BACKUP_REMOTE`. ⚠ **`sync` mirrors deletions in BOTH directions**, so always

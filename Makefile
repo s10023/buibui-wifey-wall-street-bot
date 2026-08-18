@@ -460,7 +460,8 @@ go-live:
 	$(MAKE) wifey-signal-watch CONFIG=$(GO_LIVE_CONFIG) TELEGRAM=1 ONCE=1 $(if $(CATCH_UP),CATCH_UP=1,)
 
 ## --- Backup (verified local snapshot) — see deploy/README.md ---
-# Snapshots analytics.db + the whole gitignored docs/plans research tree to
+# Snapshots analytics.db, the whole gitignored docs/plans research tree, and the
+# memory tree (which lives OUTSIDE the repo and holds the SoT to-do) to
 # $WIFEY_BACKUP_ROOT (default ~/backups/wifey). Verified and atomically
 # published, so a snapshot at the final path is always restorable.
 # This is the LIKELY-failure leg only — it does not survive disk loss.

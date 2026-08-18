@@ -174,7 +174,7 @@ each module does, because a second copy of the module map is what rotted the fir
 | `tests/` | pytest suite; tests import from lib modules and pass mock dependencies directly | — |
 | `migrations/` | One-shot DB migration scripts, run by hand — routine schema changes go through `analytics/store/schema.py` instead | — |
 | `trade/` | Empty placeholder package marking the Phase B seam (both files are 0 bytes) — the fork's Binance order opener was stripped. Phase B fills it with an equities broker adapter | — |
-| `deploy/` | Verified local backup of `analytics.db` + the gitignored `docs/plans/` research tree, plus **opt-in** `wifey-*` systemd user units (nothing installs them) | `deploy/README.md` |
+| `deploy/` | Verified local backup of `analytics.db`, the gitignored `docs/plans/` research tree and the memory tree (which lives outside the repo), plus **opt-in** `wifey-*` systemd user units (nothing installs them) | `deploy/README.md` |
 
 Repo-root files: `Makefile` (dev & run commands), `Dockerfile` / `docker-compose.yml`,
 `pyproject.toml` (Poetry), `.env.example`, and `.github/workflows/` (`lint.yaml` CI,
@@ -808,13 +808,19 @@ make wifey-signal-watch CONFIG=config/signal_watch.toml TELEGRAM=1
 
 ### Backup — Snapshot the Irreplaceable State
 
-Two trees in this repo are gitignored **and** single-copy, so git protects neither:
+Three trees are single-copy and unreachable by git, so git protects none of them:
 
 - `analytics.db` (~153MB) holds `signal_alert_outcomes`, the live out-of-sample ledger.
   yfinance will not re-serve a historical signal fire, and restarting the ledger yields a
   differently-*biased* sample rather than an equivalent one.
 - `docs/plans/` (~1MB) holds the entire research pipeline's output — pundit ledger, routing
   watermark, Streams A/B, video notes, parent-sync triage, measurement scripts, the handoff.
+- The **memory tree** (~1MB) holds `project_todo_master.md` — the single source of truth
+  to-do, carrying the north star and gates G1–G4 — plus `MEMORY.md` and ~70 topic files.
+  ⚠ It lives *outside* the repo, at `~/.claude-personal/projects/<repo-path-slug>/memory`,
+  which is why it went uncovered until 2026-08-18: the backup's tree and file lists both
+  resolve against the repo root, so anything above it was invisible by construction. It is
+  now carried by the script's `EXTERNAL_ROOTS` section.
 
 `.gitignore` excludes `docs/plans/` wholesale, so `git ls-files docs/plans/ | wc -l` returns
 **0** and a `git clean -xdf` deletes all of it with no prompt. `analytics.db.bak` in the repo
@@ -994,7 +1000,7 @@ make poetry-update
 **Backup:**
 
 ```bash
-make backup          # Verified snapshot of analytics.db + docs/plans → ~/backups/wifey
+make backup          # Verified snapshot of analytics.db + docs/plans + memory → ~/backups/wifey
 make backup-dry-run  # Report what would be captured; writes nothing
 ```
 
