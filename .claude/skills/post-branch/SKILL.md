@@ -362,6 +362,14 @@ each, name the query or command that reproduces it.** A claim whose reproduction
 you cannot state is not ready: cut it, soften it to what you measured, or measure
 it. Record the reproduction in the commit or the audit doc, not just the session.
 
+⚠ **A commit message is audited prose, and by phase 4 it usually already
+exists.** The phase order puts the audit before the commit, but the normal flow
+commits while the work is fresh, so a failing claim is typically already written.
+On an unpushed branch the repair is `git commit --amend -F <file>`, never a
+follow-up wording commit that leaves the false claim in the history the PR ships.
+After a push, amend plus force-push needs explicit OK — otherwise correct the
+claim in the PR body and say the message predates it.
+
 Five shapes to hunt:
 
 1. **A claim about a MECHANISM supported only by a COUNT.** A count is consistent
@@ -561,10 +569,18 @@ shape, not more care.
 Line count: <new> (prev <n-1>, <n-2>, <n-3>, <n-4>) — <one clause: why up or down>.
 ```
 
-Order is fixed: read `wc -l` → make every content edit → read `wc -l` again →
-one last `Edit` replacing the stamp line → **re-read and confirm it matches**.
-That last verification is the whole fix and the positive control the rule never
-had; `handoff-size` in phase 1 also catches a mismatch.
+Order is fixed: read `wc -l` → make every content edit, **the PR-state rewrite
+below included** → read `wc -l` again → one last `Edit` replacing the stamp line
+→ **re-read and confirm it matches**. That last verification is the whole fix and
+the positive control the rule never had; `handoff-size` in phase 1 also catches a
+mismatch.
+
+⚠ **The stamp comes AFTER the PR-state rewrite, not before it.** Stamping first
+leaves the count wrong whenever that rewrite adds or drops a line — the ordering
+manufactures the very defect `handoff-size` then reports, and it reads as correct
+on the runs where the rewrite happens to be line-neutral. The two rules are not
+in conflict: only the `gh` query has to be fresh, and nothing requires the
+rewrite to be textually last.
 
 #### Operator actions must resolve in THIS repo
 
@@ -575,7 +591,7 @@ Wifey dispatch is the manual one-shot `make go-live`. **A unit existing on the
 machine is not evidence it belongs to this repo**: read `WorkingDirectory`, check
 `grep -n '<target>:' Makefile`, check `wifey <cmd> --help`.
 
-### Re-verify PR state — LAST action, never skip
+### Re-verify PR state — LAST content edit, never skip
 
 This skill writes the handoff *before* the merge, so its most prominent
 instruction is the first thing to go stale, and the handoff is the artifact that
@@ -590,6 +606,8 @@ Re-query **every** PR named in the handoff and rewrite the table to match. If on
 merged, update the "first move" line too — the next session should start on a
 task, not merge something already merged. If the local branch still exists, say
 so; deleting it is standing habit here.
+
+**The stamp follows this**, and it is the last action of all.
 
 ---
 
