@@ -1,15 +1,20 @@
 """Orchestration logic for backfill and incremental sync.
 
 yfinance returns the full available history per call (capped by interval —
-2y for 1h/4h, unlimited for 1d/1wk), so backfill is a single ``fetch_bars``
-call rather than a paginated loop.
+2y for 1h/4h, unlimited for 1d/1wk), but ``fetch_bars`` keeps only the first
+``BARS_MAX_LIMIT`` bars at or after its ``start_ms``. A deep start therefore
+cannot be served in one call: asking for ``1d`` bars since 1927 would store
+1927–1947 and silently leave every later bar missing, which reads exactly like
+a symbol with no recent history. ``backfill`` pages instead, advancing past the
+last bar it stored until a short page proves the history is exhausted.
 """
 
 import logging
 
 import duckdb
+import pandas as pd
 
-from analytics.data_fetcher import fetch_bars
+from analytics.data_fetcher import BARS_MAX_LIMIT, fetch_bars
 from analytics.data_quality import check_ohlcv, quarantine
 from analytics.data_store import (
     get_latest_open_time,
@@ -26,13 +31,31 @@ def backfill(
 ) -> int:
     """Fetch OHLCV history from ``start_ms`` to now and store it.
 
-    Single yfinance call — the underlying ``fetch_history`` returns the full
-    configured period in one shot. Returns total rows upserted.
+    Pages through ``fetch_bars`` — each call yields at most ``BARS_MAX_LIMIT``
+    bars — until a page comes back short. Returns total rows upserted.
     """
-    df = fetch_bars(symbol, timeframe, start_ms)
-    if df.empty:
-        return 0
+    total = 0
+    cursor = start_ms
+    while True:
+        df = fetch_bars(symbol, timeframe, cursor)
+        if df.empty:
+            return total
+        page_rows = len(df)
+        last_open_time = int(df["open_time"].max())
+        total += _store_page(conn, symbol, timeframe, df)
+        if page_rows < BARS_MAX_LIMIT:
+            return total
+        # Strictly increasing: fetch_bars only returns bars at or after cursor.
+        cursor = last_open_time + 1
 
+
+def _store_page(
+    conn: duckdb.DuckDBPyConnection,
+    symbol: str,
+    timeframe: str,
+    df: pd.DataFrame,
+) -> int:
+    """Quality-check, quarantine and store one page. Returns rows upserted."""
     report = check_ohlcv(df)
     if not report.is_clean:
         logging.warning("data-quality %s %s: %s", symbol, timeframe, report.summary())

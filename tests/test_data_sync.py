@@ -9,7 +9,7 @@ import duckdb
 import pandas as pd
 import pytest
 
-from analytics.data_fetcher import OHLCV_COLUMNS
+from analytics.data_fetcher import BARS_MAX_LIMIT, OHLCV_COLUMNS
 from analytics.data_quality import SessionGapReport
 from analytics.data_store import (
     get_latest_open_time,
@@ -17,6 +17,8 @@ from analytics.data_store import (
     upsert_ohlcv,
 )
 from analytics.data_sync import backfill, sync
+
+_EMPTY = pd.DataFrame(columns=OHLCV_COLUMNS)
 
 
 def _make_conn() -> duckdb.DuckDBPyConnection:
@@ -87,6 +89,67 @@ class TestBackfill:
         assert args[0] == "AAPL"
         assert args[1] == "1h"
         assert args[2] == 1_700_000_000_000
+
+
+class TestBackfillPaging:
+    """fetch_bars truncates each call at BARS_MAX_LIMIT — backfill must page.
+
+    Positive control: every test here asserts fetch_bars was called MORE than
+    once and that the second call's start_ms advanced past the first page's
+    last bar. A single-call implementation fails both assertions rather than
+    passing vacuously.
+    """
+
+    def test_pages_until_a_short_page_arrives(self, monkeypatch: Any) -> None:
+        conn = _make_conn()
+        monkeypatch.setattr("analytics.data_sync.BARS_MAX_LIMIT", 3)
+        pages = [
+            _make_df([1_000, 2_000, 3_000], timeframe="1d"),  # full page
+            _make_df([4_000, 5_000], timeframe="1d"),  # short page -> stop
+        ]
+        starts: list[int] = []
+
+        def fake_fetch(sym: str, tf: str, start: int, *args: Any) -> pd.DataFrame:
+            starts.append(start)
+            return pages[len(starts) - 1] if len(starts) <= len(pages) else _EMPTY
+
+        with patch("analytics.data_sync.fetch_bars", side_effect=fake_fetch):
+            total = backfill(conn, "AAPL", "1d", 0)
+
+        assert starts == [0, 3_001], "second page must resume past the last bar"
+        assert total == 5
+        assert get_latest_open_time(conn, "AAPL", "1d") == 5_000
+
+    def test_full_page_at_the_real_limit_triggers_another_fetch(self) -> None:
+        """Pins the loop to the real constant, not to a patched stand-in."""
+        conn = _make_conn()
+        full = _make_df(list(range(1, BARS_MAX_LIMIT + 1)), timeframe="1d")
+        calls: list[int] = []
+
+        def fake_fetch(sym: str, tf: str, start: int, *args: Any) -> pd.DataFrame:
+            calls.append(start)
+            return full if len(calls) == 1 else _EMPTY
+
+        with patch("analytics.data_sync.fetch_bars", side_effect=fake_fetch):
+            total = backfill(conn, "AAPL", "1d", 0)
+
+        assert len(calls) == 2, "a page at exactly the cap may hide more history"
+        assert calls[1] == BARS_MAX_LIMIT + 1
+        assert total == BARS_MAX_LIMIT
+
+    def test_short_first_page_makes_exactly_one_call(self) -> None:
+        conn = _make_conn()
+        calls: list[int] = []
+
+        def fake_fetch(sym: str, tf: str, start: int, *args: Any) -> pd.DataFrame:
+            calls.append(start)
+            return _make_df([1_000, 2_000], timeframe="1d")
+
+        with patch("analytics.data_sync.fetch_bars", side_effect=fake_fetch):
+            total = backfill(conn, "AAPL", "1d", 0)
+
+        assert calls == [0]
+        assert total == 2
 
 
 class TestSync:
