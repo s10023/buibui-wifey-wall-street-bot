@@ -91,6 +91,13 @@ candidates were already in wifey, and they were precisely the 4 macro ones.
 For a large backfill, recommend a tranche sized to the remaining session quota rather
 than ingesting the whole list — the ledger carries the progress across days.
 
+⚠ **Propose an EVEN tranche — 4 or 6, never 5.** `/ingest-video` hand-pipelines its two
+passes in pairs against a hard 2-subagent cap, so an odd batch strands the last video
+running alone against an idle slot, and it pays that penalty **twice** (once in pass 1,
+once in pass 2). A batch of 5 costs 3 rounds per pass with the last round half-empty both
+times, where 4 costs 2 full rounds and 6 costs 3. If the operator picks an odd count
+anyway that is their call — just never *propose* one.
+
 ### 3. Operator picks
 
 Ask which candidates to ingest. Three outcomes per candidate, and only the first two

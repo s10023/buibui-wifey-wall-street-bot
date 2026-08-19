@@ -435,6 +435,16 @@ def _ensure_local_media(
     proc = run(
         [
             *_YT_DLP,
+            # Pin the extractor client. Left to its own default selection yt-dlp
+            # picks `android_vr` here, which 403s deterministically on the media
+            # fetch while captions still resolve — so the vision pass silently
+            # loses every frame and the run looks merely unlucky. Measured on the
+            # pinned 2026.07.04: `android`, `mweb` and `web_embedded` all download,
+            # `tv` fails to load, and `web_safari`/`ios` cannot serve the format
+            # below, so they are not substitutes. The built-in retry cannot help —
+            # it was written for an intermittent 403 and this one is not.
+            "--extractor-args",
+            "youtube:player_client=android",
             "-f",
             "bv*[height<=1080]",
             "-o",

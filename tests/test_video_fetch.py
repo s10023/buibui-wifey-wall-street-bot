@@ -519,6 +519,24 @@ def test_extract_frames_downloads_once_for_five_marks(tmp_path: Path) -> None:
     assert len(ffmpeg_calls) == 5
 
 
+def test_local_media_download_pins_the_extractor_client(tmp_path: Path) -> None:
+    """The download must name its player_client. Left to yt-dlp's own default the
+    pick 403s while captions still resolve, so the vision pass loses every frame
+    with no loud failure — the shape this asserts against is an ABSENT flag, which
+    is why the pair is checked adjacently rather than just for the value."""
+    yt_dlp_calls: list[list[str]] = []
+    extract_frames(
+        _meta(),
+        [FrameMark(20.0, "item", 3)],
+        tmp_path,
+        run=make_download_run(yt_dlp_calls=yt_dlp_calls),
+    )
+    assert len(yt_dlp_calls) == 1
+    cmd = yt_dlp_calls[0]
+    assert "--extractor-args" in cmd
+    assert cmd[cmd.index("--extractor-args") + 1] == "youtube:player_client=android"
+
+
 def test_extract_frames_reuses_existing_local_media(tmp_path: Path) -> None:
     (tmp_path / "video.mp4").write_bytes(b"already downloaded")
     yt_dlp_calls: list[list[str]] = []
