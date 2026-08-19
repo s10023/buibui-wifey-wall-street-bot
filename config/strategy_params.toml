@@ -89,13 +89,36 @@ candlestick   = ["trend", "range", "high_vol"]
 session       = ["trend", "range", "high_vol"]
 
 # Per-strategy override — pin a specific strategy out of its type's mapping.
+#
 # bos: the original "BOS = trend continuation" hypothesis was data-falsified by
-# the 2026-05-13 routing audit (`tools/bos_routing_audit.py`, n=72,643). Trend
-# regime is bos's WORST (avg_r=−0.163) while high_vol is best (avg_r=+0.020) and
-# range is middle (−0.048). Flipped to ["high_vol", "range"]. Replay-verify
-# before any hard flip.
+# the 2026-05-13 routing audit (`tools/bos_routing_audit.py`, n=72,643), which
+# ranked trend WORST (−0.163), high_vol BEST (+0.020) and range middle (−0.048),
+# giving ["high_vol", "range"].
+#
+# ⚠ THAT RANKING IS CRYPTO AND ONLY THE `trend` HALF PORTS. The audit predates
+# the fork (PR #366, an ancestor of fork point 635ed5a) so its n=72,643 is
+# Binance trades on crypto regimes. On equities the high_vol/range order is
+# INVERTED — `tools/regime_gate_replay.py`'s kept-cell audit scores
+# bos/high_vol at avg_r −0.3852 (n=655, CI [−0.514, −0.245], Holm-adj p=0.000,
+# verdict ENABLE), i.e. the WORST cell in the table, while bos/range is the only
+# non-negative one (+0.1973). So the crypto value kept the losing regime.
+# `high_vol` dropped 2026-08-19.
+#
+# The sign survives every decomposition run: negative in BOTH directions (long
+# −0.588 / short −0.213) and both real timeframes (1d −0.408 / 4h −0.362), in
+# both halves of the window (−0.137 / −0.637), and for 10 of 13 symbols with
+# leave-one-symbol-out held inside −0.454…−0.330.
+#
+# ⚠ IN-SAMPLE, ONE WINDOW (13 symbols, 2025-09-04 → 2026-08-06). Only the SIGN
+# is robust — the magnitude nearly quintuples across the two halves, so do not
+# quote −0.3852 as "the" effect. `range` is KEPT on absence of evidence, not
+# evidence of absence: its CI [−0.045, +0.454] does not clear the bar, so it is
+# INSUFFICIENT rather than a proven winner.
+#
+# Inert until a hard flip: mode is "soft" (log-only) and the flip is currently
+# BLOCKED by ema/high_vol. Replay-verify before any hard flip.
 [bias.regime.per_strategy]
-bos = ["high_vol", "range"]
+bos = ["range"]
 
 # T2c per-strategy directional suppress (Step −0.5 of bias chain).
 # Drops signals matching `[strategy_params.<name>].suppress_long` /
