@@ -212,31 +212,37 @@ A ledger symbol outside the 13 goes stale — `make go-live` syncs the watchlist
 
 ## 4. Current measured edge
 
-All figures below were queried from `analytics.db` on **2026-08-13** (§4a re-run **2026-08-14**) and are reproducible with
+All figures below were queried from `analytics.db` on **2026-08-13** (§4a re-run **2026-08-19**) and are reproducible with
 the query named in each row.
 
 ### 4a. Live alert ledger — the only record of real dispatched signals
 
-`signal_alert_outcomes`, **298 rows**, 13 symbols, **2026-06-04 → 2026-08-12** (UTC, by
-`fired_at_ms`).
+`signal_alert_outcomes`, **324 rows**, 13 symbols, **2026-06-04 → 2026-08-18** (UTC, by
+`fired_at_ms`). Re-run **2026-08-19**.
 
-| Outcome | n | avg R |
+| Outcome | n | avg R (net) |
 | --- | --- | --- |
-| loss | 198 | −1.000 |
-| win | 45 | +2.844 |
-| expired | 24 | +0.967 |
-| still open | 31 | — |
-| **resolved total** | **267** | **−0.1752** |
+| loss | 218 | −1.014 |
+| win | 46 | +2.822 |
+| expired | 28 | +0.976 |
+| still open | 32 | — |
+| **resolved total** | **292** | **−0.2192** |
 
-**The live book is net negative at −0.175R per resolved alert**, on an 18.5% strike rate
-(45 of 243 decided). The payoff structure is working as designed — winners average +2.8R
+**The live book is net negative at −0.219R per resolved alert**, on a 17.4% strike rate
+(46 of 264 decided). The payoff structure is working as designed — winners average +2.8R
 against −1.0R losers — but the hit rate does not pay for it.
 
-**Both figures moved on 2026-08-14 (#195) and the old ones are a staleness tell.** The
-ledger had credited each win the *declared* `tp_r` rather than the target the resolver
-actually walked, so the win row read +3.144 and the total −0.1247. `migrations/003_*`
-corrected 8 wins (+13.50R of phantom credit). Re-run the query below rather than trusting
-either number.
+**These are NET of costs since 2026-08-19 (`migrations/004_*`), and the loss row is the
+tell**: a flat −1.000 means an uncharged ledger, because a real stop-out also pays spread
+and impact. The backtest had charged its trades since Phase 0.4, so the two books were not
+comparable and live was the flattered one. Pooled moved **−0.2050 gross → −0.2192 net**
+across all 292 rows; gross remains recoverable as `outcome_r + outcome_cost_r`.
+
+⚠ **Two separate things have moved this number, and quoting one for the other is the
+staleness trap.** −0.1247 predates the 2026-08-14 `implied_tp_r` correction (#195, which
+credited wins the *declared* `tp_r` rather than the target walked); −0.1752 was that
+corrected figure at n=267 and still **gross**; −0.2050 is the same basis grown to n=292;
+−0.2192 is n=292 **net**. Re-run the query below rather than trusting any of them.
 
 Read it with three caveats. **282 of 298 rows are pre-#151**, i.e. they fired before the EV
 gate was direction-counted and significance-tested; the 31 open rows are correctly open

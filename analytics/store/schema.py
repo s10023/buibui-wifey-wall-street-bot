@@ -57,9 +57,28 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
             tags                   TEXT,
             outcome                TEXT,
             outcome_r              DOUBLE,
-            outcome_filled_at_ms   BIGINT
+            outcome_filled_at_ms   BIGINT,
+            outcome_cost_r         DOUBLE
         )
     """)
+    # Migration: per-alert cost drag in R (2026-08-19). `outcome_r` is NET of
+    # this, so gross stays recoverable as `outcome_r + outcome_cost_r`. Declared
+    # LAST in CREATE TABLE above and appended by ALTER here, so a fresh DB and a
+    # migrated one end with the same physical column order. NULL means the row
+    # resolved before costs were charged and has not been restated — migration
+    # 004 is what clears that state, and a NULL surviving it is a real gap
+    # rather than a default.
+    existing_outcome_cols = {
+        row[0]
+        for row in conn.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'signal_alert_outcomes'"
+        ).fetchall()
+    }
+    if "outcome_cost_r" not in existing_outcome_cols:
+        conn.execute(
+            "ALTER TABLE signal_alert_outcomes ADD COLUMN outcome_cost_r DOUBLE"
+        )
     conn.execute("""
         CREATE TABLE IF NOT EXISTS backtest_runs (
             run_id               TEXT    PRIMARY KEY,

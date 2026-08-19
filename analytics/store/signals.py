@@ -22,6 +22,7 @@ _OUTCOME_COLUMNS = [
     "outcome",
     "outcome_r",
     "outcome_filled_at_ms",
+    "outcome_cost_r",
 ]
 
 
@@ -78,7 +79,8 @@ def upsert_signal_outcome(conn: duckdb.DuckDBPyConnection, row: dict[str, Any]) 
     on a fresh insert.
 
     **A conflict does not blank the resolution.** `outcome` / `outcome_r` /
-    `outcome_filled_at_ms` are `COALESCE`d against the stored row, so an
+    `outcome_filled_at_ms` / `outcome_cost_r` are `COALESCE`d against the stored
+    row, so an
     omitted (NULL) value keeps whatever is already there and a supplied value
     still wins. This is not defensive coding — it is the live shape.
     `scanner.py` re-writes the alert row on **every** scan that still detects
@@ -99,8 +101,9 @@ def upsert_signal_outcome(conn: duckdb.DuckDBPyConnection, row: dict[str, Any]) 
         "INSERT INTO signal_alert_outcomes "
         "(signal_id, symbol, tf, strategy, direction, fired_at_ms, "
         "candle_ts_ms, entry_price, sl_price, tp_price, rr_ratio, "
-        "confidence_at_fire, tags, outcome, outcome_r, outcome_filled_at_ms) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "confidence_at_fire, tags, outcome, outcome_r, outcome_filled_at_ms, "
+        "outcome_cost_r) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT (signal_id) DO UPDATE SET "
         "symbol = excluded.symbol, tf = excluded.tf, "
         "strategy = excluded.strategy, direction = excluded.direction, "
@@ -114,6 +117,8 @@ def upsert_signal_outcome(conn: duckdb.DuckDBPyConnection, row: dict[str, Any]) 
         "outcome_r = COALESCE(excluded.outcome_r, "
         "signal_alert_outcomes.outcome_r), "
         "outcome_filled_at_ms = COALESCE(excluded.outcome_filled_at_ms, "
-        "signal_alert_outcomes.outcome_filled_at_ms)",
+        "signal_alert_outcomes.outcome_filled_at_ms), "
+        "outcome_cost_r = COALESCE(excluded.outcome_cost_r, "
+        "signal_alert_outcomes.outcome_cost_r)",
         values,
     )
