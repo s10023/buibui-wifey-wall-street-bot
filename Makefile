@@ -353,7 +353,15 @@ status:
 	@printf '  markdown files    %s\n' "$$(npx markdownlint-cli2 2>&1 | grep -oE 'Linting: [0-9]+' | grep -oE '[0-9]+' || echo '?')"
 	@printf '  CLAUDE.md         %s KB\n' "$$(wc -c < CLAUDE.md | awk '{printf "%.1f", $$1/1024}')"
 	@printf '  handoff           %s lines\n' "$$(wc -l < docs/plans/next-conversation-prompt.md)"
-	@printf '  MEMORY.md         %s KB, %s Current State bullets\n' "$$(wc -c < $(MEMORY) | awk '{printf "%.1f", $$1/1024}')" "$$(awk '/^## Current State/,0' $(MEMORY) | grep -c '^- ')"
+## The bullet count CALLS the gate's own implementation rather than re-deriving it.
+## The awk range form (`/^## Current State/,0`) ran to EOF, so it counted every
+## bullet in every following section -- correct here only by accident, because
+## Current State happens to be the last heading. Both measurement defects this
+## line has had (the other was `du -k`, i.e. disk blocks) sat in the REPORTER and
+## never in the gate, and both over-measured, i.e. toward needless rolling that
+## the gate never demanded. When a gate and a report compute one quantity, the
+## report must call the gate.
+	@printf '  MEMORY.md         %s KB, %s Current State bullets\n' "$$(wc -c < $(MEMORY) | awk '{printf "%.1f", $$1/1024}')" "$$(PYTHONPATH=. poetry run python -c 'import pathlib,sys; from tools.post_branch_checks import current_state_bullets; print(current_state_bullets(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")))' $(MEMORY) 2>/dev/null || echo '?')"
 	@printf '  audits            %s\n' "$$(ls docs/audits/*.md | grep -vc INDEX)"
 	@printf '  skills            %s\n' "$$(ls -d .claude/skills/*/ | wc -l)"
 	@printf '  context docs      %s\n' "$$(ls .claude/context/*.md | wc -l)"

@@ -114,6 +114,47 @@ PATH_REF_RE = re.compile(
     r"/[A-Za-z0-9_/.]+)`"
 )
 
+#: Suffixes that make a dotted tail a FILE rather than a dotted symbol. The bare
+#: `[A-Za-z0-9_/.]+` tail accepted any dot, so `analytics/xsmom/replay.replay_targets`
+#: -- module plus symbol, the notation a context doc naturally reaches for -- parsed
+#: as a path and was reported missing. It was 3 of 3 `missing-paths` hits on the
+#: sibling repo, which is the same code against docs that happen to use the notation.
+#: A path with NO dot is still accepted, so directory references keep working.
+PATH_REF_SUFFIXES = frozenset(
+    {
+        ".py",
+        ".md",
+        ".toml",
+        ".json",
+        ".jsonl",
+        ".yaml",
+        ".yml",
+        ".sh",
+        ".txt",
+        ".sql",
+        ".db",
+        ".parquet",
+        ".example",
+        ".svelte",
+        ".ts",
+        ".js",
+        ".css",
+        ".html",
+        ".cfg",
+        ".ini",
+        ".lock",
+    }
+)
+
+
+def is_path_like(ref: str) -> bool:
+    """Does a matched reference name a file or directory, rather than a symbol?"""
+    tail = ref.rsplit("/", 1)[-1]
+    if "." not in tail:
+        return True
+    return any(tail.endswith(suffix) for suffix in PATH_REF_SUFFIXES)
+
+
 #: Referenced paths that do not exist and must not: each is named *because* it
 #: is absent. A path that is merely gitignored is handled by git, not here.
 MISSING_PATH_EXEMPT: dict[str, str] = {
@@ -225,7 +266,11 @@ def check_fork_drift(
                 out.append(Finding("fork-drift", f"{name}: strategy={value}"))
         if symbols is not None:
             for m in SYMBOL_RE.finditer(text):
-                value = m.group(1)
+                #: A trailing dot or dash is never part of a ticker, but the
+                #: capture class admits both -- so an argparse metavar
+                #: `--symbols SYM...` captured `SYM...`, which can never match
+                #: `PLACEHOLDER_SYMBOLS` and so was permanently unsuppressable.
+                value = m.group(1).rstrip(".-")
                 if value not in symbols and value not in PLACEHOLDER_SYMBOLS:
                     out.append(Finding("fork-drift", f"{name}: symbol={value}"))
     return out
@@ -270,6 +315,8 @@ def check_missing_paths(
         for m in PATH_REF_RE.finditer(text):
             path = m.group(1)
             if path in seen or path in MISSING_PATH_EXEMPT:
+                continue
+            if not is_path_like(path):
                 continue
             if exists(path) or ignored(path):
                 continue

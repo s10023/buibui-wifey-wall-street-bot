@@ -35,7 +35,7 @@ Phases, not step numbers. (Earlier versions numbered steps in one order and ran
 them in another, which was a standing source of error.)
 
 ⚠ **Watch for a phase whose output depends on a fact a LATER phase creates.**
-Three found so far — the handoff stamp before the PR-state rewrite, the claims
+Three found so far — the handoff written before the PR-state rewrite, the claims
 audit before the commit it audits, and MEMORY.md's `#NNN` before the PR exists. Do not reorder the whole step to fix one: name the single
 field that lands later, and the phase that lands it.
 
@@ -46,7 +46,7 @@ field that lands later, and the phase that lands it.
 | **3** | Doc walk — judgement, keyed off the diff | no |
 | **4** | Always-run: MEMORY.md, SoT reconcile, claims audit | no |
 | **5** | Commit + push, then compose the PR body, then `gh pr create` | one run |
-| **6** | Pre-merge check, handoff, re-verify PR state, **stamp LAST** | no |
+| **6** | Pre-merge check, handoff, **re-verify PR state LAST** | no |
 
 Phases 1 and 4 run **regardless** of the phase-2 gate. MEMORY.md and the SoT live
 outside the repo and the handoff is gitignored, so none of them ever costs CI.
@@ -75,7 +75,7 @@ because prose cannot enforce.
 | `doc-indexes` | Is a generated `INDEX.md` stale? (a red suite, not a lint nit) |
 | `md-atx` | Did a wrapped `#123` land in column 1 and become an MD018 heading? |
 | `memory-cap` | Is MEMORY.md over 6 Current State bullets or ~17KB? |
-| `handoff-size` | Does the handoff's line-count stamp match the file? |
+| `handoff-size` | Is the handoff past `HANDOFF_MAX_LINES` (240)? |
 | `stale-anchors` | Does a doc cite a numbered section (`Step 3`, `§4a`) its target no longer has? |
 
 **Every finding is a candidate to dismiss in seconds, never an automatic edit.**
@@ -558,15 +558,17 @@ not a new bullet at the end of **B**.
 
 #### PRUNE every run — carry-forward is not append-only
 
-**Measure at the SESSION open and refuse to finish higher.** On a multi-task
-session the binding baseline is that first reading, never the previous task's
-stamp — so a later task may spend what an earlier one freed, and the gate
-stops being whatever the session decides. A stamp only *measures*;
-with nothing gating, "capture this session's lesson" beats "prune" every run and
-the file ratchets — it reached 300 lines with the prune four runs overdue. A
-growth *refusal* rather than a cap, deliberately: a cap can force deleting a live
-rule, a refusal only forces you to pay for each new line by re-homing an old one.
-If a session genuinely must end higher, say so in the stamp.
+**The gate is `handoff-size` in phase 1, and it has an EXTERNAL referent.** It
+fails the file above `HANDOFF_MAX_LINES` (240) — a real threshold, checked
+against `wc -l`, not against a number the file carries about itself.
+
+⚠ **The self-describing `Line count:` stamp is GONE, and so is the leg that
+checked it.** They died together, deliberately. The stamp cost a
+read / `wc -l` / edit / re-read / re-verify cycle on **every** run to maintain a
+figure whose only consumer was the check that verified it, and the check
+returned `[]` when the stamp was absent — so removing the stamp alone would have
+left the leg **vacuously green forever** rather than red. Do not reintroduce
+either. If you want to know the size, run `wc -l` or `make status`.
 
 **Re-homing is a separate pass and it runs FIRST**: move the rule to its durable
 home, `grep` the destination to confirm it landed, and only then cut the
@@ -584,29 +586,6 @@ something wrong?** If no, cut it.
 headed "DONE" or "CLOSED".** Prune by MOVING to the durable home, never by
 deleting outright; if a rule has no committed home yet, that is a signal to write
 one, not to keep the block.
-
-**The stamp is ONE line**, near the top. A multi-line stamp cannot describe the
-file containing it — adding lines changes the count, so the figure is stale the
-moment it is written, and the next run "corrects" it into a different wrong
-number. It was wrong eleven runs running for exactly this reason; the fix is the
-shape, not more care.
-
-```markdown
-Line count: <new> (prev <n-1>, <n-2>, <n-3>, <n-4>) — <one clause: why up or down>.
-```
-
-Order is fixed: read `wc -l` → make every content edit, **the PR-state rewrite
-below included** → read `wc -l` again → one last `Edit` replacing the stamp line
-→ **re-read and confirm it matches**. That last verification is the whole fix and
-the positive control the rule never had; `handoff-size` in phase 1 also catches a
-mismatch.
-
-⚠ **The stamp comes AFTER the PR-state rewrite, not before it.** Stamping first
-leaves the count wrong whenever that rewrite adds or drops a line — the ordering
-manufactures the very defect `handoff-size` then reports, and it reads as correct
-on the runs where the rewrite happens to be line-neutral. The two rules are not
-in conflict: only the `gh` query has to be fresh, and nothing requires the
-rewrite to be textually last.
 
 #### Operator actions must resolve in THIS repo
 
@@ -637,7 +616,7 @@ so; deleting it is standing habit here.
 bullet before the PR existed. MEMORY.md lives outside the repo, so this costs no
 commit and no CI.
 
-**The stamp follows this**, and it is the last action of all.
+**This is the last action of all** — there is no stamp to write after it.
 
 ---
 

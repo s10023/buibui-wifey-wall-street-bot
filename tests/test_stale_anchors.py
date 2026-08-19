@@ -23,6 +23,7 @@ from pathlib import Path
 from tools.stale_anchors import (
     UNTYPED,
     Citation,
+    _quoted_spans,
     anchor_matches,
     citations,
     declared_anchors,
@@ -213,3 +214,55 @@ class TestKnownHoles:
     def test_anchor_before_its_target_is_invisible(self) -> None:
         """Only target-then-anchor is read. "phase 6 of `/post-branch`" is not."""
         assert citations("phase 6 of `/post-branch` covers it\n", "a.md") == []
+
+
+class TestQuotedSpans:
+    """`_is_quoted` tests the enclosing SPAN, not the two adjacent characters.
+
+    The adjacent-character form carried one bug in each direction, and they were
+    only reachable from opposite ends — which is why neither was found by
+    triaging findings alone.
+    """
+
+    def test_phrase_level_quotation_suppresses(self) -> None:
+        """A quotation wrapping TARGET plus ANCHOR is a mention, not a use.
+
+        The old form read only the character before the anchor — a space here —
+        so this reported as a live citation. It is the false positive that fired
+        on this repo's own prose describing the defect.
+        """
+        line = 'so "wifey\'s `/post-branch` Step 5c" resolves against the wrong tree'
+        assert citations(line, "doc.md") == []
+
+    def test_unterminated_quotation_does_NOT_suppress(self) -> None:
+        """The false negative: an anchor ending the line was silently dropped.
+
+        `_QUOTES` is a `str`, so `ch in _QUOTES` was a substring test and
+        ``"" in _QUOTES`` is `True`. An opening quote plus end-of-line — what a
+        quoted phrase looks like when markdown wraps it — short-circuited to
+        "quoted". Reporting is the correct direction: a false positive costs a
+        glance, a suppressed citation is invisible.
+        """
+        cites = citations('`spec.md` said "§4', "doc.md")
+        assert [(c.target, c.label) for c in cites] == [("spec.md", "4")]
+
+    def test_genuine_quotation_still_suppresses(self) -> None:
+        """Positive control for the suppression path itself.
+
+        The anchor is wrapped directly, which the adjacent-character form also
+        caught — so this pins the behaviour that must SURVIVE the rewrite.
+        Without it, every test above is equally satisfied by a `_is_quoted` that
+        never returns True at all.
+        """
+        assert citations('`spec.md` still says "§4a" today', "d.md") == []
+
+    def test_unquoted_citation_is_reported(self) -> None:
+        cites = citations("see `spec.md` §4 for the rule", "doc.md")
+        assert [(c.target, c.label) for c in cites] == [("spec.md", "4")]
+
+    def test_curly_quotes_pair_with_their_own_closer(self) -> None:
+        assert citations("the doc said “`spec.md` §4” once", "d.md") == []
+
+    def test_spans_are_closed_only(self) -> None:
+        assert _quoted_spans('a "b" c') == [(2, 4)]
+        assert _quoted_spans('a "b c') == []

@@ -569,17 +569,32 @@ def _check_stale_anchors() -> list[Finding]:
     return findings
 
 
+#: Comfortably above the handoff's observed steady-state band (181-201 lines over
+#: five stamps) so a normal run is silent, and low enough that sustained growth is
+#: reported while it is still cheap to prune.
+HANDOFF_MAX_LINES = 240
+
+
 def _check_handoff_size(handoff: str) -> list[Finding]:
+    """Is the handoff past the size where it stops being read?
+
+    ⚠ **This used to compare the file against a `Line count:` stamp the file
+    carried about itself** -- a number whose only purpose was to be checked, and
+    which cost a read / `wc -l` / edit / re-read cycle on every run. Worse, the
+    stamp regex failing to match returned `[]`, so removing the stamp would not
+    have turned the leg red; it would have gone **vacuously green forever**. A
+    check that can never fire is dismissal with extra steps. The measurement now
+    has an external referent, which is the only kind that can be wrong.
+    """
     if not handoff:
         return []
     lines = len(handoff.splitlines())
-    m = re.search(r"^Line count: \*\*(\d+)\*\*", handoff, re.MULTILINE)
-    if m and int(m.group(1)) != lines:
+    if lines > HANDOFF_MAX_LINES:
         return [
             Finding(
                 "handoff-size",
-                f"stamp claims {m.group(1)} lines, file has {lines} — "
-                "rewrite the stamp LAST",
+                f"handoff is {lines} lines (cap {HANDOFF_MAX_LINES}) — "
+                "prune before adding",
             )
         ]
     return []
