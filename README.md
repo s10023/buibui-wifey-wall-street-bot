@@ -307,7 +307,10 @@ poetry run python wifey.py analytics backfill --since 2023-01-01
 
 Options:
 
-- `--since YYYY-MM-DD` — start date for backfill (default: `2023-01-01`)
+- `--since YYYY-MM-DD` — start date for backfill (default: `2023-01-01`). Deep starts are
+  served in full: yfinance returns at most 5,000 bars per call, so `backfill` pages until a
+  short page arrives (`^GSPC 1d --since 1927-12-01` stores all 24,774 bars). `1h`/`4h` remain
+  capped at yfinance's own 730-day window regardless of `--since`
 - `--symbols AAPL MSFT` — symbols to fetch (default: all symbols in `config/stocks.json`)
 - `--timeframes 4h 1d 1wk` — timeframes to fetch (default: `1h 4h`). Supported: `1h`, `4h`, `1d`, `1wk`
 - `--universe` — resolve symbols from `config/universe.json` (505-member research breadth universe) instead of the watchlist
