@@ -3,7 +3,7 @@
 **Date:** 2026-08-19
 **Verdict:** **BOUNDED** — the bias is real but **SHARED**, so correcting it moves both books
 together and changes no verdict. Live −0.1374R per loss against a matched-backtest −0.0976R, a
-difference whose 95% CI **[−0.1173, +0.0281] contains zero**. It becomes a genuine distortion only
+difference whose 95% CI **[−0.1180, +0.0266] contains zero**. It becomes a genuine distortion only
 against a stop-free external benchmark.
 **Scope:** measurement only, no code changed — `analytics/signal/outcome_backfill.py:322`,
 `analytics/backtest/engine.py:1116`, `signal_alert_outcomes`, `backtest_trades`, `ohlcv`
@@ -58,7 +58,7 @@ Matched on the same 13 symbols, the same `4h`+`1d`, and the same window
 | live | 21.1% | −1.6512 | **−0.1374R** |
 | backtest, matched | 17.2% | −1.5677 | **−0.0976R** |
 
-Difference −0.0398R; bootstrap 95% CI **[−0.1173, +0.0281]**, so it is **not distinguishable from
+Difference −0.0398R; bootstrap 95% CI **[−0.1180, +0.0266]**, so it is **not distinguishable from
 zero**. Matching mattered: unmatched, the backtest reads −0.0767R per trade, and the gap to live
 looked like an asymmetry when most of it was population — the unmatched pool spans 505 symbols,
 years of history, and a `1wk` book whose gap rate is 1.0%.
@@ -95,6 +95,25 @@ roadmap and carry no stops, so they carry no gap slip; the moment either is used
 `engine.py`, requires a **second** full restatement of the live ledger on top of migration 004, and
 **will move the regression goldens** — a real move, not the data drift the `db-update` banner
 warns about.
+
+## Reproducing this
+
+Four scripts in `docs/plans/scripts/` (gitignored, like the rest of that tree), each
+read-only against `analytics.db`:
+
+```bash
+PYTHONPATH=. poetry run python docs/plans/scripts/gap_through_stop_live.py         # finding 1, live
+PYTHONPATH=. poetry run python docs/plans/scripts/gap_through_stop_backtest.py     # finding 1, backtest + finding 3
+PYTHONPATH=. poetry run python docs/plans/scripts/gap_through_stop_matched.py      # finding 2, matched table
+PYTHONPATH=. poetry run python docs/plans/scripts/gap_through_stop_significance.py # finding 2, the CI
+```
+
+⚠ **The bootstrap is seeded but the queries must also be ORDERED.** A seeded
+`default_rng` still draws differently when DuckDB returns rows in a different order, so the
+first run of the significance script produced a CI whose endpoints moved in the third
+decimal between invocations. `ORDER BY` on both queries makes it byte-reproducible; the CI
+quoted above is the deterministic one. **A seed alone does not make a resampling result
+reproducible — the input order is half of it.**
 
 ## Still open
 

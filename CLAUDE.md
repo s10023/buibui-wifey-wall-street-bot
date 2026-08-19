@@ -407,7 +407,7 @@ not fix a comparability gap, it adds one. Any resolver change must pass `cost_mo
 through, or the ledger silently reverts to gross. ⚠ **Costs are NOT the largest error in the
 ledger**: a gap through the stop books a clean −1.0R and `engine.py:1116` does the same. That
 absence is **SHARED and measured** — live −0.1374R per loss vs a matched-backtest −0.0976R, a
-difference whose 95% CI **[−0.1173, +0.0281] contains zero** — so it biases neither book against the
+difference whose 95% CI **[−0.1180, +0.0266] contains zero** — so it biases neither book against the
 other and no sleeve verdict is reachable from it. Applying it moves live pooled `avg_r`
 −0.2192 → −0.3218, changes `engine.py`, needs a **second** ledger restatement and **moves the
 regression goldens**. It is a user call, and the reason to take it is external: a stop-free
