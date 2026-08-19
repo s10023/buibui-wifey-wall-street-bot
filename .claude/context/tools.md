@@ -144,6 +144,20 @@ Two are new and fix defects the prose form structurally could not:
   the **parent directory** when the basename names a role rather than a file
   (`SKILL.md`, `README.md`, `__init__.py`, `INDEX.md`).
 
+- **`negative-claims`** — shipped **unscoped** and was the third defect of this shape.
+  `check_negative_claims` took no diff argument at all: it grepped the tree for absence
+  language and reported every hit on every branch, so it returned the same 7 findings
+  forever while the skill's table described it as asking about *"something this branch just
+  added"*. Code and sentence disagreed and only the sentence was read — the same
+  reachability-vs-scope gap as the fixture class, and its own test could not have caught it
+  because **it had no test at all**, the only check without one. It now intersects the claim
+  line's distinctive tokens against the diff's **added** lines (a removal makes an absence
+  claim *more* true, so additions only), and the remainder becomes a `note:` rather than a
+  finding. ⚠ **A claim line with no extractable token is REPORTED, not suppressed** — this
+  leg fails open on purpose, because a miss ships a doc denying something now present.
+  ⚠ **A check that is never clean trains dismissal**, precisely as a check that is never
+  green stops being read; that is the cost the unscoped form was paying.
+
 ⚠ **Untracked files count as added.** `git diff` cannot see them in any form, so the
 presence checks used to report zero on precisely the branch they existed for; the skill
 answered that with "remember to `git add -A` first", one more hand-step to forget. Reading

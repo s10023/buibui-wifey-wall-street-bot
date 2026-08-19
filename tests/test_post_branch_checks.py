@@ -8,10 +8,14 @@ it was never run against something that should fail.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from tools.post_branch_checks import (
+    Runner,
     added_paths,
     bad_atx_lines,
     check_handoff_symbols,
+    check_negative_claims,
     check_new_files,
     check_new_modules,
     check_new_targets,
@@ -236,3 +240,77 @@ class TestBadAtxLines:
 
     def test_a_real_heading_is_not_flagged(self) -> None:
         assert bad_atx_lines("# Real Heading\n## Also real\n") == []
+
+
+class TestCheckNegativeClaims:
+    """The scope leg. This check had NO test, which is how it ran unscoped.
+
+    It greps the tree for absence language and used to report every hit on
+    every branch — the same findings forever, regardless of the diff, while
+    the skill's own table described it as asking about what the branch just
+    added. Code and sentence disagreed and only the sentence was read.
+    """
+
+    CLAIM = (
+        "docs/x.md:12:the `pead_wiring` module is not yet wired, so nothing reads it"
+    )
+
+    @staticmethod
+    def _runner(out: str) -> Runner:
+        def run(argv: Sequence[str]) -> str:
+            return out
+
+        return run
+
+    def test_a_claim_the_branch_CONTRADICTS_is_reported(self) -> None:
+        """Positive control: the branch adds the very thing the doc denies."""
+        findings, suppressed = check_negative_claims(
+            self._runner(self.CLAIM),
+            diff="+def pead_wiring() -> None:\n",
+            diff_names="analytics/signal/pead_wiring.py",
+        )
+        assert len(findings) == 1
+        assert "pead_wiring" in findings[0].detail
+        assert suppressed == 0
+
+    def test_a_claim_unrelated_to_the_diff_is_scoped_out_and_COUNTED(self) -> None:
+        findings, suppressed = check_negative_claims(
+            self._runner(self.CLAIM),
+            diff="+def something_else() -> None:\n",
+            diff_names="analytics/other.py",
+        )
+        assert findings == []
+        assert suppressed == 1, "a scoped-out claim must stay countable, not vanish"
+
+    def test_a_claim_with_no_token_FAILS_OPEN(self) -> None:
+        """Unscopable means unruled-out; a miss is the harm this check exists for."""
+        findings, suppressed = check_negative_claims(
+            self._runner("docs/x.md:3:the exporter is not yet wired"),
+            diff="+unrelated\n",
+            diff_names="other.py",
+        )
+        assert len(findings) == 1
+        assert "no token to scope on" in findings[0].detail
+        assert suppressed == 0
+
+    def test_a_REMOVAL_does_not_report_the_claim(self) -> None:
+        """Removing the named thing makes an absence claim MORE true, not less."""
+        findings, suppressed = check_negative_claims(
+            self._runner(self.CLAIM),
+            diff="-def pead_wiring() -> None:\n",
+            diff_names="",
+        )
+        assert findings == []
+        assert suppressed == 1
+
+    def test_the_skill_itself_is_still_exempt(self) -> None:
+        """post-branch's own file documents the language and must not self-match."""
+        findings, suppressed = check_negative_claims(
+            self._runner(
+                ".claude/skills/post-branch/SKILL.md:9:`pead_wiring` is not yet wired"
+            ),
+            diff="+def pead_wiring() -> None:\n",
+            diff_names="analytics/signal/pead_wiring.py",
+        )
+        assert findings == []
+        assert suppressed == 0
