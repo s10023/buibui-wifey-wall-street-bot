@@ -14,14 +14,20 @@ from tools.regime_gate_replay import (
     FLIP_BLOCKED,
     FLIP_HOLD,
     FLIP_JUSTIFIED,
+    MAPPING_CLEAN,
+    MAPPING_FIX,
+    MAPPING_HOLD,
     _regimes_at_entries,
     aggregate,
     annotate_regime_4h,
     annotate_suppression,
     attach_verdicts,
     build_audit_cells,
+    build_kept_audit_cells,
     evaluate_cells,
+    evaluate_kept_cells,
     flip_verdict,
+    mapping_verdict,
     render_verdict,
 )
 
@@ -421,3 +427,160 @@ class TestAttachVerdicts:
         row = out[(out["strategy"] == "ema") & (out["regime"] == "high_vol")].iloc[0]
         assert row["verdict"] == "DISABLE"
         assert float(row["ci_lo"]) > 0
+
+
+class TestBuildKeptAuditCells:
+    """The mirror of :class:`TestBuildAuditCells`. A KEPT cell asks whether the
+    mapping should START suppressing it — the question the flip verdict is
+    structurally unable to reach."""
+
+    def test_only_kept_cells_become_kept_audit_cells(self) -> None:
+        trades = _cell_trades(
+            [
+                ("bos", "trend", True, _tight(-0.5, 40)),
+                ("bos", "range", False, _tight(0.2, 40)),
+            ]
+        )
+        built = build_kept_audit_cells(trades)
+        assert [(s, r) for s, r, _ in built] == [("bos", "range")]
+
+    def test_kept_slice_is_the_strategys_OTHER_kept_cells(self) -> None:
+        """``kept_r`` is the surviving book under the change being considered:
+        the same strategy's other KEPT cells — never the cell's own trades,
+        never another strategy's, and never an already-suppressed cell, which no
+        reachable config would trade."""
+        trades = _cell_trades(
+            [
+                ("bos", "high_vol", False, _tight(-0.4, 40)),
+                ("bos", "range", False, _tight(0.2, 30)),
+                ("bos", "trend", True, _tight(-0.9, 50)),  # suppressed: excluded
+                ("ema", "range", False, _tight(9.0, 25)),  # other strategy: excluded
+            ]
+        )
+        cell = next(c for s, r, c in build_kept_audit_cells(trades) if r == "high_vol")
+        assert len(cell.supp_r) == 40
+        assert len(cell.kept_r) == 30
+        assert abs(float(sum(cell.kept_r) / len(cell.kept_r)) - 0.2) < 1e-9
+
+    def test_sole_kept_cell_has_an_empty_counterfactual(self) -> None:
+        """Dropping the only kept cell leaves nothing — an empty ``kept_r``,
+        not a silent fallback to the suppressed book."""
+        trades = _cell_trades(
+            [
+                ("bos", "high_vol", False, _tight(-0.4, 40)),
+                ("bos", "trend", True, _tight(-0.9, 50)),
+            ]
+        )
+        [(_, _, cell)] = build_kept_audit_cells(trades)
+        assert list(cell.kept_r) == []
+
+    def test_empty_frame_yields_no_cells(self) -> None:
+        assert build_kept_audit_cells(pd.DataFrame()) == []
+
+
+class TestKeptFamilyIsSeparate:
+    """Regression control for the shipped flip verdict (#231). The two questions
+    are different families; merging them would move the flip's Holm denominator
+    and silently restate a decision this branch never intended to touch."""
+
+    def _frame(self) -> pd.DataFrame:
+        return _cell_trades(
+            [
+                ("bos", "trend", True, _tight(-0.5, 60)),
+                ("ema", "high_vol", True, _tight(0.6, 60)),
+                ("bos", "high_vol", False, _tight(-0.5, 60)),
+                ("bos", "range", False, _tight(0.2, 60)),
+            ]
+        )
+
+    def test_suppressed_family_size_excludes_kept_cells(self) -> None:
+        trades = self._frame()
+        supp = evaluate_cells(trades)
+        kept = evaluate_kept_cells(trades)
+        assert len(supp) == 2 and len(kept) == 2
+        # n_tests is the Holm denominator: each family counts only its own.
+        assert {c.verdict.n_tests for c in supp} == {2}
+        assert {c.verdict.n_tests for c in kept} == {2}
+
+    def test_adding_kept_cells_does_not_move_the_flip_verdict(self) -> None:
+        """Positive control: the kept cells here are numerous and extreme, so a
+        merged family would visibly shift the suppressed cells' adjusted p."""
+        trades = self._frame()
+        before = {
+            (c.strategy, c.regime): c.verdict.adj_pvalue for c in evaluate_cells(trades)
+        }
+        evaluate_kept_cells(trades)  # must not mutate or share state
+        after = {
+            (c.strategy, c.regime): c.verdict.adj_pvalue for c in evaluate_cells(trades)
+        }
+        assert before == after
+        assert flip_verdict(evaluate_cells(trades))[0] == FLIP_BLOCKED
+
+
+class TestMappingVerdictDoesNotVeto:
+    """The asymmetry with :func:`flip_verdict`. ``mode`` is one global switch so
+    one winner vetoes the flip; each mapping entry is edited independently, so a
+    winner must NOT cancel a loser. Reusing the veto here would hide a real
+    finding whenever any other cell won."""
+
+    def test_a_losing_cell_is_reported_even_beside_a_winning_one(self) -> None:
+        trades = _cell_trades(
+            [
+                ("bos", "high_vol", False, _tight(-0.6, 60)),
+                ("ema", "trend", False, _tight(0.9, 60)),
+            ]
+        )
+        decision, reasons = mapping_verdict(evaluate_kept_cells(trades))
+        assert decision == MAPPING_FIX
+        joined = " ".join(reasons)
+        assert "bos/high_vol" in joined and "drop 'high_vol'" in joined
+        # the winner is reported too, not silently dropped
+        assert "ema/trend" in joined
+
+    def test_all_winners_is_clean(self) -> None:
+        trades = _cell_trades(
+            [
+                ("bos", "range", False, _tight(0.9, 60)),
+                ("ema", "trend", False, _tight(0.8, 60)),
+            ]
+        )
+        decision, _ = mapping_verdict(evaluate_kept_cells(trades))
+        assert decision == MAPPING_CLEAN
+
+    def test_undersized_cells_hold_and_claim_nothing(self) -> None:
+        trades = _cell_trades([("bos", "range", False, _tight(-0.6, 5))])
+        decision, reasons = mapping_verdict(evaluate_kept_cells(trades))
+        assert decision == MAPPING_HOLD
+        assert "NOT evidence the mapping is right" in " ".join(reasons)
+
+    def test_no_cells_holds(self) -> None:
+        assert mapping_verdict([])[0] == MAPPING_HOLD
+
+
+class TestAttachVerdictsKeptFamily:
+    def _frame(self) -> pd.DataFrame:
+        return _cell_trades(
+            [
+                ("bos", "trend", True, _tight(-0.5, 60)),
+                ("bos", "high_vol", False, _tight(-0.5, 60)),
+            ]
+        )
+
+    def test_kept_rows_carry_a_verdict_when_the_kept_family_is_passed(self) -> None:
+        trades = self._frame()
+        out = attach_verdicts(
+            aggregate(trades), evaluate_cells(trades), evaluate_kept_cells(trades)
+        )
+        kept = out[~out["suppressed"]]
+        assert kept["verdict"].notna().all()
+        assert set(kept["tested_as"]) == {"kept"}
+        assert set(out[out["suppressed"]]["tested_as"]) == {"suppressed"}
+
+    def test_omitting_the_kept_family_still_nulls_kept_rows(self) -> None:
+        """Backward compatibility, and the honest reading of a null: 'not in the
+        family passed to this call', never 'tested and unremarkable'."""
+        trades = self._frame()
+        out = attach_verdicts(aggregate(trades), evaluate_cells(trades))
+        kept = out[~out["suppressed"]]
+        assert kept["verdict"].isna().all()
+        assert kept["tested_as"].isna().all()

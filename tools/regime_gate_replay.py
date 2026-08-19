@@ -30,6 +30,27 @@ now derives from the cells, so the warning is no longer needed.
 The pooled aggregates are still printed, labelled DESCRIPTIVE, and are not
 decision-bearing.
 
+⚠ **The flip question cannot see a bad KEPT cell.** Everything above tests only
+the slice the gate would DROP, so a regime the mapping lets through can bleed
+without ever earning a verdict — the tool would print ``DO NOT FLIP`` and look
+like a clean bill while the worst cell in its own table sat untested. That is a
+blind spot in the *config*, not in the flip decision, and it needs the mirror
+question: **for each KEPT cell, would suppressing it help?**
+
+``evaluate_kept_cells`` asks exactly that, reusing the same
+:mod:`analytics.audit_guard` machinery with the roles mirrored — the kept cell
+becomes the candidate ``supp_r`` and ``kept_r`` is what the strategy would still
+trade without it. An ``ENABLE`` verdict there means the mapping admits a
+reliable loser.
+
+⚠ **Two decisions, so two Holm families, and they must NOT be merged.** Pooling
+them would change the shipped flip verdict by inflating its denominator. They
+are also combined differently, which is the mirror of the defect this tool
+already carries a warning about: ``mode`` is one global switch so a single cell
+vetoes the flip, but each ``enabled_regimes`` / ``per_strategy`` entry is
+**independently editable**, so kept-cell findings are per-cell recommendations
+and no cell vetoes another.
+
 Usage:
     PYTHONPATH=. poetry run python tools/regime_gate_replay.py [--db PATH]
 """
@@ -251,6 +272,43 @@ def build_audit_cells(trades: pd.DataFrame) -> list[tuple[str, str, AuditCell]]:
     return out
 
 
+def build_kept_audit_cells(trades: pd.DataFrame) -> list[tuple[str, str, AuditCell]]:
+    """One :class:`AuditCell` per KEPT (strategy × regime) cell — the mirror.
+
+    :func:`build_audit_cells` tests only what the gate would DROP, which cannot
+    answer whether the mapping is admitting a loser. Here the roles are
+    mirrored: the kept cell under test becomes ``supp_r`` (the suppression
+    *candidate*), and ``kept_r`` is that strategy's OTHER kept cells — what it
+    would still trade if this one were dropped. That mirrors
+    :func:`build_audit_cells`'s stated counterfactual rather than inventing a
+    second one.
+
+    ⚠ ``kept_r`` deliberately excludes the strategy's already-suppressed cells.
+    They are not part of the surviving book under the change being considered,
+    so folding them in would compare against a book that no config reachable
+    from here actually trades.
+    """
+    out: list[tuple[str, str, AuditCell]] = []
+    if trades.empty:
+        return out
+    kept = trades[~trades["suppressed"]]
+    for (strategy, regime), group in kept.groupby(["strategy", "regime"], sort=True):
+        name, label = str(strategy), str(regime)
+        siblings = kept[(kept["strategy"] == strategy) & (kept["regime"] != regime)]
+        out.append(
+            (
+                name,
+                label,
+                AuditCell(
+                    label=f"{name}/{label}",
+                    supp_r=[float(x) for x in group["pnl_r"]],
+                    kept_r=[float(x) for x in siblings["pnl_r"]],
+                ),
+            )
+        )
+    return out
+
+
 def evaluate_cells(
     trades: pd.DataFrame,
     *,
@@ -260,6 +318,32 @@ def evaluate_cells(
 ) -> list[CellEvidence]:
     """Per-cell verdicts sharing ONE Holm family across the suppressed cells."""
     built = build_audit_cells(trades)
+    if not built:
+        return []
+    verdicts = evaluate_audit_cells(
+        [cell for _, _, cell in built], bar=bar, alpha=alpha, min_n=min_n
+    )
+    return [
+        CellEvidence(strategy, regime, verdict)
+        for (strategy, regime, _), verdict in zip(built, verdicts, strict=True)
+    ]
+
+
+def evaluate_kept_cells(
+    trades: pd.DataFrame,
+    *,
+    bar: float = DEFAULT_BAR,
+    alpha: float = DEFAULT_ALPHA,
+    min_n: int = DEFAULT_MIN_N,
+) -> list[CellEvidence]:
+    """Per-cell verdicts for KEPT cells, in their OWN Holm family.
+
+    ⚠ **Separate from :func:`evaluate_cells` by design.** The two answer
+    different questions — the global ``mode`` flip vs a per-strategy mapping
+    edit — so they are different families. Merging them would silently move the
+    shipped flip verdict by enlarging its haircut denominator.
+    """
+    built = build_kept_audit_cells(trades)
     if not built:
         return []
     verdicts = evaluate_audit_cells(
@@ -325,18 +409,95 @@ def flip_verdict(cells: Sequence[CellEvidence]) -> tuple[str, list[str]]:
     return FLIP_JUSTIFIED, reasons
 
 
-def attach_verdicts(agg: pd.DataFrame, cells: Sequence[CellEvidence]) -> pd.DataFrame:
+MAPPING_FIX = "MAPPING FIX INDICATED"
+MAPPING_CLEAN = "MAPPING CLEAN"
+MAPPING_HOLD = "MAPPING UNTESTED"
+
+
+def mapping_verdict(cells: Sequence[CellEvidence]) -> tuple[str, list[str]]:
+    """Combine KEPT-cell verdicts for the per-strategy mapping question.
+
+    ⚠ **Deliberately NOT :func:`flip_verdict`'s shape.** That one applies a veto
+    because ``mode`` is a single global switch. Here each ``enabled_regimes`` /
+    ``per_strategy`` entry is edited independently, so a losing cell and a
+    winning cell are BOTH actionable and neither cancels the other. Reusing the
+    veto here would suppress a real finding whenever any other cell won — the
+    same class of error as pooling, arrived at from the opposite direction.
+
+    A kept cell earning ``ENABLE`` means the mapping admits a reliable loser:
+    drop that regime for that strategy. ``DISABLE`` / ``CONCENTRATE`` confirms
+    the cell is correctly kept.
+    """
+    losers = [c for c in cells if c.verdict.decision == DECISION_ENABLE]
+    winners = [c for c in cells if c.verdict.decision in _BLOCKING_DECISIONS]
+    reasons: list[str] = []
+
+    for cell in losers:
+        avg = cell.verdict.supp_avg
+        reasons.append(
+            f"{cell.strategy}/{cell.regime}: ENABLE — a KEPT cell that reliably "
+            f"loses (n={cell.verdict.n_supp}, avg_r={avg:+.4f}); "
+            f"drop '{cell.regime}' from {cell.strategy}'s allowed regimes"
+            if avg is not None
+            else f"{cell.strategy}/{cell.regime}: ENABLE — kept but reliably losing"
+        )
+    for cell in winners:
+        avg = cell.verdict.supp_avg
+        reasons.append(
+            f"{cell.strategy}/{cell.regime}: {cell.verdict.decision} — correctly "
+            f"kept (n={cell.verdict.n_supp}, avg_r={avg:+.4f})"
+            if avg is not None
+            else f"{cell.strategy}/{cell.regime}: {cell.verdict.decision} — correctly kept"
+        )
+
+    if losers:
+        reasons.append(
+            "Each entry is edited independently, so these are per-cell "
+            "recommendations — no cell vetoes another."
+        )
+        return MAPPING_FIX, reasons
+    if winners:
+        reasons.append(f"No KEPT cell reliably loses among the {len(cells)} tested.")
+        return MAPPING_CLEAN, reasons
+
+    reasons.append(
+        "No KEPT cell clears the bar on either side — the run cannot tell, which "
+        "is NOT evidence the mapping is right."
+    )
+    powered = [c for c in cells if c.verdict.powered_null]
+    if powered:
+        reasons.append(
+            f"{len(powered)} of {len(cells)} cell(s) are powered nulls (CI strictly "
+            "inside ±bar): an effect worth acting on IS ruled out there."
+        )
+    return MAPPING_HOLD, reasons
+
+
+def attach_verdicts(
+    agg: pd.DataFrame,
+    cells: Sequence[CellEvidence],
+    kept_cells: Sequence[CellEvidence] = (),
+) -> pd.DataFrame:
     """Left-join each cell's verdict onto the descriptive aggregate.
 
     The exported CSV would otherwise persist only the DESCRIPTIVE half and drop
     every decision-bearing column — CI, adjusted p, verdict — which is the half
-    a reader needs to reach the same conclusion the banner did. Kept rows are
-    never tested, so their verdict columns stay null by construction rather than
-    by omission.
+    a reader needs to reach the same conclusion the banner did.
+
+    ``kept_cells`` is optional and defaults to empty, so a caller that passes
+    only the suppressed family still gets nulls on every kept row. ⚠ A null
+    verdict means **not in the family passed to this call** — it never means
+    "tested and found unremarkable". ``tested_as`` names which family a row was
+    judged in, because the two carry different Holm denominators and an adjusted
+    p-value is meaningless without knowing which.
     """
     if agg.empty:
         return agg
     by_key = {(c.strategy, c.regime): c.verdict for c in cells}
+    family = {(c.strategy, c.regime): "suppressed" for c in cells}
+    for c in kept_cells:
+        by_key[(c.strategy, c.regime)] = c.verdict
+        family[(c.strategy, c.regime)] = "kept"
     out = agg.copy()
     keys = list(
         zip(out["strategy"].astype(str), out["regime"].astype(str), strict=True)
@@ -348,11 +509,16 @@ def attach_verdicts(agg: pd.DataFrame, cells: Sequence[CellEvidence]) -> pd.Data
     out["powered_null"] = [
         by_key[k].powered_null if k in by_key else None for k in keys
     ]
+    out["tested_as"] = [family.get(k) for k in keys]
     return out
 
 
-def render_verdict(agg: pd.DataFrame, cells: Sequence[CellEvidence] = ()) -> str:
-    """Print per-cell table + global flip verdict."""
+def render_verdict(
+    agg: pd.DataFrame,
+    cells: Sequence[CellEvidence] = (),
+    kept_cells: Sequence[CellEvidence] = (),
+) -> str:
+    """Print per-cell table, the global flip verdict, then the KEPT-cell audit."""
     lines: list[str] = []
     lines.append("Per-cell (strategy × regime × suppressed):")
     lines.append("-" * 78)
@@ -424,7 +590,50 @@ def render_verdict(agg: pd.DataFrame, cells: Sequence[CellEvidence] = ()) -> str
     for reason in reasons:
         lines.append(f"    - {reason}")
 
+    lines.extend(_render_kept_section(kept_cells))
     return "\n".join(lines)
+
+
+def _render_kept_section(kept_cells: Sequence[CellEvidence]) -> list[str]:
+    """The mirror question the flip verdict structurally cannot answer."""
+    lines: list[str] = ["", ""]
+    lines.append(
+        f"KEPT-cell audit — would suppressing each cell HELP? (own Holm family, "
+        f"{len(kept_cells)} cell(s); NOT merged with the flip family above):"
+    )
+    lines.append("-" * 78)
+    if not kept_cells:
+        lines.append("  (no kept cells)")
+        lines.append("-" * 78)
+        return lines
+    lines.append(
+        f"{'strategy':<18} {'regime':<10} {'n':>6} {'avg_r':>8} "
+        f"{'CI':>18} {'adj_p':>7}  verdict"
+    )
+    lines.append("-" * 78)
+    for cell in kept_cells:
+        v = cell.verdict
+        avg = f"{v.supp_avg:+.4f}" if v.supp_avg is not None else "n/a"
+        ci = (
+            f"[{v.ci_lo:+.3f}, {v.ci_hi:+.3f}]"
+            if v.ci_lo is not None and v.ci_hi is not None
+            else "—"
+        )
+        adj = f"{v.adj_pvalue:.3f}" if v.adj_pvalue is not None else "—"
+        flag = " (powered null)" if v.powered_null else ""
+        lines.append(
+            f"{cell.strategy:<18} {cell.regime:<10} {v.n_supp:>6} {avg:>8} "
+            f"{ci:>18} {adj:>7}  {v.decision}{flag}"
+        )
+    lines.append("-" * 78)
+
+    decision, reasons = mapping_verdict(kept_cells)
+    lines.append("")
+    lines.append("Mapping decision:")
+    lines.append(f"  {decision}")
+    for reason in reasons:
+        lines.append(f"    - {reason}")
+    return lines
 
 
 def run(db_path: Path, config_path: Path) -> tuple[pd.DataFrame, str]:
@@ -457,7 +666,11 @@ def run(db_path: Path, config_path: Path) -> tuple[pd.DataFrame, str]:
     trades = annotate_suppression(trades, cfg.bias.regime_allowed)
     agg = aggregate(trades)
     cells = evaluate_cells(trades)
-    return attach_verdicts(agg, cells), render_verdict(agg, cells)
+    kept_cells = evaluate_kept_cells(trades)
+    return (
+        attach_verdicts(agg, cells, kept_cells),
+        render_verdict(agg, cells, kept_cells),
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
