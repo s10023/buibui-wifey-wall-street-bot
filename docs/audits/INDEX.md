@@ -4,13 +4,14 @@
 `make docs-index-check` (and `tests/test_docs_index.py`) fails when this file
 drifts from the corpus.
 
-**28 audits.** A verdict line is shown only where one could be read
-out of a Verdict heading as prose — that is **18 of 28**.
+**29 audits.** A verdict line is shown only where one could be read
+out of a Verdict heading as prose — that is **19 of 29**.
 An em dash means the doc states its verdict in a table, a blockquote or the body,
 **not** that it lacks one; open the file. Nothing here is keyword-guessed.
 
 | Date | Audit | Verdict (as written) | File |
 | --- | --- | --- | --- |
+| 2026-08-19 | Regime gate: a pooled banner that inverted its own table | EXCLUDED — flipping `mode` to `hard` is ruled out on current evidence. One suppressed cell is a reliable winner at Holm-adjusted… | [2026-08-19-regime-gate-pooled-banner.md](2026-08-19-regime-gate-pooled-banner.md) |
 | 2026-08-19 | The correction chain, and assurance that cannot see its own class | BOUNDED. Across one cross-repo review, at least eight filed claims moved under checking, and four of them were filed while… | [2026-08-19-correction-chain-and-silent-assurance.md](2026-08-19-correction-chain-and-silent-assurance.md) |
 | 2026-08-18 | H-004 — risk-off sector rotation, G3 power price | BLOCKED — unreachable on power, and priced out BEFORE any sector return was read. The claim's own falsifiable form is a NULL… | [2026-08-18-h004-sector-rotation-power.md](2026-08-18-h004-sector-rotation-power.md) |
 | 2026-08-14 | MFE Timing Within the Hold Window — Exit Sub-project B, Step 1 | the +1R lock level is timing-safe on equities, and the per-tf time-stop floor is `4h` 4 bars / `1d` 3 bars — a quarter of… | [2026-08-14-mfe-timing.md](2026-08-14-mfe-timing.md) |
