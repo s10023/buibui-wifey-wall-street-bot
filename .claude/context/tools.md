@@ -1219,6 +1219,23 @@ Read-only YouTube/X video fetcher: every yt-dlp call goes through
 path 403s while captions still resolve, so the failure masquerades as one unlucky video.
 `--js-runtimes` is additive, and the `yt-dlp-ejs` runtime dep backs it).
 
+⚠ **At least two independent causes produce that identical symptom, and the JS runtime is
+only one of them** — the count is a floor, not an enumeration. The media fetch also 403s when the *extractor client* is left to yt-dlp's
+own default selection, which is why `_ensure_local_media` pins
+`--extractor-args youtube:player_client=android`. Measured 2026-08-19 on the pinned
+2026.07.04, with `node` installed and `--js-runtimes node` already in effect: the default
+pick `android_vr` 403s, while `android` / `mweb` / `web_embedded` all download; `tv` fails
+to load, and `web_safari` / `ios` fail *differently* — "requested format is not available"
+against `bv*[height<=1080]` — so they are **not** substitutes. **A version bump is not the
+fix** and `poetry.lock` is not involved; an earlier filing said otherwise and was wrong.
+The 3-attempt retry cannot cover this either: it was written for an *intermittent* 403 and
+this one is deterministic. Pinned by
+`tests/test_video_fetch.py::test_local_media_download_pins_the_extractor_client`, which
+asserts the flag/value pair adjacently because the regression shape is an **absent flag**.
+⚠ **Both causes are silent in the same direction** — captions resolve either way, so the
+vision pass returns chart-uncorrected items that look fine. Diagnose by running the
+download, never by reading the code.
+
 - `fetch_meta` (yt-dlp `--dump-json` → `VideoMeta` incl. publish time)
 - `fetch_transcript` (existing captions in any language first, else Groq `whisper-large-v3` over
   extracted opus audio — `split_audio` chunks past the 25MB cap using `duration_s` for
