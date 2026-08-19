@@ -215,8 +215,25 @@ later renumbers itself. Nothing noticed: this recurred **three times**, the thir
 the branch that shipped `/sanity-check`, and no existing check could see it because
 `handoff-symbols` keys on symbols and **a section number is not a symbol**.
 
-Two decisions carry it:
+⚠ **It is a library, not a CLI — there is no `__main__` and no argparse.** A bare
+`poetry run python tools/stale_anchors.py` prints nothing and exits **0**, which is
+indistinguishable from a clean sweep. Reach it through `make post-branch-checks`, which is
+what passes scope. (Found by the sibling repo running the ported copy this way and reading
+the silence as a pass — the same *a SKIP is not a PASS* class as a leg that degrades to
+`SKIPPED` when a symbol it references no longer exists.)
 
+Three decisions carry it:
+
+- **Quoting is tested as an enclosing SPAN, never as the two adjacent characters.** A
+  quotation marks a *mention* rather than a *use*, and the adjacent-character form carried
+  one bug in each direction: it missed a quotation wrapping target-plus-anchor as one phrase
+  (a false positive, which fired on this repo's own prose describing the check), and because
+  `_QUOTES` is a `str`, `"" in _QUOTES` is `True` — so an anchor ending the line
+  short-circuited to "quoted" and was dropped **in silence**. Only the end-of-line branch was
+  ever reachable: `citations()` calls `_anchor_after` with `start = t.end()` of a target that
+  must precede the anchor, so `begin == 0` cannot occur. An unterminated quotation now yields
+  no span and therefore reports, because a false positive costs a glance while a suppressed
+  citation is invisible.
 - **Kinds must agree, unless the citation is untyped.** `§4a` names "the section numbered
   4a" without claiming a kind, so it matches any declaration; `Step 6` and `Phase 6` are
   typed and must agree. A label-only comparison would call those two a match — and
