@@ -407,6 +407,15 @@ git commit -F <file>      # -F, never a heredoc: quoting a hazard trips the guar
 git push -u origin <branch>
 ```
 
+⚠ **Then decide the visibility flip, before `gh pr create`** — this phase covered
+only the exit until now. Phase 2 has already read the diff: if it touches
+`**/*.py` or `web/ui/**`, the PR needs the repo **public**, or its three
+path-filtered checks create zero steps and settle at `steps=0`, which renders
+exactly like a real failure. **Confirm the flip with the user on every
+occasion** — CLAUDE.md makes the mechanics standing authorisation and the timing
+not, because the window republishes the parent's pre-fork commits. A docs-only
+diff skips it. Phase 6's flip-back gate closes the other half of the pair.
+
 Then compose the **Documentation updates** section and pass it in the *initial*
 `--body`. That ordering is the whole payoff — do not open the PR and then edit
 its body.
@@ -545,7 +554,10 @@ not a new bullet at the end of **B**.
 
 #### PRUNE every run — carry-forward is not append-only
 
-**Measure at the open and refuse to finish higher.** A stamp only *measures*;
+**Measure at the SESSION open and refuse to finish higher.** On a multi-task
+session the binding baseline is that first reading, never the previous task's
+stamp — so a later task may spend what an earlier one freed, and the gate
+stops being whatever the session decides. A stamp only *measures*;
 with nothing gating, "capture this session's lesson" beats "prune" every run and
 the file ratchets — it reached 300 lines with the prune four runs overdue. A
 growth *refusal* rather than a cap, deliberately: a cap can force deleting a live
