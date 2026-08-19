@@ -1,7 +1,8 @@
 """Audit-tool verdicts via bootstrap CI + multiple-testing haircut.
 
-Replaces the crude ±0.05R bar in ``tools/gate_audit.py`` and
-``tools/adr_threshold_audit.py`` with two statistical gates that BOTH must hold
+Consumers here are :mod:`analytics.warning_audit` (via
+``tools/warning_value_audit.py``) and ``tools/regime_gate_replay.py``. It
+replaces a crude ±0.05R bar with two statistical gates that BOTH must hold
 before a cell earns an ``ENABLE`` / ``DISABLE`` verdict:
 
 1. **Effect size (bootstrap CI).** A block/stationary-bootstrap CI on the

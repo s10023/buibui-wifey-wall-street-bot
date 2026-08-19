@@ -8,10 +8,27 @@ This is the empirical substitute for the original "wait 2 weeks in soft
 mode" plan: same flip-decision data, derived from history rather than
 forward observation.
 
-Decision rule (matching the original soft-mode criteria):
-  * Suppressed avg_r ≤ 0 with n ≥ 100 → flip is justified.
-  * Kept avg_r > suppressed avg_r → gate concentrates edge correctly.
-  * Suppressed avg_r > 0 with n ≥ 100 → gate is dropping winners; redo.
+Decision rule — PER CELL, then combined under the single-switch constraint.
+
+Each suppressed (strategy × regime) cell earns an :mod:`analytics.audit_guard`
+verdict: a block-bootstrap CI on the suppressed slice's mean R that must clear
+±``bar``, AND a Holm-adjusted p-value below ``alpha`` across the family of
+tested cells. ``ENABLE`` means that slice reliably loses (dropping it helps);
+``DISABLE``/``CONCENTRATE`` means it reliably wins (dropping it costs);
+``INSUFFICIENT`` means the run cannot tell.
+
+⚠ **The cells are then combined, not pooled.** ``[bias.regime].mode`` is ONE
+GLOBAL SWITCH: flipping it to ``hard`` activates every cell's suppression at
+once, so a single reliably-winning cell blocks the flip no matter how many
+cells or how much volume point the other way. The previous rule pooled an
+n-weighted ``avg_r`` across strategy AND regime, which let one large losing
+cell carry the aggregate and print ``FLIP justified`` while cells pointing the
+other way sat in the table above it — the tool's own docs had to carry a
+"read the per-cell table, never the banner" warning to compensate. The banner
+now derives from the cells, so the warning is no longer needed.
+
+The pooled aggregates are still printed, labelled DESCRIPTIVE, and are not
+decision-bearing.
 
 Usage:
     PYTHONPATH=. poetry run python tools/regime_gate_replay.py [--db PATH]
@@ -21,12 +38,25 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import duckdb
 import numpy as np
 import pandas as pd
 
+from analytics.audit_guard import (
+    DECISION_CONCENTRATE,
+    DECISION_DISABLE,
+    DECISION_ENABLE,
+    DEFAULT_ALPHA,
+    DEFAULT_BAR,
+    DEFAULT_MIN_N,
+    AuditCell,
+    CellVerdict,
+    evaluate_audit_cells,
+)
 from analytics.regime import Regime, classify_series
 from analytics.signal_config import load_signal_config
 from analytics.store import DEFAULT_DB_PATH
@@ -35,8 +65,9 @@ from analytics.strategies import STRATEGY_REGISTRY
 # Live gate uses 4h candles regardless of signal TF (per config/strategy_params.toml).
 _REGIME_TF = "4h"
 
-# Decision rule thresholds (kept in sync with soft-mode flip criteria).
-_MIN_TRADES_FOR_DECISION = 100
+# A cell whose CI clears the bar on the winning side blocks the flip outright,
+# because `[bias.regime].mode` is a single global switch — see module docstring.
+_BLOCKING_DECISIONS = frozenset({DECISION_DISABLE, DECISION_CONCENTRATE})
 
 
 def _load_trades(
@@ -169,7 +200,158 @@ def aggregate(trades: pd.DataFrame) -> pd.DataFrame:
     ).reset_index(drop=True)
 
 
-def render_verdict(agg: pd.DataFrame) -> str:
+FLIP_JUSTIFIED = "FLIP justified"
+FLIP_BLOCKED = "DO NOT FLIP"
+FLIP_HOLD = "HOLD"
+
+
+@dataclass(frozen=True)
+class CellEvidence:
+    """One suppressed cell's identity plus its :mod:`analytics.audit_guard` verdict."""
+
+    strategy: str
+    regime: str
+    verdict: CellVerdict
+
+
+def build_audit_cells(trades: pd.DataFrame) -> list[tuple[str, str, AuditCell]]:
+    """One :class:`AuditCell` per suppressed (strategy × regime) cell.
+
+    ``kept_r`` is the SAME strategy's surviving book across all regimes — the
+    honest counterfactual for a per-strategy gate: what that strategy still
+    trades once this cell is dropped. Suppression is a pure function of
+    (strategy, regime), so no cell is part-suppressed and the two slices are
+    disjoint by construction; that is why ``kept_r`` cannot be drawn from the
+    cell itself.
+    """
+    out: list[tuple[str, str, AuditCell]] = []
+    if trades.empty:
+        return out
+    kept_by_strategy: dict[str, list[float]] = {
+        str(name): [float(x) for x in group["pnl_r"]]
+        for name, group in trades[~trades["suppressed"]].groupby("strategy", sort=False)
+    }
+    empty: list[float] = []
+    suppressed = trades[trades["suppressed"]]
+    for (strategy, regime), group in suppressed.groupby(
+        ["strategy", "regime"], sort=True
+    ):
+        name, label = str(strategy), str(regime)
+        out.append(
+            (
+                name,
+                label,
+                AuditCell(
+                    label=f"{name}/{label}",
+                    supp_r=[float(x) for x in group["pnl_r"]],
+                    kept_r=kept_by_strategy.get(name, empty),
+                ),
+            )
+        )
+    return out
+
+
+def evaluate_cells(
+    trades: pd.DataFrame,
+    *,
+    bar: float = DEFAULT_BAR,
+    alpha: float = DEFAULT_ALPHA,
+    min_n: int = DEFAULT_MIN_N,
+) -> list[CellEvidence]:
+    """Per-cell verdicts sharing ONE Holm family across the suppressed cells."""
+    built = build_audit_cells(trades)
+    if not built:
+        return []
+    verdicts = evaluate_audit_cells(
+        [cell for _, _, cell in built], bar=bar, alpha=alpha, min_n=min_n
+    )
+    return [
+        CellEvidence(strategy, regime, verdict)
+        for (strategy, regime, _), verdict in zip(built, verdicts, strict=True)
+    ]
+
+
+def flip_verdict(cells: Sequence[CellEvidence]) -> tuple[str, list[str]]:
+    """Combine per-cell verdicts under the single-global-switch constraint.
+
+    ⚠ **Not a pool.** ``[bias.regime].mode`` flips every cell at once, so ONE
+    cell whose CI clears the bar on the winning side blocks the flip regardless
+    of how many cells or how much trade volume point the other way. An
+    n-weighted mean cannot express that, which is why the old banner could
+    contradict its own table.
+    """
+    blocking = [c for c in cells if c.verdict.decision in _BLOCKING_DECISIONS]
+    enabling = [c for c in cells if c.verdict.decision == DECISION_ENABLE]
+    reasons: list[str] = []
+
+    if blocking:
+        for cell in blocking:
+            supp = cell.verdict.supp_avg
+            reasons.append(
+                f"{cell.strategy}/{cell.regime}: {cell.verdict.decision} — "
+                f"suppressing a reliable winner (n={cell.verdict.n_supp}, "
+                f"avg_r={supp:+.4f})"
+                if supp is not None
+                else f"{cell.strategy}/{cell.regime}: {cell.verdict.decision}"
+            )
+        reasons.append(
+            "mode is ONE GLOBAL SWITCH — a single blocking cell rules out the flip, "
+            "even where other cells earn ENABLE."
+        )
+        return FLIP_BLOCKED, reasons
+
+    if not enabling:
+        reasons.append(
+            "No cell clears the bar on either side — the run cannot tell, which is "
+            "NOT evidence the gate is harmless."
+        )
+        powered = [c for c in cells if c.verdict.powered_null]
+        if powered:
+            reasons.append(
+                f"{len(powered)} of {len(cells)} cell(s) are powered nulls "
+                "(CI strictly inside ±bar): an effect worth acting on IS ruled out there."
+            )
+        return FLIP_HOLD, reasons
+
+    for cell in enabling:
+        supp = cell.verdict.supp_avg
+        reasons.append(
+            f"{cell.strategy}/{cell.regime}: ENABLE — suppressing a reliable loser "
+            f"(n={cell.verdict.n_supp}, avg_r={supp:+.4f})"
+            if supp is not None
+            else f"{cell.strategy}/{cell.regime}: ENABLE"
+        )
+    reasons.append(f"No blocking cell among the {len(cells)} suppressed cell(s).")
+    return FLIP_JUSTIFIED, reasons
+
+
+def attach_verdicts(agg: pd.DataFrame, cells: Sequence[CellEvidence]) -> pd.DataFrame:
+    """Left-join each cell's verdict onto the descriptive aggregate.
+
+    The exported CSV would otherwise persist only the DESCRIPTIVE half and drop
+    every decision-bearing column — CI, adjusted p, verdict — which is the half
+    a reader needs to reach the same conclusion the banner did. Kept rows are
+    never tested, so their verdict columns stay null by construction rather than
+    by omission.
+    """
+    if agg.empty:
+        return agg
+    by_key = {(c.strategy, c.regime): c.verdict for c in cells}
+    out = agg.copy()
+    keys = list(
+        zip(out["strategy"].astype(str), out["regime"].astype(str), strict=True)
+    )
+    out["verdict"] = [by_key[k].decision if k in by_key else None for k in keys]
+    out["ci_lo"] = [by_key[k].ci_lo if k in by_key else None for k in keys]
+    out["ci_hi"] = [by_key[k].ci_hi if k in by_key else None for k in keys]
+    out["adj_pvalue"] = [by_key[k].adj_pvalue if k in by_key else None for k in keys]
+    out["powered_null"] = [
+        by_key[k].powered_null if k in by_key else None for k in keys
+    ]
+    return out
+
+
+def render_verdict(agg: pd.DataFrame, cells: Sequence[CellEvidence] = ()) -> str:
     """Print per-cell table + global flip verdict."""
     lines: list[str] = []
     lines.append("Per-cell (strategy × regime × suppressed):")
@@ -194,42 +376,53 @@ def render_verdict(agg: pd.DataFrame) -> str:
         ].sum()
         total_n = int(suppressed["n"].sum())
         lines.append("")
-        lines.append(f"SUPPRESSED aggregate: n={total_n}  avg_r={weighted_avg_r:+.4f}")
+        lines.append("DESCRIPTIVE aggregates — NOT decision-bearing:")
+        lines.append(f"  SUPPRESSED: n={total_n}  avg_r={weighted_avg_r:+.4f}")
     if not kept.empty:
         weighted_avg_r_k = (kept["avg_r"] * kept["n"]).sum() / kept["n"].sum()
         total_n_k = int(kept["n"].sum())
+        lines.append(f"  KEPT:       n={total_n_k}  avg_r={weighted_avg_r_k:+.4f}")
+    if not suppressed.empty or not kept.empty:
         lines.append(
-            f"KEPT aggregate:       n={total_n_k}  avg_r={weighted_avg_r_k:+.4f}"
+            "  (An n-weighted mean pools across strategy AND regime, so one large "
+            "cell can carry it. The decision below reads the cells.)"
         )
 
     lines.append("")
-    lines.append("Decision:")
-    if suppressed.empty or int(suppressed["n"].sum()) < _MIN_TRADES_FOR_DECISION:
+    lines.append(
+        f"Per-cell significance (bootstrap CI vs ±{DEFAULT_BAR:.2f}R, "
+        f"Holm-adjusted across {len(cells)} cell(s), alpha={DEFAULT_ALPHA:.2f}):"
+    )
+    lines.append("-" * 78)
+    lines.append(
+        f"{'strategy':<18} {'regime':<10} {'n':>6} {'avg_r':>8} "
+        f"{'CI':>18} {'adj_p':>7}  verdict"
+    )
+    lines.append("-" * 78)
+    for cell in cells:
+        v = cell.verdict
+        avg = f"{v.supp_avg:+.4f}" if v.supp_avg is not None else "n/a"
+        ci = (
+            f"[{v.ci_lo:+.3f}, {v.ci_hi:+.3f}]"
+            if v.ci_lo is not None and v.ci_hi is not None
+            else "—"
+        )
+        adj = f"{v.adj_pvalue:.3f}" if v.adj_pvalue is not None else "—"
+        flag = " (powered null)" if v.powered_null else ""
         lines.append(
-            f"  HOLD — insufficient suppressed trades (need n ≥ {_MIN_TRADES_FOR_DECISION})."
+            f"{cell.strategy:<18} {cell.regime:<10} {v.n_supp:>6} {avg:>8} "
+            f"{ci:>18} {adj:>7}  {v.decision}{flag}"
         )
-    else:
-        sup_avg = (suppressed["avg_r"] * suppressed["n"]).sum() / suppressed["n"].sum()
-        kept_avg = (
-            (kept["avg_r"] * kept["n"]).sum() / kept["n"].sum()
-            if not kept.empty
-            else 0.0
-        )
-        if sup_avg <= 0 and kept_avg > sup_avg:
-            lines.append(
-                f"  FLIP justified — suppressed avg_r={sup_avg:+.4f} ≤ 0 "
-                f"and kept avg_r={kept_avg:+.4f} > suppressed."
-            )
-        elif sup_avg > 0:
-            lines.append(
-                f"  DO NOT FLIP — suppressed avg_r={sup_avg:+.4f} > 0. "
-                "Gate is dropping winners; redesign needed."
-            )
-        else:
-            lines.append(
-                f"  AMBIGUOUS — suppressed avg_r={sup_avg:+.4f}, kept avg_r={kept_avg:+.4f}. "
-                "Investigate per-cell."
-            )
+    if not cells:
+        lines.append("  (no suppressed cells)")
+    lines.append("-" * 78)
+
+    decision, reasons = flip_verdict(cells)
+    lines.append("")
+    lines.append("Decision:")
+    lines.append(f"  {decision}")
+    for reason in reasons:
+        lines.append(f"    - {reason}")
 
     return "\n".join(lines)
 
@@ -263,7 +456,8 @@ def run(db_path: Path, config_path: Path) -> tuple[pd.DataFrame, str]:
     trades = annotate_regime_4h(trades, conn)
     trades = annotate_suppression(trades, cfg.bias.regime_allowed)
     agg = aggregate(trades)
-    return agg, render_verdict(agg)
+    cells = evaluate_cells(trades)
+    return attach_verdicts(agg, cells), render_verdict(agg, cells)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -284,7 +478,10 @@ def main(argv: list[str] | None = None) -> int:
         "--out",
         type=Path,
         default=None,
-        help="Optional CSV output path for the per-cell aggregate.",
+        help=(
+            "Optional CSV output path for the per-cell aggregate, including the "
+            "verdict / CI / adjusted-p columns for every tested cell."
+        ),
     )
     args = parser.parse_args(argv)
 

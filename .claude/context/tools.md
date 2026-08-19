@@ -659,19 +659,42 @@ the only assertion that fails against the old implementation (mutation-checked: 
 lookups hit under the modulo). A UTC-aligned case is retained as a non-regression for the crypto
 shape.
 
-Its stated decision rule: suppressed `avg_r <= 0` at `n >= 100` justifies the flip; kept >
-suppressed means the gate concentrates edge; suppressed `avg_r > 0` at `n >= 100` means the gate
-drops winners. **A raw split like this is a point estimate** — pair it with a significance test
-before quoting a delta. → [[project_flag_deltas_need_significance_tests]]
+**The decision rule is PER CELL, then combined under the single-switch constraint** (rebuilt
+2026-08-19). Each suppressed (strategy × regime) cell earns an `analytics/audit_guard.py`
+verdict — a block-bootstrap CI on the suppressed slice's mean R that must clear ±`bar`, AND a
+Holm-adjusted p-value below `alpha` across the family of tested cells. `ENABLE` = that slice
+reliably loses, so dropping it helps; `DISABLE`/`CONCENTRATE` = it reliably wins, so dropping it
+costs; `INSUFFICIENT` = the run cannot tell.
 
-⚠ **The rule pools across strategy AND regime, so its banner can invert the per-cell reading.** The
-first honest run (2026-08-18, once the lookup worked) printed `FLIP justified` while **three of six
-cells pointed the other way**: flipping would suppress `ema`/`high_vol` (**+0.5497**, n=172) and
-`ema`/`range` (**+0.3291**, n=110) while keeping `bos`/`high_vol` (**−0.3852**, n=655), the worst
-cell in the table. One large bad cell — `bos`/`trend`, n=897, −0.3540 — carries the aggregate.
-**Read the per-cell table, never the banner.** The same run refutes the inherited crypto
-calibration in the opposite direction: the `bos` override exists because a 2026-05-13 crypto audit
-found `high_vol` was bos's best regime, and on equities it is bos's worst.
+⚠ **The cells are combined, never pooled.** `mode` is ONE GLOBAL SWITCH, so a single
+reliably-winning cell blocks the flip regardless of how many cells or how much volume point the
+other way. **An n-weighted mean cannot express that**, which is how the previous rule printed
+`FLIP justified` off a table that contradicted it. The pooled aggregates are still printed,
+labelled `DESCRIPTIVE — NOT decision-bearing`. Pinned by
+`TestFlipVerdictCombinesCellsNotPools::test_one_blocking_cell_vetoes_a_dominant_losing_aggregate`,
+which asserts the fixture satisfies the OLD pooled FLIP condition *and* still comes back blocked —
+without both halves it would pass against a pooling implementation and could not detect a revert.
+
+**Live-DB verdict 2026-08-19: `DO NOT FLIP`**, and it inverts the old banner on the same data
+(pooled suppressed −0.1585 ≤ 0 with kept −0.0153 above it — the old rule's exact FLIP condition).
+The blocker is `ema`/`high_vol`: n=172, avg_r **+0.5497**, CI **[+0.085, +1.023]**, Holm-adj
+p=0.001 → `DISABLE`. `bos`/`trend` (n=897, −0.3540, CI [−0.462, −0.246], p=0.000) is a genuine
+`ENABLE` and is the cell that carried the old aggregate.
+
+⚠ **The significance test DEMOTES one of the three cells previously cited.** `ema`/`range`
+(+0.3291, n=110) comes back **INSUFFICIENT** — CI [−0.210, +0.966] straddles zero at adj p=0.117 —
+so the filed "three of six cells pointed the other way" overstates it: **one** survives a
+significance test, not three. Correct frame, wrong count; the flip is blocked either way.
+
+⚠ **A `DO NOT FLIP` here is not a clean bill for the config.** `bos`/`high_vol` (−0.3852, n=655,
+the worst cell in the table) is a **kept** cell, so it is never tested and the tool says nothing
+about it. That is the separate, still-open refutation of the inherited crypto calibration: the
+`bos` override exists because a 2026-05-13 crypto audit found `high_vol` was bos's best regime, and
+on equities it is bos's worst. Blocking the flip does not fix it.
+
+⚠ **Every figure above is IN-SAMPLE** — 13 symbols, 2025-06-06 → 2026-08-11, one pass, no
+out-of-sample split. It is evidence against flipping, never evidence for a replacement mapping.
+→ [[project_flag_deltas_need_significance_tests]]
 
 **Run:** `PYTHONPATH=. poetry run python tools/regime_gate_replay.py [--db PATH]`
 
