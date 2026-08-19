@@ -309,8 +309,17 @@ This is the same shape as the pundit-ledger bug: a job reporting success about a
 dependency that is silently not being produced. The transferable rule is that **a
 scheduled job can only attest to the step it performs** — if a green light is to mean
 "the data is current", something has to check the *input's* age, not the copy's exit
-code. Two candidate fixes, both unbuilt and a user call: schedule the local leg too,
-or have the off-site leg refuse a source tree whose newest snapshot predates today.
+code. Two candidate fixes, and only one of them is a build. **Scheduling the local leg
+needs no code**: `wifey-backup.{service,timer}` have been tracked since **#162** and only
+wanted enabling (recipe above) — that is *before* the off-site leg (#205) and before the
+sentence that called them unbuilt (#210), which is how the drift happened. They are also
+already sequenced for exactly this — 08:10
+/ 13:10 UTC against the off-site leg's 13:55. **Enabled on this machine 2026-08-19**,
+after the journal showed `off-site backup OK` on 2026-08-16 with no `2026-08-16`
+snapshot in the tree — the failure mode observed, not theorised. The second fix — have
+the off-site leg refuse a source tree whose newest snapshot predates today — is still
+unbuilt and still a user call; it is the belt-and-braces for the local timer running but
+leaving a stale tree.
 `systemctl --user list-timers 'wifey-*'` is the only liveness check either way —
 there is no heartbeat, since the failure alert is failure-only.
 

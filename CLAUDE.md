@@ -405,10 +405,16 @@ resolver**: wifey's engine ignores `fee_pct` whenever a `CostModel` is set, and 
 sets one, so a verbatim port prices live on a basis the backtest does not use — a third basis does
 not fix a comparability gap, it adds one. Any resolver change must pass `cost_model`/`fee_pct`
 through, or the ledger silently reverts to gross. ⚠ **Costs are NOT the largest error in the
-ledger**: a gap through the stop books a clean −1.0R and `engine.py:1116` does the same, so that
-absence is SHARED (it does not bias live vs backtest) and is worth ~−0.10R/row against this
-charge's −0.014R. Changing it moves both books and is a user call.
-Audit: `docs/audits/2026-08-19-live-ledger-net-of-cost.md`.
+ledger**: a gap through the stop books a clean −1.0R and `engine.py:1116` does the same. That
+absence is **SHARED and measured** — live −0.1374R per loss vs a matched-backtest −0.0976R, a
+difference whose 95% CI **[−0.1180, +0.0266] contains zero** — so it biases neither book against the
+other and no sleeve verdict is reachable from it. Applying it moves live pooled `avg_r`
+−0.2192 → −0.3218, changes `engine.py`, needs a **second** ledger restatement and **moves the
+regression goldens**. It is a user call, and the reason to take it is external: a stop-free
+benchmark (SPY buy-hold, random-entry nulls, both G2) carries no gap slip, so the shared bias runs
+in our favour the moment either is the reference.
+Audits: `docs/audits/2026-08-19-live-ledger-net-of-cost.md` (the cost charge),
+`docs/audits/2026-08-19-gap-through-stop-measurement.md` (this measurement).
 
 **A bar count is not a calendar span on an RTH tape.** Check any expression converting bars to time
 or time to bars against `4h` RTH = 2 bars/day. Fetch forward windows to `get_latest_open_time`
@@ -416,7 +422,12 @@ instead of deriving a horizon from bar count, pinned by `TestForwardWindowSpansR
 imports `cost_model`'s single bars-per-day table (`TestBarsPerDayIsShared`), and `min_periods`
 clamps to the window via `atr_window_bars`, because a floor calibrated on intraday counts is
 undefined on a coarse timeframe. Deduping beats correcting here: swapping the values alone would
-have hidden both a missing `1wk` key and the floor problem. Narrative: `context/footguns.md`.
+have hidden both a missing `1wk` key and the floor problem. ⚠ **Nor is a wall-clock hour a stable
+key**: `4h` sits on a fixed **UTC** grid (13:30 / 17:30 UTC), which renders **09:30 / 13:30 ET in
+summer and 08:30 / 12:30 ET in winter**. Bar count and session alignment are unaffected, so anything
+keyed on an ET hour mislabels every winter bar silently — and the live ledger cannot expose it,
+being EDT-dated throughout. Narrative: `context/footguns.md`; measured in
+`docs/audits/2026-08-19-gap-through-stop-measurement.md`.
 
 **Check whether a metric's floor is reachable by every row in a cohort before quoting its median.**
 `exits/`'s MFE for a loss comes from `fav[:-1]`, so a loss resolved on its first held bar has
