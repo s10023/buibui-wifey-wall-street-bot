@@ -28,6 +28,7 @@ from tools.sanity_checks import (
     check_parent_leakage,
     check_router_wiring,
     gather,
+    is_path_like,
     makefile_targets,
     render,
     subcommand_names,
@@ -335,3 +336,73 @@ def test_working_tree_is_clean() -> None:
     results = gather()
     findings = [f.detail for r in results for f in r.findings]
     assert findings == []
+
+
+class TestPathLikeTail:
+    """`module.symbol` is not a file path, and used to be reported as one.
+
+    The tail was `[A-Za-z0-9_/.]+` with no extension requirement, so any dotted
+    reference parsed as a path. It was 3 of 3 `missing-paths` hits when this same
+    code first ran against the sibling repo, whose docs use the notation.
+    """
+
+    def test_module_dot_symbol_is_not_a_path(self) -> None:
+        found = check_missing_paths(
+            [("doc.md", "see `analytics/xsmom/replay.replay_targets` for the target")],
+            exists=lambda _p: False,
+            ignored=lambda _p: False,
+        )
+        assert found == []
+
+    def test_a_real_missing_file_still_fires(self) -> None:
+        """Positive control: the narrowing must not blind the check.
+
+        Without this, `is_path_like` returning False for everything passes the
+        test above and silences the whole leg.
+        """
+        found = check_missing_paths(
+            [("doc.md", "see `analytics/ghost.py`")],
+            exists=lambda _p: False,
+            ignored=lambda _p: False,
+        )
+        assert found == [Finding("missing-paths", "doc.md: MISSING analytics/ghost.py")]
+
+    def test_directory_reference_has_no_dot_and_is_kept(self) -> None:
+        found = check_missing_paths(
+            [("doc.md", "see `analytics/backtest/`")],
+            exists=lambda _p: False,
+            ignored=lambda _p: False,
+        )
+        assert found == [
+            Finding("missing-paths", "doc.md: MISSING analytics/backtest/")
+        ]
+
+    def test_is_path_like_unit(self) -> None:
+        assert is_path_like("analytics/backtest_lib.py")
+        assert is_path_like("config/strategy_params.toml")
+        assert is_path_like("analytics/backtest/")
+        assert is_path_like("analytics/strategies")
+        assert not is_path_like("tools/multi_regime_power.required_sr")
+        assert not is_path_like("analytics/xsmom/replay.replay_targets")
+
+
+class TestSymbolMetavar:
+    """An argparse metavar rode into the capture and could never be suppressed.
+
+    `SYMBOL_RE`'s class admits `.`, so `--symbols SYM...` captured `SYM...`,
+    which never equals the `SYM` in `PLACEHOLDER_SYMBOLS`. The finding was
+    therefore permanent and un-actionable — the never-clean shape that trains
+    dismissal of the whole sweep.
+    """
+
+    def test_metavar_resolves_to_its_placeholder(self) -> None:
+        assert _drift("run `--symbols SYMBOL...` to pass many") == []
+
+    def test_a_real_unknown_symbol_still_fires(self) -> None:
+        """Positive control: `rstrip` must not swallow genuine drift."""
+        assert _drift("run `--symbol DOGEUSDT` here") == [
+            Finding("fork-drift", "doc.md: symbol=DOGEUSDT")
+        ]
+
+    def test_trailing_dash_is_also_stripped(self) -> None:
+        assert _drift("run `--symbols SYMBOL-` now") == []

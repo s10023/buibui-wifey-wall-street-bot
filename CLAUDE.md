@@ -503,11 +503,18 @@ prose did not enforce these constraints:
 - `make post-branch-checks` (advisory, not in `make test`) runs the eleven mechanical
   `/post-branch` checks — queue items the branch closed, handoff claims, undocumented new
   files/modules/targets, negative claims, stale doc indexes, MD018 headings, the MEMORY.md cap,
-  the handoff stamp, and **dead cross-document section anchors** (`stale-anchors`).
+  the handoff's size against `HANDOFF_MAX_LINES`, and **dead cross-document section anchors**
+  (`stale-anchors`).
   They were **16 shell blocks inside `post-branch/SKILL.md`** until 2026-08-18, i.e. a check that
   only ran when a session remembered to copy it. **A skill that answers each new defect with more
   prose accumulates defects**: two of these had shipped broken, and the fix in both cases was to
   make them code with a positive control (`tests/test_post_branch_checks.py`).
+  ⚠ **`handoff-size` used to compare the file to a `Line count:` stamp the file carried about
+  itself** — a figure whose only consumer was the check that verified it, maintained by a
+  read / `wc -l` / edit / re-read cycle every run, and the leg returned no finding when the stamp
+  was absent, so dropping the stamp alone would have left it **vacuously green forever**. Stamp and
+  self-reference are both gone and neither should return; the cap is an external referent. **A
+  measurement can only be wrong if it has something outside itself to be wrong about.**
   ⚠ **`stale-anchors` sweeps the memory tree as well as the repo** — a section number is not a
   symbol, so no symbol-keyed check can see this class, and **2 of the 6 dead citations observed
   when it was built sat in the memory tree**, which no repo-scoped check can reach. Engine and

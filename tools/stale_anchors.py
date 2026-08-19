@@ -68,7 +68,17 @@ _HEAD_TYPED = re.compile(rf"^(step|phase)[ \t]+({_LABEL})\b", re.I)
 #: Tight on purpose: the label must lead and be closed by a separator, so
 #: ``**Fix: stamp last**`` declares nothing. Over-generating here would be a
 #: false NEGATIVE — a dead citation matching a coincidental bold line.
-_HEAD_UNTYPED = re.compile(rf"^§?({_LABEL})[ \t]*[.)—–-]")
+#: ⚠ The `(?!\d)` is load-bearing. Without it a DECIMAL declares a section:
+#: `**4.9 min**` declared `section 4` and `### 12.5 GB` declared `section 12`.
+#: That is not merely a spurious entry — `declared_anchors` disables the
+#: ordered-list fallback the moment ANY declaration exists, so one decimal
+#: anywhere in a file blinded the check to every genuine ordered-list anchor in
+#: it. Both directions were live here: one memory file lost 3 real `step`
+#: anchors (false positives on every citation to them) and another gained a
+#: phantom `section 0` that made a dead citation read as valid (a false
+#: negative). `_TOP_LEVEL_ORDERED` already requires whitespace after the dot, so
+#: it needs no equivalent guard.
+_HEAD_UNTYPED = re.compile(rf"^§?({_LABEL})[ \t]*[.)—–-](?!\d)")
 
 #: Target references this check can resolve to a file on disk.
 _TARGET = re.compile(
@@ -89,6 +99,9 @@ _SENTENCE_BREAK = re.compile(r"[.!?][ \t\n]")
 #: citation of one. Quoting is the one reliable tell. MEMORY.md's own bullet
 #: about this very defect is why the rule exists, and `.claude/context/tools.md`
 #: needed it a second time to document this check without tripping it.
+#: Read by `_quoted_spans`, which pairs an opener with its own closer. Kept a
+#: `str` only as data; nothing does `ch in _QUOTES` any more, because that test
+#: is `True` for the empty string and silently suppressed a whole class.
 _QUOTES = '"\u201c\u201d'
 
 #: Directories whose contents are dated records: a citation there was correct
@@ -166,11 +179,46 @@ def anchor_matches(kind: str, label: str, declared: Iterable[tuple[str, str]]) -
     return False
 
 
+def _quoted_spans(line: str) -> list[tuple[int, int]]:
+    """Half-open ranges covered by a CLOSED quotation on this line.
+
+    An unterminated quotation yields no span, so its contents read as *used*
+    rather than *mentioned*. That direction is deliberate: reporting a citation
+    that turned out to be a mention costs a glance, while suppressing a real one
+    is invisible, and this leg's whole value is catching what nothing else can.
+    """
+    spans: list[tuple[int, int]] = []
+    open_at: int | None = None
+    closer = ""
+    for i, ch in enumerate(line):
+        if open_at is None:
+            if ch == "“":
+                open_at, closer = i, "”"
+            elif ch == '"':
+                open_at, closer = i, '"'
+        elif ch == closer:
+            spans.append((open_at, i))
+            open_at, closer = None, ""
+    return spans
+
+
 def _is_quoted(line: str, begin: int, end: int) -> bool:
-    """Is this anchor wrapped in quotation marks, i.e. mentioned rather than used?"""
-    before = line[begin - 1] if begin else ""
-    after = line[end] if end < len(line) else ""
-    return before in _QUOTES and after in _QUOTES
+    """Is this anchor inside a quotation, i.e. mentioned rather than used?
+
+    ⚠ **Tests the enclosing SPAN, never the two adjacent characters.** The
+    adjacent-character form had one bug in each direction and they were only
+    visible from opposite ends. It missed a quotation wrapping *target plus
+    anchor* as one phrase (`"wifey's /post-branch Step 5c"`), because the
+    character before the anchor is a space -- a false positive, found by
+    triaging findings. And `_QUOTES` is a `str`, so `in` is a substring test and
+    ``"" in _QUOTES`` is `True`: an anchor ending the line short-circuited to
+    "quoted" and was dropped in silence -- a false negative, findable only by
+    reading the code, since by construction it produced nothing to triage. The
+    end-of-line case is not exotic; it is what a quoted phrase looks like when
+    markdown wraps it, i.e. the same construction that produced the false
+    positive. Spans fix both, and drop the character indexing that caused them.
+    """
+    return any(start < begin and end <= stop for start, stop in _quoted_spans(line))
 
 
 def _anchor_after(line: str, start: int) -> tuple[str, str, int] | None:

@@ -11,7 +11,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from tools.post_branch_checks import (
+    HANDOFF_MAX_LINES,
     Runner,
+    _check_handoff_size,
     added_paths,
     bad_atx_lines,
     check_handoff_symbols,
@@ -314,3 +316,39 @@ class TestCheckNegativeClaims:
         )
         assert findings == []
         assert suppressed == 0
+
+
+class TestHandoffSize:
+    """The leg measures the file against an EXTERNAL cap, not against itself.
+
+    It used to compare the handoff to a `Line count:` stamp the handoff carried
+    about itself — a number whose only purpose was to be checked, costing a
+    read / `wc -l` / edit / re-read cycle every run. And the stamp regex missing
+    returned `[]`, so deleting the stamp would have made the leg **vacuously
+    green forever** rather than red. A check that cannot fire is dismissal.
+    """
+
+    def test_oversized_handoff_fires(self) -> None:
+        handoff = "\n".join(f"line {i}" for i in range(HANDOFF_MAX_LINES + 5))
+        found = _check_handoff_size(handoff)
+        assert len(found) == 1
+        assert "prune before adding" in found[0].detail
+
+    def test_handoff_at_the_cap_is_clean(self) -> None:
+        handoff = "\n".join(f"line {i}" for i in range(HANDOFF_MAX_LINES))
+        assert _check_handoff_size(handoff) == []
+
+    def test_absent_handoff_is_silent(self) -> None:
+        assert _check_handoff_size("") == []
+
+    def test_no_stamp_is_required_to_make_it_fire(self) -> None:
+        """The regression control for the vacuous-green defect.
+
+        The old leg keyed off a `Line count:` stamp; text carrying none was
+        unconditionally clean however large it grew. This asserts the opposite.
+        """
+        handoff = "\n".join(
+            "no stamp anywhere here" for _ in range(HANDOFF_MAX_LINES + 1)
+        )
+        assert "Line count:" not in handoff
+        assert _check_handoff_size(handoff) != []
