@@ -149,6 +149,10 @@ class CheckResult:
     name: str
     findings: list[Finding] = field(default_factory=list)
     skipped: str | None = None
+    #: Context a human may want without it counting as something to triage.
+    #: A check that is never clean trains dismissal, so anything the check
+    #: cannot tie to this branch belongs here rather than in ``findings``.
+    note: str | None = None
 
 
 def _run_rc(argv: Sequence[str]) -> int:
@@ -375,23 +379,63 @@ def check_new_targets(diff: str, doc_blob: str) -> list[Finding]:
     return findings
 
 
-def check_negative_claims(runner: Runner) -> list[Finding]:
-    """Docs asserting the absence of something this branch may have added."""
+def check_negative_claims(
+    runner: Runner, diff: str, diff_names: str
+) -> tuple[list[Finding], int]:
+    """Docs asserting the absence of something THIS branch just added.
+
+    Returns ``(findings, suppressed)``. The absence corpus is a property of
+    the tree, not of the branch, so reporting all of it every run made this
+    the one leg that was never clean — and a check that is never clean trains
+    dismissal exactly as a check that is never green stops being read. The
+    scope is now the intersection with the branch, which is what the sentence
+    beside it always claimed; the remainder is counted into a note.
+
+    Scoping is on the claim line's own distinctive tokens against the diff's
+    ADDED lines. Additions only: a branch that REMOVES the named thing makes
+    an absence claim more true, not less.
+
+    ⚠ A claim line with no extractable token cannot be ruled out, so it is
+    reported. This leg fails OPEN on purpose — a miss ships a doc denying
+    something now present, which is the whole harm the check exists to catch.
+    """
+    added = "\n".join(line for line in diff.splitlines() if line.startswith("+"))
+    haystack = added + "\n" + diff_names
     out = runner(["git", "grep", "-nI", "-e", "x", "--", *NEGATIVE_CLAIM_PATHS])
-    findings = []
+    findings: list[Finding] = []
+    suppressed = 0
     for line in out.splitlines():
         parts = line.split(":", 2)
         if len(parts) < 3 or "post-branch" in parts[0]:
             continue
         m = NEGATIVE_CLAIM_RE.search(parts[2])
-        if m:
-            findings.append(
-                Finding("negative-claims", f"{parts[0]}:{parts[1]}: {m.group(0)}")
-            )
-    return findings
+        if not m:
+            continue
+        tokens = extract_tokens(parts[2])
+        hits = sorted(t for t in tokens if t in haystack)
+        if tokens and not hits:
+            suppressed += 1
+            continue
+        why = f" (matched {', '.join(hits[:3])})" if hits else " (no token to scope on)"
+        findings.append(
+            Finding("negative-claims", f"{parts[0]}:{parts[1]}: {m.group(0)}{why}")
+        )
+    return findings, suppressed
 
 
 # ------------------------------------------------------------------ execution
+
+
+def _negative_claims_result(runner: Runner, diff: str, diff_names: str) -> CheckResult:
+    """Wrap the check so the out-of-scope remainder is a note, not a finding."""
+    findings, suppressed = check_negative_claims(runner, diff, diff_names)
+    note = (
+        f"{suppressed} standing absence claim(s) in the tree are unrelated to "
+        "this diff (scoped out, not dismissed)"
+        if suppressed
+        else None
+    )
+    return CheckResult("negative-claims", findings, note=note)
 
 
 def gather(runner: Runner = _run) -> list[CheckResult]:
@@ -422,7 +466,7 @@ def gather(runner: Runner = _run) -> list[CheckResult]:
         CheckResult("new-files", check_new_files(added, doc_blob)),
         CheckResult("new-modules", check_new_modules(added, context_blob)),
         CheckResult("new-targets", check_new_targets(makefile_diff, doc_blob)),
-        CheckResult("negative-claims", check_negative_claims(runner)),
+        _negative_claims_result(runner, diff, diff_names),
         CheckResult("doc-indexes", _check_doc_indexes()),
         CheckResult("md-atx", _check_md_atx(changed_md)),
         CheckResult("memory-cap", _check_memory_cap()),
@@ -550,11 +594,15 @@ def render(results: Sequence[CheckResult]) -> tuple[list[str], int]:
             continue
         if not r.findings:
             out.append(f"  {r.name:<16} clean")
+            if r.note:
+                out.append(f"      note: {r.note}")
             continue
         total += len(r.findings)
         out.append(f"  {r.name:<16} {len(r.findings)} to triage")
         for f in r.findings:
             out.append(f"      {f.detail}")
+        if r.note:
+            out.append(f"      note: {r.note}")
     out += [
         "",
         f"  {total} finding(s). Each is a candidate to DISMISS in seconds, never an",

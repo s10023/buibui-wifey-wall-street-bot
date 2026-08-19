@@ -109,6 +109,10 @@ adding it.
   placeholder, both files 0 bytes.
 - **Renames are not covered.** The checks key on additions; swap in
   `git diff main --diff-filter=R --name-only` and check the new path by hand.
+- **`negative-claims` prints a `note:` line for claims it scoped out.** Those are absence
+  sentences elsewhere in the tree that this diff does not touch — not dismissed, just not
+  yours. A claim it cannot scope (no backticked token) is **reported**, so an odd-looking
+  hit with `(no token to scope on)` means "could not rule this out", not "certainly stale".
 - **`docker-compose.yml` is not covered either.** Check by hand that a new
   daemon got `restart: unless-stopped` and a new one-shot tool got
   `profiles: [tools]`, plus its `docker-up` / `docker-down` lines.
