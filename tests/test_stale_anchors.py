@@ -266,3 +266,32 @@ class TestQuotedSpans:
     def test_spans_are_closed_only(self) -> None:
         assert _quoted_spans('a "b" c') == [(2, 4)]
         assert _quoted_spans('a "b c') == []
+
+
+class TestDecimalIsNotASection:
+    """A decimal number is not a section declaration.
+
+    `**4.9 min**` declared `section 4`. The damage is not the spurious entry:
+    `declared_anchors` disables the ordered-list fallback the moment ANY
+    declaration exists, so one decimal blinded the check to every genuine
+    ordered-list anchor in that file.
+    """
+
+    def test_bold_decimal_declares_nothing(self) -> None:
+        assert declared_anchors("**4.9 min** of runtime\n") == set()
+
+    def test_decimal_heading_declares_nothing(self) -> None:
+        assert declared_anchors("### 12.5 GB of fixtures\n") == set()
+
+    def test_real_numbered_heading_still_declares(self) -> None:
+        """Positive control: the lookahead must not blind the leg."""
+        assert declared_anchors("## 4. Digest rubric\n") == {(UNTYPED, "4")}
+
+    def test_bold_lead_in_substep_survives(self) -> None:
+        """The `7b` form `/ingest-video` uses, which the SoT cites."""
+        assert (UNTYPED, "7b") in declared_anchors("**7b — The board view.** x\n")
+
+    def test_a_decimal_no_longer_blinds_the_ordered_list_fallback(self) -> None:
+        """The whole point: one decimal used to suppress every real anchor."""
+        md = "**4.9 min** to run\n\n1. **Read the banner.**\n2. **Prove it.**\n"
+        assert declared_anchors(md) == {("step", "1"), ("step", "2")}

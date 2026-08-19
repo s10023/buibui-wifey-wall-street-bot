@@ -68,7 +68,17 @@ _HEAD_TYPED = re.compile(rf"^(step|phase)[ \t]+({_LABEL})\b", re.I)
 #: Tight on purpose: the label must lead and be closed by a separator, so
 #: ``**Fix: stamp last**`` declares nothing. Over-generating here would be a
 #: false NEGATIVE — a dead citation matching a coincidental bold line.
-_HEAD_UNTYPED = re.compile(rf"^§?({_LABEL})[ \t]*[.)—–-]")
+#: ⚠ The `(?!\d)` is load-bearing. Without it a DECIMAL declares a section:
+#: `**4.9 min**` declared `section 4` and `### 12.5 GB` declared `section 12`.
+#: That is not merely a spurious entry — `declared_anchors` disables the
+#: ordered-list fallback the moment ANY declaration exists, so one decimal
+#: anywhere in a file blinded the check to every genuine ordered-list anchor in
+#: it. Both directions were live here: one memory file lost 3 real `step`
+#: anchors (false positives on every citation to them) and another gained a
+#: phantom `section 0` that made a dead citation read as valid (a false
+#: negative). `_TOP_LEVEL_ORDERED` already requires whitespace after the dot, so
+#: it needs no equivalent guard.
+_HEAD_UNTYPED = re.compile(rf"^§?({_LABEL})[ \t]*[.)—–-](?!\d)")
 
 #: Target references this check can resolve to a file on disk.
 _TARGET = re.compile(
