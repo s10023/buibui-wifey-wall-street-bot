@@ -124,6 +124,15 @@ never turned into data, which is how a hand-rolled waiter once reported `jobs=0`
 failure to its own exit **2**, so branch on the printed banner, or call
 `poetry run python tools/wait_ci.py --pr <n>` / `--branch main` directly when you need the code.
 
+⚠ **Run `make test`, `make test-regression` and any CI wait in the BACKGROUND** — Bash's
+`run_in_background: true`, then wait for the task notification. A foreground run burns the turn on a
+job that reports nothing until it ends, and `.claude/settings.local.json` allowlists these targets,
+so it draws no permission prompt either. A machine-local `PreToolUse` advisory
+(`.claude/hooks/advise-foreground-run.py`) nudges it; like the other hooks it is gitignored, so
+re-add it after a reclone. It keys on the `run_in_background` **tool parameter** rather than the
+command string — the two runs are byte-identical, so no string match can separate them — and is
+head-anchored so it does not fire on its own documentation. `--selftest` pins both discriminators.
+
 ⚠ **Never write a `pgrep` waiter for a background job — wait for the task notification.**
 `until ! pgrep -f 'pytest tests/'` matches the polling shell's own argv and waits on itself; the
 bracketed fix exits instantly instead, so an empty log reads as "done". If a waiter is unavoidable,
@@ -571,10 +580,10 @@ makes each update O(1) — add one line, roll one out:
 - Current State holds at most 6 bullets. Adding a 7th means first rolling the oldest, verbatim,
   into `memory/project_session_log_<month>.md`. After rolling one, grep the log to confirm it landed.
 - The whole index stays under ~17KB. ⚠ **No hook enforces this.** Column-scanned
-  2026-08-18 across all five settings files (`find ~/.claude ~/.claude-personal .claude
-  -name 'settings*.json'`, then every `hooks` entry): **4 hooks total** —
-  `guard-destructive`, the `gh pr create` advisory, a context-mode cache heal and a budget
-  line — and **none reads a file size**. So "a hook fires at 19.7KB" was false and the cap
+  2026-08-19 across all five settings files (`find ~/.claude ~/.claude-personal .claude
+  -name 'settings*.json'`, then every `hooks` entry): **5 hooks total** —
+  `guard-destructive`, the `gh pr create` advisory, the foreground-run advisory, a
+  context-mode cache heal and a budget line — and **none reads a file size**. So "a hook fires at 19.7KB" was false and the cap
   had **no** enforcement at all. `make post-branch-checks` is the enforcement now
   (`memory-cap`). Re-run that scan before trusting any claim about which hooks exist —
   this one was first filed after checking only two of the five files.
@@ -593,6 +602,11 @@ makes each update O(1) — add one line, roll one out:
 Skills live in `.claude/skills/<name>/SKILL.md`, are invoked with `/skill-name`, and each one's
 description and trigger conditions are already loaded every session. Use them proactively. Only the
 facts that are not derivable from those descriptions live here:
+
+⚠ **`.claude/skills` and `.claude/agents` are TRACKED; hooks and settings are not.** `.gitignore`
+allowlists over `.claude/*`, so each artifact class defaults to ignored until it is named — a
+subagent definition added here is committed and survives a reclone, while a hook silently does not.
+Check `git check-ignore` before assuming which half a new `.claude/` file lands in.
 
 - **Always load `/frontend-design` before any Svelte, CSS or UI change.**
 - **Invoke `/post-branch` before `gh pr create`**, while the branch is still local-only.

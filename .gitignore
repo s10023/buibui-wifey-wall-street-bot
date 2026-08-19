@@ -12,8 +12,11 @@ config/youtube_channels.toml
 # But don't ignore other files in config/
 !config/
 .claude/*
+# Allowlist over .claude/* — every artifact class defaults to IGNORED until it is
+# named here, so a new one dies silently on clone. A directory entry is enough:
+# git descends into a re-included directory, so no per-extension glob is needed.
 !.claude/skills
-!.claude/skills/*.md
+!.claude/agents
 !.claude/context
 !.claude/context/*.md
 .idea/
