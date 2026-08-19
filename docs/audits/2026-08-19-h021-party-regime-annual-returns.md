@@ -60,7 +60,8 @@ Here it did not bind: N2 is if anything *more* permissive than N1 on the one mar
 All six sample sizes and every mean and median land on his table. **One cell does not**, and it is
 the one he leads with: the n=6 bucket is 5 of 6 positive, not 6 of 6. Its years are
 2011 **−0.0000**, 2012 +0.134, 2013 +0.296, 2014 +0.114, 2023 +0.242, 2024 +0.233 — the whole claim
-rests on 2011, a **−0.003%** price year that a total-return series would score positive. Every
+rests on 2011, a **−0.003185%** price year (1257.6400 → 1257.5999) — near enough to zero that a
+dividend-inclusive series would almost certainly flip it positive, **inferred, not measured**: we hold price only. Every
 other `%pos` in his table matches the price series, so the table is not internally consistent about
 which series it is on.
 
@@ -100,8 +101,9 @@ no more years.
 
 - **Nothing about H-001/H-002.** Their primitive is *position* in the 4-year cycle, a different
   variable, and the deep backfill unblocks them rather than answering them.
-- **Nothing on a total-return basis.** We hold price only; a dividend series would move every
-  `%pos` upward and would make the n=6 bucket 6 of 6 — which is the point, not a fix.
+- **Nothing on a total-return basis.** We hold price only. A dividend-inclusive series would move
+  every `%pos` upward and would plausibly make the n=6 bucket 6 of 6 — which is the point rather
+  than a fix, since 6 of 6 is a 26.2% event under the null.
 - **Nothing about the calendar itself**, which is now a reusable, exactly-validated artifact.
 
 Reproduce: `PYTHONPATH=. poetry run python docs/plans/scripts/h021_party_regime_annual_returns.py`

@@ -24,8 +24,10 @@ first.
 | `analytics backfill` | First-time setup, wiped DB, new symbol, new timeframe, filling a known gap |
 | `analytics sync` | Routine top-up (already wired into the live signal daemon) |
 
-`backfill` walks history from `--since` forward, paginating in 1500-candle
-chunks. `sync` reads the latest stored candle per (symbol, tf) and pulls only
+`backfill` walks history from `--since` forward, paging in 5,000-bar chunks
+(`BARS_MAX_LIMIT`) until a short page arrives — so a deep `--since` is served in
+full. ⚠ The "1500-candle" figure that stood here was the parent's Binance limit
+and never applied to yfinance; until 2026-08-19 there was no paging at all. `sync` reads the latest stored candle per (symbol, tf) and pulls only
 what's missing.
 
 ## Most common invocations
