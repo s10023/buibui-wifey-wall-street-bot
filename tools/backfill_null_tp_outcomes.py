@@ -32,6 +32,7 @@ from pathlib import Path
 
 import duckdb
 
+from analytics.backtest.cost_model import CostModel
 from analytics.signal.outcome_backfill import backfill_outcomes
 from analytics.signal.resolvers import _resolve_sl_pct, _resolve_tp_r
 from analytics.signal.scanner import _resolve_outcome_sl_tp
@@ -48,6 +49,8 @@ def reconstruct_null_outcomes(
     tp_r: float,
     min_sl_pct: float,
     strategy_params: dict[str, StrategyOverride] | None,
+    cost_model: CostModel | None = None,
+    fee_pct: float = 0.0,
     apply: bool = False,
     now_ms: int | None = None,
 ) -> dict[str, int]:
@@ -55,6 +58,12 @@ def reconstruct_null_outcomes(
 
     When ``apply`` is True, writes the reconstructed sl_price/tp_price/rr_ratio
     and then runs ``backfill_outcomes`` to score them. Returns a counts dict.
+
+    ``cost_model`` / ``fee_pct`` are threaded through to that resolver for the
+    same reason ``signal_runner`` passes them: this is the SECOND writer of
+    resolved rows, and a second writer on a different cost basis is exactly the
+    boundary the net-of-cost restatement exists to remove. ``main`` reads both
+    from the same config it already loads for the SL/TP reconstruction.
     """
     rows = conn.execute(
         "SELECT signal_id, symbol, tf, strategy, direction, entry_price "
@@ -93,7 +102,10 @@ def reconstruct_null_outcomes(
             updates,
         )
         resolved = backfill_outcomes(
-            conn, now_ms=now_ms if now_ms is not None else int(time.time() * 1000)
+            conn,
+            now_ms=now_ms if now_ms is not None else int(time.time() * 1000),
+            cost_model=cost_model,
+            fee_pct=fee_pct,
         )
         for k, v in resolved.items():
             counts[f"resolved_{k}"] = v
@@ -128,6 +140,8 @@ def main() -> None:
         tp_r=cfg.tp_r,
         min_sl_pct=cfg.min_sl_pct,
         strategy_params=cfg.strategy_params or None,
+        cost_model=cfg.backtest.cost_model,
+        fee_pct=cfg.backtest.fee_pct,
         apply=args.apply,
     )
 

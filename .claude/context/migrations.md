@@ -1,6 +1,6 @@
 # `migrations/` — hand-run one-shot DB migrations
 
-Three scripts, all already applied. **Routine schema changes do NOT go here** — they belong in
+Four scripts, all already applied. **Routine schema changes do NOT go here** — they belong in
 `analytics/store/schema.py`'s migration list, which runs automatically on connect. This directory
 is only for changes that list cannot express: a column's *type* changing, or existing row *values*
 being rewritten.
@@ -9,22 +9,22 @@ being rewritten.
 CI. Each is invoked by hand, once, and is not idempotent in the sense of being safe to re-reason
 about — read the docstring before touching either.
 
-## The one invariant ALL THREE scripts enforce
+## The one invariant ALL FOUR scripts enforce
 
 **A `.bak` must exist alongside the DB or the script refuses to start**
-(`001:45-49`, `002:63-65`, `003:67-69`). Note what this is and is not: `analytics.db.bak` is an
+(`001:45-49`, `002:63-65`, `003:73-75`, `004:119-121`). Note what this is and is not: `analytics.db.bak` is an
 *undated, unverified byte copy*, not a backup. `make backup` is the real snapshot. Create the
 `.bak` anyway — the guard is what stands between a bad migration and an unrecoverable DB.
 
 ## `run_id` rewriting is a property of the TABLE, not of migrations
 
-**001 and 002 rewrite `run_id` and cascade it to `backtest_trades`; 003 does neither.** `run_id`
+**001 and 002 rewrite `run_id` and cascade it to `backtest_trades`; 003 and 004 do neither.** `run_id`
 is a hash over `backtest_runs`' parameters, so changing any hashed column changes the row's
 identity — which is why neither of those could use a plain `UPDATE`: flipping the value in place
 would leave the old row behind and manufacture a fake before/after pair. 002 additionally
 **checks for run_id collisions and aborts** rather than silently merging two measurements.
 
-003 targets `signal_alert_outcomes`, whose key is
+003 and 004 target `signal_alert_outcomes`, whose key is
 `{symbol}-{tf}-{strategy}-{open_time}-{direction}` — pure identity, with no measured value in it.
 So an in-place `UPDATE` is correct there and no cascade exists. **Check what the target table's
 key is made of before assuming either pattern applies**; the answer, not the precedent, decides.
@@ -87,6 +87,43 @@ rows never diverge. **Idempotent** — it compares stored against derived, so a 
 **Run:** `python migrations/003_outcome_r_implied_tp.py [--db PATH] [--apply]` — **dry-run by
 default**, and the dry run opens the DB `read_only` so it cannot write or hold a write lock.
 Unlike 001/002 this one has tests: `tests/test_migration_003_implied_tp.py`.
+
+## 004_live_ledger_net_of_cost.py — the ledger was GROSS, the backtest was NET
+
+2026-08-19. `run_backtest` charged its trades from Phase 0.4 onward and the outcome resolver
+charged nothing, so `outcome_r` was a gross figure in the same units as a net one — biasing every
+backtest-vs-live comparison **in favour of live**, the opposite direction to the one a reader
+assumes. **All 292 resolved rows** restated; pooled `avg_r` **−0.2050 → −0.2192**, mean drag
+**0.0141R** (range 0.0015–0.0489), total −4.1298R. All 292 priced from a real cost context, **0**
+widest-bucket fallbacks, **0** unpriceable. The 32 open rows are untouched by design — they are
+charged when they resolve.
+
+**Adds a column, and the migration adds it itself.** `outcome_cost_r` is in `schema.py` too, but a
+DB not opened by the app since that change would not have it, so the migration runs its own
+`ALTER`. *A migration that only works after something else has run is a migration that fails in the
+field.*
+
+**No era cutoff, and for a stronger reason than 003's.** 003 had to *establish from the data* that
+there was one era; here it is structural — the resolver charged zero from the first row to the
+last. The guard is `outcome_cost_r IS NULL`, i.e. **state rather than a date**, which makes it
+idempotent by construction and means a row written by the fixed resolver is never re-charged.
+⚠ Compounding here would be **undetectable**, because gross is not stored independently — it is
+only recoverable as `outcome_r + outcome_cost_r`, which a second charge would also shift. That is
+why `tests/test_migration_004_net_of_cost.py` pins the second run as a no-op.
+
+**NULL is not 0.0.** A row without geometry cannot be priced and stays NULL; stamping `0.0` would
+claim a measured zero *and* hide the row from any later run.
+
+**Refuses when the two live configs disagree on a cost basis**, rather than picking one:
+`signal_alert_outcomes` records no config provenance, so rows are not attributable. They agree
+today because `[backtest.cost_model]` lives in the shared base, and the test asserts it.
+
+**Run:** `python migrations/004_live_ledger_net_of_cost.py [--db PATH] [--apply]` — **dry-run by
+default**, opening the DB `read_only` so it cannot write or hold a write lock. Tested, like 003.
+
+⚠ **What it does NOT fix:** a gap *through* the stop still books −1.0R, and `engine.py:1116` does
+the same, so that absence is **shared** and does not bias the comparison — but it is ~7× larger
+(−0.10R/row vs −0.014R). Audit: `docs/audits/2026-08-19-live-ledger-net-of-cost.md`.
 
 ## The transferable rule
 

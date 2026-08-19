@@ -12,23 +12,60 @@ mirroring the backtest engine semantics in `analytics/backtest/engine.py`:
 
 Same-bar TP+SL resolves to "loss" (conservative, matches the engine).
 
-Outcomes:
-  - "win"     — TP hit first. outcome_r = +the R implied by `tp_price`
+Outcomes (every resolved `outcome_r` below is NET of costs — see next block):
+  - "win"     — TP hit first. gross = +the R implied by `tp_price`
                 (`implied_tp_r`), NOT the declared `rr_ratio`.
-  - "loss"    — SL hit first or same-bar tie. outcome_r = -1.0
+  - "loss"    — SL hit first or same-bar tie. gross = -1.0
   - "expired" — exceeded `max_hold_bars` without hitting either.
-                outcome_r = mark-to-market at the last in-window bar.
+                gross = mark-to-market at the last in-window bar.
   - (NULL)    — still within hold window; retry on the next cycle.
+
+COSTS. `outcome_r` is `gross_r - cost_r` and `outcome_cost_r` stores the drag,
+so the gross figure stays recoverable as `outcome_r + outcome_cost_r`. Charging
+here is what makes the live ledger comparable to a backtest at all: `run_backtest`
+has always charged its trades, so an uncharged ledger biased every
+backtest-vs-live comparison IN FAVOUR OF LIVE — the opposite of the direction one
+assumes when a live book underperforms its backtest.
+
+`live_cost_r` mirrors `engine.Trade.pnl_r`'s two branches EXACTLY, and mirroring
+rather than inventing is the point: a third cost basis would not have fixed the
+comparability gap, it would have added one. So when a `CostModel` is set it
+prices the decomposed equity stack (spread + impact + borrow + commission) and
+`fee_pct` is ignored, precisely as `pnl_r` does; otherwise the flat per-leg
+`fee_pct` path applies.
+
+With NEITHER configured the row is left UNPRICED: `outcome_r` keeps its gross
+value and `outcome_cost_r` stays NULL. NULL and 0.0 are kept distinct on purpose —
+0.0 would claim "priced, and it cost nothing", and it would also hide the row from
+migration 004, whose entire guard is `outcome_cost_r IS NULL`. That default is
+also what keeps every pre-existing test honest.
+
+⚠ **Cost was an ASYMMETRY between the books; it is not the largest error in
+either.** A gap THROUGH the stop still books exactly -1.0R here, because the
+resolver reads levels rather than fills — and `engine.py` does the same thing
+(`trade.exit_price = sl_price`), so that absence is SHARED and does NOT bias the
+comparison the way uncharged costs did. It does mean both books overstate: on the
+2026-08-19 ledger 21.1% of losses (46 of 218) gapped through their stop, worth
+about -0.10R per resolved row against this cost charge's -0.014R, i.e. ~7x
+larger. Charging costs makes the two books comparable; it does not make either
+of them right, and only the first of those is claimed here.
 
 Pure function over conn + now_ms + config dict; no clock or network I/O.
 """
 
 import logging
+from dataclasses import dataclass
 
 import duckdb
 import numpy as np
 import pandas as pd
 
+from analytics.backtest.cost_model import (
+    CostContext,
+    CostModel,
+    bars_per_day_for_tf,
+    build_cost_context,
+)
 from analytics.data_store import get_ohlcv
 from analytics.signal._common import parse_timeframe_secs
 
@@ -143,6 +180,106 @@ def implied_tp_r(
     return implied if implied > 0.0 else rr_ratio
 
 
+@dataclass
+class _LiveTrade:
+    """A resolved live alert viewed as `cost_model.TradeLike`.
+
+    NOT frozen, and that is forced rather than chosen: `TradeLike` is a plain
+    Protocol, so its members are settable variables and a frozen dataclass's
+    read-only attributes do not satisfy it. Each instance is built, priced and
+    discarded inside one loop iteration, so nothing shares it.
+
+    The cost model is engine-free by design — it consumes a structural protocol
+    rather than `engine.Trade` — so the live ledger can be priced by the SAME
+    object the backtest uses instead of by a re-implementation. That is the
+    whole reason this adapter is five fields and no logic.
+    """
+
+    direction: str
+    entry_price: float
+    sl_price: float
+    entry_time: int
+    exit_time: int | None
+
+
+def cost_window_bars(cost_model: CostModel, timeframe: str) -> int:
+    """Trailing bars needed to estimate ADV/sigma for `timeframe`.
+
+    Mirrors the engine's own window derivation so the live ledger and the
+    backtest measure liquidity over the same span. Read the count as BARS: on
+    RTH `4h` a trading day holds TWO bars, not six, so a 20-day ADV window is
+    40 bars here and 20 on `1d`.
+    """
+    return max(2, round(cost_model.adv_window_days * bars_per_day_for_tf(timeframe)))
+
+
+def cost_context_at(
+    bars: pd.DataFrame, candle_ts_ms: int, timeframe: str, cost_model: CostModel
+) -> CostContext | None:
+    """Causal ADV/sigma context ending at the signal bar, or None if unreachable.
+
+    `bars` must extend BACK from the signal bar by at least `cost_window_bars`;
+    the caller widens its fetch for exactly this reason. Returning None when the
+    signal bar is not in `bars` is deliberate and conservative — `cost_breakdown`
+    then falls back to the widest spread bucket and zero impact, i.e. it
+    OVERCHARGES rather than quietly charging nothing. A missing context must
+    never be able to look like a free trade.
+    """
+    open_times = bars["open_time"].to_numpy()
+    idxs = np.nonzero(open_times == candle_ts_ms)[0]
+    if not len(idxs):
+        return None
+    return build_cost_context(
+        bars["close"].to_numpy(dtype=float),
+        bars["volume"].to_numpy(dtype=float),
+        int(idxs[0]),
+        bars_per_day_for_tf(timeframe),
+        cost_window_bars(cost_model, timeframe),
+    )
+
+
+def live_cost_r(
+    *,
+    direction: str,
+    entry_price: float,
+    sl_price: float,
+    entry_time_ms: int,
+    exit_time_ms: int | None,
+    cost_model: CostModel | None = None,
+    fee_pct: float = 0.0,
+    ctx: CostContext | None = None,
+) -> float:
+    """Cost of one resolved live alert, in R. Non-negative; 0.0 when unpriced.
+
+    THE single definition of live cost, shared by `backfill_outcomes` (which
+    charges it at resolution time) and `migrations/004_live_ledger_net_of_cost.py`
+    (which charges it retroactively). Sharing it is not tidiness — the two
+    surfaces must agree exactly or the restatement creates the very basis
+    boundary it exists to remove, which is how the parent's own port ended up
+    with two permanent bases.
+
+    Branches mirror `engine.Trade.pnl_r`: a `CostModel` prices the decomposed
+    stack and IGNORES `fee_pct`; otherwise the flat per-leg `fee_pct` applies.
+    Zero risk returns 0.0, matching the model's own guard — cost in R is
+    undefined when nothing is risked.
+    """
+    risk = abs(entry_price - sl_price)
+    if risk <= 0.0:
+        return 0.0
+    if cost_model is not None:
+        return cost_model.cost_r(
+            _LiveTrade(
+                direction=direction,
+                entry_price=entry_price,
+                sl_price=sl_price,
+                entry_time=entry_time_ms,
+                exit_time=exit_time_ms,
+            ),
+            ctx,
+        )
+    return 2.0 * fee_pct * entry_price / risk
+
+
 def _scan_forward(
     bars: pd.DataFrame,
     candle_ts_ms: int,
@@ -207,6 +344,8 @@ def backfill_outcomes(
     conn: duckdb.DuckDBPyConnection,
     now_ms: int,
     max_hold_bars_by_tf: dict[str, int] | None = None,
+    cost_model: CostModel | None = None,
+    fee_pct: float = 0.0,
 ) -> dict[str, int]:
     """Resolve unresolved signal_alert_outcomes rows by walking OHLCV forward.
 
@@ -221,6 +360,13 @@ def backfill_outcomes(
 
     Only rows with both `tp_price` and `sl_price` set are eligible — that
     matches the P1 fire-time persistence rule.
+
+    `cost_model` / `fee_pct` come from the live `[backtest]` config so the ledger
+    is charged exactly what a backtest of the same signal would be (see
+    `live_cost_r`). BOTH DEFAULT TO NO COST, which reproduces the pre-2026-08-19
+    gross behaviour — the default is deliberate, because a resolver that invents
+    a cost basis when its caller supplies none would put a second basis in the
+    same column. `signal_runner` passes both from `BacktestFilterConfig`.
     """
     hold_map = {**DEFAULT_MAX_HOLD_BARS, **(max_hold_bars_by_tf or {})}
 
@@ -286,9 +432,25 @@ def backfill_outcomes(
         # have resolved off the forming bar simply stay NULL and resolve on the
         # next cycle — which is what "open" already means here.
         last_closed_open_ms = now_ms - tf_secs * 1000
-        bars = get_ohlcv(
-            conn, symbol, tf, earliest_candle + tf_secs * 1000, last_closed_open_ms
+        walk_start_ms = earliest_candle + tf_secs * 1000
+        # A cost model needs history the forward walk never looks at: ADV and
+        # sigma are TRAILING statistics ending at the signal bar. So widen the
+        # fetch backwards, then slice `bars` back to exactly the old frame.
+        # The slice is the load-bearing half — without it a wider fetch would
+        # make `bars.empty` false for a signal with no bars after it, silently
+        # moving those rows out of `no_ohlcv` and into `open`. Widening a fetch
+        # must not be able to change what a count means.
+        fetch_start_ms = walk_start_ms
+        if cost_model is not None:
+            fetch_start_ms = (
+                earliest_candle - cost_window_bars(cost_model, tf) * tf_secs * 1000
+            )
+        bars_with_history = get_ohlcv(
+            conn, symbol, tf, fetch_start_ms, last_closed_open_ms
         )
+        bars = bars_with_history[
+            bars_with_history["open_time"] >= walk_start_ms
+        ].reset_index(drop=True)
         if bars.empty:
             counts["no_ohlcv"] += len(tf_rows)
             continue
@@ -306,7 +468,13 @@ def backfill_outcomes(
             counts["no_hold_cap"] += len(tf_rows)
             continue
 
-        updates: list[tuple[str, float, int, str]] = []
+        updates: list[tuple[str, float, float | None, int, str]] = []
+        # NULL vs 0.0 in `outcome_cost_r` is a real distinction, not a nicety:
+        # NULL means UNPRICED (the caller configured no cost basis) while 0.0
+        # would mean "priced, and it cost nothing". Collapsing them would let a
+        # row nobody gave a basis for read as a measured zero, and would hide it
+        # from migration 004, whose entire guard is `outcome_cost_r IS NULL`.
+        priced = cost_model is not None or fee_pct > 0.0
 
         for (
             signal_id,
@@ -334,12 +502,44 @@ def backfill_outcomes(
                 continue
             counts[outcome] += 1
             assert outcome_r is not None and filled_at is not None
-            updates.append((outcome, outcome_r, filled_at, str(signal_id)))
+            # Entry is taken when the signal bar CLOSES, which is the next bar's
+            # open — the same instant the engine enters. Passing candle_ts_ms
+            # itself would date the entry one bar early and understate borrow.
+            cost_r = (
+                live_cost_r(
+                    direction=str(direction),
+                    entry_price=float(entry_price),
+                    sl_price=float(sl_price),
+                    entry_time_ms=int(candle_ts_ms) + tf_secs * 1000,
+                    exit_time_ms=filled_at,
+                    cost_model=cost_model,
+                    fee_pct=fee_pct,
+                    ctx=(
+                        cost_context_at(
+                            bars_with_history, int(candle_ts_ms), tf, cost_model
+                        )
+                        if cost_model is not None
+                        else None
+                    ),
+                )
+                if priced
+                else None
+            )
+            updates.append(
+                (
+                    outcome,
+                    outcome_r - cost_r if cost_r is not None else outcome_r,
+                    cost_r,
+                    filled_at,
+                    str(signal_id),
+                )
+            )
 
         if updates:
             conn.executemany(
                 "UPDATE signal_alert_outcomes "
-                "SET outcome = ?, outcome_r = ?, outcome_filled_at_ms = ? "
+                "SET outcome = ?, outcome_r = ?, outcome_cost_r = ?, "
+                "outcome_filled_at_ms = ? "
                 "WHERE signal_id = ?",
                 updates,
             )

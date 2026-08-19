@@ -258,7 +258,7 @@ entries that have no audit of their own.
 | `scripts/` | Three maintenance one-shots, distinct from `tools/`: they act on the DB or the test fixtures rather than producing research output. `db_prune_backtests.py` (`make db-prune-backtests`), `extract_regression_fixture.py` (called by `make regression-update`, not run directly), `profile_suite.py` (no target; suite profiling, see memory `project_suite_runtime_profile.md`) | — |
 | `trade/` | Empty placeholder — both files are 0 bytes. The parent's Binance Futures opener was dropped at fork time and nothing replaced it; `make wifey-open-trades` now fails loudly. An order layer would land in Phase B | — |
 | `tests/` | pytest suite; tests import from lib modules and pass mock dependencies directly | — |
-| `migrations/` | One-shot migration scripts, run by hand. Both refuse to start without a `.bak`, and both rewrite `run_id` and cascade to `backtest_trades`. Routine schema changes go through `analytics/store/schema.py`'s migration list | `context/migrations.md` |
+| `migrations/` | **Four** one-shot migration scripts, run by hand. All four refuse to start without a `.bak`; only **001/002** rewrite `run_id` and cascade to `backtest_trades` — 003/004 target `signal_alert_outcomes`, whose key carries no measured value, so an in-place `UPDATE` is correct there. Check what the target table's key is made of rather than following the precedent. Routine schema changes go through `analytics/store/schema.py`'s migration list | `context/migrations.md` |
 | `config/` | `stocks.json` (gitignored 13-symbol live watchlist), `universe.json` (committed 505-member research universe), `strategy_params.toml` (shared base inherited via `extends`), `youtube_channels.toml` (gitignored; `.example` committed) | `context/config.md` |
 | `deploy/` | `backup-analytics.sh` (local leg), `backup-offsite.sh` (rclone leg), `notify-failure.sh`, and opt-in `wifey-*` systemd user units. Nothing installs them; there is still no wifey daemon | `deploy/README.md` |
 
@@ -391,8 +391,24 @@ for it. Narrative: `context/footguns.md`.
 `tp_price` is the effective one, so one shared `implied_tp_r` in
 `analytics/signal/outcome_backfill.py` serves the resolver, the scanner at fire time, and
 `analytics/exits/audit.py`. A column recording what was configured is not a record of what happened.
-**Pooled live avg_r is −0.1752R; any doc quoting −0.1247R predates the fix.**
+**Pooled live avg_r is −0.2192R net** (n=292, 2026-08-19); −0.1752R was gross at n=267 and
+−0.1247R predates the `implied_tp_r` fix. ⚠ **Two things moved it, so do not attribute the whole
+gap to either** — the ledger grew (267→292 resolved) *and* the basis changed (see the next entry).
 Audit: `docs/audits/2026-08-14-exit-policy-ab-v1.md`.
+
+**The live ledger is NET of costs and the backtest always was.** `outcome_r` is
+`gross - outcome_cost_r`, so gross stays recoverable as the sum; `outcome_cost_r IS NULL` means
+UNPRICED, never "cost nothing". One `live_cost_r` in `analytics/signal/outcome_backfill.py` serves
+the resolver and migration 004, and it **mirrors `engine.Trade.pnl_r` exactly** — a `CostModel`
+replaces `fee_pct` rather than adding to it. ⚠ **Do not port the parent's flat-fee `net_R`
+resolver**: wifey's engine ignores `fee_pct` whenever a `CostModel` is set, and the shared base
+sets one, so a verbatim port prices live on a basis the backtest does not use — a third basis does
+not fix a comparability gap, it adds one. Any resolver change must pass `cost_model`/`fee_pct`
+through, or the ledger silently reverts to gross. ⚠ **Costs are NOT the largest error in the
+ledger**: a gap through the stop books a clean −1.0R and `engine.py:1116` does the same, so that
+absence is SHARED (it does not bias live vs backtest) and is worth ~−0.10R/row against this
+charge's −0.014R. Changing it moves both books and is a user call.
+Audit: `docs/audits/2026-08-19-live-ledger-net-of-cost.md`.
 
 **A bar count is not a calendar span on an RTH tape.** Check any expression converting bars to time
 or time to bars against `4h` RTH = 2 bars/day. Fetch forward windows to `get_latest_open_time`

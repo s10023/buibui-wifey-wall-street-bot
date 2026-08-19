@@ -27,7 +27,10 @@ docs/plans/
 # DuckDB data files
 *.db
 *.db.wal
-*.db.bak
+# Glob, not the bare name: a DATED rollback copy (analytics.db.bak.2026-08-14,
+# kept when migration 004 needed a fresh .bak) is 155MB and `*.db.bak` alone
+# does not match it, so it sat untracked where `git add -A` would commit it.
+*.db.bak*
 
 # Signal daemon runtime state
 signal_state.json

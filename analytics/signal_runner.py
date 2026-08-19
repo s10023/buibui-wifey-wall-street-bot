@@ -353,8 +353,20 @@ def run_signal_watch(
                 # T2 P2: walk OHLCV forward to resolve outstanding outcome rows.
                 # Reuses the same write conn; cheap (single SELECT + per-TF
                 # OHLCV reads). Failure is logged but never blocks the cycle.
+                #
+                # The cost args are what make the ledger comparable to a
+                # backtest: they come from the SAME `[backtest]` block the gate
+                # reads, so a live alert is charged what a backtest of it would
+                # be. Omitting them is not a neutral default — it silently
+                # returns the ledger to the gross basis that flattered every
+                # live-vs-backtest comparison before 2026-08-19.
                 try:
-                    backfill_outcomes(conn, now_ms=now_ms)
+                    backfill_outcomes(
+                        conn,
+                        now_ms=now_ms,
+                        cost_model=backtest_cfg.cost_model if backtest_cfg else None,
+                        fee_pct=backtest_cfg.fee_pct if backtest_cfg else 0.0,
+                    )
                 except Exception:
                     logger.exception("Outcome backfill failed this cycle")
             # Connection is now closed — web API can read the DB during the sleep.

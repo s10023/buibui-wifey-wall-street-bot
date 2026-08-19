@@ -12,6 +12,7 @@ import duckdb
 import pandas as pd
 import pytest
 
+from analytics.backtest.cost_model import CostModel
 from analytics.signal.outcome_backfill import (
     DEFAULT_MAX_HOLD_BARS,
     _resolve_max_hold,
@@ -37,7 +38,7 @@ def _insert_ohlcv(
                 "high": r["high"],
                 "low": r["low"],
                 "close": r["close"],
-                "volume": 1.0,
+                "volume": r.get("volume", 1.0),
             }
             for r in rows
         ]
@@ -84,6 +85,16 @@ def _fetch_one(conn: duckdb.DuckDBPyConnection, signal_id: str) -> tuple:
     row = conn.execute(
         "SELECT outcome, outcome_r, outcome_filled_at_ms "
         "FROM signal_alert_outcomes WHERE signal_id = ?",
+        [signal_id],
+    ).fetchone()
+    assert row is not None
+    return row
+
+
+def _fetch_cost(conn: duckdb.DuckDBPyConnection, signal_id: str) -> tuple:
+    row = conn.execute(
+        "SELECT outcome_r, outcome_cost_r FROM signal_alert_outcomes "
+        "WHERE signal_id = ?",
         [signal_id],
     ).fetchone()
     assert row is not None
@@ -671,3 +682,171 @@ class TestMaxHoldCalibrationCoverage:
         assert _resolve_max_hold("30m", DEFAULT_MAX_HOLD_BARS) is None
         # The old fallback would have returned this instead of None.
         assert max(DEFAULT_MAX_HOLD_BARS.values()) == 96
+
+
+class TestNetOfCostResolution:
+    """`outcome_r` is charged what a backtest of the same signal would be charged.
+
+    The ledger was gross while `run_backtest` was net, so every backtest-vs-live
+    comparison was biased IN FAVOUR OF LIVE. These pin the charge itself, the
+    NULL-vs-0.0 distinction that keeps "unpriced" separable from "cost nothing",
+    and the counting invariant that the widened OHLCV fetch must not disturb.
+
+    Cost here is spread-only by construction — `impact_coef`, `borrow_rate_annual`
+    and `commission_bps` are all zeroed — so every expected number below is
+    `2 * half_spread * entry / risk` and is exact rather than approximate.
+    """
+
+    # entry 100 / sl 95 -> risk 5 -> notional_to_r 20.
+    # Bucket 0 (20bps): 2 * 0.0020 * 20 = 0.08R. Bucket 3 (1bp): 2 * 0.0001 * 20
+    # = 0.004R. A default-volume bar (1.0) prices at ~$700 ADV -> bucket 0.
+    SPREAD_ONLY = CostModel(impact_coef=0.0, borrow_rate_annual=0.0, commission_bps=0.0)
+    ILLIQUID_R = 0.08
+    LIQUID_R = 0.004
+
+    def _win_conn(
+        self, *, signal_bar: bool = True, volume: float = 1.0
+    ) -> duckdb.DuckDBPyConnection:
+        """A long that wins at +2.0R gross, optionally with its signal bar present.
+
+        Omitting the signal bar is how a missing cost context is produced: the
+        forward walk is unaffected (it only reads bars AFTER the signal), but
+        `cost_context_at` has no bar to end its trailing window on.
+        """
+        conn = duckdb.connect(":memory:")
+        init_schema(conn)
+        _insert_signal(conn, candle_ts_ms=0, entry=100.0, sl=95.0, tp=110.0, rr=2.0)
+        bars: list[dict[str, float | int]] = []
+        if signal_bar:
+            bars.append(
+                {
+                    "open_time": 0,
+                    "high": 100.5,
+                    "low": 99.5,
+                    "close": 100.0,
+                    "volume": volume,
+                }
+            )
+        bars += [
+            {"open_time": _HOUR, "high": 102.0, "low": 99.0, "close": 101.0},
+            {"open_time": 2 * _HOUR, "high": 111.0, "low": 100.0, "close": 110.5},
+        ]
+        _insert_ohlcv(conn, "BTCUSDT", "1h", bars)
+        return conn
+
+    def test_unpriced_run_leaves_gross_r_and_a_null_cost(self) -> None:
+        """No cost basis configured -> gross R, and NULL rather than 0.0.
+
+        Paired with `test_cost_model_charges_and_records_the_drag` below, which
+        is its positive control: without that pairing this assertion is satisfied
+        both by "costs were correctly not charged" and by "costs never work".
+        """
+        conn = self._win_conn()
+        counts = backfill_outcomes(conn, now_ms=3 * _HOUR)
+        assert counts["win"] == 1
+        outcome_r, cost_r = _fetch_cost(conn, "sig1")
+        assert outcome_r == pytest.approx(2.0)
+        assert cost_r is None
+
+    def test_cost_model_charges_and_records_the_drag(self) -> None:
+        """Positive control for the test above, and the round-trip to gross."""
+        conn = self._win_conn()
+        counts = backfill_outcomes(conn, now_ms=3 * _HOUR, cost_model=self.SPREAD_ONLY)
+        assert counts["win"] == 1
+        outcome_r, cost_r = _fetch_cost(conn, "sig1")
+        assert cost_r == pytest.approx(self.ILLIQUID_R)
+        assert outcome_r == pytest.approx(2.0 - self.ILLIQUID_R)
+        # Gross stays recoverable — that is what the second column buys.
+        assert outcome_r + cost_r == pytest.approx(2.0)
+
+    def test_a_loss_is_charged_too(self) -> None:
+        """A stop-out books -1.0 MINUS costs, not a flat -1.0.
+
+        All 218 losses in the live ledger were exactly -1.0000R before this,
+        which is what made the gross basis easy to miss: the column looked
+        canonical rather than uncharged.
+        """
+        conn = duckdb.connect(":memory:")
+        init_schema(conn)
+        _insert_signal(conn, candle_ts_ms=0, entry=100.0, sl=95.0, tp=110.0)
+        _insert_ohlcv(
+            conn,
+            "BTCUSDT",
+            "1h",
+            [
+                {"open_time": 0, "high": 100.5, "low": 99.5, "close": 100.0},
+                {"open_time": _HOUR, "high": 101.0, "low": 94.0, "close": 96.0},
+            ],
+        )
+        counts = backfill_outcomes(conn, now_ms=2 * _HOUR, cost_model=self.SPREAD_ONLY)
+        assert counts["loss"] == 1
+        outcome_r, cost_r = _fetch_cost(conn, "sig1")
+        assert cost_r == pytest.approx(self.ILLIQUID_R)
+        assert outcome_r == pytest.approx(-1.0 - self.ILLIQUID_R)
+
+    def test_flat_fee_path_matches_the_engine_formula(self) -> None:
+        """No cost model -> `2 * fee_pct * entry / risk`, exactly as `pnl_r`."""
+        conn = self._win_conn()
+        backfill_outcomes(conn, now_ms=3 * _HOUR, fee_pct=0.001)
+        outcome_r, cost_r = _fetch_cost(conn, "sig1")
+        expected = 2.0 * 0.001 * 100.0 / 5.0
+        assert cost_r == pytest.approx(expected)
+        assert outcome_r == pytest.approx(2.0 - expected)
+
+    def test_a_cost_model_ignores_fee_pct(self) -> None:
+        """Mirrors `Trade.pnl_r`: the model REPLACES the flat fee, never adds.
+
+        Summing the two would be the easy misreading, and it would silently
+        double-charge every live row the moment a config set both.
+        """
+        conn = self._win_conn()
+        backfill_outcomes(
+            conn, now_ms=3 * _HOUR, cost_model=self.SPREAD_ONLY, fee_pct=0.001
+        )
+        _outcome_r, cost_r = _fetch_cost(conn, "sig1")
+        assert cost_r == pytest.approx(self.ILLIQUID_R)
+
+    def test_a_liquid_signal_bar_is_charged_less_than_a_missing_one(self) -> None:
+        """A missing cost context OVERCHARGES; it must never charge nothing.
+
+        Same fixture twice, differing only in whether the signal bar is in
+        OHLCV. The liquid reading is the 1bp bucket; the fallback is the widest.
+        A regression that returned a free trade on a missing context would pass
+        an `is not None` assertion, so both magnitudes are pinned.
+        """
+        liquid = self._win_conn(volume=1e7)
+        backfill_outcomes(liquid, now_ms=3 * _HOUR, cost_model=self.SPREAD_ONLY)
+        _r, liquid_cost = _fetch_cost(liquid, "sig1")
+
+        missing = self._win_conn(signal_bar=False, volume=1e7)
+        backfill_outcomes(missing, now_ms=3 * _HOUR, cost_model=self.SPREAD_ONLY)
+        _r2, fallback_cost = _fetch_cost(missing, "sig1")
+
+        assert liquid_cost == pytest.approx(self.LIQUID_R)
+        assert fallback_cost == pytest.approx(self.ILLIQUID_R)
+        assert fallback_cost > liquid_cost
+
+    def test_widening_the_fetch_does_not_reclassify_no_ohlcv(self) -> None:
+        """A cost model reaches BACKWARDS; `no_ohlcv` must still mean the same.
+
+        The fetch is widened by the trailing ADV window, so a signal whose only
+        bars sit BEFORE it now returns a non-empty frame. Without the slice back
+        to the post-signal frame, `bars.empty` would be False and these rows
+        would silently move from `no_ohlcv` into `open` — a count changing
+        meaning because an unrelated feature was switched on.
+        """
+        conn = duckdb.connect(":memory:")
+        init_schema(conn)
+        _insert_signal(conn, candle_ts_ms=10 * _HOUR, entry=100.0, sl=95.0, tp=110.0)
+        _insert_ohlcv(
+            conn,
+            "BTCUSDT",
+            "1h",
+            [
+                {"open_time": 8 * _HOUR, "high": 101.0, "low": 99.0, "close": 100.0},
+                {"open_time": 9 * _HOUR, "high": 101.0, "low": 99.0, "close": 100.0},
+            ],
+        )
+        counts = backfill_outcomes(conn, now_ms=20 * _HOUR, cost_model=self.SPREAD_ONLY)
+        assert counts["no_ohlcv"] == 1
+        assert counts["open"] == 0
