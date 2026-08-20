@@ -175,3 +175,13 @@ architecture       — <finding> | clean
 
 End by listing every ❌ with a concrete next step, and update MEMORY.md's Current
 State with the date and any open findings.
+
+**Then stamp the run — this is the final step:**
+
+```bash
+make cadence-stamp TASK=sanity-check
+```
+
+`make cadence-check` reports this skill as OVERDUE until you do, and a **missing mark reads
+as overdue on purpose** — so skipping the stamp is indistinguishable from skipping the run,
+which is the intended direction. Stamp only a run that actually happened.
