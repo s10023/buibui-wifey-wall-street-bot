@@ -318,6 +318,64 @@ action clears it — and the reason each rejected candidate fails one (`make bac
 go-live`, `/db-update`, `/ingest-feed`) live beside `TASKS` in the module, so the table cannot
 grow into noise without someone stating which rule the new line satisfies.
 
+## clone_preflight.py — does the suite pass on a machine that is not this one?
+
+`make preflight` clones HEAD into a temp dir, runs `poetry install --no-root` against the clone's
+own lock, and runs `make test`'s exact argv there. Ported from parent #667.
+
+**It REPLACES that branch's `make test` rather than adding to it** — `PYTEST_ARGS` mirrors the
+`test:` recipe argument-for-argument, and `TestWiredIntoTheWorkflow` pins that against the
+Makefile so the claim has an external referent instead of only the sentence asserting it.
+
+**What it catches that no local run can.** A gitignored path that exists on this box and nowhere
+else is invisible to every check that runs here — `config/stocks.json`,
+`.claude/sensitive-terms.txt`, `docs/plans/` and `analytics.db` are all absent on a clean clone.
+Two defects share that symptom and a prose rule only addresses the first: **(a)** a test depends
+on a local file, so CI reds; **(b)** *production* code loads a local file it does not need, so
+the CLI is broken on a clean clone while a hermetic test passes anyway. wifey has already paid
+for this class in the other direction — `.claude/` was an allowlist until 2026-08-20, so the
+hooks were untracked and silently did not survive a reclone.
+
+⚠ **CI already IS this gate**, being a clean checkout. What this closes is **TIMING, not
+detection**: on a private repo, detection after a push costs a metered Actions cycle, a red PR,
+and a visibility flip to read the failure at all.
+
+**The dirty-tree refusal is the load-bearing part.** A clone sees **committed** state only, so a
+run against an uncommitted tree tests stale HEAD and reports GREEN — the same invisible pass the
+gate exists to kill. It refuses **before taking any clone**, and `test_refuses_before_taking_any_clone`
+asserts the clone's absence rather than only the exit code. That is also why it belongs in
+`/post-branch` **phase 5**, after the doc commits, and not in phase 1's sweep.
+
+Two cheaper tricks were refuted upstream and the reasoning is structural, so it ports: **a foreign
+working directory** makes every relative path absent at once, committed assets included (27
+failures, almost none the bug); **monkeypatching the `DEFAULT_*` constants is partial by
+construction**, since `DEFAULT_DB_PATH` is re-exported into two modules that captured it at import
+— a shape wifey shares via `analytics.store` and `analytics.data_store`.
+
+⚠ **Two holes, stated because a gate whose reach is unknown gets over-trusted.** It cannot see an
+**absolute** default (`$HOME/…`), because `$HOME` is identical in the clone — `EXTERNAL_ROOTS` in
+`deploy/backup-analytics.sh` is exactly that shape. And it only reaches class (b) where a *test*
+exercises the path; neither mechanism sees an untested CLI branch.
+
+Exit codes: **0** pass · **1** the suite failed, a real finding · **2** REFUSED, dirty tree · **3**
+INFRA, the clone or install died. ⚠ **`make` collapses all of them to its own 2**, so branch on
+the printed banner or call the module directly.
+
+**First run, 2026-08-20: PASSED** — **3123 passed / 4 skipped** in the clone against **3124 / 3**
+locally, so wifey's suite is clean-clone-safe. ⚠ **The one-test delta is the finding.**
+`test_pundit_score.py::test_live_ledger_rows_all_survive_the_new_guards` guards
+`docs/plans/pundit-calls.jsonl`, which is gitignored — so it runs **only** on the operator's box,
+and **its assertion has never been evaluated by CI and never can be**. The code says as much
+(`# gitignored; absent on a fresh clone`), so this is by design rather than a defect; what is new
+is that the asymmetry is now *observable*. Locally the test silently passes, in CI it silently
+skips, and **neither surface reports that it ran nowhere meaningful** — which is precisely the
+shape the gate exists to expose. Suite portion **295s** in the clone against **254s** locally
+(+16%), before the clone and `poetry install`.
+
+**Run:** `make preflight`, or `python3 tools/clone_preflight.py [--repo R] [--dest D] [--dry-run]`.
+Bare `python3` on purpose — stdlib-only, so the gate still runs when the dev venv is the thing
+that is broken.
+
 ## sanity_checks.py — every mechanical `/sanity-check` check, in one run
 
 Seven checks: `fork-drift` (invocable artifacts a doc names but the code lacks — make targets,

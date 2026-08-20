@@ -443,6 +443,27 @@ git commit -F <file>      # -F, never a heredoc: quoting a hazard trips the guar
 git push -u origin <branch>
 ```
 
+⚠ **Then run the clean-clone pre-flight, and let it REPLACE this branch's `make test`.**
+
+```bash
+make preflight            # background it; it runs the whole suite in a fresh clone
+```
+
+A gitignored path that exists on this box and nowhere else is invisible to every
+local run — `config/stocks.json`, `.claude/sensitive-terms.txt`, `docs/plans/`
+and `analytics.db` are all absent on a clean clone. CI already is that clone, so
+this closes **timing, not detection**: catching it here costs a local suite run,
+catching it after the push costs a metered Actions cycle, a red PR, and a
+visibility flip to read the failure at all.
+
+It **must** run after the commits — it refuses on a dirty tree, because a clone
+sees committed state only and would otherwise test stale HEAD and report green.
+
+⚠ **`make` collapses the exit code, so read the banner**: `REFUSED` (dirty tree)
+and `INFRA` (clone or install died) are **not** suite failures. Its two blind
+spots are stated in `tools/clone_preflight.py`: an absolute `$HOME` default
+(`EXTERNAL_ROOTS`' shape), and a CLI branch no test reaches.
+
 ⚠ **Then decide the visibility flip, before `gh pr create`** — this phase covered
 only the exit until now. Phase 2 has already read the diff: if it touches
 `**/*.py` or `web/ui/**`, the PR needs the repo **public**, or its three
