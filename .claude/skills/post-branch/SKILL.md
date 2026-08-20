@@ -59,7 +59,7 @@ outside the repo and the handoff is gitignored, so none of them ever costs CI.
 make post-branch-checks
 ```
 
-Eleven checks, one command, in `tools/post_branch_checks.py`. They used to be
+Twelve checks, one command, in `tools/post_branch_checks.py`. They used to be
 sixteen shell blocks embedded in this file, which a session had to notice and
 copy by hand — *a hand walk is not the walk*, and the same defects recurred
 because prose cannot enforce.
@@ -77,6 +77,7 @@ because prose cannot enforce.
 | `memory-cap` | Is MEMORY.md over 6 Current State bullets or ~17KB? **Phase 6 reading** |
 | `handoff-size` | Is the handoff past `HANDOFF_MAX_LINES` (240)? **Phase 6 reading** |
 | `stale-anchors` | Does a doc cite a numbered section (`Step 3`, `§4a`) its target no longer has? |
+| `sensitive-terms` | Would a visibility flip publish a work identifier? Tracked tree · this branch's commit **content** · this branch's commit **messages** |
 
 ⚠ **`memory-cap` and `handoff-size` are VACUOUS in phase 1 — ignore them here.** They measure
 files that **phases 4 and 6 write**, so on the first run they score the *previous* session's
@@ -84,6 +85,15 @@ state and report clean regardless of what this branch will do. Re-run
 `make post-branch-checks` after phase 6 and read them then; that run is the gate. This is a
 fourth instance of the ordering trap named at the top of this file, and the only one **inside**
 the mechanical sweep rather than the prose.
+
+⚠ **`sensitive-terms` reading `NOT CONFIGURED` is a FINDING, not a skip.** The term list
+(`.claude/sensitive-terms.txt`) is **gitignored by policy** — a tracked list of the words you
+are hiding is the leak it exists to prevent — so it dies on a reclone, and before a flip
+"did not run" and "passed" must not look alike. **Only the operator can enumerate the terms.**
+The commit-**message** leg is the one no file edit reaches: the flip republishes the whole
+history, so scrubbing a term in a later commit does not unexpose it. Terms are **masked** in the
+output because this report gets pasted into handoffs and PR bodies that are themselves tracked
+or backed up, and main's accepted historical baseline is deliberately not re-reported.
 
 ⚠ **`queue-items` reports RELEVANCE, not closure**, and prints the tokens it matched so you can
 dismiss in a glance. Expect false positives from area vocabulary, and expect one item to match

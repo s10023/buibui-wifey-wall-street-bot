@@ -24,8 +24,11 @@ from tools.post_branch_checks import (
     check_queue_items,
     current_state_bullets,
     extract_tokens,
+    load_sensitive_terms,
+    mask_term,
     numbered_items,
     probe_names,
+    sensitive_terms_result,
 )
 
 # CLAUDE.md's real sentence — the one that made every skill report COVERED.
@@ -352,3 +355,101 @@ class TestHandoffSize:
         )
         assert "Line count:" not in handoff
         assert _check_handoff_size(handoff) != []
+
+
+class TestSensitiveTerms:
+    """The pre-flip gate (parent #658).
+
+    Ported because the flip publishes the whole HISTORY, not `HEAD`: a
+    working-tree `git grep` agrees with every other review surface while deleted
+    blobs stay reachable. wifey's own 2026-08-19 measurement found identifiers on
+    three of four surfaces, commit MESSAGES among them — the surface no file edit
+    reaches — so the three legs are tested separately, as they fail separately.
+    """
+
+    TERM = "acmecorp"
+
+    @staticmethod
+    def _runner(
+        *, tracked: str = "", messages: str = "", introduced: str = ""
+    ) -> Runner:
+        """Dispatch on argv: the three legs ask git three different questions."""
+
+        def run(argv: Sequence[str]) -> str:
+            if argv[1] == "grep":
+                return tracked
+            if "-S" in argv:
+                return introduced
+            return messages
+
+        return run
+
+    def test_an_absent_list_is_a_FINDING_not_a_skip(self) -> None:
+        """ "Did not run" and "passed" must not look alike before a flip."""
+        result = sensitive_terms_result(self._runner(), terms=[])
+        assert len(result.findings) == 1
+        assert "NOT CONFIGURED" in result.findings[0].detail
+        assert "NOT the same as passing" in result.findings[0].detail
+
+    def test_a_clean_branch_reports_no_findings_and_notes_the_baseline(self) -> None:
+        result = sensitive_terms_result(self._runner(), terms=[self.TERM])
+        assert result.findings == []
+        assert result.note is not None
+        assert "1 term(s)" in result.note
+        assert "baseline is not re-reported" in result.note
+
+    def test_a_tracked_file_hit_fires(self) -> None:
+        """Positive control for the only leg a plain `git grep` covers."""
+        result = sensitive_terms_result(
+            self._runner(tracked="docs/a.md\ndocs/b.md\n"), terms=[self.TERM]
+        )
+        assert len(result.findings) == 1
+        assert "2 tracked file(s)" in result.findings[0].detail
+
+    def test_a_commit_MESSAGE_hit_fires_with_no_file_hit(self) -> None:
+        """The leg no file edit reaches — and the one a tree-only gate misses."""
+        result = sensitive_terms_result(
+            self._runner(messages=f"chore: scrub {self.TERM} from the docs\n"),
+            terms=[self.TERM],
+        )
+        assert len(result.findings) == 1
+        assert "commit MESSAGE" in result.findings[0].detail
+        assert "only a history rewrite does" in result.findings[0].detail
+
+    def test_a_term_INTRODUCED_on_this_branch_fires(self) -> None:
+        result = sensitive_terms_result(
+            self._runner(introduced="abc1234 feat: add a thing\n"), terms=[self.TERM]
+        )
+        assert len(result.findings) == 1
+        assert "introduced by 1 commit(s)" in result.findings[0].detail
+        assert "will NOT unexpose it" in result.findings[0].detail
+
+    def test_the_term_is_NEVER_printed_unmasked(self) -> None:
+        """Control: the report about the leak must not reproduce the leak.
+
+        This output is pasted into handoffs and PR bodies, which are themselves
+        tracked or backed up — the same self-referential shape as the
+        `gh pr create` hook firing on its own documentation.
+        """
+        result = sensitive_terms_result(
+            self._runner(
+                tracked="docs/a.md\n",
+                messages=f"chore: scrub {self.TERM}\n",
+                introduced="abc1234 feat: add a thing\n",
+            ),
+            terms=[self.TERM],
+        )
+        assert len(result.findings) == 3, "all three legs should fire"
+        for finding in result.findings:
+            assert self.TERM not in finding.detail
+            assert "acm…" in finding.detail
+
+    def test_a_short_term_masks_to_nothing_identifying(self) -> None:
+        assert mask_term("ab") == "…"
+        assert mask_term("abcdef") == "abc…"
+
+    def test_load_strips_comments_blanks_and_case(self) -> None:
+        terms = load_sensitive_terms(
+            "# a comment\n\nAcmeCorp\n  Other Co  # trailing note\n"
+        )
+        assert terms == ["acmecorp", "other co"]

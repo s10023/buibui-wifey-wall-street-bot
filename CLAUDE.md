@@ -570,11 +570,23 @@ prose did not enforce these constraints:
 - `make check-orphan-tests` (advisory, heuristic, not in `make test`) reports `Test*` classes that
   name a unit but never call it. Its `not-importable` verdict means the unit is a closure and no
   test can reach it, so extraction becomes a prerequisite for a fix.
-- `make post-branch-checks` (advisory, not in `make test`) runs the eleven mechanical
+- `make post-branch-checks` (advisory, not in `make test`) runs the twelve mechanical
   `/post-branch` checks — queue items the branch closed, handoff claims, undocumented new
   files/modules/targets, negative claims, stale doc indexes, MD018 headings, the MEMORY.md cap,
-  the handoff's size against `HANDOFF_MAX_LINES`, and **dead cross-document section anchors**
-  (`stale-anchors`).
+  the handoff's size against `HANDOFF_MAX_LINES`, **dead cross-document section anchors**
+  (`stale-anchors`), and the **pre-flip `sensitive-terms` gate**.
+  ⚠ **`sensitive-terms` asks three questions because they fail differently**: the tracked tree
+  (the only one a plain `git grep` covers), this branch's commit **content**, and this branch's
+  commit **messages** — the surface **no file edit reaches**, since the flip republishes the whole
+  history and scrubbing a term later does not unexpose it. wifey's own 2026-08-19 measurement found
+  identifiers on three of four surfaces, messages among them, so a tree-only gate would have read
+  clean. Four properties are load-bearing: the term list is **gitignored by policy**
+  (`.claude/sensitive-terms.txt` — a tracked list of the words you are hiding is the leak it
+  prevents), so an **absent list is a FINDING reading `NOT CONFIGURED`, never a SKIP**; output
+  **masks** the term, because this report gets pasted into handoffs and PR bodies that are
+  themselves tracked or backed up; and it **excludes main's accepted baseline**, since a check that
+  is never clean trains dismissal. The list is single-copy, so `deploy/backup-analytics.sh` covers
+  it in `BACKUP_FILES`. Ported from parent #658.
   They were **16 shell blocks inside `post-branch/SKILL.md`** until 2026-08-18, i.e. a check that
   only ran when a session remembered to copy it. **A skill that answers each new defect with more
   prose accumulates defects**: two of these had shipped broken, and the fix in both cases was to
