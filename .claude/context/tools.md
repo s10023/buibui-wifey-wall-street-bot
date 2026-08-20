@@ -361,6 +361,17 @@ Exit codes: **0** pass · **1** the suite failed, a real finding · **2** REFUSE
 INFRA, the clone or install died. ⚠ **`make` collapses all of them to its own 2**, so branch on
 the printed banner or call the module directly.
 
+**First run, 2026-08-20: PASSED** — **3123 passed / 4 skipped** in the clone against **3124 / 3**
+locally, so wifey's suite is clean-clone-safe. ⚠ **The one-test delta is the finding.**
+`test_pundit_score.py::test_live_ledger_rows_all_survive_the_new_guards` guards
+`docs/plans/pundit-calls.jsonl`, which is gitignored — so it runs **only** on the operator's box,
+and **its assertion has never been evaluated by CI and never can be**. The code says as much
+(`# gitignored; absent on a fresh clone`), so this is by design rather than a defect; what is new
+is that the asymmetry is now *observable*. Locally the test silently passes, in CI it silently
+skips, and **neither surface reports that it ran nowhere meaningful** — which is precisely the
+shape the gate exists to expose. Suite portion **295s** in the clone against **254s** locally
+(+16%), before the clone and `poetry install`.
+
 **Run:** `make preflight`, or `python3 tools/clone_preflight.py [--repo R] [--dest D] [--dry-run]`.
 Bare `python3` on purpose — stdlib-only, so the gate still runs when the dev venv is the thing
 that is broken.
