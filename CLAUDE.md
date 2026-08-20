@@ -453,6 +453,19 @@ cannot promote a cell. Check a tool's legend against its own predicate — the p
 in the same direction as the code, so the output corroborated the defect.
 Audit: `docs/audits/2026-08-13-warning-value-audit.md`.
 
+⚠ **An `audit_guard` verdict is priced per TRADE, not per DAY — do not act on one without
+re-pricing it.** The block bootstrap absorbs **serial** dependence and **cannot** absorb same-day
+cross-symbol clustering, because a block absorbs dependence between observations adjacent *in the
+array it is handed* and neither consumer hands it a meaningful adjacency. Measured: day-clustered
+CIs **1.92×** wider (median, 64 cells), and the Holm leg is worse — `_two_sided_p` uses
+`t = sr·√n_TRADES` undeflated, so **30 of 64** cells are significant where **12** survive. **The
+error size is a property of the CELL CUT, not of the tool**: pooling across strategies decorrelates
+the day, so a re-cut per strategy re-opens it. **`[bias.regime]`'s `EXCLUDED` rests on one blocking
+cell that does not survive**, so treat that verdict as contested rather than settled — ⚠ **and note
+that widening a CI removes evidence rather than supplying the opposite conclusion.** Not yet fixed;
+the fix is a **required** per-observation cluster key failing **closed**.
+Audit: `docs/audits/2026-08-20-audit-guard-cross-sectional-clustering.md`.
+
 **Deflate a pooled cross-section before quoting any t-stat from it — `make wifey-n-eff`.**
 The 505-member universe carries **`n_eff` ≈ 2.96** independent series at `1d` (mean pairwise
 `rho` +0.3365), so a naive pooled t-stat is inflated **13×**; `1wk` is 2.88, and `4h` is 4.92 on a
