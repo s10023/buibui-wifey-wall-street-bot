@@ -7,8 +7,8 @@
 Bounds.
 **Subject:** `analytics/audit_guard.py`, new `analytics/research_guards/cluster.py`, and both
 consumers (`analytics/warning_audit.py`, `tools/regime_gate_replay.py`)
-**Status:** code changed, tests added. **No config changed** — `[bias.regime].mode` is untouched
-and remains the operator's call.
+**Status:** code changed, tests added. **No config changed** — `[bias.regime].mode` was ruled
+2026-08-20 to stay as it stands; see Decisions.
 **Implements:** decision 1 of `2026-08-20-audit-guard-cross-sectional-clustering.md`.
 
 ## What changed
@@ -104,12 +104,22 @@ the UTC day is an arbitrary cut through a continuous session.
 by *symbol across days* are still treated as independent, and no single key can express two
 crossed dependence structures at once.
 
-## Decisions this leaves open
+## Decisions
 
-1. **`[bias.regime].mode`** — unchanged, and still the operator's call. The evidence that blocked
-   it is gone; evidence *for* it was never established.
-2. **Whether `bos` should trade at all** — untouched here, but note both its suppressed cells are
-   reliable losers on the day unit too, which is the panel that question needs.
+1. **`[bias.regime].mode` — RULED 2026-08-20 (operator): LEAVE AS IT STANDS.** No config change.
+   The reasoning is the Bounds section above, and it is the whole point of the ruling: the
+   collapsed cell removes the evidence **against** the current setting and supplies none **for**
+   changing it. The same run reports **MAPPING UNTESTED** with both kept cells `INSUFFICIENT`
+   (`bos/range` [−0.200, +0.598], `ema/trend` [−0.187, +0.666]). ⚠ **"FLIP justified" is the
+   tool reporting that nothing blocks the flip — it is not a recommendation to take it**, and
+   acting on it would be reading a removed obstacle as an argument.
+   **Re-open only on new evidence**, not on a re-read of this run: the honest blocker is that no
+   kept cell clears the bar in either direction, so the question needs ledger growth or a different
+   cell cut before it can be answered rather than guessed.
+2. **Whether `bos` should trade at all** — untouched here, but the panel that question needs got
+   stronger: both its suppressed cells survive the day-clustered correction as reliable losers
+   (`high_vol` n=655 on 114 days, adj-p 0.001; `trend` n=897 on 161 days, p 0.000), so that half is
+   no longer resting on an inflated t-stat.
 
 ## Reproduction
 
