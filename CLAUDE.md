@@ -851,8 +851,16 @@ is about your DIFF and says nothing about the ACCOUNT.** `markdownlint` and `Tri
 filter, so an exhausted allowance zeroes them too — #238 opened docs-only with **all five** checks
 at `steps=0`. **The tell: a path-filtered skip reports `SKIPPED`, an exhausted allowance reports
 `FAILURE`, both at `steps=0`**, so the totals cannot separate them. Skip the flip only if the last
-run on this repo executed real steps. Read any externally pasted content in a doc before committing
-it. Narrative: memory `reference_ci_steps_counts_skipped.md`.
+run on this repo executed real steps. ⚠ **That check is LAGGING and is NOT sufficient** — measured
+2026-08-20 on #251: `main`'s last push run had executed **8 real steps and SUCCEEDED ~1h earlier**,
+and the docs-only PR opened on that basis still came back **4 of 5 `FAILURE` at `steps=0`**. The
+allowance drains between the check and the PR, so read a green last-run as **permission to try,
+never a guarantee** — and budget for the recovery, which is cheap and known: flip public, then
+**re-run the existing runs IN PLACE** (they exist; they just executed nothing). ⚠ **While the repo
+IS public, further pushes are FREE**, so a correction discovered mid-window should land **during**
+the window — after the flip back the same edit costs a whole metered cycle. Read any externally
+pasted content in a doc before committing it. Narrative: memory
+`reference_ci_steps_counts_skipped.md`.
 
 **CI's markdownlint glob is not wider than local's**, despite the workflow appearing to say so: the
 job passes `globs: **/*.md !venv`, but markdownlint-cli2 still applies the negations in
@@ -875,4 +883,4 @@ GitHub fork — its history was copied — so 389 of 541 commits are the still-p
 research, published for the duration. Anything cloned or indexed in that window stays out, and any
 fork created while public is split into its own network and survives the flip back. This is an IP
 and history exposure rather than a secrets one: all 4,519 blobs scanned clean. Flip back promptly
-after the merge, and check `forks_count` is still 0 before you do.
+after the merge, and check `forkCount` is still 0 before you do.
