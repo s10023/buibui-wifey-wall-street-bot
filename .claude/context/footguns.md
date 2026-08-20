@@ -15,11 +15,22 @@ with the *identical* `Conflicting lock` message a second writer gets — verifie
 holding a connection from a child process. So `read_only=True` buys nothing against a live writer,
 and code that assumed otherwise was silently wrong.
 
-DuckDB also raises one exception class for every I/O failure. Two `web/` handlers caught bare
+DuckDB also raises one exception class for every I/O failure. Three handlers caught bare
 `duckdb.IOException` and reported a missing or corrupt database as "busy, try again in a few
 seconds" — advice that can never come true — while `main.py`'s `except: pass` started the API with
-no schema and no complaint. Both messages also blamed "the signal-watch daemon", which this fork
-does not have.
+no schema and no complaint. Both `web/` messages also blamed "the signal-watch daemon", which this
+fork does not have.
+
+⚠ **The third was missed because the enumeration was scoped to a DIRECTORY.** Two were fixed in
+`web/` on 2026-08-12; `signal_runner.py`'s per-symbol `sync` handler was not found until
+2026-08-20, and until then this paragraph and `db_retry.py`'s own docstring both said "two
+callers in `web/`" — a count that reads as complete and so stops anyone looking for a third.
+Its failure mode was the worst of the three: it logged "will retry" and the cycle went on to
+scan, alert and backfill outcomes against stale data, and `make go-live` runs `--once`, so the
+promised retry had no next cycle to happen in. **Scope an enumeration by the PREDICATE it claims
+(here, `git grep 'except duckdb.IOException'`), never by the directory you happened to be
+reading.** Both directions are pinned by
+`tests/test_signal_runner.py::TestSyncIoErrorsAreNarrowed`.
 
 The retry helper is **preventive, not a repair**. Upstream's premise is colliding systemd timers;
 wifey has no daemon. Its budget deliberately does not outlast a `make db-update` sweep, because a
