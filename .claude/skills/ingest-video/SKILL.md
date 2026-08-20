@@ -794,11 +794,15 @@ One file per video (not per item) at
 `docs/plans/`. `<date>` is the ingest date (UTC, `YYYY-MM-DD`).
 
 ```bash
-slug() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed -E 's/^-+|-+$//g' | cut -c1-40; }
-note_path="docs/plans/video-notes/$(date -u +%F)-$(slug "$AUTHOR")-$VIDEO_ID.md"
+author_slug=$(printf '%s' "$AUTHOR" | tr '[:upper:]' '[:lower:]' \
+  | tr -cs 'a-z0-9' '-' | sed -E 's/^-+|-+$//g' | cut -c1-40)
+note_path="docs/plans/video-notes/$(date -u +%F)-$author_slug-$VIDEO_ID.md"
 ```
 
-**`video_id`, not a title slug — this is the rule, not a collision fallback.** `slug()`
+⚠ **Named variable, not a `$1` helper function, deliberately** — a shell positional
+inside a skill code block has been observed rendering substituted rather than literal.
+
+**`video_id`, not a title slug — this is the rule, not a collision fallback.** The slug pipeline
 keeps only `[a-z0-9]`, so a non-Latin title slugifies to the **empty string** and every
 note from that channel collapses onto one path. The crypto parent hit an 8-way collision
 on a single `<date>-tiabtc-btc.md`, silently overwriting 7 of 8 notes. This repo's
