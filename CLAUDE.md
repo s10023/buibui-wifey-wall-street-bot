@@ -131,6 +131,22 @@ declared (`/sanity-check`, `/sync-parent`, both 7d); the four inclusion rules an
 rejected candidate fails one live beside `TASKS` in `tools/cadence_check.py`. **Nothing auto-runs
 anything** — these only record that a run happened.
 
+`make preflight` runs the suite against a **fresh clone of HEAD** and **REPLACES** that branch's
+`make test` rather than adding to it — it mirrors that recipe's argv, pinned by a test so the
+claim has an external referent. Run it in `/post-branch` **phase 5**, after the doc commits and
+before `gh pr create`. It catches what no local run can: a gitignored path that exists on this box
+and nowhere else (`config/stocks.json`, `.claude/sensitive-terms.txt`, `docs/plans/`,
+`analytics.db`). ⚠ **CI already IS this gate** — it closes **timing, not detection**, and the
+timing is the whole cost here, since detection after a push means a metered Actions cycle, a red
+PR and a visibility flip to read the failure at all.
+
+⚠ **It REFUSES on a dirty tree, and that refusal is the load-bearing part** — a clone sees
+committed state only, so an earlier run tests stale HEAD and reports green. ⚠ **Two blind spots**:
+an **absolute** `$HOME` default is identical inside the clone (`EXTERNAL_ROOTS`' shape), and it
+only reaches production-side breakage where a *test* exercises the path. ⚠ **Through `make` the
+exit-code taxonomy is invisible** (0 pass · 1 real failure · 2 REFUSED · 3 INFRA), so read the
+banner: REFUSED and INFRA are **not** suite failures. Narrative: `context/tools.md`.
+
 `make wait-ci PR=<n>` waits for a PR's checks and `make wait-ci-main` is the **flip-back gate**
 (`--branch main --min-jobs 5`); both report whether the checks actually *ran*. `tools/wait_ci.py`
 exits **3** on `steps=0`, the Actions-allowance failure that renders exactly like a real one (flip
