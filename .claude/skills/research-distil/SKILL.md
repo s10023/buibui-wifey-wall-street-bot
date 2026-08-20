@@ -203,12 +203,15 @@ distil_power - G3 power gate
                     A null here would be INSUFFICIENT, never 'no effect'.
 ```
 
-⚠ **That example runs undeflated because this repo has no measured `n_eff`**,
-and the printed n is therefore an upper bound rather than a neutral default.
-Alerts across 13 watchlist symbols are correlated; pooling them carries the
-noise reduction of fewer independent series. Measure the deflator for the panel
-in play before quoting a G3 pass on pooled data, and cross-check any pair you do
-use: `n_eff × t_deflator²` must recover `n_series`.
+⚠ **That example runs undeflated, so the printed n is an upper bound rather
+than a neutral default.** Alerts across 13 watchlist symbols are correlated;
+pooling them carries the noise reduction of fewer independent series.
+**Measure the deflator with `make wifey-n-eff`** before quoting a G3 pass on
+pooled data — measured 2026-08-20, the 13-symbol watchlist runs `n_eff` **1.80**
+at `1d` (mean pairwise `rho` +0.5189, inflation 2.69×) and the 505-member
+universe **2.96** (inflation 13.05×). Cross-check any pair you use:
+`n_eff × t_deflator²` must recover `n_series` — ⚠ **except when the deflator
+clamped** (negative `rho`), where it is 1.0 by design and the identity breaks.
 
 Three outcomes:
 

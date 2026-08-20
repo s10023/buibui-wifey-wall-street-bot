@@ -453,6 +453,19 @@ cannot promote a cell. Check a tool's legend against its own predicate — the p
 in the same direction as the code, so the output corroborated the defect.
 Audit: `docs/audits/2026-08-13-warning-value-audit.md`.
 
+**Deflate a pooled cross-section before quoting any t-stat from it — `make wifey-n-eff`.**
+The 505-member universe carries **`n_eff` ≈ 2.96** independent series at `1d` (mean pairwise
+`rho` +0.3365), so a naive pooled t-stat is inflated **13×**; `1wk` is 2.88, and `4h` is 4.92 on a
+21% SIZE-TILTED subset. ⚠ **`tools/distil_power.py` fails open on exactly this**: it accepts
+`--n-series` / `--n-eff` and returns `n_obs` **undeflated** when both are omitted, so every power
+run before 2026-08-20 was undeflated or used a borrowed figure, including the H-004 pricing that
+closed it at G3. (H-001/H-002 went through a two-sample MDE instead — `distil_power` cannot price a
+calendar-cycle claim — but a pooled `sd` there carries the same correlation problem.) `n_eff → 1/rho` as `k` grows, so **adding names does not buy breadth**: 13 → 504
+symbols is 39× the roster for 1.6× the `n_eff`, and the parent's 2.92 is that same asymptote rather
+than a portable constant. The estimator refuses to emit flags when it could not measure, because an
+unmeasurable panel and an uncorrelated one both read as a deflator of 1.0. Narrative and the
+pivot-index trap that silently emptied the `1wk` panel: `context/tools.md`.
+
 **Pool a mean over its denominator.** `digest_lib::_pooled`
 (`SUM(avg_r * closed_trades) / SUM(closed_trades)`) is the one definition for all six queries.
 When two aggregates sit side by side, check they pool the same way before trusting either — the tell

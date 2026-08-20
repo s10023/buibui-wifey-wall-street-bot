@@ -10,6 +10,10 @@ Eager re-exports so callers can do
 """
 
 from analytics.research_guards.bootstrap import BootstrapCI, block_bootstrap_ci
+from analytics.research_guards.correlation import (
+    SeriesDeflator,
+    effective_independent_series,
+)
 from analytics.research_guards.dsr import (
     EULER_MASCHERONI,
     deflated_sharpe_ratio,
@@ -38,9 +42,11 @@ __all__ = [
     "BootstrapCI",
     "HaircutResult",
     "PBOResult",
+    "SeriesDeflator",
     "block_bootstrap_ci",
     "cscv_pbo",
     "deflated_sharpe_ratio",
+    "effective_independent_series",
     "expected_max_sharpe",
     "haircut_sharpe",
     "min_track_record_length",

@@ -439,6 +439,69 @@ true one; never present such a pass as having margin it did not measure.
 fix it, only a smaller trial family can. The null-containment verdict is delegated to
 `analytics.audit_guard.powered_null` and is never restated in the tool.
 
+## n_eff.py — how many INDEPENDENT series a pooled panel actually carries
+
+`make wifey-n-eff` (`ARGS="--source universe --timeframe 1d"`). Wraps
+`analytics/research_guards/correlation.py::effective_independent_series`, ported 2026-08-20
+from the parent's `analytics/forecast/attribution.py`. Under an equicorrelation
+approximation with mean pairwise correlation `rho`, `k` series carry the noise reduction
+of only `n_eff = k / (1 + (k-1)·rho)`, so a naive pooled t-stat is inflated by
+`sqrt(k / n_eff)`.
+
+**It exists because `distil_power.py` failed open.** That tool has always *accepted*
+`--n-series` / `--n-eff` and deflated by them, while nothing here could *measure* the
+second — and `effective_n` returns `n_obs` **undeflated** when both are omitted. So every
+power calculation this repo has run was either undeflated or used a borrowed figure,
+including the H-004 pricing that closed it at G3. ⚠ **H-001/H-002 did NOT go
+through this tool** — `distil_power` cannot price a calendar-cycle claim, so they
+used a two-sample MDE, where a pooled `sd` carries the same correlation problem.
+
+### Measured 2026-08-20 (first run)
+
+| Panel | k | mean rho | `n_eff` | t inflation |
+| --- | --- | --- | --- | --- |
+| universe `1d` | 504 | +0.3365 | **2.96** | **13.05x** |
+| universe `1wk` | 503 | +0.3459 | 2.88 | 13.22x |
+| universe `4h` | 105 (21%, SIZE-TILTED) | +0.1958 | 4.92 | 4.62x |
+| watchlist `1d` | 13 | +0.5189 | 1.80 | 2.69x |
+
+⚠ **The 505-member universe is worth about THREE independent bets, not 505.** And
+`n_eff → 1/rho` as `k` grows (1/0.3365 = 2.97 against a measured 2.96), so **adding names
+buys almost nothing once `k` is large** — breadth is capped by the correlation, not by the
+roster. Going 13 → 504 names is 39x the symbols for 1.6x the `n_eff`. This prices the
+parent's "505 members is not breadth 505" caveat and lands well below its own ~11 estimate.
+
+⚠ **The parent's `n_eff` 2.92 does NOT transfer** — that is 25 crypto perps at rho 0.315,
+and it moves on its own panel (14 → 1.97, three → 1.42). The near-agreement with our 2.96
+is the `1/rho` asymptote, not portability.
+
+### Two things the tool refuses to do
+
+- **It withholds the `distil_power` flags when `measured` is False.** An unmeasurable panel
+  and an uncorrelated one both carry a deflator of 1.0; emitting flags for the first would
+  launder "could not tell" into "no correction needed". Same distinction as
+  `audit_guard`'s `INSUFFICIENT` vs `powered_null`. Exit code 1, and the banner says so.
+- **It reports coverage every run rather than assuming it.** `4h` reaches 105 of 505 and
+  that subset is SIZE-TILTED, so a deflator measured there describes large caps.
+
+### ⚠ The pivot trap — a shared index silently empties the panel
+
+The first implementation pivoted every symbol onto one union `open_time` index and called
+`pct_change` across it. **When symbols sit on different stamp grids, consecutive union rows
+belong to different symbols, so almost every return goes NaN.** Measured against the live DB
+at `1wk` it dropped **505 of 505** symbols that the fixed implementation keeps (503 of 505).
+
+Two reasons it survived: it **failed in the safe direction** (a refusal, not a wrong number),
+and `1d`'s grids happen to align, so the timeframe anyone would hand-check passed — the `1d`
+headline of 2.96 is identical before and after the fix. **Compute a per-entity series on its
+own index; alignment is the correlation step's job, not the return step's.** Pinned by
+`tests/test_n_eff_tool.py::TestLoadReturns::test_misaligned_stamp_grids_do_not_null_the_panel`,
+which gives two symbols zero index overlap.
+
+⚠ **`config/stocks.json` is keyed by symbol but also carries N1's `universe_policy` block**,
+so a bare `sorted(json.load(f))` returns it as a 14th ticker. Go through
+`utils.config_validation.load_stocks_config`, which pops it.
+
 ## live_outcomes_report.py — read-only signal_alert_outcomes spot-check
 
 Read-only spot-check of `signal_alert_outcomes` after the T2 backfill worker runs; reports the
