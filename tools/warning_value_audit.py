@@ -266,16 +266,19 @@ def format_report(
         lines.append(f"## Source: {src} ({n_entries} tagged, {n_dropped} dropped)")
         lines.append("")
         lines.append(
-            "| warning | dir | n_warn | n_clean | avg_warn | avg_clean "
+            "| warning | dir | n_warn | days | DEFF | n_clean | avg_warn | avg_clean "
             "| CI lo | CI hi | Holm p | lift lo | lift hi | raw | verdict |"
         )
         lines.append(
-            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- "
-            "| --- | --- | --- |"
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- "
+            "| --- | --- | --- | --- |"
         )
         for v in verdicts:
+            days = "—" if v.n_days is None else str(v.n_days)
+            deff = "—" if v.design_effect is None else f"{v.design_effect:.2f}"
             lines.append(
-                f"| {v.warning} | {v.direction} | {v.n_warned} | {v.n_clean} "
+                f"| {v.warning} | {v.direction} | {v.n_warned} | {days} | {deff} "
+                f"| {v.n_clean} "
                 f"| {_fmt(v.avg_warned)} | {_fmt(v.avg_clean)} "
                 f"| {_fmt(v.ci_lo)} | {_fmt(v.ci_hi)} | {_fmt(v.adj_pvalue)} "
                 f"| {_fmt(v.lift_lo)} | {_fmt(v.lift_hi)} "

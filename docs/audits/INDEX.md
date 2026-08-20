@@ -4,8 +4,8 @@
 `make docs-index-check` (and `tests/test_docs_index.py`) fails when this file
 drifts from the corpus.
 
-**36 audits.** A verdict line is shown only where one could be read
-out of a Verdict heading as prose — that is **26 of 36**.
+**37 audits.** A verdict line is shown only where one could be read
+out of a Verdict heading as prose — that is **27 of 37**.
 An em dash means the doc states its verdict in a table, a blockquote or the body,
 **not** that it lacks one; open the file. Nothing here is keyword-guessed.
 
@@ -14,6 +14,7 @@ An em dash means the doc states its verdict in a table, a blockquote or the body
 | 2026-08-20 | Symmetric gap fill — the mirror the first measurement missed | CORRECTNESS — no edge claim, and no sleeve verdict moves. | [2026-08-20-symmetric-gap-fill.md](2026-08-20-symmetric-gap-fill.md) |
 | 2026-08-20 | H-001 / H-002: the midterm-cycle rows are BLOCKED on power, and no backfill reaches them | BLOCKED — both rows, permanently for H-001 and effectively for H-002. The effects run in the claimed direction in every cell… | [2026-08-20-h001-h002-midterm-cycle-power-precheck.md](2026-08-20-h001-h002-midterm-cycle-power-precheck.md) |
 | 2026-08-20 | `audit_guard`'s bootstrap absorbs serial dependence, not cross-sectional clustering | FOUND — the CI is too narrow by ~1.9× (median) on single-strategy cells, and the `[bias.regime]` flip verdict's sole blocking… | [2026-08-20-audit-guard-cross-sectional-clustering.md](2026-08-20-audit-guard-cross-sectional-clustering.md) |
+| 2026-08-20 | The cluster unit becomes a required, fail-closed input to `audit_guard` | FIXED — verdicts are now priced on the session day rather than the trade, on | [2026-08-20-audit-guard-cluster-key-fix.md](2026-08-20-audit-guard-cluster-key-fix.md) |
 | 2026-08-19 | The regime gate's blind spot: a kept cell nothing tested | BOUNDED — the config was wrong and is now right, and that buys no measurable book. | [2026-08-19-regime-kept-cell-audit.md](2026-08-19-regime-kept-cell-audit.md) |
 | 2026-08-19 | Regime gate: a pooled banner that inverted its own table | EXCLUDED — ⚠ CONTESTED 2026-08-20, see the note below — flipping `mode` to `hard` is ruled out on current evidence. One… | [2026-08-19-regime-gate-pooled-banner.md](2026-08-19-regime-gate-pooled-banner.md) |
 | 2026-08-19 | The live ledger was gross while the backtest was net | BOUNDED — a real asymmetry, corrected on one basis; it is worth −0.0141R per resolved alert and changes no decision. The larger… | [2026-08-19-live-ledger-net-of-cost.md](2026-08-19-live-ledger-net-of-cost.md) |

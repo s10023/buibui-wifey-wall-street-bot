@@ -188,6 +188,14 @@ class WarningVerdict:
     raw_decision: str  # audit_guard ENABLE/DISABLE/CONCENTRATE/INSUFFICIENT
     verdict: str  # SUPPRESS-CANDIDATE / REVERSE / COSMETIC / INSUFFICIENT
     reasons: list[str]
+    n_days: int | None = None
+    """Distinct session days behind ``n_warned`` — the real sample size."""
+    design_effect: float | None = None
+    """Trades per independent observation. Carried even though this audit's
+    cell cut barely deflates (~1.1x), because that is a property of pooling
+    ACROSS strategies: re-cut these cells per strategy and the same
+    cross-sectional error re-opens. A reader needs to see the deflator to
+    notice when it changes."""
 
 
 def evaluate_warning_cells(
@@ -218,14 +226,19 @@ def evaluate_warning_cells(
     specs = [(w, d) for w in WARNING_KEYS for d in ("long", "short")]
     warned_arrays: list[npt.NDArray[np.float64]] = []
     clean_arrays: list[npt.NDArray[np.float64]] = []
+    warned_days: list[list[int]] = []
     for w, d in specs:
         sub = tagged[tagged["direction"] == d]
         warned_arrays.append(sub.loc[sub[w], "r"].to_numpy(dtype=np.float64))
         clean_arrays.append(sub.loc[~sub[w], "r"].to_numpy(dtype=np.float64))
+        warned_days.append(
+            audit_guard.session_day_keys([int(t) for t in sub.loc[sub[w], "ts_ms"]])
+        )
     cells = [
         audit_guard.AuditCell(
             label=f"{w}/{d}",
             supp_r=warned_arrays[i].tolist(),
+            cluster_key=warned_days[i],
             kept_r=clean_arrays[i].tolist(),
         )
         for i, (w, d) in enumerate(specs)
@@ -263,6 +276,8 @@ def evaluate_warning_cells(
                 raw_decision=cv.decision,
                 verdict=verdict,
                 reasons=list(cv.reasons),
+                n_days=cv.n_clusters,
+                design_effect=cv.design_effect,
             )
         )
     return out

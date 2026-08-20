@@ -10,6 +10,11 @@ Eager re-exports so callers can do
 """
 
 from analytics.research_guards.bootstrap import BootstrapCI, block_bootstrap_ci
+from analytics.research_guards.cluster import (
+    ClusterStats,
+    cluster_bootstrap_ci,
+    cluster_stats,
+)
 from analytics.research_guards.correlation import (
     SeriesDeflator,
     effective_independent_series,
@@ -40,10 +45,13 @@ __all__ = [
     "GATE_PBO",
     "GATE_SHARPE",
     "BootstrapCI",
+    "ClusterStats",
     "HaircutResult",
     "PBOResult",
     "SeriesDeflator",
     "block_bootstrap_ci",
+    "cluster_bootstrap_ci",
+    "cluster_stats",
     "cscv_pbo",
     "deflated_sharpe_ratio",
     "effective_independent_series",

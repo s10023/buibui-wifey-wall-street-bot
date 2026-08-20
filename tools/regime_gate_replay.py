@@ -77,6 +77,7 @@ from analytics.audit_guard import (
     AuditCell,
     CellVerdict,
     evaluate_audit_cells,
+    session_day_keys,
 )
 from analytics.regime import Regime, classify_series
 from analytics.signal_config import load_signal_config
@@ -265,6 +266,7 @@ def build_audit_cells(trades: pd.DataFrame) -> list[tuple[str, str, AuditCell]]:
                 AuditCell(
                     label=f"{name}/{label}",
                     supp_r=[float(x) for x in group["pnl_r"]],
+                    cluster_key=session_day_keys([int(t) for t in group["entry_time"]]),
                     kept_r=kept_by_strategy.get(name, empty),
                 ),
             )
@@ -302,6 +304,7 @@ def build_kept_audit_cells(trades: pd.DataFrame) -> list[tuple[str, str, AuditCe
                 AuditCell(
                     label=f"{name}/{label}",
                     supp_r=[float(x) for x in group["pnl_r"]],
+                    cluster_key=session_day_keys([int(t) for t in group["entry_time"]]),
                     kept_r=[float(x) for x in siblings["pnl_r"]],
                 ),
             )
@@ -559,12 +562,16 @@ def render_verdict(
         f"Per-cell significance (bootstrap CI vs ±{DEFAULT_BAR:.2f}R, "
         f"Holm-adjusted across {len(cells)} cell(s), alpha={DEFAULT_ALPHA:.2f}):"
     )
-    lines.append("-" * 78)
+    lines.append("-" * 96)
+    # `days` and `DEFF` sit beside `n` on purpose. The audit's headline error was
+    # reading n=172 as 172 independent observations when it was 25 days at ~20
+    # trades each; printing the trade count alone reproduces that misreading for
+    # every reader, however the CI behind it was computed.
     lines.append(
-        f"{'strategy':<18} {'regime':<10} {'n':>6} {'avg_r':>8} "
-        f"{'CI':>18} {'adj_p':>7}  verdict"
+        f"{'strategy':<18} {'regime':<10} {'n':>6} {'days':>5} {'DEFF':>5} "
+        f"{'avg_r':>8} {'CI':>18} {'adj_p':>7}  verdict"
     )
-    lines.append("-" * 78)
+    lines.append("-" * 96)
     for cell in cells:
         v = cell.verdict
         avg = f"{v.supp_avg:+.4f}" if v.supp_avg is not None else "n/a"
@@ -574,14 +581,16 @@ def render_verdict(
             else "—"
         )
         adj = f"{v.adj_pvalue:.3f}" if v.adj_pvalue is not None else "—"
+        days = f"{v.n_clusters}" if v.n_clusters is not None else "—"
+        deff = f"{v.design_effect:.2f}" if v.design_effect is not None else "—"
         flag = " (powered null)" if v.powered_null else ""
         lines.append(
-            f"{cell.strategy:<18} {cell.regime:<10} {v.n_supp:>6} {avg:>8} "
-            f"{ci:>18} {adj:>7}  {v.decision}{flag}"
+            f"{cell.strategy:<18} {cell.regime:<10} {v.n_supp:>6} {days:>5} "
+            f"{deff:>5} {avg:>8} {ci:>18} {adj:>7}  {v.decision}{flag}"
         )
     if not cells:
         lines.append("  (no suppressed cells)")
-    lines.append("-" * 78)
+    lines.append("-" * 96)
 
     decision, reasons = flip_verdict(cells)
     lines.append("")

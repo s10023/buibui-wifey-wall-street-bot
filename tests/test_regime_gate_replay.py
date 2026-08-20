@@ -9,6 +9,7 @@ from __future__ import annotations
 import duckdb
 import pandas as pd
 
+from analytics import audit_guard
 from analytics.signal_config import BiasConfig
 from tools.regime_gate_replay import (
     FLIP_BLOCKED,
@@ -227,8 +228,15 @@ class TestAggregate:
 def _cell_trades(
     spec: list[tuple[str, str, bool, list[float]]],
 ) -> pd.DataFrame:
-    """Build a trades frame from (strategy, regime, suppressed, pnl_r list)."""
+    """Build a trades frame from (strategy, regime, suppressed, pnl_r list).
+
+    Every row gets its OWN session day. These cases are about the verdict logic
+    and the two Holm families, so they must stay UNclustered — a shared day
+    would deflate ``n_eff`` and change what they measure. Clustering itself is
+    tested in ``tests/test_audit_guard.py``.
+    """
     rows: list[dict[str, object]] = []
+    day = 0
     for strategy, regime, suppressed, values in spec:
         for value in values:
             rows.append(
@@ -237,8 +245,10 @@ def _cell_trades(
                     "regime": regime,
                     "suppressed": suppressed,
                     "pnl_r": value,
+                    "entry_time": day * audit_guard.MS_PER_DAY,
                 }
             )
+            day += 1
     return pd.DataFrame(rows)
 
 
@@ -584,3 +594,45 @@ class TestAttachVerdictsKeptFamily:
         kept = out[~out["suppressed"]]
         assert kept["verdict"].isna().all()
         assert kept["tested_as"].isna().all()
+
+
+class TestClusterKeyComesFromEntryTime:
+    """The consumer must derive the day from the DATA, not fabricate one.
+
+    Without this, `build_audit_cells` could pass `list(range(n))` — a distinct
+    key per trade — and every test above would still pass while the deflator
+    silently did nothing. That is the shape of a guard that protects no state
+    the code actually reads.
+    """
+
+    @staticmethod
+    def _frame(entry_times: list[int]) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "strategy": ["ema"] * len(entry_times),
+                "regime": ["range"] * len(entry_times),
+                "suppressed": [True] * len(entry_times),
+                "pnl_r": [-0.4] * len(entry_times),
+                "entry_time": entry_times,
+            }
+        )
+
+    def test_same_session_day_collapses_to_one_key(self) -> None:
+        day = 20_000 * audit_guard.MS_PER_DAY
+        intraday = [day + h * 3_600_000 for h in (13, 15, 17, 19)]
+        [(_s, _r, cell)] = build_audit_cells(self._frame(intraday))
+        assert len(cell.supp_r) == 4
+        assert len(set(cell.cluster_key)) == 1
+
+    def test_distinct_days_stay_distinct_keys(self) -> None:
+        """Positive control: the collapse above is the day, not a constant."""
+        days = [d * audit_guard.MS_PER_DAY for d in (20_000, 20_001, 20_002, 20_003)]
+        [(_s, _r, cell)] = build_audit_cells(self._frame(days))
+        assert len(set(cell.cluster_key)) == 4
+
+    def test_the_kept_mirror_is_keyed_too(self) -> None:
+        day = 20_000 * audit_guard.MS_PER_DAY
+        frame = self._frame([day + h * 3_600_000 for h in (13, 15, 17, 19)])
+        frame["suppressed"] = False
+        [(_s, _r, cell)] = build_kept_audit_cells(frame)
+        assert len(set(cell.cluster_key)) == 1
