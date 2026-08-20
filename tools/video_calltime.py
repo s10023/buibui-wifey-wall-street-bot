@@ -15,7 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 STATED_TS_MAX_LEAD_H = 168
 BACKLOG_THRESHOLD_H = 24
@@ -41,12 +41,39 @@ def _parse_aware(value: str) -> datetime | None:
 
     A naive value is rejected rather than assumed UTC: the caller's contract is that
     a stated time carries a resolved zone, and silently assuming one could shift a
-    call by up to 12h in the look-ahead-permitting direction.
+    call by up to 12h in the look-ahead-permitting direction. The one carve-out is
+    `_parse_stated_date`, which is reached only when the caller sets `stated_date_only`.
     """
     parsed = _parse(value)
     if parsed is None or parsed.tzinfo is None:
         return None
     return parsed
+
+
+def _parse_stated_date(value: str) -> datetime | None:
+    """A date-only stated value, normalised to the last instant of that date.
+
+    A naive value is accepted here and ONLY here, keyed on the caller's
+    `stated_date_only` flag rather than on the value's shape. Two things make the
+    carve-out safe where `_parse_aware`'s blanket rejection is not: a date carries no
+    time, so reading it as UTC loses no zone information the caller ever had, and
+    end-of-day normalisation can only move the result LATER than the input — never
+    into the look-ahead-permitting direction. Any time component is discarded for the
+    same reason: the caller has asserted there is none.
+
+    Reading a bare date as UTC still credits the call up to a zone-offset earlier than
+    the speaker's own end-of-day. That residue is bounded by the caller's `stated >=
+    publish` and `max_lead_h` checks, and is the price of the flag doing anything at
+    all — a bare `YYYY-MM-DD` used to fall through to publish, so the branch was
+    unreachable on its own documented input.
+    """
+    parsed = _parse(value)
+    if parsed is None:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    midnight = parsed.replace(hour=0, minute=0, second=0, microsecond=0)
+    return midnight + timedelta(hours=23, minutes=59, seconds=59)
 
 
 def resolve_call_ts(
@@ -70,11 +97,13 @@ def resolve_call_ts(
     )
     if stated_ts_utc is None:
         return fallback
-    stated = _parse_aware(stated_ts_utc)
+    stated = (
+        _parse_stated_date(stated_ts_utc)
+        if stated_date_only
+        else _parse_aware(stated_ts_utc)
+    )
     if stated is None:
         return fallback
-    if stated_date_only:
-        stated = stated + timedelta(hours=23, minutes=59, seconds=59)
     if stated >= publish:
         return fallback
     if publish - stated > timedelta(hours=max_lead_h):
@@ -110,7 +139,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--publish", required=True, help="ISO-8601 publish timestamp")
     parser.add_argument("--stated", default=None, help="ISO-8601 stated timestamp")
     parser.add_argument(
-        "--date-only", action="store_true", help="stated value is a date with no time"
+        "--date-only",
+        action="store_true",
+        help="stated value is a date with no time; a bare YYYY-MM-DD is accepted",
     )
     parser.add_argument("--stated-raw", default="", help="verbatim quote, for audit")
     parser.add_argument("--ingested", default=None, help="ISO-8601 ingest timestamp")

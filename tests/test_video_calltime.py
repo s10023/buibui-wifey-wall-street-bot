@@ -92,9 +92,50 @@ def test_naive_stated_time_falls_back_to_publish() -> None:
     assert got.call_ts_utc == PUB
 
 
-def test_bare_date_stated_time_falls_back_to_publish() -> None:
+def test_bare_date_resolves_to_end_of_day_when_flagged() -> None:
+    """The skill's documented pass-1 output: a bare date plus stated_date_only."""
     got = resolve_call_ts(PUB, stated_ts_utc="2026-07-27", stated_date_only=True)
+    assert got.call_ts_utc == "2026-07-27T23:59:59+00:00"
+    assert got.call_ts_source == "stated"
+
+
+def test_bare_date_without_the_flag_still_falls_back() -> None:
+    """The naive carve-out is keyed on the FLAG, never on the value's shape."""
+    got = resolve_call_ts(PUB, stated_ts_utc="2026-07-27")
     assert got.call_ts_source == "publish"
+    assert got.call_ts_utc == PUB
+
+
+def test_date_only_discards_a_naive_time_component() -> None:
+    """stated_date_only asserts there is no time, so a stray one is not trusted.
+
+    Discarding can only move the result later (10:00 -> 23:59:59), which is the
+    conservative direction; trusting it would credit the call earlier.
+    """
+    got = resolve_call_ts(
+        PUB, stated_ts_utc="2026-07-27T10:00:00", stated_date_only=True
+    )
+    assert got.call_ts_utc == "2026-07-27T23:59:59+00:00"
+
+
+def test_bare_date_is_still_clamped_below_publish() -> None:
+    """The carve-out widens what parses, not what passes the bounds."""
+    got = resolve_call_ts(PUB, stated_ts_utc="2026-07-28", stated_date_only=True)
+    assert got.call_ts_source == "publish"
+
+
+def test_bare_date_beyond_max_lead_still_falls_back() -> None:
+    got = resolve_call_ts(PUB, stated_ts_utc="2026-07-01", stated_date_only=True)
+    assert got.call_ts_source == "publish"
+
+
+def test_cli_date_only_accepts_a_bare_date(capsys: pytest.CaptureFixture[str]) -> None:
+    """The reported defect, at the surface where it was observed."""
+    code = main(["--publish", PUB, "--stated", "2026-07-27", "--date-only"])
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["call_ts_source"] == "stated"
+    assert payload["call_ts_utc"] == "2026-07-27T23:59:59+00:00"
 
 
 def test_naive_publish_time_raises() -> None:
