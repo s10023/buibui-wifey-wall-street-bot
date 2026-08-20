@@ -34,7 +34,15 @@ def _insert_ohlcv(
                 "symbol": symbol,
                 "timeframe": tf,
                 "open_time": r["open_time"],
-                "open": r.get("open", r["close"]),
+                # Default to the bar MIDPOINT, not the close. These fixtures
+                # predate the gap-fill model and mean "price traded through
+                # the level intrabar"; defaulting to `close` opened several
+                # of them already beyond their own TP, which is a genuine gap
+                # and silently changed what they asserted. The midpoint is the
+                # least extreme point of the bar, so it is the least likely to
+                # sit beyond a level the bar merely touched. Gap tests state
+                # `open` explicitly and must never rely on this default.
+                "open": r.get("open", (float(r["high"]) + float(r["low"])) / 2.0),
                 "high": r["high"],
                 "low": r["low"],
                 "close": r["close"],
@@ -850,3 +858,153 @@ class TestNetOfCostResolution:
         counts = backfill_outcomes(conn, now_ms=20 * _HOUR, cost_model=self.SPREAD_ONLY)
         assert counts["no_ohlcv"] == 1
         assert counts["open"] == 0
+
+
+class TestGapFillsAreSymmetric:
+    """Both tails priced, or neither — a one-sided fix is a new bias, not a fix.
+
+    The 2026-08-19 audit measured only gapped LOSSES. On the live ledger 21.1% of
+    losses gap through their stop but 26.1% of wins gap through their target, so
+    pricing one side alone overstates the real bias by ~65%.
+    """
+
+    def test_loss_gapping_through_the_stop_books_worse_than_minus_one_r(self) -> None:
+        conn = duckdb.connect(":memory:")
+        init_schema(conn)
+        _insert_signal(conn, candle_ts_ms=0, entry=100.0, sl=95.0, tp=110.0, rr=2.0)
+        # Opens at 92 — already through the 95 stop. A stop-market fills at 92.
+        _insert_ohlcv(
+            conn,
+            "BTCUSDT",
+            "1h",
+            [
+                {
+                    "open_time": _HOUR,
+                    "open": 92.0,
+                    "high": 93.0,
+                    "low": 90.0,
+                    "close": 91.0,
+                }
+            ],
+        )
+
+        assert backfill_outcomes(conn, now_ms=2 * _HOUR)["loss"] == 1
+        outcome, outcome_r, _ = _fetch_one(conn, "sig1")
+        assert outcome == "loss"
+        # (92 - 100) / 5 = -1.6, not the -1.0 a resting stop would imply.
+        assert outcome_r == pytest.approx(-1.6)
+
+    def test_win_gapping_through_the_target_books_better_than_implied(self) -> None:
+        conn = duckdb.connect(":memory:")
+        init_schema(conn)
+        _insert_signal(conn, candle_ts_ms=0, entry=100.0, sl=95.0, tp=110.0, rr=2.0)
+        # Opens at 114 — already through the 110 target. A limit fills at 114.
+        _insert_ohlcv(
+            conn,
+            "BTCUSDT",
+            "1h",
+            [
+                {
+                    "open_time": _HOUR,
+                    "open": 114.0,
+                    "high": 116.0,
+                    "low": 113.0,
+                    "close": 115.0,
+                }
+            ],
+        )
+
+        assert backfill_outcomes(conn, now_ms=2 * _HOUR)["win"] == 1
+        outcome, outcome_r, _ = _fetch_one(conn, "sig1")
+        assert outcome == "win"
+        # (114 - 100) / 5 = 2.8, not the 2.0 implied by the 110 target.
+        assert outcome_r == pytest.approx(2.8)
+
+    def test_short_gaps_are_priced_on_the_mirrored_side(self) -> None:
+        conn = duckdb.connect(":memory:")
+        init_schema(conn)
+        _insert_signal(
+            conn,
+            direction="short",
+            candle_ts_ms=0,
+            entry=100.0,
+            sl=105.0,
+            tp=90.0,
+            rr=2.0,
+        )
+        # Opens at 108 — already through the 105 stop, upward, for a short.
+        _insert_ohlcv(
+            conn,
+            "BTCUSDT",
+            "1h",
+            [
+                {
+                    "open_time": _HOUR,
+                    "open": 108.0,
+                    "high": 110.0,
+                    "low": 107.0,
+                    "close": 109.0,
+                }
+            ],
+        )
+
+        assert backfill_outcomes(conn, now_ms=2 * _HOUR)["loss"] == 1
+        _, outcome_r, _ = _fetch_one(conn, "sig1")
+        # (100 - 108) / 5 = -1.6 for a short.
+        assert outcome_r == pytest.approx(-1.6)
+
+    def test_a_bar_that_did_not_gap_still_books_exactly_the_level(self) -> None:
+        """The regression pin: this fix must be a no-op on every non-gapped row."""
+        conn = duckdb.connect(":memory:")
+        init_schema(conn)
+        _insert_signal(conn, candle_ts_ms=0, entry=100.0, sl=95.0, tp=110.0, rr=2.0)
+        _insert_ohlcv(
+            conn,
+            "BTCUSDT",
+            "1h",
+            [
+                {
+                    "open_time": _HOUR,
+                    "open": 99.0,
+                    "high": 101.0,
+                    "low": 94.0,
+                    "close": 96.0,
+                }
+            ],
+        )
+
+        assert backfill_outcomes(conn, now_ms=2 * _HOUR)["loss"] == 1
+        _, outcome_r, _ = _fetch_one(conn, "sig1")
+        assert outcome_r == pytest.approx(-1.0)
+
+    def test_a_stop_on_the_wrong_side_of_entry_is_not_priced_as_a_gap(self) -> None:
+        """A malformed level must not turn a loss into a positive R.
+
+        Without the `level_is_on_the_expected_side` gate this books (104-100)/5 =
+        +0.8 as a LOSS — the failure mode is silent and flatters the book.
+        """
+        conn = duckdb.connect(":memory:")
+        init_schema(conn)
+        # sl ABOVE entry on a long: malformed.
+        _insert_signal(conn, candle_ts_ms=0, entry=100.0, sl=105.0, tp=110.0, rr=2.0)
+        _insert_ohlcv(
+            conn,
+            "BTCUSDT",
+            "1h",
+            [
+                {
+                    "open_time": _HOUR,
+                    "open": 104.0,
+                    "high": 106.0,
+                    "low": 103.0,
+                    "close": 105.0,
+                }
+            ],
+        )
+
+        assert backfill_outcomes(conn, now_ms=2 * _HOUR)["loss"] == 1
+        outcome, outcome_r, _ = _fetch_one(conn, "sig1")
+        assert outcome == "loss"
+        # Unconditional on purpose: a conditional assert here would pass whether
+        # the guard held or the row simply never resolved as a loss.
+        assert outcome_r == pytest.approx(-1.0)
