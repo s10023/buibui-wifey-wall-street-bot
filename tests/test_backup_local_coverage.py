@@ -161,8 +161,11 @@ def test_research_files_still_counts_repo_trees_only(
     _, _, backup_root = run_backup(fake_repo, tmp_path, fake_memory)
     manifest = json.loads((only_snapshot(backup_root) / "MANIFEST.json").read_text())
 
-    # docs/plans/note.md + the 3 BACKUP_FILES are absent in the fixture, so the
-    # repo-derived count is 1 — unchanged by the 3-file memory tree beside it.
+    # docs/plans/note.md is the only repo-derived file the fixture builds; every
+    # BACKUP_FILES entry is absent from it, so the count is 1 however many are
+    # declared — unchanged by the 3-file memory tree beside it. Deliberately not
+    # restating that entry count: a number whose only consumer is the sentence
+    # carrying it goes stale unnoticed, which is why `handoff-size` lost its stamp.
     assert manifest["research_files"] == 1
     assert manifest["external_roots"]["memory"]["files"] == 3
 

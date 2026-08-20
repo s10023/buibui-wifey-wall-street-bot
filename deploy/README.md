@@ -76,6 +76,7 @@ repo's `daily/<date>/` overwrite the other's.
     memory/...            the memory tree, copied whole from OUTSIDE the repo
     config/stocks.json
     .claude/settings.json
+    .claude/sensitive-terms.txt
   weekly/2026-08-12/
     parquet/              EXPORT DATABASE output — format-independent archive
 ```
@@ -101,7 +102,9 @@ repo's `daily/<date>/` overwrite the other's.
 
 `docs/plans/` is copied **whole**, with build artifacts (`__pycache__`,
 `.pytest_cache`) pruned afterwards. Only files living outside that tree are
-listed individually — `config/stocks.json` and `.claude/settings*.json`.
+listed individually — `config/stocks.json`, `.claude/settings*.json` and the gitignored
+`.claude/sensitive-terms.txt`, whose absence would leave the pre-flip gate's own config
+with no copy at all.
 
 This diverges from the crypto parent, which runs an allowlist of individual
 paths. The parent's own script records that list being found short **twice**:

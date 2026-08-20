@@ -123,10 +123,20 @@ BACKUP_DIRS=(
 #                           holds the /post-branch PreToolUse hook. CLAUDE.md
 #                           already carries a standing "re-add it after a
 #                           reclone" note, i.e. this one has been lost before.
+#   .claude/sensitive-terms.txt
+#                           the pre-flip gate's term list, gitignored BY POLICY
+#                           (a tracked list of the words you are hiding is the
+#                           leak it prevents), so git is structurally not a copy
+#                           of it. Only the operator can enumerate the terms, so
+#                           losing it costs a judgement no tool can reproduce --
+#                           and `post_branch_checks.py::sensitive_terms_result`
+#                           then reports NOT CONFIGURED, which is loud rather
+#                           than silent. Covered so the gate survives a reclone.
 BACKUP_FILES=(
     "config/stocks.json"
     ".claude/settings.json"
     ".claude/settings.local.json"
+    ".claude/sensitive-terms.txt"
 )
 
 # EXTERNAL ROOTS -- single-copy trees that live OUTSIDE $REPO.

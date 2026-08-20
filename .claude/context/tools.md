@@ -118,7 +118,7 @@ tree, where it isolates `TestEvGate` and names `_passes_ev_gate`; clean on HEAD.
 
 ## post_branch_checks.py — every mechanical `/post-branch` check, in one run
 
-Eleven checks that used to be **16 shell blocks embedded in `post-branch/SKILL.md`**, which a
+Twelve checks that used to be **16 shell blocks embedded in `post-branch/SKILL.md`**, which a
 session had to notice and copy by hand. That is the failure CLAUDE.md names as *a hand walk
 is not the walk*, and it is why the same defects kept recurring: the skill's answer to each
 one was more prose, and prose cannot enforce. Extracting them cut the skill from **1,649 to
@@ -127,7 +127,11 @@ one was more prose, and prose cannot enforce. Extracting them cut the skill from
 
 Checks: `queue-items` · `handoff-symbols` · `new-files` · `new-modules` · `new-targets` ·
 `negative-claims` · `doc-indexes` · `md-atx` · `memory-cap` · `handoff-size` ·
-`stale-anchors` (engine in `stale_anchors.py`, below).
+`stale-anchors` (engine in `stale_anchors.py`, below) · `sensitive-terms` (the pre-flip
+gate, ported from parent #658; asks the tracked tree, this branch's commit **content** and
+its commit **messages**, because a flip republishes the whole history and no file edit
+reaches a message. An absent `.claude/sensitive-terms.txt` is a FINDING reading
+`NOT CONFIGURED`, never a SKIP, and terms are masked in the output).
 
 Two are new and fix defects the prose form structurally could not:
 
