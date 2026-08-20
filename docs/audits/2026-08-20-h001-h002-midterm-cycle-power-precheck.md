@@ -116,6 +116,16 @@ Priced at the **deeper, not-yet-ingested** panel, so the verdict cannot be blame
 | trough day-of-year | 6 / 19 | 120.4d | 157.9d | +45.2d | 73.3 | 293 |
 | max drawdown | 6 / 19 | 6.7pp | 8.7pp | −1.2pp | 346.2 | **1,385** |
 
+### Postscript — `GC=F` was deepened, and the ingested panel is thinner still
+
+The backfill ran the same day (2,168 → **6,076** bars, 2000-08-30 → 2026-08-19), paging in two
+writes, which is #237's fix working on a second symbol. **441 rows quarantined**, and they are
+not spread evenly: 2003–2007 land at 161–196 bars a year against ~250, gold's patchy early
+electronic-session era. So the **ingested** panel carries **5** complete midterm years, not the 6
+yfinance advertises — 2006 comes in at 166 bars. The verdict above is priced at the more
+generous 6 and therefore still holds *a fortiori*; the honest figure for anyone re-running it
+against `analytics.db` is 5.
+
 The directional read is mildly favourable — midterm-year troughs land on **day 145** on average
 against **day 100** for other years, later as claimed, though 145 is well short of the stated 187
 — and the MDE is **157.9 days on a 365-day axis**. A design that can only reject a shift of
@@ -150,6 +160,7 @@ consecutive time the pre-check paid for itself — and the first time it did so 
 data was ingested or any code was written.
 
 ⚠ **A repeated claim from one author does not add an observation.** H-001 has now been
-corroborated in three consecutive ingest batches, 11 restatements across 13 videos, and the
-sample was 24 midterm years throughout. The corroboration count grew; `n` did not. The inbox
+corroborated in three consecutive ingest batches — restated in **11 of 14 videos** by the
+inbox row's own counts (4 of 5, 4 of 5, 3 of 4) — and the sample was 24 midterm years
+throughout. The corroboration count grew; `n` did not. The inbox
 column that records "CORROBORATED AGAIN" measures the pundit's confidence, never the evidence.
