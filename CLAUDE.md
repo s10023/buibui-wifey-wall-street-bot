@@ -875,4 +875,4 @@ GitHub fork — its history was copied — so 389 of 541 commits are the still-p
 research, published for the duration. Anything cloned or indexed in that window stays out, and any
 fork created while public is split into its own network and survives the flip back. This is an IP
 and history exposure rather than a secrets one: all 4,519 blobs scanned clean. Flip back promptly
-after the merge, and check `forks_count` is still 0 before you do.
+after the merge, and check `forkCount` is still 0 before you do.
