@@ -493,18 +493,34 @@ cannot promote a cell. Check a tool's legend against its own predicate — the p
 in the same direction as the code, so the output corroborated the defect.
 Audit: `docs/audits/2026-08-13-warning-value-audit.md`.
 
-⚠ **An `audit_guard` verdict is priced per TRADE, not per DAY — do not act on one without
-re-pricing it.** The block bootstrap absorbs **serial** dependence and **cannot** absorb same-day
-cross-symbol clustering, because a block absorbs dependence between observations adjacent *in the
-array it is handed* and neither consumer hands it a meaningful adjacency. Measured: day-clustered
-CIs **1.92×** wider (median, 64 cells), and the Holm leg is worse — `_two_sided_p` uses
-`t = sr·√n_TRADES` undeflated, so **30 of 64** cells are significant where **12** survive. **The
-error size is a property of the CELL CUT, not of the tool**: pooling across strategies decorrelates
-the day, so a re-cut per strategy re-opens it. **`[bias.regime]`'s `EXCLUDED` rests on one blocking
-cell that does not survive**, so treat that verdict as contested rather than settled — ⚠ **and note
-that widening a CI removes evidence rather than supplying the opposite conclusion.** Not yet fixed;
-the fix is a **required** per-observation cluster key failing **closed**.
-Audit: `docs/audits/2026-08-20-audit-guard-cross-sectional-clustering.md`.
+**An `audit_guard` verdict is priced per SESSION DAY, and the cluster key is REQUIRED.**
+`AuditCell.cluster_key` takes one entry per `supp_r` row and sits **before** the defaulted
+`kept_r`, so mypy refuses a call site that omits it. Both legs use it: `cluster_bootstrap_ci`
+resamples whole days, and the Holm leg forms `t = sr·√n_eff` with `n_eff = n / DEFF`. ⚠ **A
+mismatched key length FAILS CLOSED to `INSUFFICIENT`** and leaves the family — an unmeasurable
+panel and an uncorrelated one must not both read as a deflator of 1.0. ⚠ **The deflator can only
+shrink** (`icc` clamped to `[0,1]`, `DEFF ≥ 1`), because a negative sample ICC would otherwise
+invent more independence than there are trades.
+
+Why a block bootstrap could not do this: it absorbs **serial** dependence, between observations
+adjacent *in the array it is handed*, and same-day cross-symbol trades are scattered through that
+array. **The error size is a property of the CELL CUT, not of the tool** — pooling across
+strategies decorrelates the day, which is why `warning_audit` barely moved (one cell's CI ×1.11,
+Holm p 0.002 → 0.012, **verdict unchanged**) while single-strategy cells moved ~1.9×. **A re-cut
+per strategy re-opens it.**
+
+⚠ **`[bias.regime]`'s `EXCLUDED` is now UNBLOCKED, not overturned.** Its sole blocking cell
+(`ema/high_vol`, n=172 on **25 days**, DEFF 5.90) went `[+0.085, +1.023]` → `[−0.330, +1.450]` at
+adj-p 0.276, so the replay reports **FLIP justified** — but the same run reports **MAPPING
+UNTESTED**, and **widening a CI removes evidence rather than supplying the opposite conclusion.**
+`[bias.regime].mode` is unchanged and is the operator's call. Both `bos` cells keep `ENABLE` on the
+day unit, which is the check that the fix is not merely a width knob.
+
+⚠ **`session_day_keys` floors to the UTC day, which IS the session day for US RTH** (13:30–20:00
+UTC on EDT, 14:30–21:00 on EST — both inside one date), so it needs no ET conversion and **must not
+be ported to a 24h tape.** Sector and cross-day symbol correlation remain unabsorbed.
+Audits: `docs/audits/2026-08-20-audit-guard-cross-sectional-clustering.md` (the measurement),
+`docs/audits/2026-08-20-audit-guard-cluster-key-fix.md` (the fix).
 
 **Deflate a pooled cross-section before quoting any t-stat from it — `make wifey-n-eff`.**
 The 505-member universe carries **`n_eff` ≈ 2.96** independent series at `1d` (mean pairwise

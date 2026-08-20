@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from analytics import audit_guard
 from analytics.signal.types import SignalEvent
 from analytics.warning_audit import (
     WARNING_KEYS,
@@ -218,7 +219,16 @@ def _block(
     fit INSIDE the ±0.05R bar, and the 0.3 default cannot at these n (at n=80
     its CI half-width is ~0.066, i.e. wider than the bar it is tested against).
     """
-    df = pd.DataFrame({"direction": ["long"] * n, "r": rng.normal(r_mean, sd, n)})
+    # One trade per session day. These cases are about the verdict taxonomy, so
+    # they stay UNclustered — a shared day would deflate n_eff and change what
+    # they measure. `tests/test_audit_guard.py` is where clustering is tested.
+    df = pd.DataFrame(
+        {
+            "direction": ["long"] * n,
+            "r": rng.normal(r_mean, sd, n),
+            "ts_ms": [i * audit_guard.MS_PER_DAY for i in range(n)],
+        }
+    )
     for key in WARNING_KEYS:
         df[key] = key == flag
     return df
@@ -278,7 +288,11 @@ class TestEvaluateWarningCells:
         rng = np.random.default_rng(23)
         # sd=3.0 at n=60: CI half-width ~0.76, i.e. ~15x the 0.05R bar.
         noisy = pd.DataFrame(
-            {"direction": ["long"] * 60, "r": rng.normal(0.0, 3.0, 60)}
+            {
+                "direction": ["long"] * 60,
+                "r": rng.normal(0.0, 3.0, 60),
+                "ts_ms": [i * audit_guard.MS_PER_DAY for i in range(60)],
+            }
         )
         for key in WARNING_KEYS:
             noisy[key] = key == "w7_doji"
