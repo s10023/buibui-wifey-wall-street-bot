@@ -3,9 +3,20 @@
 **Date:** 2026-08-19
 **Subject:** `tools/regime_gate_replay.py`, the flip evidence for `config/strategy_params.toml
 [bias.regime].mode`
-**Verdict:** **EXCLUDED** — flipping `mode` to `hard` is ruled out on current evidence. One
-suppressed cell is a reliable winner at Holm-adjusted p=0.001, and `mode` is a single global
-switch, so no per-cell gain can be taken without also taking that loss.
+**Verdict:** **EXCLUDED — ⚠ CONTESTED 2026-08-20, see the note below** — flipping `mode` to
+`hard` is ruled out on current evidence. One suppressed cell is a reliable winner at
+Holm-adjusted p=0.001, and `mode` is a single global switch, so no per-cell gain can be taken
+without also taking that loss.
+
+⚠ **CONTESTED 2026-08-20 — the verdict above rests on evidence that does not survive its own
+resampling unit.** That "one suppressed cell" is `ema/high_vol`, and `audit_guard`'s bootstrap
+resamples **trades**, not trading days, so it cannot absorb the same-day cross-symbol clustering
+of 172 trades spread over 25 days. Priced on days, its CI runs `[−0.287, +1.440]` and it earns no
+verdict at all; the veto disappears and this tool's own `flip_verdict` returns `FLIP justified`.
+⚠ **That is not a recommendation to flip** — the correction removes evidence rather than adding
+it. The correct reading is that the reason filed here is unsupported, not that the opposite is
+established. Measurement, three independent routes and the open decisions:
+`docs/audits/2026-08-20-audit-guard-cross-sectional-clustering.md`.
 
 ## What was wrong
 
