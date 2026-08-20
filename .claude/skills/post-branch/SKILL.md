@@ -231,19 +231,21 @@ schedule before choosing `always`, and remember the wife channel is a person.
 surfaces:
   - {id: claude_md,   path: CLAUDE.md,          purpose: project structure, commands, footguns, verdicts}
   - {id: readme,      path: README.md,          purpose: CLI surface, install, quickstart}
-  - {id: memory_md,   path: <memory>/MEMORY.md, purpose: Current State, always_update: true}
+  - {id: memory_md,   path: <memory>/MEMORY.md, purpose: Current State, always_update: true, unprompted: true}
   - {id: makefile,    path: Makefile,           scope: any_referencing_changed_artifact}
   - {id: compose,     path: docker-compose.yml, scope: any_referencing_changed_artifact}
   - {id: context,     glob: .claude/context/*.md,      scope: + new_module_presence}
   - {id: skills,      glob: .claude/skills/*/SKILL.md, scope: any_referencing_changed_artifact}
-  - {id: handoff,     path: docs/plans/next-conversation-prompt.md, written_at: phase_6}
+  - {id: handoff,     path: docs/plans/next-conversation-prompt.md, written_at: phase_6, unprompted: true}
 ```
 
 **When porting this skill to another repo, edit only that block.**
 
 For each surface: locate it, read it, decide if an edit is warranted, **propose
 it as a diff and wait for confirmation**, then apply with `Edit` — never `Write`.
-Bias to minimal, targeted edits. Look for outdated examples, missing entries,
+The two `unprompted: true` surfaces are the exception and are written without
+asking; the rail in **Safety rails** carries the authority for that. Bias to
+minimal, targeted edits. Look for outdated examples, missing entries,
 broken paths, stale defaults, stale module-purpose descriptions, and:
 
 **A stale VALUE hides under a correct KEY.** The name grep matches the key, so a
@@ -665,7 +667,20 @@ Be explicit. "no change needed: internal refactor only" is useful; silence is no
 
 ## Safety rails
 
-- **Confirm every edit.** This skill proposes; the user approves.
+- **Confirm every edit, except the two surfaces marked `unprompted: true`.**
+  This skill proposes; the user approves. The exceptions are **`MEMORY.md`** and
+  the **handoff** (`docs/plans/next-conversation-prompt.md`), which the standing
+  account-level protocol says to write unprompted:
+  **`~/.claude-personal/CLAUDE.md` § "Session hygiene", lines 54-59 as of
+  2026-08-20 — read the rule there, never restate it here.** A restated copy is
+  exactly how this rail and that protocol came to disagree. Section name *and*
+  line range on purpose: a line number drifts silently and a heading does not, so
+  the pair catches its own decay.
+  ⚠ **"Untracked" is the wrong scope for the carve-out.** `git ls-files
+  docs/plans/ | wc -l` returns 0, and that same tree holds `pundit-calls.jsonl`
+  and the thesis inbox — single-copy research that most needs a human. So:
+  confirm git-tracked surfaces **and** untracked single-copy data alike, and let
+  the exception be **two named files**, never a directory class.
 - **Don't rename or move files.** Propose the edit in place, flag the path
   separately.
 - **Never `Write` over a doc.** Always targeted `Edit`.
