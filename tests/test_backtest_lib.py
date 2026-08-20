@@ -1909,3 +1909,85 @@ class TestRunBacktestCostModel:
         assert expected_cost > 0.0
         assert b.pnl_r is not None and c.pnl_r is not None
         assert c.pnl_r == pytest.approx(b.pnl_r - expected_cost)
+
+
+class TestEngineGapFillsAreSymmetric:
+    """The engine prices a gap on BOTH sides, mirroring the live resolver exactly.
+
+    Both books share `analytics/backtest/fills.py`, so these assertions and
+    `test_outcome_backfill.py::TestGapFillsAreSymmetric` are testing one rule at
+    two call sites. If they ever disagree, the shared module was bypassed.
+    """
+
+    def test_long_stop_gap_fills_at_the_open_not_the_stop(self) -> None:
+        # Entry candle 1 at open=100 → sl=98, tp=104.
+        # Candle 2 OPENS at 95, already through the 98 stop.
+        ohlcv = _make_ohlcv(
+            [
+                _candle(_BASE_TIME + 0, 100, 105, 95, 102),
+                _candle(_BASE_TIME + 1, 100, 103, 99, 101),
+                _candle(_BASE_TIME + 2, 95, 96, 94, 95),
+            ]
+        )
+        signals = _make_signals(
+            [{"open_time": _BASE_TIME + 0, "direction": "long", "reason": "test"}]
+        )
+        result = run_backtest(
+            ohlcv, signals, "BTCUSDT", "4h", "fvg", sl_pct=0.02, tp_r=2.0
+        )
+        assert result.trades[0].outcome == "loss"
+        assert result.trades[0].exit_price == pytest.approx(95.0)
+
+    def test_long_target_gap_fills_at_the_open_not_the_target(self) -> None:
+        # Candle 2 OPENS at 108, already through the 104 target.
+        ohlcv = _make_ohlcv(
+            [
+                _candle(_BASE_TIME + 0, 100, 105, 95, 102),
+                _candle(_BASE_TIME + 1, 100, 103, 99, 101),
+                _candle(_BASE_TIME + 2, 108, 109, 107, 108),
+            ]
+        )
+        signals = _make_signals(
+            [{"open_time": _BASE_TIME + 0, "direction": "long", "reason": "test"}]
+        )
+        result = run_backtest(
+            ohlcv, signals, "BTCUSDT", "4h", "fvg", sl_pct=0.02, tp_r=2.0
+        )
+        assert result.trades[0].outcome == "win"
+        assert result.trades[0].exit_price == pytest.approx(108.0)
+
+    def test_an_intrabar_touch_still_fills_exactly_at_the_level(self) -> None:
+        """The no-op pin: a bar that opens inside the range books the level."""
+        ohlcv = _make_ohlcv(
+            [
+                _candle(_BASE_TIME + 0, 100, 105, 95, 102),
+                _candle(_BASE_TIME + 1, 100, 103, 99, 101),
+                _candle(_BASE_TIME + 2, 100, 101, 96, 97),
+            ]
+        )
+        signals = _make_signals(
+            [{"open_time": _BASE_TIME + 0, "direction": "long", "reason": "test"}]
+        )
+        result = run_backtest(
+            ohlcv, signals, "BTCUSDT", "4h", "fvg", sl_pct=0.02, tp_r=2.0
+        )
+        assert result.trades[0].outcome == "loss"
+        assert result.trades[0].exit_price == pytest.approx(98.0)
+
+    def test_short_stop_gap_fills_at_the_open(self) -> None:
+        # Short: entry 100 → sl=102, tp=96. Candle 2 OPENS at 105, through the stop.
+        ohlcv = _make_ohlcv(
+            [
+                _candle(_BASE_TIME + 0, 100, 105, 95, 98),
+                _candle(_BASE_TIME + 1, 100, 101, 97, 99),
+                _candle(_BASE_TIME + 2, 105, 106, 104, 105),
+            ]
+        )
+        signals = _make_signals(
+            [{"open_time": _BASE_TIME + 0, "direction": "short", "reason": "test"}]
+        )
+        result = run_backtest(
+            ohlcv, signals, "BTCUSDT", "4h", "fvg", sl_pct=0.02, tp_r=2.0
+        )
+        assert result.trades[0].outcome == "loss"
+        assert result.trades[0].exit_price == pytest.approx(105.0)

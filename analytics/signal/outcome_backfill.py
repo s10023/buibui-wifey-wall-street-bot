@@ -66,6 +66,10 @@ from analytics.backtest.cost_model import (
     bars_per_day_for_tf,
     build_cost_context,
 )
+from analytics.backtest.fills import (
+    gap_fill_price,
+    level_is_on_the_expected_side,
+)
 from analytics.data_store import get_ohlcv
 from analytics.signal._common import parse_timeframe_secs
 
@@ -174,10 +178,13 @@ def implied_tp_r(
     risk = abs(entry - sl_price)
     if risk <= 0.0 or tp_price is None or tp_price <= 0.0:
         return rr_ratio
-    implied = (
+    if not level_is_on_the_expected_side(
+        level=tp_price, entry=entry, direction=direction, side="target"
+    ):
+        return rr_ratio
+    return (
         (tp_price - entry) / risk if direction == "long" else (entry - tp_price) / risk
     )
-    return implied if implied > 0.0 else rr_ratio
 
 
 @dataclass
@@ -304,7 +311,9 @@ def _scan_forward(
     window = post.iloc[:max_hold_bars]
     h = window["high"].to_numpy()
     lo = window["low"].to_numpy()
+    o = window["open"].to_numpy()
     t = window["open_time"].to_numpy()
+    sl_dist = abs(entry - sl_price)
 
     if direction == "long":
         sl_idxs = np.nonzero(lo <= sl_price)[0]
@@ -318,8 +327,27 @@ def _scan_forward(
     sl_first = int(sl_idxs[0]) if len(sl_idxs) else len(t)
     tp_first = int(tp_idxs[0]) if len(tp_idxs) else len(t)
 
+    # A bar that OPENS beyond the level fills there. Both branches stay
+    # byte-identical to the pre-2026-08-20 behaviour when the bar did NOT gap,
+    # so the rr_ratio fallback inside `implied_tp_r` is preserved untouched for
+    # every non-gapped win. Mirrors engine.py exactly — see fills.py.
     if sl_first <= tp_first and sl_first < len(t):
-        return "loss", -1.0, int(t[sl_first])
+        realized = -1.0
+        fill = gap_fill_price(
+            level=sl_price,
+            bar_open=float(o[sl_first]),
+            direction=direction,
+            side="stop",
+        )
+        if (
+            fill != sl_price
+            and sl_dist > 0
+            and level_is_on_the_expected_side(
+                level=sl_price, entry=entry, direction=direction, side="stop"
+            )
+        ):
+            realized = (fill - entry) / sl_dist * sign
+        return "loss", float(realized), int(t[sl_first])
     if tp_first < len(t):
         credited = implied_tp_r(
             direction=direction,
@@ -328,13 +356,26 @@ def _scan_forward(
             rr_ratio=rr_ratio,
             tp_price=tp_price,
         )
+        fill = gap_fill_price(
+            level=tp_price,
+            bar_open=float(o[tp_first]),
+            direction=direction,
+            side="target",
+        )
+        if (
+            fill != tp_price
+            and sl_dist > 0
+            and level_is_on_the_expected_side(
+                level=tp_price, entry=entry, direction=direction, side="target"
+            )
+        ):
+            credited = (fill - entry) / sl_dist * sign
         return "win", float(credited), int(t[tp_first])
 
     # Neither hit within the window so far.
     if len(window) < max_hold_bars:
         return None, None, None
 
-    sl_dist = abs(entry - sl_price)
     last_close = float(window["close"].iloc[-1])
     mtm_r = (last_close - entry) / sl_dist * sign if sl_dist > 0 else 0.0
     return "expired", float(mtm_r), int(t[-1])

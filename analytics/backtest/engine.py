@@ -24,6 +24,10 @@ from analytics.backtest.cost_model import (
     bars_per_day_for_tf,
     build_cost_context,
 )
+from analytics.backtest.fills import (
+    gap_fill_price,
+    level_is_on_the_expected_side,
+)
 from analytics.backtest.gates import _is_low_volume, _is_volume_spike
 from analytics.backtest.live_parity_config import LiveParityConfig
 from analytics.backtest.stats_overfit import sharpe_ratio
@@ -1098,6 +1102,7 @@ def run_backtest(
         # numpy nonzero (C loop) instead of a Python for-loop over ohlcv.iloc[i].
         h = highs_np[entry_idx:]
         lo = lows_np[entry_idx:]
+        o = opens_np[entry_idx:]
         t = ohlcv_times_np[entry_idx:]
 
         if direction == "long":
@@ -1111,13 +1116,44 @@ def run_backtest(
         tp_first = int(tp_idxs[0]) if len(tp_idxs) else len(t)
 
         # SL takes priority on a same-candle tie (mirrors the original sequential check).
+        # A bar that OPENS beyond the level fills there, not at the level —
+        # symmetrically on both sides. See analytics/backtest/fills.py for why
+        # one-sided is worse than not fixing it at all.
         if sl_first <= tp_first and sl_first < len(t):
             trade.exit_time = int(t[sl_first])
-            trade.exit_price = sl_price
+            trade.exit_price = (
+                gap_fill_price(
+                    level=sl_price,
+                    bar_open=float(o[sl_first]),
+                    direction=direction,
+                    side="stop",
+                )
+                if level_is_on_the_expected_side(
+                    level=sl_price,
+                    entry=entry_price,
+                    direction=direction,
+                    side="stop",
+                )
+                else sl_price
+            )
             trade.outcome = "loss"
         elif tp_first < len(t):
             trade.exit_time = int(t[tp_first])
-            trade.exit_price = tp_price
+            trade.exit_price = (
+                gap_fill_price(
+                    level=tp_price,
+                    bar_open=float(o[tp_first]),
+                    direction=direction,
+                    side="target",
+                )
+                if level_is_on_the_expected_side(
+                    level=tp_price,
+                    entry=entry_price,
+                    direction=direction,
+                    side="target",
+                )
+                else tp_price
+            )
             trade.outcome = "win"
         # else: neither hit → trade remains open
 
