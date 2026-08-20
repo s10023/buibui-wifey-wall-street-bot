@@ -235,7 +235,7 @@ under pass 2.** Instruct it to return ONLY this JSON:
 ```json
 {
   "summary": "one paragraph, English",
-  "stated_ts_utc": "ISO-8601 with an explicit UTC offset, or null",
+  "stated_ts_utc": "ISO-8601 with an explicit UTC offset, or a bare YYYY-MM-DD, or null",
   "stated_date_only": false,
   "stated_ts_raw": "verbatim quote or empty",
   "candidates": [
@@ -249,12 +249,19 @@ under pass 2.** Instruct it to return ONLY this JSON:
 `intro_recap_s` rule above — a channel with no `handle`, or `intro_recap_s: 0`, leaves
 both false and nothing changes.
 
-**`stated_ts_utc` must carry an explicit UTC offset (e.g. `2026-07-14T08:00:00+08:00`),
-or be `null` — never a bare local time.** `tools/video_calltime.py` rejects a naive
-(offset-less) timestamp and silently falls back to publish time, so a subagent that
-emits `2026-07-14T08:00:00` with no offset gets the same downstream result as emitting
-nothing, just less honestly. Instruct the subagent: state the offset whenever the
-speaker's timezone is inferable from context, otherwise emit `null` — never guess UTC.
+**A `stated_ts_utc` carrying a TIME must carry an explicit UTC offset (e.g.
+`2026-07-14T08:00:00+08:00`) — never a bare local time.** `tools/video_calltime.py`
+rejects a naive (offset-less) timestamp and silently falls back to publish time, so a
+subagent that emits `2026-07-14T08:00:00` with no offset gets the same downstream
+result as emitting nothing, just less honestly. Instruct the subagent: state the offset
+whenever the speaker's timezone is inferable from context — **never guess UTC for a
+time of day.**
+
+**When only the DATE is recoverable, emit the bare `YYYY-MM-DD` with
+`stated_date_only: true`** rather than inventing a time and an offset to go with it.
+`resolve_call_ts` accepts a naive value on that flag alone and normalises it to
+`23:59:59Z`, the last instant of the stated date — so an invented time can only credit
+the call earlier than the flag would. Emit `null` when neither is recoverable.
 
 Instruct the subagent to return **every** candidate it found, unranked-truncation-free —
 the cutoff is applied here, in code, not by the subagent. Then split them with
@@ -308,7 +315,11 @@ PYTHONPATH=. poetry run python tools/video_calltime.py \
 
 - Omit `--stated` entirely when pass 1 returned `null` — do not pass the literal string
   `"null"`.
-- Pass `--date-only` only when `stated_date_only` was `true`.
+- Pass `--date-only` only when `stated_date_only` was `true`. ⚠ **It is what makes a
+  bare `YYYY-MM-DD` parse at all** — without the flag a date-only `--stated` is naive,
+  and naive falls back to publish. Reachability of that branch is pinned by
+  `tests/test_video_calltime.py::test_cli_date_only_accepts_a_bare_date`; it was
+  unreachable on its own documented input until 2026-08-20.
 - `--stated-raw` is always passed (an empty string is fine).
 - `--ingested` is the current UTC time, e.g. `` $(date -u +%Y-%m-%dT%H:%M:%SZ) `` —
   needed so the tool can also compute `backlog`. **Capture this one value per batch and

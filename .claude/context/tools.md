@@ -1174,12 +1174,24 @@ Pure call-time resolution, the `/ingest-video` look-ahead guard (kept out of pro
 deliberately — LLM date arithmetic is a known failure mode and this field decides whether every
 author's hit rate is honest): `resolve_call_ts` prefers a video's stated in-video time but
 bounds it (`stated < publish`, `publish − stated ≤ STATED_TS_MAX_LEAD_H` (168h), a
-naive/offset-less stated value is rejected not assumed-UTC, date-only → conservative
-end-of-day clamped below publish), else falls back to `publish_ts_utc`; `is_backlog` flags
+naive/offset-less stated value is rejected not assumed-UTC **unless
+`stated_date_only` is set**, date-only → conservative end-of-day clamped below publish),
+else falls back to `publish_ts_utc`; `is_backlog` flags
 `publish → ingested` lag > `BACKLOG_THRESHOLD_H` (24h) — computed from publish time, so it
 describes ingest lag, not the pundit's.
 
 **Run:** `PYTHONPATH=. poetry run python tools/video_calltime.py --publish <iso> [--stated <iso>] [--date-only] --stated-raw "<quote>" [--ingested <iso>]`
+
+⚠ **The naive carve-out is keyed on the FLAG, never on the value's shape**, and it exists
+because the date-only branch was **unreachable on its own documented input** until
+2026-08-20: `/ingest-video` tells its pass-1 subagent to emit `YYYY-MM-DD`, `_parse_aware`
+required an explicit offset, so a bare date returned `None` and the publish fallback won
+every time. Two properties make the carve-out safe where the blanket rejection is not — a
+date carries no zone to lose, and end-of-day normalisation can only move the result
+**later**, away from the look-ahead-permitting direction. A time component is discarded
+rather than trusted, since the flag asserts there is none. **It failed in the SAFE
+direction**, which is why a dead branch could sit there through a full suite: the fallback
+is the most conservative answer available, so nothing downstream ever looked wrong.
 
 ## yt_feed.py — YouTube channel auto-feed backing `/ingest-feed`
 
