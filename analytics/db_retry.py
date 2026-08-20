@@ -69,7 +69,8 @@ def is_lock_conflict(exc: BaseException) -> bool:
     six times before failing with the same error a minute later.
 
     This is also what makes an existing blanket `except duckdb.IOException`
-    narrowable: two callers in `web/` swallowed *every* I/O error as "the
+    narrowable: three callers -- two in `web/`, plus the daemon's per-symbol
+    `sync` in `signal_runner.py` -- swallowed *every* I/O error as "the
     database is busy", so a missing or corrupt file was reported as transient.
     """
     return isinstance(exc, duckdb.IOException) and "Conflicting lock" in str(exc)

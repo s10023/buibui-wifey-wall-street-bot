@@ -36,7 +36,7 @@ from analytics.data_store import (
     prune_backtest_cache,
 )
 from analytics.data_sync import backfill, sync
-from analytics.db_retry import connect_with_retry
+from analytics.db_retry import connect_with_retry, is_lock_conflict
 from analytics.signal.outcome_backfill import backfill_outcomes
 from analytics.signal_config import (
     BacktestFilterConfig,
@@ -298,8 +298,18 @@ def run_signal_watch(
                             backfill(conn, symbol, tf, backfill_start_ms)
                             ohlcv_cache.pop((symbol, tf), None)  # force cold read
                         except duckdb.IOException as exc:
+                            # Narrowed for the same reason as `web/api/deps.py`
+                            # and `web/api/main.py`: DuckDB raises one class for
+                            # every I/O failure, so a bare handler reports a
+                            # missing, full or corrupt database as "will retry"
+                            # and the cycle goes on to scan, alert and backfill
+                            # outcomes against stale data. Under `--once` — how
+                            # `make go-live` runs — there is no next cycle for
+                            # the promised retry to happen in.
+                            if not is_lock_conflict(exc):
+                                raise
                             logger.warning(
-                                "DB sync failed for %s/%s (will retry): %s",
+                                "DB sync failed for %s/%s (lock held; will retry): %s",
                                 symbol,
                                 tf,
                                 exc,

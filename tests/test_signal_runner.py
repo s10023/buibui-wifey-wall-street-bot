@@ -2,6 +2,7 @@
 
 import time
 from contextlib import ExitStack
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -212,3 +213,64 @@ def test_default_loops_and_sleeps_between_cycles(daemon_mocks: Any) -> None:
     assert daemon_mocks["run_scan_cycle"].call_count == 2
     # Default (daemon) path reaches the boundary-sleep scheduler after cycle 1.
     assert daemon_mocks["secs_until_next_boundary"].call_count == 1
+
+
+class TestSyncIoErrorsAreNarrowed:
+    """DuckDB raises one class for every I/O failure, so the per-symbol handler
+    around ``sync`` must let a missing, full or corrupt database through and
+    swallow only a lock conflict.
+
+    A bare handler logged "will retry" and the cycle went on to scan, alert and
+    backfill outcomes against stale data — and under ``--once`` (how
+    ``make go-live`` runs) there is no next cycle for that retry to happen in.
+    The two sibling sites, ``web/api/deps.py`` and ``web/api/main.py``, were
+    narrowed for this reason; this one was missed.
+
+    Both directions are asserted on purpose: without the swallow control,
+    "it propagated" would pass just as well if the loop never reached ``sync``.
+    """
+
+    def test_a_lock_conflict_is_swallowed_and_the_cycle_continues(
+        self, daemon_mocks: Any, tmp_path: Path
+    ) -> None:
+        # The fixture patches the whole `duckdb` module on the runner, which
+        # would make `except duckdb.IOException` uncatchable. Restore the real
+        # class so the handler under test is the one that runs.
+        daemon_mocks["duckdb"].IOException = duckdb.IOException
+        daemon_mocks["sync"].side_effect = duckdb.IOException(
+            'Conflicting lock is held in "analytics.db"'
+        )
+
+        signal_runner.run_signal_watch(
+            symbols=["AAPL"],
+            timeframes=["4h"],
+            strategies=["bos"],
+            once=True,
+            db_path=tmp_path / "analytics.db",
+        )
+
+        # Swallowed, so the cycle ran to completion.
+        assert daemon_mocks["run_scan_cycle"].call_count == 1
+        # An IOException is not the ValueError that triggers a first backfill.
+        daemon_mocks["backfill"].assert_not_called()
+
+    def test_a_non_lock_io_error_propagates(
+        self, daemon_mocks: Any, tmp_path: Path
+    ) -> None:
+        daemon_mocks["duckdb"].IOException = duckdb.IOException
+        daemon_mocks["sync"].side_effect = duckdb.IOException(
+            "IO Error: Could not read from file: database is corrupt"
+        )
+
+        with pytest.raises(duckdb.IOException, match="corrupt"):
+            signal_runner.run_signal_watch(
+                symbols=["AAPL"],
+                timeframes=["4h"],
+                strategies=["bos"],
+                once=True,
+                db_path=tmp_path / "analytics.db",
+            )
+
+        # The whole point: no scan, no alert, no outcome backfill on stale data.
+        daemon_mocks["run_scan_cycle"].assert_not_called()
+        daemon_mocks["backfill_outcomes"].assert_not_called()

@@ -23,9 +23,18 @@ web/api/routers/stats.py        ← GET /api/stats/{symbol}?days=180 (cached in 
 web/api/models/                 ← Pydantic response models (if any)
 web/ui/src/pages/Stats.svelte   ← hero cones + card grid UI
 web/ui/src/api.ts               ← getStats(symbol, days) typed client
+
+analytics/stats/                ← compute_live_outcomes, mark_open_positions, open_positions
+web/api/routers/live_outcomes.py ← GET /api/live-outcomes (+ /open) — NOT part of StatsBundle
+web/api/models/live_outcomes.py ← its own response models
+web/ui/src/components/LiveOutcomes.svelte ← self-fetching card with its own controls
 ```
 
-## The 11 Cards
+## The cards
+
+⚠ **No count in this heading, on purpose** — the tables below list cones and
+overlays as well as grid cards, so any single number disagrees with one reading
+or the other. Count the `card-title` spans in `Stats.svelte` if you need it.
 
 ### Cached in StatsBundle (`compute_all` → `stats_cache` table)
 
@@ -50,7 +59,18 @@ web/ui/src/api.ts               ← getStats(symbol, days) typed client
 | P1 Wick Rank | `compute_weekly_wick_percentile(conn, symbol, adr_14, days)` | Current week's P1 wick exceedance vs historical P1 wicks; "P1 not yet set" when only one weekly extreme has formed; fresh every request |
 | Weekly Current State | `compute_weekly_current_state(conn, symbol, adr_14, days)` | Live banner: current DOW, move% from weekly open, distance bucket, conditioned low/high-still-ahead probabilities |
 
-**Why split?** The cached bundle is safe to serve stale for a day. The live cards must reflect the current candle's position, so they bypass the cache entirely.
+### Neither — its own endpoint (cross-symbol)
+
+| Card | Backend | Notes |
+| ------ | --------- | ------- |
+| Live Alert Outcomes | `compute_live_outcomes` / `mark_open_positions` / `open_positions` → `GET /api/live-outcomes` (+ `/live-outcomes/open`) | **The one card that is not in `StatsBundle` at all.** Scored from the `signal_alert_outcomes` ledger and **cross-symbol** — every other card is keyed to the selected symbol. `LiveOutcomes.svelte` fetches it itself with its own `days` / `min_n` / `symbol` controls, so the page-level symbol and period pickers do not drive it. Roll-up is all-time; the tables window by its own `days` (0 = all time). Win rate excludes expired trades; `avg R` averages `outcome_r`, which is **net of cost** |
+
+**Why three paths, not two?** The cached bundle is safe to serve stale for a day.
+The live *fields* must reflect the current candle's position, so they bypass the
+cache but still ride the same per-symbol request. Live Alert Outcomes is neither:
+it reads a different table on a different axis (cross-symbol, not per-symbol) and
+so cannot key on `(symbol, days, date)` at all — which is why it is a separate
+endpoint rather than a third branch of `compute_all`.
 
 ## Key constraints
 
@@ -79,7 +99,12 @@ web/ui/src/api.ts               ← getStats(symbol, days) typed client
 
 ## Adding a new stat card
 
-Decide: is the card **cacheable** (uses only historical OHLCV, same answer all day) or **live** (depends on today's candle position)?
+First check the card is **per-symbol** at all. Anything keyed on a different
+axis — cross-symbol, per-strategy, per-alert — does not belong in `StatsBundle`,
+whose cache key is `(symbol, days, date)`; give it its own router and let its
+component fetch it, the way Live Alert Outcomes does. Only then decide:
+is the card **cacheable** (uses only historical OHLCV, same answer all day) or
+**live** (depends on today's candle position)?
 
 **Cacheable card:**
 
