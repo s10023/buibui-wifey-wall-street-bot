@@ -1235,6 +1235,21 @@ Injected HTTP `get` → network-free request-shape tests (70 of them).
 
 **Run:** `PYTHONPATH=. poetry run python tools/yt_feed.py poll|backfill|mark|resolve|hint`
 
+⚠ **`mark` being the ONLY writer is also its sharpest failure mode, and it set the ranking
+rule: a silent WRITE-path failure outranks a loud READ-path one.** `-mx3UwwJ5P4` is a valid
+YouTube id and argparse read the leading `-` as a flag, so `nargs="*"` dropped it. Because
+`mark` is the sole writer of consumption state, the swallowed id was never recorded and the
+video **re-presented forever with no other symptom** — no error, no partial write, nothing
+downstream that looked wrong. `mark` now extracts `--ingested`/`--skipped` from `argv`
+before argparse sees them, so every call shape works
+(`tests/test_yt_feed.py::TestDashLeadingVideoIds`, 5 tests).
+
+`route_dedup --source-id` is the deliberate contrast and is left unchanged: it takes one
+value, so `--source-id=<id>` works natively and the space form fails **loudly**, which its
+`--help` says. A read-path tool that dies in front of you costs a retry; a write-path tool
+that drops one argument costs a ledger nobody knows is wrong. **Rank the fix by whether
+anything could have SEEN the failure, not by its blast radius.**
+
 ## video_fetch.py — read-only YouTube/X video fetcher
 
 Read-only YouTube/X video fetcher: every yt-dlp call goes through

@@ -276,10 +276,18 @@ rewrite for "what looks missing" does not work — it reads complete, because it
 was written to.
 
 ```bash
-toks() { grep -oE '`[^`]+`' "$1" | sort -u; }
-git show main:<path> > /tmp/old.md
-comm -23 <(toks /tmp/old.md) <(toks <path>)   # in old, gone from new
+NEW=<path>                 # the doc as it stands on this branch
+OLD=/tmp/old.md
+git show "main:$NEW" > "$OLD"
+comm -23 <(grep -oE '`[^`]+`' "$OLD" | sort -u) \
+         <(grep -oE '`[^`]+`' "$NEW" | sort -u)   # in old, gone from new
 ```
+
+⚠ **No `$1` anywhere in that block, deliberately.** A shell positional inside a
+skill code block has been observed rendering **substituted** rather than literal, so a
+copied helper silently reads a path nobody passed. Named variables render literally.
+See the handoff's skill queue for what is and is not established about when that
+happens.
 
 Triage every remainder: each is either deliberately re-homed or an omission, and
 you must say which. **Re-homing counts as covered only if you can name the
