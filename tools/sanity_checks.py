@@ -162,6 +162,9 @@ MISSING_PATH_EXEMPT: dict[str, str] = {
     "utils/binance_client.py": "named because it was dropped at the fork",
     "utils/binance_client": "same, referenced without the extension",
     "config/coins.json": "the parent's watchlist, named because wifey has none",
+    "analytics/forecast/attribution.py": (
+        "parent-only, named as the port source for the n_eff deflator"
+    ),
     "tools/gate_audit.py": "parent-only, named because it was never ported",
     "cli/card.py": "parent-only, named because it was never ported",
     "config/pundit_roster.toml": "parent-only, named because it was never ported",

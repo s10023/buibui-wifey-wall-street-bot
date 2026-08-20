@@ -12,7 +12,7 @@ PYTHON_FILES = $(shell find . -name "*.py" -not -path "./venv/*" -not -path "./.
 DOCKER_IMAGE = wifey-bot
 MEMORY = $(HOME)/.claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot/memory/MEMORY.md
 
-.PHONY: status wait-ci wait-ci-main lint lint-md lint-md-fix docs-index docs-index-check lint-py-check lint-py typecheck test test-cov test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-pundit-sync wifey-pundit-backfill wifey-universe-backfill universe-coverage universe-stamp-listed wifey-forecast-audit wifey-xsmom-audit wifey-xsmom-residual-audit wifey-lowvol-audit wifey-xasset-audit wifey-xasset-backfill wifey-pead-audit wifey-pead-backfill wifey-velocity-audit wifey-exit-audit wifey-exit-replay wifey-warning-value-audit wifey-pundit-score wifey-check-levels wifey-route-dedup-seed wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep backup backup-dry-run backup-offsite backup-offsite-dry-run wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent check-dead-surfaces check-orphan-tests post-branch-checks sanity-checks wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
+.PHONY: status wait-ci wait-ci-main lint lint-md lint-md-fix docs-index docs-index-check lint-py-check lint-py typecheck test test-cov test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-pundit-sync wifey-pundit-backfill wifey-universe-backfill universe-coverage universe-stamp-listed wifey-forecast-audit wifey-xsmom-audit wifey-xsmom-residual-audit wifey-lowvol-audit wifey-xasset-audit wifey-xasset-backfill wifey-pead-audit wifey-pead-backfill wifey-velocity-audit wifey-exit-audit wifey-exit-replay wifey-warning-value-audit wifey-n-eff wifey-pundit-score wifey-check-levels wifey-route-dedup-seed wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep backup backup-dry-run backup-offsite backup-offsite-dry-run wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent check-dead-surfaces check-orphan-tests post-branch-checks sanity-checks wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
 
 lint: lint-md lint-py
 
@@ -216,6 +216,10 @@ wifey-exit-replay:  ## A/B candidate exit policies over the live ledger (read-on
 wifey-warning-value-audit:  ## do the W1-W8 alert warnings predict avg_r? (read-only)
 	@echo "🔎 Warning-value audit — re-deriving W1-W8 flags from OHLCV..."
 	@PYTHONPATH=. poetry run python tools/warning_value_audit.py $(ARGS)
+
+wifey-n-eff:  ## measure effective independent series (n_eff) for a pooled panel -> distil_power flags
+	@echo "🔗 Measuring the correlation deflator (n_eff) over the panel..."
+	@PYTHONPATH=. poetry run python tools/n_eff.py $(ARGS)
 
 wifey-pundit-score:  ## score the pundit-call ledger vs OHLCV -> priors (sync the ledger's symbols first)
 	@echo "🎯 Scoring the pundit-call ledger against stored OHLCV..."
