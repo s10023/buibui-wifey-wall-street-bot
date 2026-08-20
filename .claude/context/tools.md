@@ -281,6 +281,43 @@ its target is invisible.
 **Run:** via `make post-branch-checks`, or
 `PYTHONPATH=. poetry run python tools/post_branch_checks.py --check stale-anchors`.
 
+## cadence_check.py — which recurring tasks are overdue
+
+`make cadence-check` reads `docs/plans/task-marks/` — one file per task holding an ISO-8601 UTC
+timestamp — and reports what is past its period. `make cadence-stamp TASK=<slug>` records a run.
+Ported from the parent's `daily_check.py` task-mark block; the parent's other ~1,650 lines are
+crypto-specific (signal-watch mtime, the xsmom executor, a majors cross-section) and were not
+taken.
+
+**Three divergences from upstream, each because the parent's REASON does not hold here.**
+
+- **The checker is TRACKED.** Upstream's lives under gitignored `docs/plans/` and its own
+  docstring admits a reclone loses it. That is the failure wifey fixed on 2026-08-20 by inverting
+  `.claude/` to a denylist, so repeating it here would import a defect. The **marks** stay
+  gitignored — they are per-machine state, and `docs/plans/` is already covered wholesale by
+  `make backup`.
+- **The mark's CONTENT is authoritative, not its mtime.** Upstream writes an ISO line and then
+  reads `st_mtime`, so the content it carefully writes has no consumer — the same self-referential
+  shape that cost the handoff its `Line count:` stamp. mtime also moves for reasons that are not
+  runs (an editor open, a restore that does not preserve times), and that failure direction
+  reports **fresher than reality**. An unparseable mark here reads as OVERDUE, never as fresh.
+- **Stamping is a flag.** Upstream tells each skill to run `date -u +%FT%TZ > …/<task>`; a redirect
+  typo silently writes the wrong file and a missing directory fails the write. `--stamp` creates
+  the directory and **refuses a slug that is not a declared task**.
+
+⚠ **A MISSING mark reads as OVERDUE on purpose** — the fail-safe direction, since the opposite
+mistake reports "fresh" for a task that has never run once.
+
+⚠ **ADVISORY, and it must never enter `make test` or a CI job.** The marks are gitignored, so a
+fresh clone sees every one absent and would report every task permanently overdue. **A check that
+can only be red in CI is worse than no check.** `--exit-nonzero` exists for a human who wants a
+shell condition.
+
+The four inclusion rules — rots silently · named consequence · one cheap field · exactly one
+action clears it — and the reason each rejected candidate fails one (`make backup`, `make
+go-live`, `/db-update`, `/ingest-feed`) live beside `TASKS` in the module, so the table cannot
+grow into noise without someone stating which rule the new line satisfies.
+
 ## sanity_checks.py — every mechanical `/sanity-check` check, in one run
 
 Seven checks: `fork-drift` (invocable artifacts a doc names but the code lacks — make targets,

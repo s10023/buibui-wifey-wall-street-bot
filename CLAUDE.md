@@ -113,6 +113,24 @@ the change the check exists to catch. Legs needing project imports or the gitign
 degrade to `SKIPPED`/a note rather than a finding, because a check that is never green stops being
 read.
 
+`make cadence-check` reports which recurring tasks are **overdue**, read from
+`docs/plans/task-marks/` — one file per task holding an ISO-8601 UTC timestamp, stamped with
+`make cadence-stamp TASK=<slug>`. Ported from the parent's `daily_check.py` task-mark block, with
+three divergences, each because the parent's *reason* does not hold here: **the checker is
+TRACKED** (upstream's lives in gitignored `docs/plans/` and dies on a reclone — the same failure
+the `.claude/` denylist inversion fixed), **the mark's CONTENT is authoritative rather than its
+mtime** (upstream writes a timestamp and reads `st_mtime`, so the content it writes has no
+consumer, and mtime moves for reasons that are not runs), and **stamping is a flag** rather than a
+`date -u … > path` redirect a typo can misdirect.
+
+⚠ **A MISSING mark reads as OVERDUE on purpose** — a lost mark must shout, where the opposite
+mistake reports "fresh" for a task that has never run once. ⚠ **It is ADVISORY and must never gate
+CI**: the marks are gitignored, so a fresh clone sees every one absent and would report every task
+permanently overdue. A check that can only be red in CI is worse than no check. Two tasks are
+declared (`/sanity-check`, `/sync-parent`, both 7d); the four inclusion rules and the reason each
+rejected candidate fails one live beside `TASKS` in `tools/cadence_check.py`. **Nothing auto-runs
+anything** — these only record that a run happened.
+
 `make wait-ci PR=<n>` waits for a PR's checks and `make wait-ci-main` is the **flip-back gate**
 (`--branch main --min-jobs 5`); both report whether the checks actually *ran*. `tools/wait_ci.py`
 exits **3** on `steps=0`, the Actions-allowance failure that renders exactly like a real one (flip
@@ -211,12 +229,18 @@ sibling tree from wifey's own; `tests/test_backup_offsite_guards.py` pins that h
 and is the script's only gate, since no CI step reads `deploy/`. Never paste `rclone config`
 output anywhere — it carries a live refresh token.
 
-⚠ **A green off-site timer does not mean the backup is current.** Only the off-site leg is
-scheduled; it mirrors `~/backups/wifey`, which **only a manual `make backup` populates**, so it
-logs an identical `off-site backup OK` whether the tree is fresh or frozen. **Run `make backup`
-first.** The general rule: a scheduled job attests only to the step it performs, so a green light
-means "the data is current" only if something checks the *input's* age. Rationale and the two
-candidate fixes are in `deploy/README.md`.
+⚠ **A green off-site timer does not mean the backup is current** — but the reason CHANGED on
+2026-08-19 and the old one is no longer why. **Both legs are now scheduled**: `wifey-backup.timer`
+(local, installed 2026-08-19 16:06) and `wifey-backup-offsite.timer`, both `enabled`. Until then
+only the off-site leg ran, mirroring a `~/backups/wifey` that only a manual `make backup`
+populated — **that sentence stood here after it stopped being true**, which is the drift this
+paragraph now exists to correct. The residual risk is narrower and real: **a timer that silently
+stops looks identical to one that is working**, since alerting is failure-only, so verify a
+snapshot's age rather than a unit's `enabled` state. The general rule survives both versions: a
+scheduled job attests only to the step it performs, so a green light means "the data is current"
+only if something checks the *input's* age. Rationale and the two candidate fixes are in
+`deploy/README.md`. ⚠ **This is deliberately NOT a `cadence-check` line** — no human action
+clears it, so it fails that tool's inclusion rule (4); it wants an observed-state probe.
 
 ## CLI
 

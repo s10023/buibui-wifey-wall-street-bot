@@ -211,3 +211,17 @@ and refused.
   applied with its `x_route` half missing. Key on files and symbols, never on the number.
 - Sweep findings (`tp_r`, ATR multipliers) land in EVALUATE: methodology may
   transfer, values won't (equity cohort ≠ crypto cohort).
+
+## Stamp the run — the final step
+
+```bash
+make cadence-stamp TASK=sync-parent
+```
+
+Stamp after the SCAN, not after every PR is decided — the cadence being tracked is *did we
+look*, and the pointer already records *what was decided*. `make cadence-check` reports this
+skill OVERDUE at 7d, and a **missing mark reads as overdue on purpose**.
+
+⚠ **This cadence exists because the failure it catches has already happened here**: by
+2026-08-20 the parent had merged **52** PRs since the pointer while the handoff described the
+range as empty. Nothing in the normal workflow says the parent has moved.
