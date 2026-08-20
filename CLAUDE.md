@@ -643,6 +643,25 @@ prose did not enforce these constraints:
   themselves tracked or backed up; and it **excludes main's accepted baseline**, since a check that
   is never clean trains dismissal. The list is single-copy, so `deploy/backup-analytics.sh` covers
   it in `BACKUP_FILES`. Ported from parent #658.
+  ⚠ **Those three legs cannot see a PR TITLE or BODY, which is the fourth measured surface and the
+  indexable one** — a body is neither the tree nor a commit, so the gate reports `clean` on one
+  naming every term. Screen the composed text before it posts: **`make post-branch-text
+  FILE=<path>`** (`FILE=-` reads stdin, so a title pipes straight in). Unlike the advisory sweep it
+  **gates**, exit 1 on a hit — though ⚠ **through `make` you see make's own 2**, so read the banner.
+  It runs that check alone, needs no git surface, and prints **line numbers plus a masked term and
+  never the matching line**, since quoting context would reproduce what the masking withholds. It
+  belongs in `/post-branch` phase 5 beside `make preflight`: **a posted body is public the moment
+  it lands, and editing it later does not unpublish it.** Hand-screening caught #245's first draft,
+  which named all three terms; a recipe that has to be remembered is the failure mode this file
+  keeps naming, so the loop is now the feature.
+  ⚠ **`negative-claims` narrows through `NEGATIVE_CLAIM_EXEMPT`, keyed on `(path, token)` with the
+  reason inline, and drops a hit only when EVERY matched token is exempt** — one unexempt token
+  still reports the line, so an entry narrows a finding rather than deleting it. Neither half of
+  the key is safe alone, and `attribution` is off the list because on two claim lines it is the
+  claim's own subject. ⚠ **Do not re-scope this leg to a window around the regex match**: on 3–6 KB
+  paragraph lines that is the obvious remedy, and measured against the pre-#248 tree it would have
+  **suppressed** the leg's only true positive, which a human found by re-reading the paragraph
+  rather than the matched clause. Narrative: `context/tools.md`.
   They were **16 shell blocks inside `post-branch/SKILL.md`** until 2026-08-18, i.e. a check that
   only ran when a session remembered to copy it. **A skill that answers each new defect with more
   prose accumulates defects**: two of these had shipped broken, and the fix in both cases was to

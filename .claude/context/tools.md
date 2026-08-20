@@ -133,6 +133,29 @@ its commit **messages**, because a flip republishes the whole history and no fil
 reaches a message. An absent `.claude/sensitive-terms.txt` is a FINDING reading
 `NOT CONFIGURED`, never a SKIP, and terms are masked in the output).
 
+`--text <file>` (`make post-branch-text FILE=<path>`) is a **fourth** surface for that gate
+and runs alone, without any git surface: a PR title or body is neither the tree nor a commit,
+so the three legs above report `clean` on one naming every term — correctly, and uselessly.
+Repeatable, `FILE=-` reads stdin, exit 1 on a hit (make collapses that to its own 2, as with
+`wait_ci`). It prints line numbers and a masked term and **never the matching line**,
+because the match sits inside the very prose being screened. Hand-screening caught #245's
+first draft naming all three terms, in the window the gate exists to make safe; the second
+hand-check (#249) used a throwaway six-line loop, which is what this wires in. Belongs in
+phase 5 — a posted body is public on landing and a later edit does not unpublish it.
+
+`negative-claims` narrows through `NEGATIVE_CLAIM_EXEMPT`, `(path, token)` → reason. A hit
+is dropped only when **every** matched token is exempt, so one unexempt token still reports
+the line and an entry narrows rather than deletes; the count is printed, never swallowed,
+and `tests/test_post_branch_checks.py` fails a dead entry against the real file so the
+allowlist keeps an external referent. ⚠ **The obvious alternative is the wrong one.** These
+claim lines are 3–6 KB paragraphs carrying 49 and 113 tokens, so scoping on a window around
+the regex match looks like the real fix; measured against the pre-#248 tree it would have
+suppressed the leg's only true positive, where the regex matched
+`gate_audit.py … not ported` and the sentence the branch falsified sat ~1,400 characters
+earlier on the same line. The finding's value was a human re-reading the paragraph, which is
+why the line stays the unit and `attribution` stays off the allowlist — on two of those
+lines it is the claim's own subject.
+
 Two are new and fix defects the prose form structurally could not:
 
 - **`queue-items`** — nothing swept the handoff's own task list for work the branch just

@@ -102,6 +102,47 @@ NEGATIVE_CLAIM_PATHS = (
     ".claude",
 )
 
+#: Tokens that scope a claim line IN while carrying no claim of their own, keyed
+#: on ``(path, token)`` with the reason inline — the
+#: ``sanity_checks.MISSING_PATH_EXEMPT`` shape.
+#:
+#: ⚠ **Keyed on the pair, never on either half.** A path-wide mute would have
+#: suppressed this leg's only true positive (2026-08-20h: adding
+#: ``research_guards/cluster.py`` falsified two sentences in the same file), and a
+#: token-wide mute would carry that hole into every other document.
+#:
+#: ⚠ **The tempting fix is the wrong one.** These lines are 3-6 KB paragraphs
+#: carrying 49 and 113 tokens, so the obvious remedy is to scope on a window
+#: around the regex match instead of the whole line. Measured against the
+#: pre-#248 tree, that window would have suppressed the true positive: the regex
+#: matched ``gate_audit.py … not ported`` while the sentence the branch actually
+#: falsified sat ~1,400 characters earlier on the same line. The value came from
+#: a human re-reading the paragraph, so the line stays the unit.
+#:
+#: ``attribution`` is deliberately ABSENT: on two of these lines it is the
+#: claim's own subject, so a branch that ports it must still be told.
+NEGATIVE_CLAIM_EXEMPT: dict[tuple[str, str], str] = {
+    (".claude/context/analytics.md", "symbol"): (
+        "a parameter name in the engine signatures quoted on this line, not the "
+        "subject of any absence claim in this file"
+    ),
+    (".claude/context/analytics.md", "signal_watch"): (
+        "names the live configs the paragraph describes; the claim beside it is "
+        "about per-direction ADR overrides"
+    ),
+    (".claude/context/analytics.md", "sharpe"): (
+        "a metric the paragraph lists as PRESENT — the claim is about the "
+        "book-dependent attribution funcs, which sharpe is not"
+    ),
+    (".claude/context/analytics.md", "test_regression.py"): (
+        "cited as a consumer of the cost model, not as anything claimed absent"
+    ),
+    (".claude/context/analytics.md", "evaluate"): (
+        "a forecast-book function name; the claim on its line is about the "
+        "parent's book-dependent attribution"
+    ),
+}
+
 _BACKTICKED = re.compile(r"`([^`\n]+)`")
 _HYPOTHESIS = re.compile(r"\bH-\d{3}\b")
 _MD_NUMBERED_ITEM = re.compile(r"^(\d+)\.\s+(.*)$")
@@ -406,15 +447,15 @@ def check_new_targets(diff: str, doc_blob: str) -> list[Finding]:
 
 def check_negative_claims(
     runner: Runner, diff: str, diff_names: str
-) -> tuple[list[Finding], int]:
+) -> tuple[list[Finding], int, int]:
     """Docs asserting the absence of something THIS branch just added.
 
-    Returns ``(findings, suppressed)``. The absence corpus is a property of
-    the tree, not of the branch, so reporting all of it every run made this
-    the one leg that was never clean — and a check that is never clean trains
-    dismissal exactly as a check that is never green stops being read. The
-    scope is now the intersection with the branch, which is what the sentence
-    beside it always claimed; the remainder is counted into a note.
+    Returns ``(findings, suppressed, exempted)``. The absence corpus is a
+    property of the tree, not of the branch, so reporting all of it every run
+    made this the one leg that was never clean — and a check that is never clean
+    trains dismissal exactly as a check that is never green stops being read. The
+    scope is the intersection with the branch, which is what the sentence beside
+    it always claimed; both remainders are counted into a note.
 
     Scoping is on the claim line's own distinctive tokens against the diff's
     ADDED lines. Additions only: a branch that REMOVES the named thing makes
@@ -423,12 +464,18 @@ def check_negative_claims(
     ⚠ A claim line with no extractable token cannot be ruled out, so it is
     reported. This leg fails OPEN on purpose — a miss ships a doc denying
     something now present, which is the whole harm the check exists to catch.
+
+    ⚠ ``NEGATIVE_CLAIM_EXEMPT`` suppresses a hit only when EVERY matched token
+    is exempt for that path. One unexempt token reports the whole line, so an
+    entry narrows a finding rather than deleting it — the exemption cannot grow
+    into the wide token filter it exists instead of.
     """
     added = "\n".join(line for line in diff.splitlines() if line.startswith("+"))
     haystack = added + "\n" + diff_names
     out = runner(["git", "grep", "-nI", "-e", "x", "--", *NEGATIVE_CLAIM_PATHS])
     findings: list[Finding] = []
     suppressed = 0
+    exempted = 0
     for line in out.splitlines():
         parts = line.split(":", 2)
         if len(parts) < 3 or "post-branch" in parts[0]:
@@ -441,26 +488,38 @@ def check_negative_claims(
         if tokens and not hits:
             suppressed += 1
             continue
+        if hits and all((parts[0], h) in NEGATIVE_CLAIM_EXEMPT for h in hits):
+            exempted += 1
+            continue
         why = f" (matched {', '.join(hits[:3])})" if hits else " (no token to scope on)"
         findings.append(
             Finding("negative-claims", f"{parts[0]}:{parts[1]}: {m.group(0)}{why}")
         )
-    return findings, suppressed
+    return findings, suppressed, exempted
 
 
 # ------------------------------------------------------------------ execution
 
 
 def _negative_claims_result(runner: Runner, diff: str, diff_names: str) -> CheckResult:
-    """Wrap the check so the out-of-scope remainder is a note, not a finding."""
-    findings, suppressed = check_negative_claims(runner, diff, diff_names)
-    note = (
-        f"{suppressed} standing absence claim(s) in the tree are unrelated to "
-        "this diff (scoped out, not dismissed)"
-        if suppressed
-        else None
-    )
-    return CheckResult("negative-claims", findings, note=note)
+    """Wrap the check so both remainders are a note, not a finding.
+
+    The exempt count is printed rather than swallowed: an allowlist nobody can
+    see is a mute, and a mute is what this leg's own history argues against.
+    """
+    findings, suppressed, exempted = check_negative_claims(runner, diff, diff_names)
+    parts = []
+    if suppressed:
+        parts.append(
+            f"{suppressed} standing absence claim(s) in the tree are unrelated "
+            "to this diff (scoped out, not dismissed)"
+        )
+    if exempted:
+        parts.append(
+            f"{exempted} scoped in only by token(s) on NEGATIVE_CLAIM_EXEMPT "
+            "(reason inline there)"
+        )
+    return CheckResult("negative-claims", findings, note="; ".join(parts) or None)
 
 
 def gather(runner: Runner = _run) -> list[CheckResult]:
@@ -523,6 +582,78 @@ def mask_term(term: str) -> str:
     return f"{term[:3]}…" if len(term) > 3 else "…"
 
 
+def _resolve_terms(terms: Sequence[str] | None) -> list[str]:
+    if terms is not None:
+        return list(terms)
+    if not SENSITIVE_TERMS.exists():
+        return []
+    return load_sensitive_terms(SENSITIVE_TERMS.read_text(encoding="utf-8"))
+
+
+def _not_configured() -> Finding:
+    return Finding(
+        "sensitive-terms",
+        f"NOT CONFIGURED — no {SENSITIVE_TERMS}; this gate is not "
+        "running, which is NOT the same as passing",
+    )
+
+
+def scan_text_for_terms(label: str, text: str, terms: Sequence[str]) -> list[Finding]:
+    """Sensitive terms in a composed text that has not been published yet.
+
+    Line numbers only, never the surrounding text: the match sits inside the
+    very prose being screened, so quoting context would reproduce the term the
+    masking exists to withhold.
+    """
+    numbered = list(enumerate(text.splitlines(), 1))
+    findings = []
+    for term in terms:
+        at = [n for n, line in numbered if term in line.lower()]
+        if not at:
+            continue
+        shown = ", ".join(str(n) for n in at[:5]) + (" …" if len(at) > 5 else "")
+        findings.append(
+            Finding(
+                "sensitive-terms",
+                f"{mask_term(term)} in {label} at line(s) {shown} — a PR title "
+                "or body is PUBLIC the moment it posts, and editing it later "
+                "does not unpublish it",
+            )
+        )
+    return findings
+
+
+def sensitive_text_result(
+    texts: Sequence[tuple[str, str]], terms: Sequence[str] | None = None
+) -> CheckResult:
+    """Screen a composed PR title/body BEFORE `gh pr create` posts it.
+
+    ⚠ **The fourth exposure surface, and the only indexable one.** The three
+    legs of :func:`sensitive_terms_result` ask about the tracked tree and this
+    branch's commits; a PR title and body are neither, so that gate reports
+    ``clean`` on a body naming every term — correctly, and uselessly. It
+    happened live while shipping #245: the first draft of that PR's body named
+    all three, in the very window the gate exists to make safe.
+
+    Screened by hand twice before this existed, both times by a throwaway loop
+    over the term list. A recipe that has to be remembered is the failure this
+    repo keeps re-learning, so the loop is the feature.
+    """
+    resolved = _resolve_terms(terms)
+    if not resolved:
+        return CheckResult("sensitive-terms", [_not_configured()])
+    findings = [
+        f for label, text in texts for f in scan_text_for_terms(label, text, resolved)
+    ]
+    note = None
+    if not findings:
+        note = (
+            f"{len(resolved)} term(s) checked against "
+            f"{len(texts)} composed text(s); nothing to mask"
+        )
+    return CheckResult("sensitive-terms", findings, note=note)
+
+
 def sensitive_terms_result(
     runner: Runner, terms: Sequence[str] | None = None
 ) -> CheckResult:
@@ -551,24 +682,14 @@ def sensitive_terms_result(
     main's pre-existing occurrences are deliberately NOT re-reported: the
     operator ruled ACCEPT AND DOCUMENT on that baseline on 2026-08-19, and a
     check that is never clean trains dismissal.
+
+    ⚠ **The fourth surface is NOT here.** A PR title and body are neither the
+    tree nor a commit, so screening them is :func:`sensitive_text_result`
+    (``--text``), run before ``gh pr create``.
     """
-    if terms is None:
-        terms = (
-            load_sensitive_terms(SENSITIVE_TERMS.read_text(encoding="utf-8"))
-            if SENSITIVE_TERMS.exists()
-            else []
-        )
+    terms = _resolve_terms(terms)
     if not terms:
-        return CheckResult(
-            "sensitive-terms",
-            [
-                Finding(
-                    "sensitive-terms",
-                    f"NOT CONFIGURED — no {SENSITIVE_TERMS}; this gate is not "
-                    "running, which is NOT the same as passing",
-                )
-            ],
-        )
+        return CheckResult("sensitive-terms", [_not_configured()])
 
     findings: list[Finding] = []
     for term in terms:
@@ -735,6 +856,18 @@ def _check_handoff_size(handoff: str) -> list[Finding]:
     return []
 
 
+def _read_text_arg(path: str) -> str:
+    """A composed text to screen. Never swallows a read error.
+
+    ``_run``'s swallow-and-continue is right for one leg of a twelve-leg sweep
+    and wrong here: an unreadable body would render as a clean single-check run,
+    which is the report this mode exists to make impossible.
+    """
+    if path == "-":
+        return sys.stdin.read()
+    return Path(path).read_text(encoding="utf-8")
+
+
 def render(results: Sequence[CheckResult]) -> tuple[list[str], int]:
     out = ["post_branch_checks — mechanical sweep", ""]
     total = 0
@@ -769,11 +902,38 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--check", help="run only this named check")
     parser.add_argument(
+        "--text",
+        action="append",
+        metavar="PATH",
+        help="screen a composed PR title/body for sensitive terms before it is "
+        "posted; `-` reads stdin, repeatable. Runs ONLY that check, and needs "
+        "no git surface",
+    )
+    parser.add_argument(
         "--exit-zero",
         action="store_true",
         help="always exit 0 (findings are advisory, not a gate)",
     )
     args = parser.parse_args(argv)
+
+    if args.text:
+        if args.check:
+            # Silently honouring one and dropping the other is how a session
+            # reads a pass it never asked for.
+            print(
+                "post_branch_checks: --text runs alone; drop --check",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            texts = [(p, _read_text_arg(p)) for p in args.text]
+        except OSError as exc:
+            print(f"post_branch_checks: {exc}", file=sys.stderr)
+            return 2
+        lines, total = render([sensitive_text_result(texts)])
+        for line in lines:
+            print(line)
+        return 0 if (args.exit_zero or total == 0) else 1
 
     results = gather()
     if args.check:
