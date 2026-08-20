@@ -4,13 +4,14 @@
 `make docs-index-check` (and `tests/test_docs_index.py`) fails when this file
 drifts from the corpus.
 
-**34 audits.** A verdict line is shown only where one could be read
-out of a Verdict heading as prose — that is **24 of 34**.
+**35 audits.** A verdict line is shown only where one could be read
+out of a Verdict heading as prose — that is **25 of 35**.
 An em dash means the doc states its verdict in a table, a blockquote or the body,
 **not** that it lacks one; open the file. Nothing here is keyword-guessed.
 
 | Date | Audit | Verdict (as written) | File |
 | --- | --- | --- | --- |
+| 2026-08-20 | Symmetric gap fill — the mirror the first measurement missed | CORRECTNESS — no edge claim, and no sleeve verdict moves. | [2026-08-20-symmetric-gap-fill.md](2026-08-20-symmetric-gap-fill.md) |
 | 2026-08-20 | H-001 / H-002: the midterm-cycle rows are BLOCKED on power, and no backfill reaches them | BLOCKED — both rows, permanently for H-001 and effectively for H-002. The effects run in the claimed direction in every cell… | [2026-08-20-h001-h002-midterm-cycle-power-precheck.md](2026-08-20-h001-h002-midterm-cycle-power-precheck.md) |
 | 2026-08-19 | The regime gate's blind spot: a kept cell nothing tested | BOUNDED — the config was wrong and is now right, and that buys no measurable book. | [2026-08-19-regime-kept-cell-audit.md](2026-08-19-regime-kept-cell-audit.md) |
 | 2026-08-19 | Regime gate: a pooled banner that inverted its own table | EXCLUDED — flipping `mode` to `hard` is ruled out on current evidence. One suppressed cell is a reliable winner at Holm-adjusted… | [2026-08-19-regime-gate-pooled-banner.md](2026-08-19-regime-gate-pooled-banner.md) |

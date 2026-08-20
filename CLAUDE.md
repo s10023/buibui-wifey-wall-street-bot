@@ -258,7 +258,7 @@ entries that have no audit of their own.
 | `scripts/` | Three maintenance one-shots, distinct from `tools/`: they act on the DB or the test fixtures rather than producing research output. `db_prune_backtests.py` (`make db-prune-backtests`), `extract_regression_fixture.py` (called by `make regression-update`, not run directly), `profile_suite.py` (no target; suite profiling, see memory `project_suite_runtime_profile.md`) | — |
 | `trade/` | Empty placeholder — both files are 0 bytes. The parent's Binance Futures opener was dropped at fork time and nothing replaced it; `make wifey-open-trades` now fails loudly. An order layer would land in Phase B | — |
 | `tests/` | pytest suite; tests import from lib modules and pass mock dependencies directly | — |
-| `migrations/` | **Four** one-shot migration scripts, run by hand. All four refuse to start without a `.bak`; only **001/002** rewrite `run_id` and cascade to `backtest_trades` — 003/004 target `signal_alert_outcomes`, whose key carries no measured value, so an in-place `UPDATE` is correct there. Check what the target table's key is made of rather than following the precedent. Routine schema changes go through `analytics/store/schema.py`'s migration list | `context/migrations.md` |
+| `migrations/` | **Five** one-shot migration scripts, run by hand. All five refuse to start without a `.bak`; only **001/002** rewrite `run_id` and cascade to `backtest_trades` — 003/004/005 target `signal_alert_outcomes`, whose key carries no measured value, so an in-place `UPDATE` is correct there. Check what the target table's key is made of rather than following the precedent. Routine schema changes go through `analytics/store/schema.py`'s migration list | `context/migrations.md` |
 | `.claude/hooks/` | Three `PreToolUse` hooks on `Bash`: a destructive-command guard, a foreground-run advisory, and an inline `gh pr create` reminder. **Two are files here, the third is inline in `.claude/settings.json`**, which registers all three. Tracked since the 2026-08-20 denylist inversion, so they survive a reclone and ruff + mypy cover them | `context/hooks.md` |
 | `config/` | `stocks.json` (gitignored 13-symbol live watchlist), `universe.json` (committed 505-member research universe), `strategy_params.toml` (shared base inherited via `extends`), `youtube_channels.toml` (gitignored; `.example` committed) | `context/config.md` |
 | `deploy/` | `backup-analytics.sh` (local leg), `backup-offsite.sh` (rclone leg), `notify-failure.sh`, and opt-in `wifey-*` systemd user units. Nothing installs them; there is still no wifey daemon | `deploy/README.md` |
@@ -392,8 +392,8 @@ for it. Narrative: `context/footguns.md`.
 `tp_price` is the effective one, so one shared `implied_tp_r` in
 `analytics/signal/outcome_backfill.py` serves the resolver, the scanner at fire time, and
 `analytics/exits/audit.py`. A column recording what was configured is not a record of what happened.
-**Pooled live avg_r is −0.2192R net** (n=292, 2026-08-19); −0.1752R was gross at n=267 and
-−0.1247R predates the `implied_tp_r` fix. ⚠ **Two things moved it, so do not attribute the whole
+**Pooled live avg_r is −0.2553R** (n=292, 2026-08-20, net and symmetric-gap-filled); −0.2192R
+predates migration 005, −0.1752R was gross at n=267 and −0.1247R predates the `implied_tp_r` fix. ⚠ **Two things moved it, so do not attribute the whole
 gap to either** — the ledger grew (267→292 resolved) *and* the basis changed (see the next entry).
 Audit: `docs/audits/2026-08-14-exit-policy-ab-v1.md`.
 
@@ -405,17 +405,24 @@ replaces `fee_pct` rather than adding to it. ⚠ **Do not port the parent's flat
 resolver**: wifey's engine ignores `fee_pct` whenever a `CostModel` is set, and the shared base
 sets one, so a verbatim port prices live on a basis the backtest does not use — a third basis does
 not fix a comparability gap, it adds one. Any resolver change must pass `cost_model`/`fee_pct`
-through, or the ledger silently reverts to gross. ⚠ **Costs are NOT the largest error in the
-ledger**: a gap through the stop books a clean −1.0R and `engine.py:1116` does the same. That
-absence is **SHARED and measured** — live −0.1374R per loss vs a matched-backtest −0.0976R, a
-difference whose 95% CI **[−0.1180, +0.0266] contains zero** — so it biases neither book against the
-other and no sleeve verdict is reachable from it. Applying it moves live pooled `avg_r`
-−0.2192 → −0.3218, changes `engine.py`, needs a **second** ledger restatement and **moves the
-regression goldens**. It is a user call, and the reason to take it is external: a stop-free
-benchmark (SPY buy-hold, random-entry nulls, both G2) carries no gap slip, so the shared bias runs
-in our favour the moment either is the reference.
-Audits: `docs/audits/2026-08-19-live-ledger-net-of-cost.md` (the cost charge),
-`docs/audits/2026-08-19-gap-through-stop-measurement.md` (this measurement).
+through, or the ledger silently reverts to gross. Audit: `docs/audits/2026-08-19-live-ledger-net-of-cost.md`.
+
+**A bar that OPENS beyond a level fills there, on BOTH sides — `analytics/backtest/fills.py` is the
+one rule and both books import it.** `gap_fill_price` returns the bar open when the bar opened
+through the level, else the level; `level_is_on_the_expected_side` gates it so a malformed row
+cannot be priced as a gap (it is also the single definition `implied_tp_r` now routes through).
+⚠ **A one-sided fix is worse than no fix, and this one nearly shipped that way.** The 2026-08-19
+audit measured only gapped LOSSES; the mirror is bigger — **26.1% of wins gap through their target
+against 21.1% of losses through their stop** — so pricing the adverse tail alone would have moved
+pooled `avg_r` −0.2192 → −0.3218 where the symmetric answer is **−0.2553**, a **~65% overstatement**
+that makes every sleeve look worse against a stop-free benchmark, i.e. the exact opposite of the
+reason for doing it. **Measure both tails before pricing either.** The absence was **SHARED** before
+the fix (live −0.1374R per loss vs matched-backtest −0.0976R, 95% CI **[−0.1180, +0.0266]** contains
+zero), so no sleeve verdict moved and none is reachable from it. Ledger restated by migration 005
+(264 eligible rows, replica check **264/264**); the regression goldens moved by design — same trades
+and same outcomes, only R values.
+Audits: `docs/audits/2026-08-19-gap-through-stop-measurement.md` (the adverse tail),
+`docs/audits/2026-08-20-symmetric-gap-fill.md` (the mirror, and the fix).
 
 **A bar count is not a calendar span on an RTH tape.** Check any expression converting bars to time
 or time to bars against `4h` RTH = 2 bars/day. Fetch forward windows to `get_latest_open_time`

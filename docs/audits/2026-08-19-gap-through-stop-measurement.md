@@ -115,6 +115,16 @@ decimal between invocations. `ORDER BY` on both queries makes it byte-reproducib
 quoted above is the deterministic one. **A seed alone does not make a resampling result
 reproducible — the input order is half of it.**
 
+## Superseded in scope — read the mirror before acting on this
+
+⚠ **This audit measured only the ADVERSE tail, and that is not half the answer — it points
+the wrong way.** `2026-08-20-symmetric-gap-fill.md` measured the favourable mirror and
+found it BIGGER: 26.1% of wins gap through their target against 21.1% of losses through
+their stop. The `-0.3218` figure below is therefore the ONE-SIDED number; the symmetric
+answer is **-0.2553**, and the fix shipped symmetric. Nothing measured here is retracted —
+every figure about gapped losses stands — but the framing "apply it and pooled avg_r moves
+to -0.3218" does not.
+
 ## Still open
 
 - Whether to apply it at all — **a user call**, unchanged, because it moves both books.

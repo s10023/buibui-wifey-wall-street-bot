@@ -1,6 +1,6 @@
 # `migrations/` — hand-run one-shot DB migrations
 
-Four scripts, all already applied. **Routine schema changes do NOT go here** — they belong in
+Five scripts, all already applied. **Routine schema changes do NOT go here** — they belong in
 `analytics/store/schema.py`'s migration list, which runs automatically on connect. This directory
 is only for changes that list cannot express: a column's *type* changing, or existing row *values*
 being rewritten.
@@ -9,7 +9,7 @@ being rewritten.
 CI. Each is invoked by hand, once, and is not idempotent in the sense of being safe to re-reason
 about — read the docstring before touching either.
 
-## The one invariant ALL FOUR scripts enforce
+## The one invariant ALL FIVE scripts enforce
 
 **A `.bak` must exist alongside the DB or the script refuses to start**
 (`001:45-49`, `002:63-65`, `003:73-75`, `004:119-121`). Note what this is and is not: `analytics.db.bak` is an
@@ -124,6 +124,43 @@ default**, opening the DB `read_only` so it cannot write or hold a write lock. T
 ⚠ **What it does NOT fix:** a gap *through* the stop still books −1.0R, and `engine.py:1116` does
 the same, so that absence is **shared** and does not bias the comparison — but it is ~7× larger
 (−0.10R/row vs −0.014R). Audit: `docs/audits/2026-08-19-live-ledger-net-of-cost.md`.
+
+## 005_symmetric_gap_fill.py — the ledger booked the LEVEL, not the fill
+
+A bar that OPENS beyond a level fills at the open, not at the level. The resolver booked a
+flat `-1.0` for every loss and `implied_tp_r` for every win regardless; `engine.py` did the
+same, so the absence was SHARED. Both fixed forward through the one shared
+`analytics/backtest/fills.py`; this restates the 264 already-written win/loss rows.
+
+⚠ **SYMMETRIC — and it nearly shipped one-sided.** The 2026-08-19 audit measured only
+gapped losses. The mirror is bigger (26.1% of wins gap through their target vs 21.1% of
+losses through their stop), so the adverse-only version would have moved pooled `avg_r`
+-0.2192 -> -0.3218 against a symmetric **-0.2553** — a ~65% overstatement, in the direction
+that makes sleeves look worse against exactly the stop-free benchmark the fix was for.
+
+Three properties worth copying:
+
+- **Cost is CARRIED OVER, not recomputed.** `live_cost_r` never reads the exit *price*, and
+  the fill rule never changes which bar resolved, so every cost input is unchanged.
+  Recomputing would re-derive the same number while adding a second way for 004's basis to
+  drift.
+- **Scoped to `outcome IN ('win','loss')`.** An `expired` row marks to market at the last
+  close, so a fill rule cannot reach it — and its `outcome_filled_at_ms` moves with the
+  fetch window, which put 10 rows in the mismatch column for reasons unrelated to the
+  migration. Scope a restatement to the rows the change can actually reach.
+- **Idempotent BY VALUE, not by a state flag.** Only rows whose recomputed value differs
+  are written, so a re-run reports zero changes and no "already restated" column was added
+  to record a one-off.
+
+⚠ **Its first draft hit the RTH bar-count footgun.** The fetch window was
+`latest + (max_hold + 2) * tf_secs`; `4h` RTH is 2 bars/day, so that is short by ~6x, and
+the replica check reported 6 of 264 unreproducible. Bounding at the table's own
+`MAX(open_time)` took it to **264/264**. The symptom was quiet — six rows conservatively
+skipped, a count small enough to read as data rather than as a query bug.
+
+**Run:** `python migrations/005_symmetric_gap_fill.py [--db PATH] [--apply]` — dry-run by
+default; prints the replica check, the loss/win split of changed rows, and before/after
+pooled `avg_r`.
 
 ## The transferable rule
 
