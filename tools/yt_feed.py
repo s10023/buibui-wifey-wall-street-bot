@@ -719,6 +719,47 @@ def _format_human(
     return "\n".join(lines)
 
 
+_ID_LIST_FLAGS = ("--ingested", "--skipped")
+
+
+def _extract_id_lists(argv: list[str]) -> tuple[dict[str, list[str]], list[str]]:
+    """Pull ``--ingested`` / ``--skipped`` values out of argv before argparse sees them.
+
+    A YouTube id may legitimately start with ``-`` (``-mx3UwwJ5P4``), and argparse
+    reads that as a flag. With ``nargs="*"`` the value is **silently dropped** and
+    ``mark`` records nothing — and ``mark`` is the only writer of consumption state,
+    so a lost id re-presents that video forever with no other symptom. The ``=``
+    form does not rescue it either: ``nargs="*"`` carries only ONE value that way,
+    so ``--ingested=-mx3UwwJ5P4 abc`` loses ``abc``.
+
+    Values run until the next ``--``-prefixed token. Every flag on the ``mark``
+    parser is long-form, so no 11-character id can be mistaken for one. Both call
+    shapes survive: ``--ingested a b c`` and ``--ingested=-mx3UwwJ5P4``.
+    """
+    found: dict[str, list[str]] = {f.lstrip("-"): [] for f in _ID_LIST_FLAGS}
+    rest: list[str] = []
+    i = 0
+    while i < len(argv):
+        tok = argv[i]
+        flag = next(
+            (f for f in _ID_LIST_FLAGS if tok == f or tok.startswith(f + "=")), None
+        )
+        if flag is None:
+            rest.append(tok)
+            i += 1
+            continue
+        key = flag.lstrip("-")
+        if tok.startswith(flag + "="):
+            found[key].append(tok[len(flag) + 1 :])
+            i += 1
+            continue
+        i += 1
+        while i < len(argv) and not argv[i].startswith("--"):
+            found[key].append(argv[i])
+            i += 1
+    return found, rest
+
+
 def main(
     argv: list[str] | None = None,
     *,
@@ -792,7 +833,14 @@ def main(
     p_hint.add_argument("--channel-id", default="", help="UC… id, if known")
     p_hint.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
 
-    args = parser.parse_args(argv)
+    # `--ingested` / `--skipped` are extracted BEFORE argparse so a `-`-leading
+    # video id survives; they stay declared above only so `--help` lists them.
+    id_lists, argv_rest = _extract_id_lists(
+        list(argv) if argv is not None else sys.argv[1:]
+    )
+    args = parser.parse_args(argv_rest)
+    args.ingested = id_lists["ingested"]
+    args.skipped = id_lists["skipped"]
     now_dt = now if now is not None else datetime.now(UTC)
 
     if args.cmd == "mark":

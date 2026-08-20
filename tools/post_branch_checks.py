@@ -293,13 +293,31 @@ def current_state_bullets(memory: str) -> int:
 
 
 def check_queue_items(handoff: str, diff: str, diff_names: str) -> list[Finding]:
-    """Does this branch CLOSE a task the handoff still lists as to-do?
+    """Which queue items share vocabulary with this branch? Judge each one.
 
     Nothing swept for this, so a finished item survived under a heading telling
     the next session it was still owed. The earlier mitigation keyed on added
     Python symbols and therefore could not see a docs-only branch at all; this
     keys the handoff's own tokens against the diff content, which every branch
     has.
+
+    ⚠ **It reports RELEVANCE, never closure, and the wording says so.** Token
+    overlap cannot distinguish an item's subject from its vocabulary: across four
+    runs the false positives all came from area nouns (`tools/`, `.claude/`,
+    `YYYY-MM-DD`), and one item reliably matches ITSELF because its body is about
+    this very check.
+
+    ⚠ **Do NOT "fix" this by matching the item's action phrase instead of its
+    nouns.** That was the standing proposal until 2026-08-20, when the check
+    produced its first true positive — and that one ALSO matched on nouns
+    (`H-001`, `H-002`), because for that item the nouns *were* the outcome. An
+    action-phrase discriminator would have suppressed the one hit that mattered
+    and kept none of the noise. A token-count threshold is likewise ruled out:
+    one false positive matched three tokens.
+
+    **Bias toward reporting.** A false positive costs a glance — which is why the
+    matched tokens are printed — and a silent miss ships a queue that reads as
+    current.
     """
     findings: list[Finding] = []
     haystack = diff + "\n" + diff_names
@@ -310,8 +328,8 @@ def check_queue_items(handoff: str, diff: str, diff_names: str) -> list[Finding]
             findings.append(
                 Finding(
                     "queue-items",
-                    f"item {idx} may be CLOSED by this branch "
-                    f"(matched {', '.join(hits[:4])})\n      {head}…",
+                    f"item {idx} possibly related — judge it "
+                    f"(shared tokens: {', '.join(hits[:6])})\n      {head}…",
                 )
             )
     return findings

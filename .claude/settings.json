@@ -1,0 +1,23 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/guard-destructive.py\"; if [ -f \"$f\" ]; then exec python3 \"$f\"; fi"
+          },
+          {
+            "type": "command",
+            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/advise-foreground-run.py\"; if [ -f \"$f\" ]; then exec python3 \"$f\"; fi"
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command // empty' | grep -q 'gh pr create' && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"post-branch reminder: you are ABOUT TO run gh pr create. Invoke the /post-branch skill FIRST, while the branch is still local-only, and fold its Documentation-updates section into this PR body rather than editing the body afterwards. Rationale (user decision 2026-08-06): these are private repos on the free tier, and a doc-sync commit pushed to an already-open PR re-runs the whole 5-check matrix - doing the sweep first is one CI run instead of two, with identical review signal. Its behaviour gate decides whether a docs sweep is warranted, so this is cheap even on a pure refactor. Do not skip phase 4 (MEMORY.md, 6-bullet cap; SoT reconcile; claims audit). Re-verifying PR state still runs LAST, after the PR exists. Advisory only - never blocking. Rationale: CLAUDE.md > Git Conventions.\"}}' || true"
+          }
+        ]
+      }
+    ]
+  }
+}

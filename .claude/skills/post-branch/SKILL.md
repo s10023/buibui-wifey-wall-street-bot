@@ -74,9 +74,21 @@ because prose cannot enforce.
 | `negative-claims` | Does a doc assert the absence of something this branch just added? |
 | `doc-indexes` | Is a generated `INDEX.md` stale? (a red suite, not a lint nit) |
 | `md-atx` | Did a wrapped `#123` land in column 1 and become an MD018 heading? |
-| `memory-cap` | Is MEMORY.md over 6 Current State bullets or ~17KB? |
-| `handoff-size` | Is the handoff past `HANDOFF_MAX_LINES` (240)? |
+| `memory-cap` | Is MEMORY.md over 6 Current State bullets or ~17KB? **Phase 6 reading** |
+| `handoff-size` | Is the handoff past `HANDOFF_MAX_LINES` (240)? **Phase 6 reading** |
 | `stale-anchors` | Does a doc cite a numbered section (`Step 3`, `§4a`) its target no longer has? |
+
+⚠ **`memory-cap` and `handoff-size` are VACUOUS in phase 1 — ignore them here.** They measure
+files that **phases 4 and 6 write**, so on the first run they score the *previous* session's
+state and report clean regardless of what this branch will do. Re-run
+`make post-branch-checks` after phase 6 and read them then; that run is the gate. This is a
+fourth instance of the ordering trap named at the top of this file, and the only one **inside**
+the mechanical sweep rather than the prose.
+
+⚠ **`queue-items` reports RELEVANCE, not closure**, and prints the tokens it matched so you can
+dismiss in a glance. Expect false positives from area vocabulary, and expect one item to match
+itself. **Do not "fix" it by matching action phrases** — its first true positive also matched on
+nouns; the reasoning is pinned in `check_queue_items`'s docstring.
 
 **Every finding is a candidate to dismiss in seconds, never an automatic edit.**
 The asymmetry is deliberate: a false positive costs a glance, a silent miss ships
@@ -417,8 +429,18 @@ only the exit until now. Phase 2 has already read the diff: if it touches
 path-filtered checks create zero steps and settle at `steps=0`, which renders
 exactly like a real failure. **Confirm the flip with the user on every
 occasion** — CLAUDE.md makes the mechanics standing authorisation and the timing
-not, because the window republishes the parent's pre-fork commits. A docs-only
-diff skips it. Phase 6's flip-back gate closes the other half of the pair.
+not, because the window republishes the parent's pre-fork commits.
+
+⚠ **"A docs-only diff skips it" is CONDITIONAL — the diff's paths are not sufficient.**
+That reasoning is about *your diff*; the Actions allowance is about *the account*.
+`markdownlint` and `Trivy` have **no** path filter, so an exhausted allowance zeroes them too:
+PR #238 opened docs-only and settled with **all five** checks at `steps=0`. **The tell is the
+CONCLUSION, not the step count: a path-filtered skip reports `SKIPPED`, an exhausted allowance
+reports `FAILURE`, both at `steps=0`.** So skip the flip only if the last run on this repo
+executed real steps; otherwise flip, and requeue the runs (enumerate them — a docs-only diff
+gets **two**, not three, since `Docker Build` is itself path-filtered).
+
+Phase 6's flip-back gate closes the other half of the pair.
 
 Then compose the **Documentation updates** section and pass it in the *initial*
 `--body`. That ordering is the whole payoff — do not open the PR and then edit
