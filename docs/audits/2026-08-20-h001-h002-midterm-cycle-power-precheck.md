@@ -4,11 +4,12 @@
 **Verdict:** **BLOCKED — both rows, permanently for H-001 and effectively for H-002.** The
 effects run in the claimed direction in every cell measured, and every one sits **below** its
 own minimum detectable effect. Detecting the *observed* H-001 effect on the statistic the claim
-actually names (back-half drawdown) needs **307 midterm years — 1,227 years of market history**
+actually names (back-half drawdown) needs **307 midterm years — 1,221 years of market history**
 against the 96 that exist. H-002 needs **346 midterm years (1,385 years)**; gold's usable panel
 is **6 midterm years** and cannot grow. Neither is a data-availability block: `^GSPC` is already
 at its yfinance floor and a `GC=F` backfill triples the bars while moving the verdict not at all.
 **Scope:** pricing only. No study was run, no sleeve built, no parameter chosen.
+**Reproduce:** `PYTHONPATH=. poetry run python docs/plans/scripts/h001_h002_power_precheck.py` — every figure below, both halves.
 
 ## Why this ran
 
@@ -63,10 +64,10 @@ Years needed to detect the effect that was actually observed:
 
 | cell | have | need | in years of history |
 | --- | --- | --- | --- |
-| **back-half max DD, 1928–2025** *(the claim's own statistic)* | 24 | **306.8** | **1,227** |
+| **back-half max DD, 1928–2025** *(the claim's own statistic)* | 24 | **305.3** | **1,221** |
 | back-half max DD, 1946–2025 | 20 | 55.5 | 222 |
 | full-year max DD, 1946–2025 | 20 | 26.2 | 105 |
-| day-of-year of peak, 1946–2025 | 20 | 63.1 | 252 |
+| day-of-year of peak, 1946–2025 | 20 | 63.2 | 252 |
 
 ⚠ **The one nearly-powered cell is nearly-powered because it discards the claim.** Full-year
 maximum drawdown at 26.2 needed against 20 available is the only figure within reach — and it

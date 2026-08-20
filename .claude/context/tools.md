@@ -390,6 +390,18 @@ verbatim from parent HEAD, with only the module docstring's precedent re-flavore
 here with **zero** code adaptation, because `dsr.py` and `psr.py` are byte-identical
 across the two repos.
 
+⚠ **It cannot price a hypothesis that is not Sharpe-shaped, and there is no error for that.**
+`--units` is `per_trade | per_alert | per_book_day`, and the whole model asks what Sharpe clears
+the DSR gate — so a **calendar-conditioning** claim (a seasonal or political-cycle effect, whose
+unit is a *year* and which has no book, no trades and no Sharpe) has no honest way through it.
+Passing one of the three existing units to get a number out is exactly the defect the module
+docstring exists to prevent: *a figure that looks portable and silently changes meaning with the
+panel.* Use the two-sample MDE instead — `(z_0.975 + z_0.80) · sd · sqrt(1/n1 + 1/n2)` with `sd`
+**measured from the panel** — and say so. Worked example, both halves:
+`docs/audits/2026-08-20-h001-h002-midterm-cycle-power-precheck.md`. ⚠ **The `--bar` /`--sd` legs
+are still usable on their own** for the `powered_null` containment question; it is the Sharpe
+half that does not port.
+
 ```bash
 PYTHONPATH=. poetry run python tools/distil_power.py \
   --units {per_trade|per_alert|per_book_day} \
