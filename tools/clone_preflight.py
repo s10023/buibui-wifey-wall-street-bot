@@ -168,11 +168,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         dest = Path(owned_tmp) / "clone"
 
     try:
-        print(f"🧪 clean-clone pre-flight: {root}")
-        print(f"   HEAD {_head(root)}")
-        print(f"   clone → {dest}")
+        # flush=True on every banner line: stdout is BLOCK-buffered when this
+        # runs redirected to a file (the normal background-run shape), so
+        # without it the banner lands AFTER four minutes of pytest output from
+        # the subprocess — and the `HEAD` line is exactly what a caller is told
+        # to check against `git rev-parse HEAD` before trusting the result.
+        print(f"🧪 clean-clone pre-flight: {root}", flush=True)
+        print(f"   HEAD {_head(root)}", flush=True)
+        print(f"   clone → {dest}", flush=True)
         if subprocess.run(clone_argv(root, dest)).returncode != 0:  # noqa: S603
-            print("⚠ clone failed — infrastructure, not a finding.")
+            print("⚠ clone failed — infrastructure, not a finding.", flush=True)
             return INFRA
 
         if args.dry_run:
@@ -182,11 +187,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             return OK
 
         if subprocess.run(install_argv(), cwd=dest).returncode != 0:  # noqa: S603
-            print("⚠ dependency install failed — infrastructure, not a finding.")
+            print(
+                "⚠ dependency install failed — infrastructure, not a finding.",
+                flush=True,
+            )
             return INFRA
 
         if subprocess.run(pytest_argv(), cwd=dest).returncode != 0:  # noqa: S603
-            print("⛔ the suite FAILED against a clean clone.")
+            print("⛔ the suite FAILED against a clean clone.", flush=True)
             print("   This is what CI would have told you after a metered cycle.")
             return FAILED
 
