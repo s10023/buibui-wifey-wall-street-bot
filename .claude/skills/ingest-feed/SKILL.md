@@ -130,6 +130,7 @@ Its digest + single approval remain the only gate before any research-sink write
 ```bash
 PYTHONPATH=. poetry run python tools/yt_feed.py mark \
   --ingested <picked ids…> --skipped <explicitly skipped ids…> \
+  # ✅ a `-`-leading id (-mx3UwwJ5P4) is now handled — no two-call workaround
   --candidates-json <scratchpad file from step 1>
 ```
 

@@ -51,8 +51,8 @@ two has to be pipelined by hand in pairs and budgeted for wall-clock.
 
 **Guardrail.** A `PreToolUse` hook (`.claude/hooks/guard-destructive.py`) blocks catastrophic Bash:
 `rm -rf`, `git reset --hard`, force-push, DB wipes. If it blocks you, surface it rather than working
-around it silently. It is machine-local, since `.gitignore` excludes `.claude/*`, so re-add it after
-a reclone. The hook wrapper must fail **open** on a missing file, because `python3` exits 2 when it
+around it silently. It is **tracked and survives a reclone** (`.claude/` is a denylist). The hook
+wrapper still fails **open** on a missing file, because `python3` exits 2 when it
 cannot open a script and 2 is the block code. Write commit and PR bodies to a file and pass `-F` or
 `--body-file`: a heredoc is the command payload, so quoting a hazard in a commit message trips the
 guard, while a file is invisible to it.
@@ -128,8 +128,8 @@ failure to its own exit **2**, so branch on the printed banner, or call
 `run_in_background: true`, then wait for the task notification. A foreground run burns the turn on a
 job that reports nothing until it ends, and `.claude/settings.local.json` allowlists these targets,
 so it draws no permission prompt either. A machine-local `PreToolUse` advisory
-(`.claude/hooks/advise-foreground-run.py`) nudges it; like the other hooks it is gitignored, so
-re-add it after a reclone. It keys on the `run_in_background` **tool parameter** rather than the
+(`.claude/hooks/advise-foreground-run.py`) nudges it; like the other hooks it is now tracked.
+It keys on the `run_in_background` **tool parameter** rather than the
 command string — the two runs are byte-identical, so no string match can separate them — and is
 head-anchored so it does not fire on its own documentation. `--selftest` pins both discriminators.
 
@@ -259,6 +259,7 @@ entries that have no audit of their own.
 | `trade/` | Empty placeholder — both files are 0 bytes. The parent's Binance Futures opener was dropped at fork time and nothing replaced it; `make wifey-open-trades` now fails loudly. An order layer would land in Phase B | — |
 | `tests/` | pytest suite; tests import from lib modules and pass mock dependencies directly | — |
 | `migrations/` | **Four** one-shot migration scripts, run by hand. All four refuse to start without a `.bak`; only **001/002** rewrite `run_id` and cascade to `backtest_trades` — 003/004 target `signal_alert_outcomes`, whose key carries no measured value, so an in-place `UPDATE` is correct there. Check what the target table's key is made of rather than following the precedent. Routine schema changes go through `analytics/store/schema.py`'s migration list | `context/migrations.md` |
+| `.claude/hooks/` | Three `PreToolUse` hooks on `Bash`: a destructive-command guard, a foreground-run advisory, and an inline `gh pr create` reminder. **Two are files here, the third is inline in `.claude/settings.json`**, which registers all three. Tracked since the 2026-08-20 denylist inversion, so they survive a reclone and ruff + mypy cover them | `context/hooks.md` |
 | `config/` | `stocks.json` (gitignored 13-symbol live watchlist), `universe.json` (committed 505-member research universe), `strategy_params.toml` (shared base inherited via `extends`), `youtube_channels.toml` (gitignored; `.example` committed) | `context/config.md` |
 | `deploy/` | `backup-analytics.sh` (local leg), `backup-offsite.sh` (rclone leg), `notify-failure.sh`, and opt-in `wifey-*` systemd user units. Nothing installs them; there is still no wifey daemon | `deploy/README.md` |
 
@@ -630,10 +631,13 @@ Skills live in `.claude/skills/<name>/SKILL.md`, are invoked with `/skill-name`,
 description and trigger conditions are already loaded every session. Use them proactively. Only the
 facts that are not derivable from those descriptions live here:
 
-⚠ **`.claude/skills` and `.claude/agents` are TRACKED; hooks and settings are not.** `.gitignore`
-allowlists over `.claude/*`, so each artifact class defaults to ignored until it is named — a
-subagent definition added here is committed and survives a reclone, while a hook silently does not.
-Check `git check-ignore` before assuming which half a new `.claude/` file lands in.
+⚠ **`.claude/` is a DENYLIST as of 2026-08-20 — a new artifact class is TRACKED by default.**
+`.gitignore` names only `settings.local.json` (absolute machine paths), `RESUME.md` (session
+scratch) and `sensitive-terms.txt` (never tracked, by policy); skills, agents, context, hooks and
+`settings.json` all ship. It was an allowlist, where each class defaulted to ignored until someone
+named it, so hooks silently did not survive a reclone and three entries here said "re-add it".
+**An allowlist over a tree that grows new classes fails silently, in the direction of absence** —
+the same shape as `make backup`'s coverage. Still check `git check-ignore` before assuming.
 
 - **Always load `/frontend-design` before any Svelte, CSS or UI change.**
 - **Invoke `/post-branch` before `gh pr create`**, while the branch is still local-only.
@@ -681,7 +685,7 @@ whole 5-check matrix for what is usually a two-file edit. Phase 6's zero-commit 
 last: re-verify PR state, then stamp the handoff, in that order. A local `PreToolUse` hook on
 `Bash` greps for `gh pr create` and emits an advisory reminder. It has to be `PreToolUse`: a
 `PostToolUse` hook cannot fire before the PR exists, so it could not enforce this ordering at all.
-The hook is machine-local because `.gitignore` excludes `.claude/*`, so re-add it after a reclone.
+The hook is tracked and survives a reclone.
 
 ### CI quota
 
@@ -719,18 +723,32 @@ rollup, which can otherwise report the previous run.
 **A merge-run failure at ~3s with `steps=0` and `visibility=PRIVATE` is billing.** Verify duration,
 visibility and step count, then merge. Never debug it.
 
-**A docs-only PR does not need the flip.** Three of the five checks sit behind `dorny/paths-filter`
-on `**/*.py` and `web/ui/**`, so a `.md`-only diff executes zero steps in `lint-typecheck-test`,
-`Regression tests` and `frontend-check`. `make lint-md` reproduces CI's `markdownlint` exactly, so
-the only check forgone is Trivy's secret scan, which has no path filter and gates on purpose. Read
-any externally pasted content in a doc before committing it.
+**A docs-only PR skips the flip ONLY while the Actions allowance holds.** Three of the five checks
+sit behind `dorny/paths-filter` on `**/*.py` and `web/ui/**`, so a `.md`-only diff executes zero
+steps in `lint-typecheck-test`, `Regression tests` and `frontend-check`; `make lint-md` reproduces
+CI's `markdownlint` exactly, so the only check forgone is Trivy's secret scan. ⚠ **That reasoning
+is about your DIFF and says nothing about the ACCOUNT.** `markdownlint` and `Trivy` have **no** path
+filter, so an exhausted allowance zeroes them too — #238 opened docs-only with **all five** checks
+at `steps=0`. **The tell: a path-filtered skip reports `SKIPPED`, an exhausted allowance reports
+`FAILURE`, both at `steps=0`**, so the totals cannot separate them. Skip the flip only if the last
+run on this repo executed real steps. Read any externally pasted content in a doc before committing
+it. Narrative: memory `reference_ci_steps_counts_skipped.md`.
 
-CI's markdownlint glob is **not** wider than local's, despite the workflow appearing to say so. The
+**CI's markdownlint glob is not wider than local's**, despite the workflow appearing to say so: the
 job passes `globs: **/*.md !venv`, but markdownlint-cli2 still applies the negations in
-`.markdownlint-cli2.jsonc`. The falsifier is arithmetic: 113 tracked `.md` files and none inside a
-negated path, so CI lints 112 — the one omitted is `.github/pull_request_template.md`, which carries
-a live MD041 error. Local's observed 113 is that same 112 plus untracked `.pytest_cache/README.md`,
-so local is a superset. Re-run that count before "fixing" a divergence here.
+`.markdownlint-cli2.jsonc`, so **local lints a superset of CI** and `make lint-md` green means CI
+green. Two reasons local sees more: it picks up untracked files, and **markdownlint does not read
+`.gitignore`**. The only negated tracked file is `.github/pull_request_template.md`, which carries a
+live MD041 error — that is why it is negated. Do not "fix" an apparent divergence; re-derive it:
+
+```bash
+git ls-files '*.md' | wc -l                 # tracked
+make lint-md 2>&1 | grep '^Linting:'        # what local actually lints
+```
+
+⚠ **The counts are deliberately not written down here.** They moved twice and were quoted stale
+both times, and nothing reads them but the sentence that carried them — the same self-referential
+defect as the handoff's old `Line count:` stamp. Repo-shape numbers come from `make status`.
 
 ⚠ **Know what the public window costs, because flipping back does not undo it.** wifey is not a
 GitHub fork — its history was copied — so 389 of 541 commits are the still-private parent's pre-fork

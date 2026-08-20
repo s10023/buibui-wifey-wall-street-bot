@@ -1139,6 +1139,86 @@ class TestMainPoll:
         assert "UCabcdefghijklmnopqrstuv" in state["channels"]
 
 
+class TestDashLeadingVideoIds:
+    """`-mx3UwwJ5P4` is a valid YouTube id and argparse reads it as a flag.
+
+    ⚠ This is the one that matters silently: `mark` is the ONLY writer of
+    consumption state, so an id argparse swallows is never recorded and the video
+    re-presents forever with no other symptom. Under the old `nargs="*"` these
+    assertions fail — verified by mutation, not assumed.
+    """
+
+    DASH_ID = "-mx3UwwJ5P4"
+
+    def _mark(self, argv: list[str], state_path: Path) -> int:
+        return main(
+            ["mark", "--state", str(state_path), *argv], get=FakeGet({}), now=NOW
+        )
+
+    def test_dash_leading_id_is_recorded(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("YOUTUBE_API_KEY", raising=False)
+        sp = tmp_path / "s.json"
+        assert self._mark(["--ingested", self.DASH_ID], sp) == 0
+        assert load_state(sp)["videos"][self.DASH_ID]["status"] == "ingested"
+
+    def test_equals_form_also_works(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("YOUTUBE_API_KEY", raising=False)
+        sp = tmp_path / "s.json"
+        assert self._mark([f"--ingested={self.DASH_ID}"], sp) == 0
+        assert load_state(sp)["videos"][self.DASH_ID]["status"] == "ingested"
+
+    def test_dash_id_alongside_normal_ids_loses_neither(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The `=` workaround could not express this — nargs="*" takes one value."""
+        monkeypatch.delenv("YOUTUBE_API_KEY", raising=False)
+        sp = tmp_path / "s.json"
+        rc = self._mark(
+            ["--ingested", self.DASH_ID, "aaaaaaaaaaa", "--skipped", "bbbbbbbbbbb"], sp
+        )
+        assert rc == 0
+        videos = load_state(sp)["videos"]
+        assert videos[self.DASH_ID]["status"] == "ingested"
+        assert videos["aaaaaaaaaaa"]["status"] == "ingested"
+        assert videos["bbbbbbbbbbb"]["status"] == "skipped"
+
+    def test_space_separated_list_still_works(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Positive control on the OTHER direction: the fix must not break the
+        existing multi-value call shape the skill docs use."""
+        monkeypatch.delenv("YOUTUBE_API_KEY", raising=False)
+        sp = tmp_path / "s.json"
+        assert self._mark(["--ingested", "aaaaaaaaaaa", "ccccccccccc"], sp) == 0
+        videos = load_state(sp)["videos"]
+        assert videos["aaaaaaaaaaa"]["status"] == "ingested"
+        assert videos["ccccccccccc"]["status"] == "ingested"
+
+    def test_value_run_stops_at_the_next_flag(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A trailing flag must not be eaten as a video id."""
+        monkeypatch.delenv("YOUTUBE_API_KEY", raising=False)
+        sp = tmp_path / "s.json"
+        rc = self._mark(
+            [
+                "--ingested",
+                "aaaaaaaaaaa",
+                "--channel-seen",
+                "UCabcdefghijklmnopqrstuv=2026-07-17T00:00:00+00:00",
+            ],
+            sp,
+        )
+        assert rc == 0
+        state = load_state(sp)
+        assert list(state["videos"]) == ["aaaaaaaaaaa"]
+        assert "UCabcdefghijklmnopqrstuv" in state["channels"]
+
+
 class TestExampleConfig:
     def test_example_config_parses(self) -> None:
         cfg = load_feed_config(Path("config/youtube_channels.toml.example"))

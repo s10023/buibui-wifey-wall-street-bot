@@ -11,14 +11,18 @@ config/youtube_channels.toml
 
 # But don't ignore other files in config/
 !config/
-.claude/*
-# Allowlist over .claude/* — every artifact class defaults to IGNORED until it is
-# named here, so a new one dies silently on clone. A directory entry is enough:
-# git descends into a re-included directory, so no per-extension glob is needed.
-!.claude/skills
-!.claude/agents
-!.claude/context
-!.claude/context/*.md
+# .claude/ is a DENYLIST, inverted from an allowlist 2026-08-20. Under the allowlist
+# every artifact class defaulted to IGNORED until someone named it, so a new class died
+# silently on clone — hooks were the class that bit, and CLAUDE.md carried "re-add it
+# after a reclone" for three of them. Name only what must NOT ship; anything new is
+# tracked by default, which fails loudly (a review) rather than silently (an absence).
+# Machine-local: permissions allowlist, carries absolute /home paths.
+.claude/settings.local.json
+# Per-session scratch state, rewritten constantly.
+.claude/RESUME.md
+# Pre-flip sensitive-term list. NEVER tracked — it is the enumeration of what must not
+# be published, so committing it publishes exactly the thing it exists to catch.
+.claude/sensitive-terms.txt
 .idea/
 
 # Local planning docs — personal notes, not for public repo

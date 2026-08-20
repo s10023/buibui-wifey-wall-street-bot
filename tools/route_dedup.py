@@ -782,7 +782,13 @@ def main(argv: list[str] | None = None) -> int:
         ("unmark", "forget a routed item so it can be re-routed"),
     ):
         p = sub.add_parser(name, help=help_text)
-        p.add_argument("--source-id", required=True, help="X status id or video id")
+        p.add_argument(
+            "--source-id",
+            required=True,
+            help="X status id or video id. ⚠ Use the = form for a `-`-leading id "
+            "(--source-id=-mx3UwwJ5P4); the space form makes argparse read it as a "
+            "flag. That fails LOUDLY here (usage error), unlike yt_feed mark.",
+        )
         p.add_argument(
             "--item-ts",
             type=float,
