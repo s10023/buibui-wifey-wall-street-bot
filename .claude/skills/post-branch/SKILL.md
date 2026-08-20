@@ -77,7 +77,7 @@ because prose cannot enforce.
 | `memory-cap` | Is MEMORY.md over 6 Current State bullets or ~17KB? **Phase 6 reading** |
 | `handoff-size` | Is the handoff past `HANDOFF_MAX_LINES` (240)? **Phase 6 reading** |
 | `stale-anchors` | Does a doc cite a numbered section (`Step 3`, `§4a`) its target no longer has? |
-| `sensitive-terms` | Would a visibility flip publish a work identifier? Tracked tree · this branch's commit **content** · this branch's commit **messages** |
+| `sensitive-terms` | Would a visibility flip publish a work identifier? Tracked tree · this branch's commit **content** · this branch's commit **messages**. The PR title/body is a **fourth** surface none of these reach — `--text`, below |
 
 ⚠ **`memory-cap` and `handoff-size` are VACUOUS in phase 1 — ignore them here.** They measure
 files that **phases 4 and 6 write**, so on the first run they score the *previous* session's
@@ -94,6 +94,26 @@ The commit-**message** leg is the one no file edit reaches: the flip republishes
 history, so scrubbing a term in a later commit does not unexpose it. Terms are **masked** in the
 output because this report gets pasted into handoffs and PR bodies that are themselves tracked
 or backed up, and main's accepted historical baseline is deliberately not re-reported.
+
+⚠ **Those three legs CANNOT see a PR title or body — screen it with `--text` before you post.**
+A body is neither the tree nor a commit, so the sweep reports `clean` on one naming every term:
+correctly, and uselessly. It happened live on #245, whose first draft named all three in the
+very window the gate exists to make safe. Write the body to a file (which CLAUDE.md requires
+anyway — a heredoc is the command payload and trips the destructive guard), then:
+
+```bash
+make post-branch-text FILE=docs/plans/pr-<branch>.md
+printf '%s' "$TITLE" | make post-branch-text FILE=-
+```
+
+`FILE=-` reads stdin, and the flag is repeatable on a direct invocation. Unlike the sweep it
+**gates** — exit 1 on a hit, though ⚠ through `make` you see make's own 2, so read the banner.
+It needs no git surface. Output is line numbers plus a masked term and **never the matching
+line** — quoting context would reproduce what the masking withholds. It reads the same
+gitignored list, so `NOT CONFIGURED` is a finding here too, and an unreadable `FILE` exits 2
+rather than rendering as a clean one-check run. **This belongs in phase 5, beside
+`make preflight`, not after `gh pr create`** — a posted body is public the moment it lands and
+editing it later does not unpublish it.
 
 ⚠ **`queue-items` reports RELEVANCE, not closure**, and prints the tokens it matched so you can
 dismiss in a glance. Expect false positives from area vocabulary, and expect one item to match
@@ -486,6 +506,15 @@ Phase 6's flip-back gate closes the other half of the pair.
 Then compose the **Documentation updates** section and pass it in the *initial*
 `--body`. That ordering is the whole payoff — do not open the PR and then edit
 its body.
+
+⚠ **Screen the composed title and body before they post** — they are the fourth
+exposure surface and the only indexable one, and the sweep's three git legs
+cannot see either (phase 1). Do it while the text is still a local file:
+
+```bash
+make post-branch-text FILE=<body-file>
+printf '%s' "$TITLE" | make post-branch-text FILE=-
+```
 
 ```markdown
 ## Documentation updates
