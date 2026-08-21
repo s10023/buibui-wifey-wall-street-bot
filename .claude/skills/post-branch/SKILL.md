@@ -510,6 +510,24 @@ reports `FAILURE`, both at `steps=0`.** So skip the flip only if the last run on
 executed real steps; otherwise flip, and requeue the runs (enumerate them — a docs-only diff
 gets **two**, not three, since `Docker Build` is itself path-filtered).
 
+⚠ **A flip is a REPO-WIDE event, so sweep EVERY open PR — and do it BEFORE the flip,
+not after.** The public window is the only moment any other PR's checks can run, and while
+the repo IS public further pushes and re-runs are **free**. Dependabot PRs are where this
+bites, because nobody is watching them. **Enumerate the open PRs and read their step counts
+first**: `steps=0` with conclusion `FAILURE` is exactly the shape a re-run repairs at zero
+marginal cost inside a window you are opening anyway.
+
+```bash
+GH_TOKEN=$(gh auth token --user s10023) gh pr list \
+  --repo s10023/buibui-wifey-wall-street-bot --state open \
+  --json number,title,headRefOid
+```
+
+⚠ **This is deliberately NOT a `post_branch_checks` leg** — the sweep needs `gh`, and phase 1
+is git-only on purpose. Measured 2026-08-21: #252/#253 sat at `FAILURE` on all six checks with
+`steps=0`, were re-run in place during an already-open window, and both went fully green for
+nothing. That case was caught only because the operator prompted for it.
+
 Phase 6's flip-back gate closes the other half of the pair.
 
 Then compose the **Documentation updates** section and pass it in the *initial*
@@ -617,9 +635,7 @@ but a PR does not always get three runs — `Docker Build` is path-filtered, so 
 dependency bump gets 3 and a typical feature branch gets 2. A fixed count in an
 instruction is right when written and wrong after one workflow edit.
 
-**When a flip happens, sweep EVERY open PR**, not just this one: the public window
-is a repo-wide event and it is the only moment other PRs' checks can run.
-Dependabot PRs are where this bites, because nobody is watching them.
+**Sweeping every open PR is a PHASE 5 decision** — see it there; by the time you reach this phase the window has already been spent.
 
 Wait in the background; never a foreground `gh pr checks --watch`.
 

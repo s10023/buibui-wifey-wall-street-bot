@@ -190,6 +190,30 @@ presence checks used to report zero on precisely the branch they existed for; th
 answered that with "remember to `git add -A` first", one more hand-step to forget. Reading
 `git status --porcelain` makes them correct either way.
 
+⚠ **`new-modules` asks TWO questions, because a presence probe cannot answer the second.**
+Where the context docs merely *mention* a package it asks whether the module is named at
+all — the original word-boundary probe. Where they keep an **inventory** of one, it compares
+the documented member set against `ls` and reports the **set difference**. The quorum is two
+backticked siblings: below that the mentions are incidental prose, and the leg falls back to
+the probe so every merely-mentioned package does not start firing.
+
+**Why the second question had to exist.** The probe form reported COVERED on a real omission
+(2026-08-21, wifey #255): `analytics/research_guards/sharpe.py` landed while
+`.claude/context/analytics.md` enumerated **ten of the package's eleven** members, and the
+word "sharpe" appears throughout that file as ordinary prose. The omission was found by
+diffing the documented list against `ls` by hand. ⚠ **Tightening the regex cannot fix this
+class** — the hit was a real token in real prose, so no boundary rule separates them; the
+check has to change *what it asks*, not how precisely it asks it. Backticks are the
+discriminator the bare probe lacked, because docs write a **file** as `sharpe.py` and a
+**concept** as plain "sharpe", and only the former is a claim about the package's contents.
+
+This is the `skill-claims` split in code: the mechanical half asks *does the artifact
+exist*, the semantic half asks *does it still mean what the claim says*, and only the second
+needs an **external referent** — here `ls`, something outside the check that the check can be
+wrong about. Same shape as `/stats-dashboard`'s card **count** passing over a wrong inventory
+and `missed_ports.py`'s undeclarable `PORTED` set. **A count, a presence probe and an
+allowlist all pass on any error that conserves their own shape.**
+
 Advisory by design — a finding is a candidate to dismiss in seconds, never an automatic
 edit. The asymmetry is the point: a false positive costs a glance, a silent miss ships a doc
 that enumerates every sibling but one and reads as complete. The Makefile is deliberately
