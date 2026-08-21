@@ -181,6 +181,13 @@ class TestPathTranslation:
         assert out[0].kind == "unmapped"
         assert out[0].wifey_path is None
 
+    def test_parent_agents_md_names_wifey_claude_md(self, mocker: Any) -> None:
+        """The parent's instruction file resolves to wifey's, not to "unmapped"."""
+        mocker.patch("tools.sync_parent._wifey_path_exists", return_value=False)
+        out = sp.translate_paths(["AGENTS.md"])
+        assert out[0].kind == "renamed"
+        assert out[0].wifey_path == "CLAUDE.md"
+
 
 class TestBucketClassifier:
     """classify_pr returns SKIP / PORT / EVALUATE per the rules."""
@@ -785,4 +792,58 @@ class TestWorkstreamSummary:
         assert "## Workstreams" in out
         assert (
             out.index("## Summary") < out.index("## Workstreams") < out.index("## SKIP")
+        )
+
+
+class TestInstructionFilesReachAHuman:
+    """A parent instruction-file change is EVALUATE, and is never a cherry-pick.
+
+    Mapping ``AGENTS.md`` -> ``CLAUDE.md`` moves it from "unmapped" to "renamed",
+    and ``_is_evaluate_path`` grants EVALUATE to every unmapped path. Without the
+    ``_INSTRUCTION_FILES`` leg the mapping would therefore have *demoted* the
+    parent's highest-leverage surface to PORT / cherry-pick-with-edits — a diff
+    that cannot apply, since the parent's 8 KB pointer plus 77 KB ``AGENTS.md``
+    has no wifey twin. Each test below pairs with the control at the bottom, which
+    fails if the leg is widened into "everything is EVALUATE".
+    """
+
+    def _wp(self, path: str, kind: str, target: str | None) -> Any:
+        return sp.WifeyPath(path, target, kind)  # type: ignore[arg-type]
+
+    def _pr(self, files: list[str]) -> Any:
+        return sp.PR(
+            number=99, title="docs: instructions (#99)", commits=[], files=files
+        )
+
+    def test_mapped_agents_md_is_still_evaluate(self) -> None:
+        wps = [self._wp("AGENTS.md", "renamed", "CLAUDE.md")]
+        assert sp.classify_pr(self._pr(["AGENTS.md"]), wps) == sp.Bucket.EVALUATE
+
+    def test_claude_md_is_evaluate_not_port(self) -> None:
+        """Pre-existing hole: a surviving same-name file was bucketed PORT."""
+        wps = [self._wp("CLAUDE.md", "direct", "CLAUDE.md")]
+        assert sp.classify_pr(self._pr(["CLAUDE.md"]), wps) == sp.Bucket.EVALUATE
+
+    def test_instruction_file_is_never_cherry_picked(self) -> None:
+        wps = [self._wp("AGENTS.md", "renamed", "CLAUDE.md")]
+        approach = sp.suggest_approach(sp.Bucket.EVALUATE, sp.Confidence.LOW, wps)
+        assert approach == "re-implement"
+
+    def test_control_mapped_code_file_is_still_port(self) -> None:
+        """Positive control: the leg is scoped to instruction files only.
+
+        Without this, widening ``_is_evaluate_path`` to return True for every
+        mapped path would satisfy all three tests above and silently route the
+        entire port queue to EVALUATE.
+        """
+        wps = [
+            self._wp(
+                "analytics/backtest_lib.py", "renamed", "analytics/backtest/engine.py"
+            )
+        ]
+        pr = sp.PR(number=100, title="fix: engine (#100)", commits=[], files=[])
+        assert sp.classify_pr(pr, wps) == sp.Bucket.PORT
+        assert (
+            sp.suggest_approach(sp.Bucket.PORT, sp.Confidence.LOW, wps)
+            == "cherry-pick-with-edits"
         )
