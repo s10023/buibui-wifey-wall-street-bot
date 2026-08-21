@@ -29,6 +29,15 @@ Every guard here is a recorded scar, so none of them is decoration:
 * **A PASS in seconds needs the same scrutiny as a FAIL in seconds.** Some checks
   legitimately finish in 7s (`markdownlint`, `frontend-check`) because they sit
   behind a `dorny/paths-filter`. Duration narrows suspicion; only `steps` settles it.
+* ⚠ **`steps` is reported EXECUTED/DECLARED, because declared alone reads
+  backwards.** A job behind a `dorny/paths-filter` still *declares* every step it
+  might run and then skips most of them: measured upstream on the parent's #670, a
+  docs-only PR declared 14 steps in `lint-typecheck-test` and executed 5, and a
+  bare ``steps=14`` reads as "the heavy leg ran on a docs diff" — the exact
+  opposite of what happened, and it contradicts the paths-filter claim in
+  `CLAUDE.md`, which is correct. The BILLING discriminator is untouched: an
+  exhausted allowance declares nothing, so ``steps=0/0`` still settles it, and
+  populated-vs-empty remains the test.
 * ⚠ **A `gh` failure RAISES; it is never turned into data.** This is the fix that
   motivated the rewrite. The previous `gh()` returned `""` on a non-zero exit, so
   an unreadable `actions/runs` response left every step count at `None` and the
@@ -77,11 +86,17 @@ class GhError(RuntimeError):
 
 @dataclass(frozen=True)
 class JobRow:
-    """One settled check: what it concluded, and whether it executed anything."""
+    """One settled check: what it concluded, and whether it executed anything.
+
+    ``steps`` is the DECLARED count and ``executed`` the subset that actually
+    ran. Billing gates on ``steps`` (an exhausted allowance declares nothing);
+    everything a human reads gates on ``executed``.
+    """
 
     name: str
     conclusion: str
     steps: int | None
+    executed: int | None = None
 
 
 def gh(*args: str) -> str:
@@ -133,9 +148,22 @@ def is_settled(total: int, completed: int, floor: int) -> bool:
     return completed >= floor and completed == total
 
 
+def fmt_steps(row: JobRow) -> str:
+    """Render a row's step count as ``executed/declared``.
+
+    Declared alone reads backwards on a paths-filtered job, so it is never
+    printed on its own; ``?`` means the count could not be observed at all.
+    """
+    if row.steps is None:
+        return "?"
+    if row.executed is None:
+        return f"?/{row.steps}"
+    return f"{row.executed}/{row.steps}"
+
+
 def verdict(rows: Sequence[JobRow]) -> tuple[int, list[str]]:
     """Exit code plus printable lines for a settled set of checks."""
-    out: list[str] = []
+    out: list[str] = ["  (steps are EXECUTED/DECLARED; a filtered job skips its body)"]
     billing = failed = unknown = 0
     for row in sorted(rows, key=lambda r: r.name):
         flag = ""
@@ -148,8 +176,7 @@ def verdict(rows: Sequence[JobRow]) -> tuple[int, list[str]]:
         elif row.steps is None:
             unknown += 1
             flag = "  <-- step count unreadable; execution NOT confirmed"
-        shown = "?" if row.steps is None else row.steps
-        out.append(f"  {row.name:<26} {row.conclusion:<8} steps={shown}{flag}")
+        out.append(f"  {row.name:<26} {row.conclusion:<8} steps={fmt_steps(row)}{flag}")
 
     if billing:
         out.append(
@@ -166,7 +193,12 @@ def verdict(rows: Sequence[JobRow]) -> tuple[int, list[str]]:
             "execution is NOT confirmed. Re-run before trusting this."
         )
         return EXIT_UNOBSERVED, out
-    out.append("\nall green, all executed real steps.")
+    declared = sum(r.steps or 0 for r in rows)
+    executed = sum(r.executed or 0 for r in rows)
+    out.append(
+        f"\nall green, all executed real steps — {executed}/{declared} declared "
+        "steps ran (the rest were skipped by a paths filter)."
+    )
     return EXIT_OK, out
 
 
@@ -212,9 +244,21 @@ def jobs_for_sha(sha: str, events: tuple[str, ...] | None = None) -> list[dict]:
     return jobs
 
 
-def job_steps(sha: str) -> dict[str, int]:
-    """Map job name -> step count for every workflow run on this SHA."""
-    return {j["name"]: len(j.get("steps") or []) for j in jobs_for_sha(sha)}
+def step_counts(job: dict) -> tuple[int, int]:
+    """Return ``(declared, executed)`` step counts for one job payload.
+
+    A step GitHub reports as ``skipped`` was declared but never ran, which is
+    the whole distinction: a paths-filtered job declares its full step list on
+    every diff and skips the body on most of them.
+    """
+    steps = job.get("steps") or []
+    executed = sum(1 for s in steps if (s.get("conclusion") or "") != "skipped")
+    return len(steps), executed
+
+
+def job_step_counts(sha: str) -> dict[str, tuple[int, int]]:
+    """Map job name -> ``(declared, executed)`` for every run on this SHA."""
+    return {j["name"]: step_counts(j) for j in jobs_for_sha(sha)}
 
 
 def poll(probe: Callable[[], bool], deadline: float, poll_sec: int, label: str) -> bool:
@@ -251,13 +295,12 @@ def wait_pr(pr: str, floor: int, deadline: float, poll_sec: int) -> int:
     sha = str(
         gh_json("pr", "view", pr, "--repo", REPO, "--json", "headRefOid")["headRefOid"]
     )
-    steps = job_steps(sha)
-    rows = [
-        JobRow(
-            c.get("name", "?"), c.get("conclusion", "?"), steps.get(c.get("name", "?"))
-        )
-        for c in checks
-    ]
+    counts = job_step_counts(sha)
+    rows = []
+    for c in checks:
+        name = c.get("name", "?")
+        declared, executed = counts.get(name, (None, None))
+        rows.append(JobRow(name, c.get("conclusion", "?"), declared, executed))
     print(f"\nsettled — {len(rows)} checks on {sha[:8]}")
     code, lines = verdict(rows)
     print("\n".join(lines))
@@ -280,10 +323,10 @@ def wait_branch(branch: str, floor: int, deadline: float, poll_sec: int) -> int:
         print(f"TIMEOUT waiting for {branch}'s push run", file=sys.stderr)
         return EXIT_TIMEOUT
 
-    rows = [
-        JobRow(j["name"], j.get("conclusion") or "?", len(j.get("steps") or []))
-        for j in jobs
-    ]
+    rows = []
+    for j in jobs:
+        declared, executed = step_counts(j)
+        rows.append(JobRow(j["name"], j.get("conclusion") or "?", declared, executed))
     print(f"\nsettled — {len(rows)} jobs on {sha[:8]}")
     code, lines = verdict(rows)
     print("\n".join(lines))

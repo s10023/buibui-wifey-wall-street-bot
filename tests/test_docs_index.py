@@ -414,3 +414,86 @@ class TestTitleTrailingLabel:
         assert title_from_markdown(
             "# D1 — Spot-perp CVD divergence sleeve: VERDICT\n"
         ) == ("D1 — Spot-perp CVD divergence sleeve")
+
+
+# Frozen 2026-08-21. Audits written before the parseable-verdict rule existed;
+# each states its verdict in a table, a blockquote or the body, where
+# `verdict_from_markdown` cannot read it. **This set may only SHRINK** — the
+# ratchet below fails if an entry is fixed or deleted without being removed
+# here, so it cannot quietly re-admit blindness.
+#
+# They are grandfathered rather than retrofitted on purpose: SEVEN of the ten are
+# cited by name in CLAUDE.md's footguns (verified by grepping each filename), so
+# their consequences have already shipped and rewriting their verdict sections
+# would be churn against settled decisions with a real chance of misstating one.
+# The other three are the residual-xsmom experiment, the crypto-era `bos`
+# direction flag and the orphaned-ratings audit — all equally settled, none
+# reachable by that grep.
+VERDICT_RATCHET_GRANDFATHERED = frozenset(
+    {
+        "2026-06-21-experiment-1-residual-xsmom.md",
+        "2026-06-24-honest-exit-free-data-edge-arc.md",
+        "2026-08-06-adr-gate-timeframe-degeneracy.md",
+        "2026-08-06-bos-timeframe-and-crypto-era-direction-flag.md",
+        "2026-08-06-live-ev-gate-window.md",
+        "2026-08-06-orphaned-and-contaminated-confidence-ratings.md",
+        "2026-08-07-backtest-runs-writer-collision.md",
+        "2026-08-07-ev-gate-directional-sample-guard.md",
+        "2026-08-07-ev-gate-significance-test.md",
+        "2026-08-07-live-parity-ratings-sweep.md",
+    }
+)
+
+
+class TestEveryNewAuditExposesItsVerdict:
+    """A new audit must state its verdict where a machine can read it.
+
+    This repo already holds the rule as prose — every audit closes with FOUND /
+    BOUNDED / EXCLUDED / BLOCKED — and prose does not enforce. The consumer that
+    makes it mechanical is the generated `docs/audits/INDEX.md`: it renders each
+    audit's verdict in a column, so an unparseable verdict shows up as an empty
+    cell that reads exactly like an audit which reached no conclusion.
+
+    ⚠ Ported from the parent's #641 WITHOUT its second half. Upstream pairs this
+    with a gitignored `daily_check.py` line joining the index against the SoT to
+    ask whether an actionable verdict has an OWNER. **wifey has no such join** —
+    `cadence_check.py` reads task marks, not verdicts — so this gate buys
+    legibility only, and the ownership question stays with the human running
+    `/post-branch`'s SoT reconcile. Do not describe it as an ownership check.
+
+    It deliberately asserts nothing about verdict CONTENT. The only property
+    ownable here is that the verdict is legible at all.
+    """
+
+    def test_a_new_audit_states_a_parseable_verdict(self) -> None:
+        rows = collect_audits(REPO_ROOT / "docs/audits")
+        unreadable = sorted(
+            r.filename
+            for r in rows
+            if r.verdict is None and r.filename not in VERDICT_RATCHET_GRANDFATHERED
+        )
+        assert not unreadable, (
+            "these audits state no verdict a machine can read, so the generated "
+            f"INDEX.md renders them as having reached none: {unreadable}. Add a "
+            "'## Headline verdict: ...' section stating the verdict as PROSE (a "
+            "table, blockquote or **Date:** line under the heading is "
+            "deliberately rejected — see TestVerdictFromMarkdown)."
+        )
+
+    def test_the_grandfather_set_can_only_shrink(self) -> None:
+        rows = {r.filename: r for r in collect_audits(REPO_ROOT / "docs/audits")}
+        deleted = sorted(VERDICT_RATCHET_GRANDFATHERED - rows.keys())
+        assert not deleted, (
+            f"grandfathered audits no longer exist: {deleted}. "
+            "Remove them from VERDICT_RATCHET_GRANDFATHERED."
+        )
+        fixed = sorted(
+            f
+            for f in VERDICT_RATCHET_GRANDFATHERED
+            if rows[f].verdict is not None  # now readable — the exemption is spent
+        )
+        assert not fixed, (
+            f"these audits now state a parseable verdict: {fixed}. "
+            "Remove them from VERDICT_RATCHET_GRANDFATHERED — a stale exemption "
+            "silently re-admits the blind spot it was granted for."
+        )

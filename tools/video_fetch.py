@@ -19,7 +19,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 import requests
 from dotenv import load_dotenv
@@ -59,6 +59,13 @@ def _subprocess_run(cmd: list[str]) -> Completedish:
 _YT_DLP: tuple[str, ...] = ("yt-dlp", "--js-runtimes", "node")
 
 
+def _caption_langs(raw: object) -> tuple[str, ...]:
+    """Language codes from a yt-dlp `subtitles` / `automatic_captions` mapping."""
+    if not isinstance(raw, dict):
+        return ()
+    return tuple(sorted(str(code) for code in raw))
+
+
 @dataclass(frozen=True)
 class VideoMeta:
     source: str
@@ -69,6 +76,11 @@ class VideoMeta:
     duration_s: float
     lang: str
     url: str
+    # `subtitles` is author-written, `automatic_captions` is YouTube ASR. Both land
+    # on disk as `sub.<code>.vtt`, so the filename cannot tell them apart — these two
+    # fields are the ONLY provenance signal, and they come free with the metadata call.
+    caption_langs_manual: tuple[str, ...] = ()
+    caption_langs_auto: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -156,6 +168,8 @@ def fetch_meta(url: str, *, run: RunProc = _subprocess_run) -> VideoMeta | Unava
         duration_s=duration,
         lang=str(data.get("language") or ""),
         url=url,
+        caption_langs_manual=_caption_langs(data.get("subtitles")),
+        caption_langs_auto=_caption_langs(data.get("automatic_captions")),
     )
 
 
@@ -236,14 +250,31 @@ def parse_vtt(text: str, lang: str) -> list[TranscriptSegment]:
 _SUB_FILENAME_RE = re.compile(r"^sub\.(.+)\.vtt$")
 
 
+# A caption request longer than this cannot be a targeted one: it is a
+# translate matrix, which YouTube answers with HTTP 429 partway through.
+_MAX_SUB_LANGS = 6
+
+
+def _base_lang(code: str) -> str:
+    """`en-US` -> `en`. YouTube lists regional variants that no caption code
+    matches, while the base language is usually right there in the list."""
+    return code.split("-")[0] if code else ""
+
+
 def _select_caption_track(vtts: list[Path], lang: str) -> Path | None:
     """Pick the right track out of yt-dlp's `--sub-langs` results.
 
-    `--sub-langs all` used to be requested here, which returns the original track
-    plus roughly a hundred machine translations; picking `sorted(...)[0]` then chose
-    alphabetically ("af" beats "zh"). Preference order now: exact `lang` match, then
-    `lang-orig`, then any code that starts with `lang` (handles `zh-Hans`), then
-    `en`, then whatever is left — deterministic over the (already sorted) glob order.
+    Preference order: exact `lang`, then `lang-orig`, then the BASE language
+    (`pt-BR` -> `pt`), then any code sharing that base (`zh` -> `zh-Hans`), then
+    `en`, then whatever carries YouTube's `-orig` suffix, which marks the track
+    the video was actually spoken in.
+
+    Two last-resort rules, both measured. `sorted(...)[0]` used to close this
+    function, and alphabetical order is how `aa` (Afar) beat every other
+    candidate on 9avrSmPczP4. So a blind pick now happens ONLY when nothing
+    knows the language: with a KNOWN `lang` and no related track, this returns
+    None and the caller falls through to ASR, because ASR in the real language
+    beats a machine translation into an unrelated one.
     """
     if not vtts:
         return None
@@ -252,18 +283,111 @@ def _select_caption_track(vtts: list[Path], lang: str) -> Path | None:
         match = _SUB_FILENAME_RE.match(path.name)
         if match:
             by_code[match.group(1)] = path
+    base = _base_lang(lang)
     if lang:
-        if lang in by_code:
-            return by_code[lang]
-        orig_key = f"{lang}-orig"
-        if orig_key in by_code:
-            return by_code[orig_key]
+        for key in (lang, f"{lang}-orig", base, f"{base}-orig"):
+            if key in by_code:
+                return by_code[key]
         for code, path in by_code.items():
-            if code.startswith(lang):
+            if _base_lang(code) == base:
                 return path
     if "en" in by_code:
         return by_code["en"]
+    for code, path in by_code.items():
+        if code.endswith("-orig"):
+            return path
+    if lang:
+        return None
     return vtts[0]
+
+
+# Where a transcript's text came from. Recorded because every item, `raw_quote` and
+# call-time derives from that text, and an ASR transcript is a materially weaker
+# source than an author-written one — worst on the zh channels, where ASR is weakest
+# and `raw_quote` accuracy is load-bearing.
+SOURCE_MANUAL = "manual_captions"
+SOURCE_AUTO = "auto_captions"
+SOURCE_ASR = "asr_whisper"
+# A caption track whose provenance the metadata call did not describe — an old cache
+# entry, or a `--dump-json` payload with neither mapping. Deliberately NOT folded into
+# `auto`: "we did not ask" and "we asked and it was ASR" are different claims.
+SOURCE_CAPTIONS_UNKNOWN = "captions_unknown"
+
+
+@dataclass(frozen=True)
+class TranscriptResult:
+    segments: list[TranscriptSegment]
+    source: str
+    lang: str
+
+
+def _sub_langs(meta: VideoMeta) -> str:
+    """The `--sub-langs` request list: the tracks that exist, narrowest first.
+
+    ⚠ This is ST46's widening fix PLUS the regression it shipped. ST46 widened
+    the request with the codes `--dump-json` said exist, because yt-dlp returns
+    `language: null` on a large slice of the follow list and asking for `en`
+    alone sent 17 of 89 zh notes to ASR while an author-written track sat
+    unrequested. `caption_langs_*` come from that same metadata call, so
+    reading them costs no extra request.
+
+    The regression: on a channel whose `meta.lang` is a REGIONAL variant with a
+    full auto-translate matrix, the widening asked for the matrix. Measured
+    2026-08-20 on 9avrSmPczP4 — `language: "en-US"`, no author-written track,
+    **157** auto codes led by `ab`/`aa`/`af`, `en` at index 32 and `en-US`
+    absent entirely. Re-running that request live answers
+    `Downloading subtitles: ab, aa, en` then `HTTP Error 429: Too Many
+    Requests`, so the transcript's language was decided by which file survived
+    the rate limit: an Afar machine translation, recorded as `auto_captions`.
+
+    Hence two rules. A regional `lang` resolves down to the base track that
+    exists (`en-US` -> `en`), and the list is capped, so no video can request a
+    translate matrix again. The cap only ever trims the widening tail — the
+    resolved language and the author-written tracks are added first.
+    """
+    known = (*meta.caption_langs_manual, *meta.caption_langs_auto)
+    wanted: list[str] = []
+
+    def _add(code: str) -> None:
+        if code and code not in wanted:
+            wanted.append(code)
+
+    base = _base_lang(meta.lang)
+    if meta.lang:
+        # With no metadata to check against, the declared language is the only
+        # signal there is; when there IS a list, an unlisted code is a request
+        # for nothing and must not push the real track down the queue.
+        if not known or meta.lang in known:
+            _add(meta.lang)
+            _add(f"{meta.lang}-orig")
+        for code in (base, f"{base}-orig"):
+            if code in known:
+                _add(code)
+    for code in meta.caption_langs_manual:
+        _add(code)
+    if not wanted:
+        # No usable language signal: `-orig` marks the spoken track, so it is a
+        # better guess than the head of an alphabetical list.
+        for code in known:
+            if code.endswith("-orig"):
+                _add(code)
+        for code in known:
+            _add(code)
+    _add("en")
+    return ",".join(wanted[:_MAX_SUB_LANGS])
+
+
+def _caption_source(meta: VideoMeta, lang_code: str) -> str:
+    """Author-written vs ASR for the CHOSEN track.
+
+    A code can appear in both mappings (measured on 4Dkw1jz04lY, where `zh-Hant` is in
+    each). yt-dlp writes the manual track in that case, so manual wins the tie here too.
+    """
+    if lang_code in meta.caption_langs_manual:
+        return SOURCE_MANUAL
+    if lang_code in meta.caption_langs_auto:
+        return SOURCE_AUTO
+    return SOURCE_CAPTIONS_UNKNOWN
 
 
 def fetch_transcript(
@@ -273,7 +397,7 @@ def fetch_transcript(
     get: HttpPost | None = None,
     groq_key: str | None = None,
     work_dir: Path = Path(".cache/video"),
-) -> list[TranscriptSegment] | Unavailable:
+) -> TranscriptResult | Unavailable:
     """Existing captions in any language first; Groq whisper-large-v3 only when absent.
 
     Requests a targeted `--sub-langs` list (never "all" — see `_select_caption_track`)
@@ -281,9 +405,13 @@ def fetch_transcript(
     `meta.lang` blindly: a video with no `meta.lang` track available may legitimately
     fall back to English captions, and mislabeling that fallback as `meta.lang` would
     silently corrupt `raw_quote`'s language guarantee.
+
+    Returns the provenance alongside the segments rather than leaving a caller to
+    re-derive it: re-deriving would mean a second copy of `_select_caption_track`'s
+    preference order, and two sites that must mirror each other drift silently.
     """
     work_dir.mkdir(parents=True, exist_ok=True)
-    sub_langs = f"{meta.lang},{meta.lang}-orig,en" if meta.lang else "en"
+    sub_langs = _sub_langs(meta)
     run(
         [
             *_YT_DLP,
@@ -304,11 +432,20 @@ def fetch_transcript(
     if chosen is not None:
         match = _SUB_FILENAME_RE.match(chosen.name)
         lang_code = match.group(1) if match else (meta.lang or "en")
-        return parse_vtt(chosen.read_text(encoding="utf-8"), lang=lang_code)
+        return TranscriptResult(
+            segments=parse_vtt(chosen.read_text(encoding="utf-8"), lang=lang_code),
+            source=_caption_source(meta, lang_code),
+            lang=lang_code,
+        )
     if groq_key is None or get is None:
         return Unavailable("no captions available and no GROQ_API_KEY configured")
-    return _transcribe_groq(
-        meta, run=run, get=get, groq_key=groq_key, work_dir=work_dir
+    asr = _transcribe_groq(meta, run=run, get=get, groq_key=groq_key, work_dir=work_dir)
+    if isinstance(asr, Unavailable):
+        return asr
+    return TranscriptResult(
+        segments=asr,
+        source=SOURCE_ASR,
+        lang=asr[0].lang if asr else (meta.lang or ""),
     )
 
 
@@ -438,11 +575,12 @@ def _ensure_local_media(
             # Pin the extractor client. Left to its own default selection yt-dlp
             # picks `android_vr` here, which 403s deterministically on the media
             # fetch while captions still resolve — so the vision pass silently
-            # loses every frame and the run looks merely unlucky. Measured on the
-            # pinned 2026.07.04: `android`, `mweb` and `web_embedded` all download,
-            # `tv` fails to load, and `web_safari`/`ios` cannot serve the format
-            # below, so they are not substitutes. The built-in retry cannot help —
-            # it was written for an intermittent 403 and this one is not.
+            # loses every frame and the run looks merely unlucky. Measured on
+            # 2026.07.04, the stable this repo pinned before the nightly bump:
+            # `android`, `mweb` and `web_embedded` all download, `tv` fails to
+            # load, and `web_safari`/`ios` cannot serve the format below, so they
+            # are not substitutes. The built-in retry cannot help — it was written
+            # for an intermittent 403 and this one is not.
             "--extractor-args",
             "youtube:player_client=android",
             "-f",
@@ -548,10 +686,42 @@ class BatchResult:
     # Non-empty only when `meta` holds a real VideoMeta but the transcript itself
     # could not be produced — distinct from `meta` being Unavailable (video unreachable).
     transcript_error: str = ""
+    # One of SOURCE_* — how the text was obtained. "" only when there is no transcript.
+    transcript_source: str = ""
 
 
 def _cache_file(cache_dir: Path, video_id: str) -> Path:
     return cache_dir / video_id / "asset.json"
+
+
+def _meta_from_cache(raw: dict[str, Any]) -> VideoMeta:
+    """Rehydrate VideoMeta from `asdict` output.
+
+    Written out field by field ON PURPOSE. `VideoMeta(**raw)` would store the
+    `caption_langs_*` fields as the plain `list[str]` `asdict` produced — a frozen
+    dataclass does no coercion, so each field would claim `tuple[str, ...]` while
+    holding a list. **mypy cannot see that**: `**` builds the lie at runtime. A
+    missing key raises, which `_load_cached` already treats as a cache miss — the
+    right answer for an entry we cannot trust.
+
+    `tests/test_video_fetch.py::test_cache_round_trip_covers_every_video_meta_field` pins
+    this against VideoMeta's own field list, so adding a field there fails loudly here
+    rather than silently dropping it from every cached read.
+    """
+    return VideoMeta(
+        source=str(raw["source"]),
+        video_id=str(raw["video_id"]),
+        author=str(raw["author"]),
+        title=str(raw["title"]),
+        publish_ts_utc=str(raw["publish_ts_utc"]),
+        duration_s=float(raw["duration_s"]),
+        lang=str(raw["lang"]),
+        url=str(raw["url"]),
+        caption_langs_manual=tuple(
+            str(c) for c in raw.get("caption_langs_manual") or ()
+        ),
+        caption_langs_auto=tuple(str(c) for c in raw.get("caption_langs_auto") or ()),
+    )
 
 
 def _load_cached(cache_dir: Path, video_id: str) -> BatchResult | None:
@@ -567,10 +737,14 @@ def _load_cached(cache_dir: Path, video_id: str) -> BatchResult | None:
         frame_paths = [p for p in data.get("frame_paths", []) if Path(p).exists()]
         return BatchResult(
             url=data["url"],
-            meta=VideoMeta(**data["meta"]),
+            meta=_meta_from_cache(data["meta"]),
             segments=[TranscriptSegment(**s) for s in data["segments"]],
             frame_paths=frame_paths,
             cached=True,
+            # Absent on every entry written before ST46. "" then means "this cache
+            # predates provenance", which is exactly what SOURCE_CAPTIONS_UNKNOWN says
+            # downstream — do NOT default it to a real source.
+            transcript_source=data.get("transcript_source", ""),
         )
     except (json.JSONDecodeError, KeyError, TypeError):
         return None  # corrupt cache ⇒ treat as a miss, re-fetch
@@ -586,6 +760,7 @@ def _write_cache(cache_dir: Path, result: BatchResult, meta: VideoMeta) -> None:
                 "meta": asdict(meta),
                 "segments": [asdict(s) for s in result.segments],
                 "frame_paths": result.frame_paths,
+                "transcript_source": result.transcript_source,
                 "fetched_at_utc": datetime.now(UTC).isoformat(),
             },
             indent=2,
@@ -632,19 +807,24 @@ def fetch_video_batch(
             if isinstance(meta, Unavailable):
                 results.append(BatchResult(url=url, meta=meta))
                 continue
-            segments = fetch_transcript(
+            transcript = fetch_transcript(
                 meta,
                 run=run,
                 get=get,
                 groq_key=groq_key,
                 work_dir=cache_dir / video_id,
             )
-            if isinstance(segments, Unavailable):
+            if isinstance(transcript, Unavailable):
                 results.append(
-                    BatchResult(url=url, meta=meta, transcript_error=segments.reason)
+                    BatchResult(url=url, meta=meta, transcript_error=transcript.reason)
                 )
                 continue
-            result = BatchResult(url=url, meta=meta, segments=segments)
+            result = BatchResult(
+                url=url,
+                meta=meta,
+                segments=transcript.segments,
+                transcript_source=transcript.source,
+            )
             _write_cache(cache_dir, result, meta)
             results.append(result)
         except (OSError, subprocess.SubprocessError) as exc:
@@ -663,6 +843,7 @@ def _result_to_dict(result: BatchResult) -> dict[str, object]:
         "url": result.url,
         "cached": result.cached,
         "frame_paths": result.frame_paths,
+        "transcript_source": result.transcript_source,
     }
     if isinstance(result.meta, Unavailable):
         return {**base, "meta": None, "segments": [], "unavailable": result.meta.reason}

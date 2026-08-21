@@ -85,9 +85,22 @@ otherwise). Per element:
 
 - `url` — the URL actually requested at this position
 - `cached` — bool; `true` = zero network, served from `.cache/video/<id>/`
-- `meta` — `{source, video_id, author, title, publish_ts_utc, duration_s, lang, url}`,
-  or `null` when the video itself was unreachable
+- `meta` — `{source, video_id, author, title, publish_ts_utc, duration_s, lang, url,
+  caption_langs_manual, caption_langs_auto}`, or `null` when the video itself was
+  unreachable. The two `caption_langs_*` lists are the ONLY provenance signal:
+  `manual` is author-written, `auto` is YouTube ASR, and both land on disk under the
+  same `sub.<code>.vtt` name
 - `segments` — `[{ts_s, text, lang}, …]` (empty when there is no transcript)
+- `transcript_source` — `manual_captions` | `auto_captions` | `asr_whisper` |
+  `captions_unknown` | `""`. **Carry it into the note frontmatter (step 9) verbatim.**
+  It is not decoration: every item, `raw_quote` and call-time derives from this text,
+  and an `asr_whisper` transcript is a materially weaker source than an author-written
+  one — worst on the CN channel, where ASR is weakest and `raw_quote` accuracy is
+  load-bearing. Treat a `raw_quote` lifted from an ASR transcript as
+  **quoted-with-uncertainty**: if a number in it is decision-changing, say so in the
+  digest rather than presenting it as the author's exact words. ⚠ `captions_unknown`
+  means the metadata call described no caption mappings (an old cache entry) — that is
+  "we did not ask", NOT "it was ASR"
 - `frame_paths` — **always `[]` at this stage.** This CLI fetches metadata + transcript
   only; frames are extracted later (step 5), from a separate Python call, only for the
   moments pass 1 decides are worth a frame. Don't expect frames here — that is not a bug.
@@ -823,7 +836,8 @@ Contents:
 
 - YAML frontmatter: `source`, `video_id`, `url`, `author`, `title`, `duration_s`, `lang`,
   `publish_ts_utc`, `call_ts_utc`, `call_ts_source`, `stated_ts_raw`, `ingested_ts_utc`,
-  `backlog`, `chart_present`
+  `backlog`, `chart_present`, `transcript_source`
+  ⚠ **`transcript_source` is written from step 1's JSON, never narrated from memory.**
 - the pass-1 `summary`
 - an items table: `ts` · `content_type` · `verdict` · routing outcome ·
   `vision_confidence` · `frame_path`
