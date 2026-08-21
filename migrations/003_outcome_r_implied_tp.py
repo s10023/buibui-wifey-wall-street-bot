@@ -19,9 +19,12 @@ geometry (`entry_price`, `sl_price`, `tp_price`) — never from config, so nothi
 here is reconstructed or guessed:
 
   * `rr_ratio`  — the target the alert actually carried. Rewritten on every
-    divergent row regardless of outcome, because it is read as an R level by
-    `analytics/exits/mfe_mae.py` (the `max(prior_fav, rr_ratio)` win clamp, which
-    a declared value inflates) and by its `tp_r_p50` cohort median.
+    divergent row regardless of outcome, because it was read as an R level by
+    `analytics/exits/mfe_mae.py` (its win clamp, which a declared value inflates)
+    and by that module's `tp_r_p50` cohort median. Both now derive the target
+    through `implied_tp_r` themselves, so this migration is no longer the only
+    thing standing between them and a declared value — but it remains what makes
+    the STORED column honest for anything that reads it directly.
   * `outcome_r` — the R credited on resolution. Rewritten on **wins only**: a
     loss books -1.0 and an expired row books mark-to-market off `sl_price`, so
     neither ever read `rr_ratio`.

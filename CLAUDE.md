@@ -430,8 +430,8 @@ for it. Narrative: `context/footguns.md`.
 
 **Credit the target you walked.** `signal_alert_outcomes.rr_ratio` is the declared target and
 `tp_price` is the effective one, so one shared `implied_tp_r` in
-`analytics/signal/outcome_backfill.py` serves the resolver, the scanner at fire time, and
-`analytics/exits/audit.py`. A column recording what was configured is not a record of what happened.
+`analytics/signal/outcome_backfill.py` serves all four readers: the resolver, the scanner at fire time,
+`analytics/exits/audit.py` and `analytics/exits/mfe_mae.py`. A column recording what was configured is not a record of what happened.
 **Pooled live avg_r is −0.2553R** (n=292, 2026-08-20, net and symmetric-gap-filled); −0.2192R
 predates migration 005, −0.1752R was gross at n=267 and −0.1247R predates the `implied_tp_r` fix. ⚠ **Two things moved it, so do not attribute the whole
 gap to either** — the ledger grew (267→292 resolved) *and* the basis changed (see the next entry).
