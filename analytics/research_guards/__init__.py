@@ -37,6 +37,7 @@ from analytics.research_guards.mintrl import min_track_record_length
 from analytics.research_guards.pbo import PBOResult, cscv_pbo
 from analytics.research_guards.power import required_sharpe
 from analytics.research_guards.psr import probabilistic_sharpe_ratio
+from analytics.research_guards.sharpe import ann_sharpe, per_period_sharpe
 
 __all__ = [
     "DEPLOY_SHARPE",
@@ -49,6 +50,7 @@ __all__ = [
     "HaircutResult",
     "PBOResult",
     "SeriesDeflator",
+    "ann_sharpe",
     "block_bootstrap_ci",
     "cluster_bootstrap_ci",
     "cluster_stats",
@@ -60,6 +62,7 @@ __all__ = [
     "min_track_record_length",
     "passes_gate",
     "passes_sleeve_gate",
+    "per_period_sharpe",
     "probabilistic_sharpe_ratio",
     "required_sharpe",
 ]
