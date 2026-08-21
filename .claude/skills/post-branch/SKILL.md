@@ -402,6 +402,15 @@ Respect the cap — this step is where it gets broken. Current State holds at mo
 diligence and is the mechanism by which the index once grew to 57% Current State;
 the index is re-read every session, so that bloat is billed per conversation.
 
+⚠ **The cap is BYTES as well as bullets, and the two fail differently.** Bullets
+are fixed by the roll; **17,408 bytes is not**, and the roll can break it on its
+own — on 2026-08-20 it pushed the index past the cap, and shaving the new bullet
+twice did not bring it back under. **Re-home the LARGEST bullet to its topic file
+before trimming the new one**, then grep the destination to confirm it landed.
+The index is a router, so the biggest bullet is nearly always the one that has
+quietly become a store — and its topic file usually already owns every detail it
+is carrying.
+
 ⚠ **Check the live file rather than the last person's description of it.** This
 step has been wrong in both directions — once naming a bullet that did not exist,
 then denying one that does. CLAUDE.md's Session Memory Protocol is the authority.
