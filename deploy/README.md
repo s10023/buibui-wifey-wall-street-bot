@@ -273,8 +273,17 @@ lines via `deploy/notify-failure.sh`.
 here emits a heartbeat, so a timer that silently stopped firing and a timer with
 nothing to report are indistinguishable from the Telegram side. The parent closes
 this with a `daily_check.py` off-site freshness line; wifey has no `daily_check.py`
-at all, so **the gap is open and is not closed by this leg**. Until it is, the
-liveness check is manual: `systemctl --user list-timers 'wifey-*'`. That message body is raw journal output, which is
+at all.
+
+**`make backup-check` is wifey's answer, and it closes the OBSERVATION half only.**
+It reports the age of the newest verified snapshot, read from `captured_at_utc`
+inside `MANIFEST.json` rather than from any mtime, so it measures the *input* this
+leg copies rather than the copy's own exit code. ⚠ **It is a PULL, not a push** — it
+answers the question when someone asks it, and nothing asks on a schedule, so a
+timer that stops is still invisible until the next run. That is a strictly smaller
+gap than "no way to tell at all", and it is not the same as closed. The unit-level
+liveness check remains `systemctl --user list-timers 'wifey-*'`, which reports
+whether a timer is *scheduled* — never whether its output is current. That message body is raw journal output, which is
 exactly the payload that used to break this alert: a traceback carries `line 33,
 in <module>`, Telegram's HTML parser reads the bare `<` as an unclosed tag and
 answers 400, and the alert failed on precisely the crashes it exists to report.
@@ -306,7 +315,9 @@ journalctl --user -u wifey-backup-offsite.service -o cat | grep 'verified snapsh
 
 Even that is weak evidence, because the count is also legitimately flat on any day the
 operator did not run the local leg — which is most days. It tells you the mirror is
-stale; it cannot tell you whether that was intended.
+stale; it cannot tell you whether that was intended. **`make backup-check` is the
+stronger tell** and needs no journal: it dates the newest snapshot from its own
+manifest, so "stale" and "nothing was due" stop looking alike.
 
 This is the same shape as the pundit-ledger bug: a job reporting success about a
 dependency that is silently not being produced. The transferable rule is that **a
@@ -323,8 +334,10 @@ snapshot in the tree — the failure mode observed, not theorised. The second fi
 the off-site leg refuse a source tree whose newest snapshot predates today — is still
 unbuilt and still a user call; it is the belt-and-braces for the local timer running but
 leaving a stale tree.
-`systemctl --user list-timers 'wifey-*'` is the only liveness check either way —
-there is no heartbeat, since the failure alert is failure-only.
+`systemctl --user list-timers 'wifey-*'` reports whether a timer is scheduled;
+`make backup-check` reports whether its OUTPUT is current, which is the question
+the failure-only alert cannot answer. Neither is a push heartbeat — both have to
+be run by someone.
 
 `sync` mirrors deletions in **both** directions. Source side is guarded upstream (no
 `MANIFEST.json` is a fault, never "nothing to do"). The far side is what the guards

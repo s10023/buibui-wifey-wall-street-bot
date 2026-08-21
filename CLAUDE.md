@@ -269,7 +269,22 @@ snapshot's age rather than a unit's `enabled` state. The general rule survives b
 scheduled job attests only to the step it performs, so a green light means "the data is current"
 only if something checks the *input's* age. Rationale and the two candidate fixes are in
 `deploy/README.md`. ⚠ **This is deliberately NOT a `cadence-check` line** — no human action
-clears it, so it fails that tool's inclusion rule (4); it wants an observed-state probe.
+clears it, so it fails that tool's inclusion rule (4); it wanted an observed-state probe, and
+`make backup-check` is now it.
+
+`make backup-check` reports **the age of the newest verified snapshot**, from `captured_at_utc`
+inside `MANIFEST.json` — never an mtime, which moves for a restore or an `rclone` round-trip and
+fails in the direction that reports *fresher than reality*. ⚠ **`daily/` and `weekly/` are
+DIFFERENT ARTIFACTS**: only `daily/` carries a manifest, `weekly/` is a parquet export, and
+grading them together prints a permanent warning about a directory that is exactly as intended.
+Every unreadable state reads STALE, an absent root is its own verdict, and it is **ADVISORY — it
+must never enter `make test`, `make sanity-checks` or CI**, since the backup root is machine-local
+state no clone has. ⚠ **Two holes, both deliberate**: it measures the **local tree only** (the
+off-site mirror needs a network call, and a probe that fails when offline reports a backup problem
+for a connectivity one), and it is a **pull, not a push** — nothing runs it on a schedule, so it
+shrinks the invisible-timer gap rather than closing it. Wiring a staleness refusal into
+`backup-offsite.sh` stays a user call: a guard that costs you the backup is worse than the gap it
+closes. Narrative: `context/tools.md`.
 
 ## CLI
 

@@ -61,6 +61,12 @@ STATE_FILE_PATH = WIFEY_MEMORY_DIR / "project_parent_sync_state.md"
 # Surviving same-name files are intentionally absent: translate_paths() resolves
 # them to a "direct" map via a wifey working-tree existence check.
 PARENT_TO_WIFEY_PATHS: dict[str, str | None] = {
+    # The parent moved its always-loaded instructions into AGENTS.md and left
+    # CLAUDE.md an @-importing pointer; wifey still keeps everything in
+    # CLAUDE.md. Without this entry the parent's highest-leverage surface falls
+    # through to "unmapped" and renders as the same "investigate" noise as a
+    # genuinely foreign path. See _INSTRUCTION_FILES for why it stays EVALUATE.
+    "AGENTS.md": "CLAUDE.md",
     "analytics/indicators_lib.py": "analytics/strategies/_registry.py",
     "analytics/cme_gap_lib.py": None,
     "utils/binance_client.py": None,
@@ -357,9 +363,20 @@ _EVALUATE_PATH_RE = re.compile(
 )
 
 
+# Instruction files are never a cherry-pick: the parent's split (an 8 KB
+# CLAUDE.md pointer @-importing a 77 KB AGENTS.md) has no wifey twin, so a diff
+# against wifey's single CLAUDE.md cannot apply as written. They are also the
+# surface a parent PR changes least visibly and most widely, so they must reach
+# a human. Mapping AGENTS.md above would otherwise have demoted it from the
+# EVALUATE that "unmapped" was granting it, to PORT/cherry-pick-with-edits.
+_INSTRUCTION_FILES = frozenset({"AGENTS.md", "CLAUDE.md"})
+
+
 def _is_evaluate_path(wp: WifeyPath) -> bool:
-    """Cohort-sensitive (config / sweep / new-strategy) or unmapped -> needs judgment."""
+    """Instruction file, cohort-sensitive path, or unmapped -> needs judgment."""
     if wp.kind == "unmapped":
+        return True
+    if wp.parent_path in _INSTRUCTION_FILES:
         return True
     return bool(_EVALUATE_PATH_RE.search(wp.parent_path))
 

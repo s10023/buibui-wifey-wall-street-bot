@@ -832,6 +832,7 @@ root is an undated, unverified byte copy — it is not a backup.
 ```bash
 make backup           # verified snapshot → ~/backups/wifey (weekly parquet if >=7 days old)
 make backup-dry-run   # report what would be captured, write nothing
+make backup-check     # how old is the newest snapshot? (advisory, never in CI)
 ```
 
 The snapshot is row-count verified against the source, re-opened standalone to prove it
@@ -848,7 +849,10 @@ remote pinned to its own Drive folder so it cannot reach the crypto parent's bac
 `WIFEY_BACKUP_REMOTE`, and use `make backup-offsite-dry-run` first.
 
 Both legs ship **opt-in** systemd user timers — nothing installs them, and there is still no
-wifey daemon. Full rationale, setup, coverage policy, and restore procedure:
+wifey daemon. ⚠ A green timer is not a current backup: alerting is failure-only, so a timer that
+silently stopped and one with nothing to report look identical. `make backup-check` dates the
+newest snapshot from its own manifest, which is the *input* the off-site leg copies rather than
+that copy's exit code. Full rationale, setup, coverage policy, and restore procedure:
 [`deploy/README.md`](deploy/README.md).
 
 ### Signal Test — Fire a Test Alert From Historical Data
@@ -1012,6 +1016,7 @@ make poetry-update
 ```bash
 make backup          # Verified snapshot of analytics.db + docs/plans + memory → ~/backups/wifey
 make backup-dry-run  # Report what would be captured; writes nothing
+make backup-check    # Age of the newest verified snapshot; advisory, never gates CI
 ```
 
 **Analytics:**

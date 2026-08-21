@@ -80,7 +80,9 @@ class Task:
 #:   * `make backup`      — a scheduled `wifey-backup.timer` covers it (installed
 #:                          2026-08-19), so no human action clears it: fails (4).
 #:                          Its real risk is the timer stopping silently, which is
-#:                          an observed-state probe rather than a mark.
+#:                          an observed-state probe rather than a mark — see
+#:                          `tools/backup_check.py` (`make backup-check`), which
+#:                          dates the newest snapshot from its own manifest.
 #:   * `make go-live`     — daily, and a genuine candidate, but nothing stamps it
 #:                          today and inventing a cadence the operator has not set
 #:                          would make the first run red for a policy reason.

@@ -375,6 +375,57 @@ action clears it — and the reason each rejected candidate fails one (`make bac
 go-live`, `/db-update`, `/ingest-feed`) live beside `TASKS` in the module, so the table cannot
 grow into noise without someone stating which rule the new line satisfies.
 
+## backup_check.py — is the newest snapshot actually recent?
+
+`make backup-check` runs `tools/backup_check.py`, which reads `$WIFEY_BACKUP_ROOT` (default
+`~/backups/wifey`) and reports the **age of the newest verified snapshot**. It is the observed-state probe that `cadence_check.py`'s own
+exclusion note points at: `make backup` fails that tool's inclusion rule (4), because a scheduled
+`wifey-backup.timer` clears it and no human action does — but its real risk was never "a human
+forgot", it is **the timer stopping silently**, and a mark cannot see that.
+
+**Why a mark could not do this job.** Alerting is failure-only (`OnFailure=` starts
+`wifey-alert@`), which makes the channel unfalsifiable: a timer with nothing to report and a timer
+that stopped firing are indistinguishable from the Telegram side. `deploy/README.md` states the
+transferable rule — **a scheduled job can only attest to the step it performs** — so for a green
+light to mean "the data is current", something has to check the *input's* age rather than the
+copy's exit code. This reads the tree the off-site leg copies **from**.
+
+⚠ **The two tiers are DIFFERENT ARTIFACTS and are graded separately.** `daily/` holds verified
+snapshots each carrying `MANIFEST.json`; `weekly/` holds a format-independent **parquet export**
+and carries no manifest at all, by design. The first draft graded them together and so reported
+every weekly dir as a malformed snapshot — a permanent warning about a directory that was exactly
+as the backup script intended. **A check that is never clean stops being read**, which is why the
+daily tier alone decides the verdict and the archive is reported beside it as informational
+against its own 7d bar. Pinned by `TestTiersAreDifferentArtifacts`, whose control asserts that a
+manifest-less dir under `daily/` **is** still flagged, so the exemption cannot widen.
+
+**Four load-bearing properties**, each mirroring a defect this repo has already paid for:
+
+- **The manifest's CONTENT is authoritative, not the directory's mtime.** `captured_at_utc` is read
+  from inside the file, exactly as `cadence_check` reads a mark's content — mtime moves for things
+  that are not runs (a restore that does not preserve times, an editor, an `rclone` round-trip) and
+  it fails in the direction that reports **fresher than reality**. The weekly tier has no manifest,
+  so it falls back to the date the script stamped into the **directory name**, still a recorded
+  decision rather than a filesystem side effect. `test_a_fresh_mtime_cannot_rescue_an_old_manifest`
+  is the only test separating the two fields; a mutation adding an mtime fallback fails 8 tests.
+- **Every unreadable state reads as STALE, never as fresh** — a missing manifest, a corrupt one, a
+  missing field and an unparseable timestamp all funnel to the same verdict, matching the off-site
+  script's stance that a missing `MANIFEST.json` is a fault rather than "nothing to do".
+- **An ABSENT root is its own verdict** (`NO BACKUP ROOT`), not a stale one. Collapsing them prints
+  the milder of the two, and they want different actions: "the timer broke" versus "this machine
+  never backed up at all".
+- **ADVISORY, and it must never enter `make test`, `make sanity-checks` or a CI job** — the backup
+  root is machine-local single-copy state no clone has, so CI would report a missing backup
+  forever, the same structural reason `cadence_check` stays out. `--exit-nonzero` opts in.
+
+⚠ **Two holes, named rather than papered over.** It measures the **LOCAL tree only** and cannot see
+whether the off-site mirror received the snapshot — that needs a network `rclone` call, and a probe
+that fails when the laptop is offline reports a backup problem for a connectivity one. The off-site
+leg's own success plus a fresh source here is the two-part answer, and neither half is sufficient
+alone. And **it refuses nothing**: wiring a staleness refusal into `deploy/backup-offsite.sh` is
+the second candidate fix in `deploy/README.md` and stays a deliberate user call, because a guard
+that costs you the backup is worse than the gap it closes.
+
 ## clone_preflight.py — does the suite pass on a machine that is not this one?
 
 `make preflight` clones HEAD into a temp dir, runs `poetry install --no-root` against the clone's
