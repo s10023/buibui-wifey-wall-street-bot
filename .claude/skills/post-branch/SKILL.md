@@ -442,10 +442,11 @@ whose blocker you cannot restate is not blocked, it is unexamined.
 
 Nothing else checks whether the **numbers the branch itself asserts** are true.
 Extract every quantitative claim from the branch's new prose — commit messages,
-audit docs, PR body, CLAUDE.md and context additions, the handoff — **and for
-each, name the query or command that reproduces it.** A claim whose reproduction
-you cannot state is not ready: cut it, soften it to what you measured, or measure
-it. Record the reproduction in the commit or the audit doc, not just the session.
+audit docs, PR body, CLAUDE.md and context additions, the handoff, and the code
+comments and docstrings the diff adds — **and for each, name the query or
+command that reproduces it.** A claim whose reproduction you cannot state is
+not ready: cut it, soften it to what you measured, or measure it. Record the
+reproduction in the commit or the audit doc, not just the session.
 
 ⚠ **A commit message is audited prose, and by phase 4 it usually already
 exists.** The phase order puts the audit before the commit, but the normal flow
@@ -454,6 +455,17 @@ On an unpushed branch the repair is `git commit --amend -F <file>`, never a
 follow-up wording commit that leaves the false claim in the history the PR ships.
 After a push, amend plus force-push needs explicit OK — otherwise correct the
 claim in the PR body and say the message predates it.
+
+⚠ **A code comment or docstring is audited prose too — and it is the surface the
+author writes rather than one a reviewer reads.** Everything else on that list
+gets re-read by someone deciding whether to merge; a comment reads as the
+author's own reasoning rather than as a claim, so nobody re-derives it. Live on
+2026-08-21 (#257): the verdict ratchet's frozen grandfather set was justified by
+a test-file comment reading *"eight of the ten are cited by name in CLAUDE.md's
+footguns"*. It is **seven** — one `grep -c <filename> CLAUDE.md` per member away,
+and caught only because that comment was audited off-list. A wrong number beside
+a frozen set is durable: it is the justification the next session inherits for
+not re-checking the set.
 
 Five shapes to hunt:
 
