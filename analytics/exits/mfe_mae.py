@@ -15,9 +15,18 @@ Conservative intrabar conventions (anti-bias, exit spec §4):
   - loss exit bar: its favorable extreme does NOT count toward MFE — no way
     to know the favorable wick printed before the stop touch (adverse-first,
     mirrors `_scan_forward`'s same-bar tie rule).
-  - win exit bar: MFE clamps to max(prior-bar MFE, rr_ratio) — post-TP
-    overshoot is not credited; the exit bar's adverse extreme DOES count
-    toward MAE (assume it printed before TP).
+  - win exit bar: MFE clamps to max(prior-bar MFE, the alert's TP in R) —
+    post-TP overshoot is not credited; the exit bar's adverse extreme DOES
+    count toward MAE (assume it printed before TP).
+
+That TP-in-R is `implied_tp_r`, re-derived from the row's own geometry
+(`entry_price`, `sl_price`, `tp_price`), NOT the stored `rr_ratio`. On a
+structural-TP alert `rr_ratio` is the DECLARED target while `tp_price` is the
+effective one, so reading it raw inflates the win clamp and the `tp_r_p50`
+median — the defect migration 003 restated the ledger for. Routing through the
+single shared definition means this module no longer depends on that
+restatement having happened: an unmigrated or future writer cannot reintroduce
+it here.
   - expired: both extremes of every in-window bar count.
 
 Excursions are GROSS of costs — price-path geometry for exit design; net
@@ -30,6 +39,7 @@ import duckdb
 import numpy as np
 import pandas as pd
 
+from analytics.signal.outcome_backfill import implied_tp_r
 from analytics.store.market_data import get_ohlcv
 
 EXCURSION_COLUMNS = [
@@ -40,7 +50,7 @@ EXCURSION_COLUMNS = [
     "direction",
     "outcome",
     "outcome_r",
-    "rr_ratio",
+    "implied_tp_r",
     "mfe_r",
     "mae_r",
     "bars_held",
@@ -53,7 +63,7 @@ def _excursion_for_row(
     direction: str,
     entry: float,
     sl_price: float,
-    rr_ratio: float,
+    tp_r: float,
     outcome: str,
 ) -> tuple[float, float] | None:
     """(mfe_r, mae_r) for one resolved alert over its held window.
@@ -80,7 +90,7 @@ def _excursion_for_row(
     if outcome == "loss":
         mfe = prior_fav
     elif outcome == "win":
-        mfe = max(prior_fav, float(rr_ratio))
+        mfe = max(prior_fav, float(tp_r))
     else:  # expired — no intrabar exit event; every extreme was reachable
         mfe = float(fav.max())
     mae = float(adv.max())
@@ -98,7 +108,7 @@ def compute_excursions(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     rows = conn.execute(
         "SELECT signal_id, symbol, tf, strategy, direction, candle_ts_ms, "
         "entry_price, sl_price, rr_ratio, outcome, outcome_r, "
-        "outcome_filled_at_ms "
+        "outcome_filled_at_ms, tp_price "
         "FROM signal_alert_outcomes "
         "WHERE outcome IN ('win', 'loss', 'expired') "
         "AND candle_ts_ms IS NOT NULL "
@@ -135,7 +145,15 @@ def compute_excursions(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
             outcome,
             outcome_r,
             filled_at_ms,
+            tp_price,
         ) in grp:
+            tp_r = implied_tp_r(
+                direction=str(direction),
+                entry=float(entry_price),
+                sl_price=float(sl_price),
+                rr_ratio=float(rr_ratio),
+                tp_price=None if tp_price is None else float(tp_price),
+            )
             lo_i = int(np.searchsorted(open_time, int(candle_ts_ms), side="right"))
             hi_i = int(np.searchsorted(open_time, int(filled_at_ms), side="right"))
             exc = _excursion_for_row(
@@ -143,7 +161,7 @@ def compute_excursions(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
                 direction=str(direction),
                 entry=float(entry_price),
                 sl_price=float(sl_price),
-                rr_ratio=float(rr_ratio),
+                tp_r=tp_r,
                 outcome=str(outcome),
             )
             if exc is None:
@@ -160,7 +178,7 @@ def compute_excursions(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
                     "outcome_r": float(outcome_r)
                     if outcome_r is not None
                     else float("nan"),
-                    "rr_ratio": float(rr_ratio),
+                    "implied_tp_r": tp_r,
                     "mfe_r": mfe_r,
                     "mae_r": mae_r,
                     "bars_held": hi_i - lo_i,
@@ -180,7 +198,8 @@ def aggregate_cohorts(
     Groups by (outcome, *by); pass by=() for the overall per-cohort roll-up.
     Columns map onto the spec's 4-pattern verdict grid: reach_05 / reach_10
     are the share of the cohort whose MFE hit ≥0.5R / ≥1.0R, and tp_r_p50 is
-    the target those trades were asked to reach. Cells below min_n are
+    the median target those trades actually carried (`implied_tp_r`, not the
+    declared `rr_ratio`). Cells below min_n are
     dropped (diagnostic n-floor).
     """
     if excursions.empty:
@@ -200,7 +219,7 @@ def aggregate_cohorts(
             mae_p50=("mae_r", "median"),
             reach_05=("reach_05", "mean"),
             reach_10=("reach_10", "mean"),
-            tp_r_p50=("rr_ratio", "median"),
+            tp_r_p50=("implied_tp_r", "median"),
             bars_held_p50=("bars_held", "median"),
             outcome_r_mean=("outcome_r", "mean"),
         )
