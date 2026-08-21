@@ -412,11 +412,65 @@ def check_new_files(added: Sequence[str], doc_blob: str) -> list[Finding]:
     return findings
 
 
-def check_new_modules(added: Sequence[str], context_blob: str) -> list[Finding]:
-    """Every added module should reach `.claude/context/`."""
+#: How many of a package's members the context docs must name before we treat
+#: those mentions as an INVENTORY rather than incidental prose. Two is the
+#: smallest number that cannot be one passing reference.
+ENUMERATION_QUORUM = 2
+
+
+def enumerated_members(pkg: Path, context_blob: str) -> set[str]:
+    """Members of ``pkg`` that `.claude/context/` names inside backticks.
+
+    Backticks are the discriminator that a bare word-boundary probe lacks: docs
+    write a *file* as ``sharpe.py`` and a *concept* as plain "sharpe", and only
+    the former is a claim about the package's contents.
+    """
+    if not pkg.is_dir():
+        return set()
+    return {
+        member.name
+        for member in pkg.glob("*.py")
+        if member.name != "__init__.py"
+        and re.search(rf"`[^`\n]*{re.escape(member.name)}[^`\n]*`", context_blob)
+    }
+
+
+def check_new_modules(
+    added: Sequence[str], context_blob: str, *, root: Path = Path(".")
+) -> list[Finding]:
+    """Every added module should reach `.claude/context/`.
+
+    Two questions, because a substring probe cannot answer the second. Where the
+    docs merely *mention* a package, ask whether the module is named at all.
+    Where they keep an **inventory** of it, ask whether the module is IN that
+    inventory — and report the set difference, which is an external referent.
+
+    ⚠ This exists because the probe form reported COVERED on a real omission:
+    `analytics/research_guards/sharpe.py` landed while `.claude/context/analytics.md`
+    enumerated ten of the package's eleven members, and the word "sharpe" appears
+    throughout that file as ordinary prose. **Tightening the regex cannot fix
+    that** — the hit was a real token in real prose — so the check has to change
+    what it asks, not how precisely it asks it.
+    """
     findings = []
     for path in added:
         if not path.endswith(".py") or path.startswith(("tests/", "docs/")):
+            continue
+        name = Path(path).name
+        pkg = root / Path(path).parent
+        documented = enumerated_members(pkg, context_blob)
+        if len(documented - {name}) >= ENUMERATION_QUORUM:
+            if name not in documented:
+                present = {m.name for m in pkg.glob("*.py") if m.name != "__init__.py"}
+                missing = ", ".join(sorted(present - documented))
+                findings.append(
+                    Finding(
+                        "new-modules",
+                        f"NOT IN INVENTORY: {path} — .claude/context/ enumerates "
+                        f"{len(documented)} member(s) of {pkg.as_posix()} and this "
+                        f"is not among them (undocumented: {missing})",
+                    )
+                )
             continue
         if not any(
             re.search(rf"\b{re.escape(n)}\b", context_blob) for n in probe_names(path)

@@ -111,8 +111,24 @@ can exist and mean something else.
 | `signal-watch` | TOML field names match `signal_config.py`; `min_avg_r`, not `filter_threshold` |
 | `pr-summary` | Template sections match the skill body |
 | `backtest-run` | Flags listed match `wifey backtest --help` |
-| `stats-dashboard` | Card count matches `Stats.svelte`; live vs cached split |
+| `stats-dashboard` | **Inventory**, never the count: does every card rendered in `Stats.svelte` appear in the tables, and does every listed row correspond to a real card? Plus the live vs cached split |
 | `investigate-strategy` | `make wifey-signal-test` exists; `--at` UTC interpretation |
+
+⚠ **A COUNT IS NOT AN INVENTORY — route the claim by asking what a wrong restatement
+would do to the check.** If restating a claim wrongly would leave the mechanical check
+**green**, the claim belongs in the semantic half and needs an **external referent** —
+something outside the check that the check can be wrong about. `stats-dashboard` is the
+worked example: measured 2026-08-20i, the card *count* was accidentally right (11 spans,
+11 in the heading) while the tables listed 13 rows, four of them cones/overlays, and
+omitted the `Live Alert Outcomes` card entirely. **A scalar over a set passes on any error
+that conserves cardinality**, and there two errors cancelled.
+
+The same shape recurred in code on 2026-08-21 and is now fixed there:
+`post_branch_checks`' `new-modules` leg asked "does the token appear?" and reported
+COVERED while `.claude/context/analytics.md` enumerated ten of eleven members of
+`analytics/research_guards/`. It now compares the documented member set against
+`ls` and reports the difference. ⚠ **Tightening a probe cannot fix this class** — the
+hit was a real token in real prose — so change *what the check asks*, not how precisely.
 
 ⚠ **There is no "Agent Skills table" in CLAUDE.md to reconcile against.** This
 file told you to check one until 2026-08-18. That section is deliberately a short

@@ -88,11 +88,39 @@ and refused.
    - **File-existence** (the report's own bucketing): does the parent's changed
      path exist here? Kills false ports; scores every **greenfield** port ~0,
      because a new file cannot exist in wifey yet.
+
+     ⚠ **A BUCKET LABEL IS NOT A RULING, and the report's counts are what make a
+     backlog look triaged when it is not.** The classifier defaults to `EVALUATE`
+     whenever a path resolves, so on 2026-08-21 round 13 read "8 undecided" while
+     the true figure was **40** — ~50 modify-only PRs each carried a label and no
+     ruling, and no scan could fix that, because the import filter sees ADDED
+     files only. **Run the file-existence pass over EVERY remaining PR, and
+     bucket by SUBSTANTIVE surface**, which is not the same as presence:
+
+     | Surface | Reading |
+     | --- | --- |
+     | `README.md`, `CLAUDE.md`, `.claude/context/*.md`, `*/INDEX.md`, `docs/plans/*` | **Not port surface.** Present in both repos *by construction*, so presence proves nothing |
+     | `Makefile`, `.github/`, `deploy/`, `tools/`, `analytics/`, `signals/`, `tests/`, `.claude/skills/` | **Real surface.** These carry shared mechanism |
+     | `poetry.lock`, `pyproject.toml` alone | **Never a port** — dependabot runs independently per repo |
+
+     That one distinction cut 47 false "partials" to 25 real candidates in a
+     single run. Ruling buckets are **PORT** (defect verified present here) ·
+     **ALREADY-APPLIED** · **EVALUATE** (judgement, not a missing fact) ·
+     **NO PORT**. ⚠ **Expect ALREADY-APPLIED to be large** — it was 11 of 40 that
+     run, some of it the parent porting *wifey's* work back. **A port queue is a
+     claim about the fork, not a record of it**, so verify each against an
+     artifact in this tree, never against the note that recorded it.
    - **Import-dependency**: `PYTHONPATH=. .venv/bin/python docs/plans/scripts/missed_ports.py`
      — does the new module's import set resolve against wifey? Finds greenfield
-     ports; silent on modify-only PRs. **Update its `PORTED` set from
-     `memory/project_parent_sync_state.md` first**, or already-ported work
-     re-surfaces as a candidate.
+     ports; silent on modify-only PRs. It reads the range from
+     `last_synced_hash` in `memory/project_parent_sync_state.md`, so **never edit
+     a range into the script** — `--range` is for a deliberate wider scan only.
+     **Prune its `PORTED` set from the run's own dead-entry report, never from
+     memory**: every run prints the entries falling outside the scanned range.
+     ⚠ **Do not delete the `PORTED` set** — the rulings in that memory are prose,
+     so the set genuinely cannot be derived; its staleness is only *visible*, not
+     self-correcting. First run of that report found **70 of 71 entries inert**,
+     i.e. the set was filtering nothing and nothing said so.
 
    Both filters share a **third** blind spot: a file with no imports at all scores
    `SELF-CONTAINED` no matter what it wraps. On 2026-08-13 the import filter

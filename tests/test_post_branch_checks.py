@@ -28,6 +28,7 @@ from tools.post_branch_checks import (
     check_new_targets,
     check_queue_items,
     current_state_bullets,
+    enumerated_members,
     extract_tokens,
     load_sensitive_terms,
     main,
@@ -117,6 +118,75 @@ class TestCheckNewModules:
         assert (
             len(check_new_modules(["tools/docs_index.py"], "ocs_index is great")) == 1
         )
+
+
+class TestCheckNewModulesInventory:
+    """The #255 shape: prose mentions the token, the INVENTORY omits the member.
+
+    Each test builds a real package on disk, because the whole point of the leg
+    is that it compares the doc against an external referent (`ls`) rather than
+    against itself.
+    """
+
+    @staticmethod
+    def _pkg(tmp_path: Path, *members: str) -> Path:
+        pkg = tmp_path / "analytics" / "research_guards"
+        pkg.mkdir(parents=True)
+        (pkg / "__init__.py").write_text("")
+        for m in members:
+            (pkg / m).write_text("")
+        return pkg
+
+    def test_prose_hit_no_longer_reports_covered(self, tmp_path: Path) -> None:
+        """THE REGRESSION. `sharpe` in prose must not cover `sharpe.py`."""
+        self._pkg(tmp_path, "power.py", "pbo.py", "sharpe.py")
+        blob = (
+            "The package holds `power.py` and `pbo.py`. Every sleeve reports a "
+            "sharpe, and the sharpe bar is 0.7, so sharpe is everywhere."
+        )
+        found = check_new_modules(
+            ["analytics/research_guards/sharpe.py"], blob, root=tmp_path
+        )
+        assert len(found) == 1
+        assert "NOT IN INVENTORY" in found[0].detail
+        assert "sharpe.py" in found[0].detail
+
+    def test_a_member_inside_the_inventory_is_quiet(self, tmp_path: Path) -> None:
+        """POSITIVE CONTROL — the leg must be able to go green on the same shape."""
+        self._pkg(tmp_path, "power.py", "pbo.py", "sharpe.py")
+        blob = "The package holds `power.py`, `pbo.py` and `sharpe.py`."
+        assert (
+            check_new_modules(
+                ["analytics/research_guards/sharpe.py"], blob, root=tmp_path
+            )
+            == []
+        )
+
+    def test_below_quorum_falls_back_to_the_probe(self, tmp_path: Path) -> None:
+        """One backticked sibling is a passing reference, not an inventory.
+
+        Falling back matters: the strict form would otherwise fire on every
+        package the docs merely mention, which is how a check gets ignored.
+        """
+        self._pkg(tmp_path, "power.py", "sharpe.py")
+        blob = "See `power.py`. The new `sharpe.py` primitive is described here."
+        assert (
+            check_new_modules(
+                ["analytics/research_guards/sharpe.py"], blob, root=tmp_path
+            )
+            == []
+        )
+
+    def test_backticks_are_the_discriminator(self, tmp_path: Path) -> None:
+        pkg = self._pkg(tmp_path, "power.py", "pbo.py")
+        assert enumerated_members(pkg, "`power.py` and `pbo.py`") == {
+            "power.py",
+            "pbo.py",
+        }
+        assert enumerated_members(pkg, "power.py and pbo.py, unquoted") == set()
+
+    def test_absent_package_is_not_an_inventory(self, tmp_path: Path) -> None:
+        assert enumerated_members(tmp_path / "nope", "`a.py` `b.py`") == set()
 
 
 class TestCheckNewTargets:
