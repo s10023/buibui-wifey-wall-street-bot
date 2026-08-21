@@ -251,6 +251,16 @@ minutes after the push runs finish. Unfiltered, the first live run reported `job
 this file and the tool's own constant all say 5. Reading the code would not have shown it; the
 characterization test `test_unfiltered_includes_the_dependency_graph_job` keeps the reason visible.
 
+⚠ **`steps` prints as EXECUTED/DECLARED, because declared alone reads backwards.** A job behind a
+`dorny/paths-filter` declares its whole step list on every diff and skips the body on most of them,
+so a bare `steps=14` on a docs-only PR reads as "the heavy leg ran" — the opposite of what happened,
+and it contradicts CLAUDE.md's paths-filter claim, which is correct. `step_counts` splits the two by
+counting the steps GitHub reports as `skipped`; `?/N` means only the executed half was unobservable
+and `?` means neither was. ⚠ **The billing discriminator is deliberately UNTOUCHED** — an exhausted
+allowance declares nothing, so `steps=0/0` still settles it, and a test pins that it did not move.
+This closes the hole memory `reference_ci_steps_counts_skipped` names: *a green job with a healthy
+step count can have run nothing.* Ported from parent #673.
+
 Exit codes: `0` green and observed · `1` genuine failure · `2` timeout · `3` billing (`steps=0`) ·
 `4` settled green but step counts unreadable. ⚠ **`make` collapses all of them to its own `2`**, so
 call the script directly when the code matters.
@@ -1470,8 +1480,8 @@ path 403s while captions still resolve, so the failure masquerades as one unluck
 ⚠ **At least two independent causes produce that identical symptom, and the JS runtime is
 only one of them** — the count is a floor, not an enumeration. The media fetch also 403s when the *extractor client* is left to yt-dlp's
 own default selection, which is why `_ensure_local_media` pins
-`--extractor-args youtube:player_client=android`. Measured 2026-08-19 on the pinned
-2026.07.04, with `node` installed and `--js-runtimes node` already in effect: the default
+`--extractor-args youtube:player_client=android`. Measured 2026-08-19 on 2026.07.04, the stable
+this repo pinned before the nightly bump, with `node` installed and `--js-runtimes node` already in effect: the default
 pick `android_vr` 403s, while `android` / `mweb` / `web_embedded` all download; `tv` fails
 to load, and `web_safari` / `ios` fail *differently* — "requested format is not available"
 against `bv*[height<=1080]` — so they are **not** substitutes. **A version bump is not the
@@ -1487,7 +1497,22 @@ download, never by reading the code.
 - `fetch_meta` (yt-dlp `--dump-json` → `VideoMeta` incl. publish time)
 - `fetch_transcript` (existing captions in any language first, else Groq `whisper-large-v3` over
   extracted opus audio — `split_audio` chunks past the 25MB cap using `duration_s` for
-  offset-correct per-chunk timestamps)
+  offset-correct per-chunk timestamps). Returns a `TranscriptResult` carrying the segments, the
+  chosen `lang` and a `source` of `manual_captions` / `auto_captions` / `asr_whisper` /
+  `captions_unknown`. ⚠ **`captions_unknown` is NOT folded into `auto`** — "we did not ask" and
+  "we asked and it was ASR" are different claims, and every pre-port cache entry is the former.
+  An ASR transcript is a materially weaker source than an author-written one, and every item,
+  `raw_quote` and call-time derives from that text
+- ⚠ **`_sub_langs` decides which caption tracks are even REQUESTED, and asking wrong costs the
+  whole transcript.** yt-dlp returns `language: null` on a large slice of the follow list, and the
+  pre-port expression then asked for `en` ALONE — so a Chinese upload with an author-written
+  `zh-Hant` track got "no subtitles for the requested languages" and fell through to ASR, worst
+  exactly where ASR is weakest. It now widens the request with the codes `--dump-json` already
+  returned (same call, no extra quota), resolves a REGIONAL `lang` down to its base (`en-US` →
+  `en`), and caps the list at `_MAX_SUB_LANGS = 6` so no video can request a translate matrix —
+  upstream measured 157 auto codes led by `ab`/`aa`/`af`, answered with HTTP 429 partway through,
+  leaving the transcript's language decided by which file survived the rate limit. Ported from
+  parent #668 + #674; the chapters/recap half of #668 was deliberately NOT taken (see below)
 - `extract_frames` (one ffmpeg seek per caller-supplied `FrameMark`, never speculative; retries
   the whole download-and-seek on **total** failure only — 3 attempts spaced by
   `_FRAME_RETRY_BACKOFF_S`, since a partial result means those marks individually failed to

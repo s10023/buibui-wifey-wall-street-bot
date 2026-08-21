@@ -29,6 +29,7 @@ from tools.wait_ci import (
     EXIT_UNOBSERVED,
     GhError,
     JobRow,
+    fmt_steps,
     gh,
     gh_json,
     is_settled,
@@ -36,6 +37,7 @@ from tools.wait_ci import (
     main,
     pending,
     poll,
+    step_counts,
     verdict,
     wait_branch,
 )
@@ -101,6 +103,63 @@ class TestVerdict:
     def test_one_unreadable_among_green_still_flags(self) -> None:
         rows = [JobRow("a", "SUCCESS", 9), JobRow("b", "SUCCESS", None)]
         assert verdict(rows)[0] == EXIT_UNOBSERVED
+
+
+class TestExecutedVersusDeclaredSteps:
+    """ST50(f): a paths-filtered job DECLARES every step and skips the body.
+
+    Reporting the declared count alone reads as "the heavy leg ran on a docs
+    diff" — the exact opposite of what happened. Measured on #670, where
+    `lint-typecheck-test` declared 14 and executed 5.
+    """
+
+    def test_skipped_steps_are_declared_but_not_executed(self) -> None:
+        job = {
+            "steps": [
+                {"conclusion": "success"},
+                {"conclusion": "success"},
+                {"conclusion": "skipped"},
+                {"conclusion": "skipped"},
+            ]
+        }
+        assert step_counts(job) == (4, 2)
+
+    def test_a_job_with_no_steps_is_zero_zero(self) -> None:
+        """The billing shape: an exhausted allowance declares nothing."""
+        assert step_counts({"steps": []}) == (0, 0)
+        assert step_counts({}) == (0, 0)
+
+    def test_a_step_missing_its_conclusion_counts_as_executed(self) -> None:
+        """Only an explicit `skipped` is a non-execution; absence is not."""
+        assert step_counts({"steps": [{}, {"conclusion": None}]}) == (2, 2)
+
+    def test_the_670_shape_does_not_render_as_the_declared_count(self) -> None:
+        """The MUTATION case — printing `steps=14` here is the whole defect."""
+        row = JobRow("lint-typecheck-test", "SUCCESS", 14, 5)
+        assert fmt_steps(row) == "5/14"
+        assert "steps=14 " not in f"steps={fmt_steps(row)} "
+
+    def test_a_filtered_job_is_still_green(self) -> None:
+        """Skipping a body on an unrelated diff is correct, not a failure."""
+        rows = [JobRow("lint-typecheck-test", "SUCCESS", 14, 5)]
+        code, lines = verdict(rows)
+        assert code == EXIT_OK
+        assert "5/14" in "\n".join(lines)
+
+    def test_billing_discriminator_is_untouched(self) -> None:
+        """Declared 0 is still BILLING — the fix must not move that test."""
+        assert verdict([JobRow("lint", "FAILURE", 0, 0)])[0] == EXIT_BILLING
+
+    def test_unreadable_executed_count_never_prints_a_bare_declared(self) -> None:
+        assert fmt_steps(JobRow("a", "SUCCESS", 12, None)) == "?/12"
+
+    def test_unreadable_declared_count_is_a_bare_question_mark(self) -> None:
+        assert fmt_steps(JobRow("a", "SUCCESS", None, None)) == "?"
+
+    def test_the_legend_names_the_order(self) -> None:
+        """`5/14` is ambiguous without it, and the wrong reading is the defect."""
+        _, lines = verdict([JobRow("a", "SUCCESS", 14, 5)])
+        assert "EXECUTED/DECLARED" in "\n".join(lines)
 
 
 class TestGhRaises:

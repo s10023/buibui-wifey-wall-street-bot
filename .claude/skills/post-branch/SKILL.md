@@ -428,6 +428,16 @@ session picking up from them would have rebuilt it. **Reconcile to what you
 verified, not to what is tidy**: a row that shipped with a known residual gap
 gets the gap written down, not a blanket close.
 
+⚠ **Re-read every item filed as BLOCKED and name what would unblock it.** A
+blocker that has since been written down does not announce itself, and a blocked
+item is precisely the one nobody re-reads *because* it is blocked. Hit live on
+2026-08-21: skill-queue item 18 sat blocked on the SoT's `skill-claims` design,
+that design was written days later, and the item stayed blocked until someone
+re-read it by accident. This covers the handoff's queues as well as SoT rows —
+the blocker and the blocked item usually sit on different surfaces, which is why
+neither notices. **Naming the unblocking condition is the deliverable**; an item
+whose blocker you cannot restate is not blocked, it is unexamined.
+
 ### Claims audit — run whenever the branch ADDS PROSE
 
 Nothing else checks whether the **numbers the branch itself asserts** are true.
