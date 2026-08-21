@@ -67,8 +67,9 @@ credited `rr_ratio`, so an alert whose TP sat 2.0R away booked 5.0R. **34 of 298
 (up to 3.0R): 8 resolved wins worth **+13.50R** of phantom credit, and **4 still open**. Pooled
 live `avg_r` moved **−0.1247 → −0.1752**. Same declared-vs-executed family as 002.
 
-**Two columns, two rules.** `rr_ratio` is rewritten on every divergent row (it is read as an R
-level by `exits/mfe_mae.py`'s `max(prior_fav, rr_ratio)` win clamp); `outcome_r` on **wins only**,
+**Two columns, two rules.** `rr_ratio` is rewritten on every divergent row (it WAS read as an R
+level by `exits/mfe_mae.py`'s win clamp — that consumer now re-derives the target via
+`implied_tp_r`, so this migration is no longer what stands between it and a declared value); `outcome_r` on **wins only**,
 because a loss books −1.0 and an expired row marks to market off `sl_price` — neither ever read
 `rr_ratio`. Both values are re-derived from the row's own stored geometry via the production
 `implied_tp_r`, never from config, so nothing is reconstructed.

@@ -3,8 +3,11 @@
 Covers the conservative intrabar conventions per cohort (loss excludes the
 exit bar's favorable extreme; win clamps post-TP overshoot; expired counts
 every in-window bar), short-direction sign handling, the zero floor,
-zero-risk / missing-OHLCV row skips, (symbol, tf) batching, and the cohort
-aggregation (reach fractions + min_n gate).
+zero-risk / missing-OHLCV row skips, (symbol, tf) batching, the cohort
+aggregation (reach fractions + min_n gate), and — in
+`TestImpliedTargetNotDeclared` — that the win clamp and `tp_r_p50` credit the
+target the alert actually carried (`implied_tp_r`) rather than the declared
+`rr_ratio` it stores beside it.
 
 Equity port of the parent's tests/test_mfe_mae.py (PR #433): the only fixture
 change is dropping `taker_buy_volume` (not a column in the wifey ohlcv table).
@@ -59,7 +62,7 @@ def _insert_resolved(
     candle_ts_ms: int = 0,
     entry: float = 100.0,
     sl: float = 95.0,
-    tp: float = 110.0,
+    tp: float | None = 110.0,
     rr: float = 2.0,
     outcome_r: float = 0.0,
 ) -> None:
@@ -285,6 +288,72 @@ class TestComputeExcursionsRobustness:
         assert eth["mae_r"] == pytest.approx(0.6)  # (10-9.7)/0.5
 
 
+class TestImpliedTargetNotDeclared:
+    """The win clamp and `tp_r_p50` read `implied_tp_r`, never raw `rr_ratio`.
+
+    Every fixture here stores a `rr_ratio` that DISAGREES with the row's own
+    `entry_price`/`sl_price`/`tp_price` geometry, and each test asserts the
+    stored value as well as the derived one — so the divergence is shown to
+    arrive rather than assumed. A raw read of `rr_ratio` would return the
+    declared number in each case, which is the answer these assertions reject.
+    """
+
+    def _win_bars(self, conn: duckdb.DuckDBPyConnection) -> None:
+        # Bar 1: fav 0.6R. Bar 2 (TP exit): high 118 = 3.6R of overshoot, so
+        # the clamp — not the price path — decides MFE.
+        _insert_ohlcv(
+            conn,
+            "BTCUSDT",
+            "1h",
+            [
+                {"open_time": _HOUR, "high": 103.0, "low": 99.0, "close": 102.0},
+                {"open_time": 2 * _HOUR, "high": 118.0, "low": 96.0, "close": 115.0},
+            ],
+        )
+
+    def test_win_clamp_credits_the_structural_tp_not_the_declared_rr(self) -> None:
+        conn = duckdb.connect(":memory:")
+        init_schema(conn)
+        self._win_bars(conn)
+        # risk 5, tp_price 110 -> implied 2.0R, while the row declares 5.0R.
+        _insert_resolved(
+            conn, signal_id="s1", outcome="win", filled_at_ms=2 * _HOUR, rr=5.0
+        )
+        assert conn.execute(
+            "SELECT rr_ratio FROM signal_alert_outcomes WHERE signal_id = 's1'"
+        ).fetchone() == (5.0,)
+        row = compute_excursions(conn).iloc[0]
+        assert row["implied_tp_r"] == pytest.approx(2.0)
+        assert row["mfe_r"] == pytest.approx(2.0)
+
+    def test_cohort_median_is_the_implied_target(self) -> None:
+        conn = duckdb.connect(":memory:")
+        init_schema(conn)
+        self._win_bars(conn)
+        _insert_resolved(
+            conn, signal_id="s1", outcome="win", filled_at_ms=2 * _HOUR, rr=5.0
+        )
+        agg = aggregate_cohorts(compute_excursions(conn), min_n=1)
+        assert agg.iloc[0]["tp_r_p50"] == pytest.approx(2.0)
+
+    @pytest.mark.parametrize("tp", [None, 90.0])
+    def test_falls_back_to_declared_rr_when_tp_price_is_unusable(
+        self, tp: float | None
+    ) -> None:
+        # Absent, or on the wrong side of entry for a long: both are the
+        # guards `implied_tp_r` applies before trusting `tp_price`, and both
+        # leave the declared 3.0R as the only target the row carries.
+        conn = duckdb.connect(":memory:")
+        init_schema(conn)
+        self._win_bars(conn)
+        _insert_resolved(
+            conn, signal_id="s1", outcome="win", filled_at_ms=2 * _HOUR, tp=tp, rr=3.0
+        )
+        row = compute_excursions(conn).iloc[0]
+        assert row["implied_tp_r"] == pytest.approx(3.0)
+        assert row["mfe_r"] == pytest.approx(3.0)
+
+
 class TestAggregateCohorts:
     def _exc_df(self) -> pd.DataFrame:
         rows = [
@@ -306,7 +375,7 @@ class TestAggregateCohorts:
                     "direction": "long",
                     "outcome": outcome,
                     "outcome_r": -0.1,
-                    "rr_ratio": 2.0,
+                    "implied_tp_r": 2.0,
                     "mfe_r": mfe,
                     "mae_r": mae,
                     "bars_held": 10,
