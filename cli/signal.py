@@ -119,6 +119,7 @@ def run_signal_watch(args: argparse.Namespace) -> None:
         state_file=state_file,
         backtest_cfg=cfg.backtest,
         day_filter=cfg.day_filter,
+        max_alert_age_hours=cfg.max_alert_age_hours,
         strategy_timeframes=cfg.strategy_timeframes or None,
         strategy_params=cfg.strategy_params or None,
         atr_sl_multiplier=cfg.atr_sl_multiplier,

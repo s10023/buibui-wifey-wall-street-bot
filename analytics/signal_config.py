@@ -439,6 +439,13 @@ class SignalWatchConfig:
     backtest: BacktestFilterConfig = field(default_factory=BacktestFilterConfig)
     # Suppress signals by day: "off" | "weekdays" (Mon–Fri) | "tue_thu" (Tue–Thu only)
     day_filter: str = "off"
+    # Catch-up dispatch window, in hours measured from a candle's CLOSE. The
+    # newest closed candle always alerts; an older one alerts only while it is
+    # this fresh. 0.0 = newest-only, the pre-2026-08-25 rule. The live configs
+    # inherit a non-zero value from strategy_params.toml because under one
+    # pre-open run a day the session's FIRST 4h bar can never BE the newest
+    # closed candle — see scanner.may_dispatch_candle.
+    max_alert_age_hours: float = 0.0
     # Per-strategy timeframe allow-list: {"trend_day": ["4h", "1d"], ...}
     # Strategies not listed here run on all configured timeframes.
     strategy_timeframes: dict[str, list[str]] = field(default_factory=dict)
@@ -908,6 +915,19 @@ def load_signal_config(path: str | Path) -> SignalWatchConfig:
             "day_filter."
         )
 
+    # A negative window is not a stricter setting, it is a nonsense one: the
+    # comparison it feeds is `age <= window`, so any negative value behaves
+    # exactly like 0.0 while READING like a deliberate tightening. Refuse it
+    # rather than silently collapsing it to the default.
+    max_alert_age_hours = float(data.get("max_alert_age_hours", 0.0))
+    if max_alert_age_hours < 0:
+        raise ValueError(
+            f"max_alert_age_hours={max_alert_age_hours} is negative. The window "
+            "is an age bound measured from a candle's close, so a negative value "
+            "silently means the same as 0.0 (newest closed candle only) while "
+            "looking like a stricter setting. Use 0.0 to mean newest-only."
+        )
+
     # Same defect class, different axis: a volume gate and the ADR gate that select
     # for opposite bars leave a strategy declared-but-voided (see voided_volume_gates).
     voided = voided_volume_gates(strategy_params, bias.adr_suppress_threshold)
@@ -933,6 +953,7 @@ def load_signal_config(path: str | Path) -> SignalWatchConfig:
         state_file=str(data.get("state_file", "signal_state.json")),
         backtest=backtest,
         day_filter=day_filter,
+        max_alert_age_hours=max_alert_age_hours,
         strategy_timeframes=strategy_timeframes,
         strategy_params=strategy_params,
         atr_sl_multiplier=(

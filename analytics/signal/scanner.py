@@ -287,6 +287,44 @@ def scan_symbol(
     return events
 
 
+def may_dispatch_candle(
+    open_time: int,
+    latest_closed: int,
+    tf_ms: int,
+    now_ms: int,
+    max_alert_age_hours: float,
+) -> bool:
+    """Whether a closed candle may reach Telegram, or is ledger-only backfill.
+
+    The newest closed candle always dispatches. An older one dispatches only
+    while its CLOSE is within ``max_alert_age_hours`` of ``now_ms``.
+
+    At ``0.0`` nothing extra is admitted, so the rule collapses to
+    strictly-newest — the behaviour every caller had before this parameter
+    existed, which is why that is the library default rather than the shipped
+    one (``config/strategy_params.toml`` opts the live path in).
+
+    Why a window rather than the strict rule: on an RTH tape with one pre-open
+    run a day, the session's FIRST 4h bar can never be the newest closed candle,
+    so it was structurally undeliverable — 120 of 351 ledger candles, 34%, all
+    of them the 13:30 UTC bar. The cut was arbitrary rather than principled: at
+    a Wed 12:50 run the dropped 13:30 bar is 19.3h stale against the 15.3h bar
+    that dispatched happily. Measured 2026-08-25; see
+    ``docs/audits/2026-08-25-dispatch-recency-window.md``.
+
+    ⚠ This widens what may dispatch, never what is REPLAYED. A candle whose
+    watermark a previous backfill already consumed stays consumed, so raising
+    the window cannot re-send history — it only changes the verdict for candles
+    this cycle is seeing for the first time.
+    """
+    if open_time == latest_closed:
+        return True
+    if max_alert_age_hours <= 0:
+        return False
+    age_ms = now_ms - (open_time + tf_ms)
+    return 0 <= age_ms <= max_alert_age_hours * 3_600_000
+
+
 def run_scan_cycle(
     conn: duckdb.DuckDBPyConnection,
     symbols: list[str],
@@ -316,6 +354,7 @@ def run_scan_cycle(
     cross_tf_min_avg_r: float = 1.0,
     ohlcv_cache: "dict[tuple[str, str], pd.DataFrame] | None" = None,
     catch_up: bool = False,
+    max_alert_age_hours: float = 0.0,
 ) -> list[str]:
     """Scan all symbol+timeframe combinations and return formatted alert strings.
 
@@ -330,10 +369,13 @@ def run_scan_cycle(
     catch_up: when True, replay every un-alerted closed candle since the last run
     (not just the latest). scan_symbol emits multi-candle signals and each candle
     is processed as its own group so conflict resolution / confluence stacking stay
-    per-candle correct. Backfilled candles (older than the newest closed candle,
-    which is read from OHLCV) are RECORDED — DB signals + outcome-ledger rows +
-    watermark — but never dispatched to Telegram: a stale signal is untradeable
-    noise in the chat, yet real ledger evidence. A cold-start guard (no prior
+    per-candle correct. Backfilled candles are RECORDED — DB signals +
+    outcome-ledger rows + watermark — but never dispatched to Telegram: a stale
+    signal is untradeable noise in the chat, yet real ledger evidence.
+    max_alert_age_hours: how far back of the newest closed candle (read from
+    OHLCV) may still dispatch, measured from each candle's CLOSE. 0.0 = the
+    newest closed candle alone, which is the pre-2026-08-25 rule. See
+    may_dispatch_candle for why a window rather than a point. A cold-start guard (no prior
     watermark for a key) restricts the first run to the latest candle so the
     window is not replayed as a burst. Recovery depth is bounded by the
     200-candle scan window (4h ~33 days, 1d ~200 days, 1wk ~4 years).
@@ -501,9 +543,10 @@ def run_scan_cycle(
     # Catch-up: split each (symbol, tf) result into one pseudo-result per candle
     # open_time so Phase 3 processes every missed candle independently (conflict
     # resolution + confluence stacking stay per-candle correct). Each group
-    # carries an is_backfill flag: only the newest CLOSED candle may dispatch to
-    # Telegram; older candles are recorded as ledger evidence only. Default
-    # path = single latest candle = one group = byte-identical to the
+    # carries an is_backfill flag: the newest CLOSED candle may dispatch to
+    # Telegram, plus any older one still inside max_alert_age_hours (see
+    # may_dispatch_candle); everything else is recorded as ledger evidence only.
+    # Default path = single latest candle = one group = byte-identical to the
     # pre-catch-up flow.
     _grouped: list[Any] = []
     for _s, _t, _evs, _g in scan_results:
@@ -523,9 +566,12 @@ def run_scan_cycle(
         # unconditional iloc[-2].
         _last_ot = int(_full["open_time"].iloc[-1])
         _tf_ms = parse_timeframe_secs(_t) * 1000
+        # One clock reading for both the forming-bar test and the age window:
+        # two calls to time.time() can straddle a candle close and disagree.
+        _now_ms = int(time.time() * 1000)
         _latest_closed = (
             int(_full["open_time"].iloc[-2])
-            if int(time.time() * 1000) < _last_ot + _tf_ms
+            if _now_ms < _last_ot + _tf_ms
             else _last_ot
         )
         # Cold-start guard: a key with no watermark has never fired, so every
@@ -541,7 +587,10 @@ def run_scan_cycle(
         for _e in _kept:
             _by_candle.setdefault(_e.open_time, []).append(_e)
         for _ot in sorted(_by_candle):
-            _grouped.append((_s, _t, _by_candle[_ot], _g, _ot != _latest_closed))
+            _is_backfill = not may_dispatch_candle(
+                _ot, _latest_closed, _tf_ms, _now_ms, max_alert_age_hours
+            )
+            _grouped.append((_s, _t, _by_candle[_ot], _g, _is_backfill))
     scan_results = _grouped
 
     # --- Phase 3: Fan-in — sequential processing of scan results ---
@@ -1154,8 +1203,9 @@ def run_scan_cycle(
 
             if is_backfill:
                 # Recovered candle: recorded above as ledger evidence (DB
-                # signals + outcome rows), never alerted — a signal this old is
-                # not tradeable, and a burst of stale alerts is noise. Consume
+                # signals + outcome rows), never alerted — it fell outside
+                # max_alert_age_hours, so it is not tradeable and a burst of
+                # stale alerts is noise. Consume
                 # the primary watermark so the next run does not replay it;
                 # this is the deliberate exception to the #68 "only mark on
                 # dispatch" rule. The wife watermark stays untouched — nothing

@@ -181,6 +181,26 @@ because Telegram goes out, and ratings reload every run. **Run it pre-open, not 
 `1d` bars stamp 04:00/05:00 UTC and close the next day, so at the bell that session's daily bar is
 still forming.
 
+⚠ **The alerting schedule is Wed/Thu/Fri, and it is a consequence of `day_filter`, not a setting.**
+A pre-open run sees the PREVIOUS session's bars, and `tue_thu` suppresses on the bar's **open
+weekday**, so a Mon run (Fri bars) and a Tue run (Mon bars) can never alert — measured identical
+dispatch for a Mon–Fri and a Wed–Fri cadence. They still earn their keep on sync, ledger and
+outcome backfill, so this is true of the **Telegram leg only**. ⚠ **Skipping a run day DESTROYS
+that day's alerts rather than deferring them** — the next run's catch-up consumes the primary
+watermark without dispatching, by design. Friday is worth **66% vs 44%** of the alert surface.
+
+⚠ **`max_alert_age_hours` (shared base, 24.0) is what makes the session's FIRST 4h bar
+deliverable at all — and it is INERT without `CATCH_UP=1`**, since only catch-up emits an event
+for a non-latest candle in the first place. Only the newest closed candle used to dispatch, and
+under one run a day the 13:30 UTC bar can never *be* it — 120 of 351 ledger candles, 34%, silently ledger-only. `0.0`
+restores that old rule and is the documented escape hatch; negative is refused. ⚠ **Raising it
+cannot re-send history** (a consumed watermark stays consumed) and ⚠ **it does not recover a
+skipped day** (~87h stale) — that stays the cadence habit above.
+⚠ **`fired_at_ms` is NOT a dispatch record** — `upsert_signal_outcome` overwrites it on every
+re-detection, so the ledger holds no dispatch history; the `:wife` watermark is the only oracle,
+since backfill marks primary alone and a real send marks both.
+Audit: `docs/audits/2026-08-25-dispatch-recency-window.md`.
+
 Re-run `make universe-stamp-listed` after any membership or backfill change: a new constituent
 arrives unstamped, and unstamped is the permissive value.
 

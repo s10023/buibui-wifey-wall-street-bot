@@ -15,6 +15,28 @@
 telegram = false
 min_sl_pct = 0.005
 
+# Catch-up dispatch window, in hours from a candle's CLOSE. The newest closed
+# candle always alerts; an older one alerts only while it is this fresh.
+#
+# 24.0 is a CALENDAR bound, not a swept parameter: it admits the previous
+# session's bars and nothing before them. Under one pre-open run a day the
+# session's FIRST 4h bar can never BE the newest closed candle, so at 0.0 it was
+# structurally undeliverable — 120 of 351 ledger candles, 34%, every one the
+# 13:30 UTC bar. At a Wed 12:50 run that bar is 19.3h stale against the 15.3h
+# bar which dispatched happily, so the old cut was arbitrary rather than
+# principled. Ages at that run: prev-session 4h 19.3h / 15.3h (both admitted),
+# the session before 39.3h (excluded) — so the bound has ~4h of headroom on the
+# side that matters and ~15h of clearance on the side it must exclude.
+#
+# ⚠ 0.0 restores the pre-2026-08-25 newest-only rule; negative is REFUSED
+# (it would read as stricter while behaving exactly like 0.0).
+# ⚠ Raising this cannot re-send history — a watermark a backfill already
+# consumed stays consumed. It only changes the verdict for unseen candles.
+# ⚠ It does NOT recover a skipped run day: at a Mon run, Thursday's bars are
+# ~87h old. That stays a cadence problem — run Wed/Thu/Fri without fail.
+# Measured: docs/audits/2026-08-25-dispatch-recency-window.md
+max_alert_age_hours = 24.0
+
 # Backtest sweep runner (make wifey-backtest) reads these top-level keys:
 days = 365              # fallback lookback window (ignored when since is set); equity defaults to 1y
 # T13: legacy crypto anchor "2025-09-12" dropped — equity yfinance covers years.

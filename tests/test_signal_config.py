@@ -1495,3 +1495,49 @@ adr_exempt = true
             for name, override in cfg.strategy_params.items():
                 assert override.suppress_long is not True, f"{path} {name}"
                 assert override.suppress_short is not True, f"{path} {name}"
+
+
+class TestMaxAlertAgeHours:
+    """The catch-up dispatch window (2026-08-25).
+
+    Under one pre-open run a day the session's FIRST 4h bar can never BE the
+    newest closed candle, so at a window of 0.0 it was structurally
+    undeliverable — 120 of 351 ledger candles, 34%, every one the 13:30 UTC bar.
+    """
+
+    def test_defaults_to_the_old_newest_only_rule(self) -> None:
+        """The LIBRARY default stays 0.0 so no caller changes behaviour by
+        upgrading; the live path opts in through the shipped config below."""
+        assert SignalWatchConfig().max_alert_age_hours == 0.0
+
+    def test_shipped_configs_inherit_a_non_zero_window(self) -> None:
+        """The fix lives in a config value, so a config edit can silently undo it.
+
+        Both live configs inherit this from strategy_params.toml via `extends`.
+        A zero here is not a lint failure anywhere else — the scanner would just
+        quietly resume dropping a third of the alert surface, which is precisely
+        the silent-surface shape this repo keeps paying for. Lowering it is
+        allowed; doing so without re-reading the measurement is not.
+        """
+        for path in ("config/signal_watch.toml", "config/signal_watch_weekdays.toml"):
+            cfg = load_signal_config(path)
+            assert cfg.max_alert_age_hours >= 20.0, (
+                f"{path} inherits max_alert_age_hours="
+                f"{cfg.max_alert_age_hours}; below ~20h the previous session's "
+                "first 4h bar (19.3h stale at a 12:50 UTC run) stops "
+                "dispatching and the 2026-08-25 fix is silently reverted"
+            )
+
+    def test_negative_window_is_refused(self, tmp_path: Path) -> None:
+        """A negative value reads as stricter and behaves exactly like 0.0."""
+        p = tmp_path / "c.toml"
+        p.write_text('timeframes = ["4h"]\nmax_alert_age_hours = -1.0\n')
+        with pytest.raises(ValueError, match="max_alert_age_hours"):
+            load_signal_config(p)
+
+    def test_zero_is_accepted_as_an_explicit_newest_only(self, tmp_path: Path) -> None:
+        """0.0 must stay REACHABLE — it is the documented escape hatch, so the
+        negative guard must not be widened into a non-zero requirement."""
+        p = tmp_path / "c.toml"
+        p.write_text('timeframes = ["4h"]\nmax_alert_age_hours = 0.0\n')
+        assert load_signal_config(p).max_alert_age_hours == 0.0
