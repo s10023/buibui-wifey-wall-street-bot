@@ -1,8 +1,14 @@
-# Deploy — local backup of the research state
+# Deploy — keeping the state alive, and firing the daily scan
 
-This directory holds the one operational concern this fork has: **keeping the
-irreplaceable state alive**. There is deliberately no signal-watch daemon, timer,
-or cron here — dispatch is the manual one-shot `make go-live`.
+This directory holds this fork's operational concerns: **keeping the
+irreplaceable state alive**, and **firing one signal scan each trading morning**.
+
+⚠ **There is still no signal-watch *daemon*** — dispatch is a single `make go-live`
+cycle. What changed on 2026-08-25 is that the cycle no longer has to be run by
+hand: `wifey-signal-watch.timer` fires it Mon–Fri at 08:30 UTC. The unit is
+`Type=oneshot`, so nothing is held open between fires. It is **opt-in like every
+other unit here — nothing installs it** — and installing it is an operator
+decision because Telegram goes out. See [Scheduled signal run](#scheduled-signal-run).
 
 ## What is at risk, and why git does not cover it
 
@@ -232,7 +238,17 @@ presence check caught it:
 | `wifey-backup.timer` | 08:10 + 13:10 UTC | twice daily, `Persistent=true` |
 | `wifey-backup-offsite.service` | by `wifey-backup-offsite.timer` | `rclone sync` to the remote |
 | `wifey-backup-offsite.timer` | 13:55 UTC | once daily, after both legs above |
-| `wifey-alert@.service` | `OnFailure=wifey-alert@%N.service` on either service | Telegrams the last 25 journal lines **of the unit that actually failed** |
+| `wifey-signal-watch.service` | by `wifey-signal-watch.timer` | one `make go-live CATCH_UP=1` cycle — sync, scan, Telegram, outcome backfill |
+| `wifey-signal-watch.timer` | Mon–Fri 08:30 UTC | once each trading morning, pre-open, `Persistent=true` |
+| `wifey-alert@.service` | `OnFailure=wifey-alert@%N.service` on any service above | Telegrams the last 25 journal lines **of the unit that actually failed** |
+
+⚠ **The `cp` glob below is `wifey-*`, not `wifey-backup*`, and that is a fix.**
+The narrower glob never matched `wifey-alert@.service`, so anyone rebuilding from
+this recipe installed three units whose `OnFailure=` pointed at a fourth that was
+not there — the alert would have failed to start at exactly the moment it was
+needed. It works on the current box only because that file was copied by hand.
+This is the same shape as the sentence above about enumerating by glob: a recipe
+can look complete and still omit the thing it depends on.
 
 ⚠ **The alert is templated, and that is a correctness fix rather than tidiness.**
 Its predecessor hardcoded `notify-failure.sh wifey-backup`, which was right while
@@ -251,7 +267,7 @@ so nobody has to remember to run either.
 
 ```bash
 mkdir -p ~/.config/systemd/user
-cp deploy/systemd/user/wifey-backup*.{service,timer} ~/.config/systemd/user/
+cp deploy/systemd/user/wifey-*.{service,timer} ~/.config/systemd/user/   # NOT wifey-backup* — see above
 systemctl --user daemon-reload
 systemctl --user enable --now wifey-backup.timer
 
@@ -259,6 +275,11 @@ systemctl --user list-timers 'wifey-*'      # confirm it is scheduled
 journalctl --user -u wifey-backup -n 50     # read a run
 systemctl --user start wifey-backup.service # fire one now
 ```
+
+⚠ **`cp` copies, so a unit edited in the repo does NOT reach systemd until you
+copy it again.** `ln -sf` from the repo instead if you would rather the installed
+copy track the tracked one; either is fine, but pick one and know which you have —
+a unit that fires stale content looks identical to one that fires current content.
 
 It fires at 08:10 and 13:10 UTC (16:10 / 21:10 MYT), offset 30 minutes from the
 parent's backup timer so two large DuckDB exports do not run at once.
@@ -288,6 +309,118 @@ exactly the payload that used to break this alert: a traceback carries `line 33,
 in <module>`, Telegram's HTML parser reads the bare `<` as an unclosed tag and
 answers 400, and the alert failed on precisely the crashes it exists to report.
 `utils/telegram.py` now drops `parse_mode` and retries as plain text on a 400.
+
+## Scheduled signal run
+
+`wifey-signal-watch.{service,timer}` fire **one** `make go-live CATCH_UP=1` cycle
+Mon–Fri at 08:30 UTC. Install and enable them exactly like the backup pair above;
+⚠ **enabling this one sends Telegram**, so it is an operator decision rather than
+a setup step.
+
+**It runs `make`, not the CLI, on purpose.** The scheduled run is then literally
+the documented hand-run, and the two cannot drift into different flag sets — the
+failure `make backup`'s own recipe already names, where a hand-run and a timer
+applied different retention with nothing reporting the difference. The cost is
+that `ExecStart=/usr/bin/make go-live CATCH_UP=1` contains no in-repo path, so the
+dangling-path check in `tests/test_systemd_units.py` has nothing to look at; a
+companion check in that file pins the **target name** against the Makefile, which
+is the rename this arrangement would otherwise leak to fire time.
+
+**Why 08:30 UTC.** Three constraints, and it is the only slot that satisfies all
+three. ⚠ **The first draft of this unit used 12:50 UTC, derived from constraints
+1 and 2 alone** — which is how a fire time gets chosen without anyone asking
+whether the machine is switched on.
+
+1. **Market.** After the `1d` bar closes and before the bell. A `1d` bar stamps
+   04:00 UTC (05:00 under EST) and forms for a full period, so post-close is not
+   an option: at the bell the session's own daily bar has not closed. 08:30 clears
+   the EST close by 3h30m — the tightest of the three margins — and the EDT bell
+   by 5h, which is also the operator's lead time to act on an alert.
+2. **Alert window.** It keeps the previous session's **first** 4h bar (13:30 UTC
+   open, 17:30 UTC close) at 15h against `max_alert_age_hours = 24.0`, with 9h to
+   spare. That bar is the one the recency window made deliverable at all — 120 of
+   351 candles, 34%, were structurally undeliverable before it — so **a materially
+   later fire ages it back out and silently restores the old rule.**
+3. **Uptime.** This box is not always on, and `Persistent=true` recovers a missed
+   *run* but never its alerts, so an hour the laptop is asleep through is a real
+   cost rather than a deferral. Measured over 14 weekdays (2026-08-06→08-25) using
+   the parent's 15-minute timer as an uptime record: **hour 08 UTC was up 14/14**,
+   against 13/14 at 12:00 and 10/14 at 10:00. ⚠ **Re-measure before moving this** —
+   the point is that the number is observed rather than assumed, and it decays.
+
+   ```bash
+   # count of distinct WEEKDAYS on which the box was up during each UTC hour
+   journalctl --user -u buibui-signal-watch.service --utc -o short-iso --no-pager \
+     | grep -o '^[0-9-]\{10\}T[0-9]\{2\}' | sort -u \
+     | while IFS=T read -r d h; do
+         [ "$(date -d "$d" +%u)" -le 5 ] && echo "$h"
+       done | sort | uniq -c
+   ```
+
+   ⚠ **The weekday filter is not optional garnish** — drop it and the same
+   pipeline returns 20/19/16 over calendar days. The ranking survives and the
+   denominator does not, so the output still looks like a plausible answer to a
+   question nobody asked. This unit fires Mon–Fri, so weekdays are the universe.
+
+   ⚠ **The journal's own start is not a box-off.** It began 2026-08-06T08:51 UTC,
+   so hours before that on day one read as absent when they were merely
+   unobserved — which is why 05:00–07:00 score 13 rather than 14 and mean the same
+   thing as hour 08. Check the window's first timestamp before reading a low hour
+   as a pattern. ⚠ **This proxy dies if that parent timer is ever removed**, since
+   it is the only dense fire record on the box; wifey's own unit fires once a day
+   and can never measure this.
+
+**Why Mon–Fri and not daily.** A weekend fire sees no new bars, and Friday's own
+bars are day-filtered regardless. Nothing is lost by skipping it — ledger
+recording does not depend on dispatch, so Friday's bars still land when Monday
+fires.
+
+⚠ **The Telegram leg is effectively Wed/Thu/Fri, and that is a consequence of
+`day_filter = "tue_thu"`, not of anything in this unit.** A pre-open run reads the
+*previous* session's bars and the filter suppresses on the bar's **open** weekday,
+so the Monday fire (Friday bars) and the Tuesday fire (Monday bars) can never
+alert. Keep them: they still do the sync, ledger and outcome-backfill work.
+
+⚠ **`Persistent=true` recovers the RUN, never the alerts.** On a resume a day or
+more late, every candle but the newest closed one has aged past the window, and
+the newest is day-filtered like any other — the scan happens, the ledger fills,
+and nothing is sent. **A timer fixes "forgot to run"; nothing fixes "the box was
+off all week."** That is the residual gap, and it is smaller than the one this
+unit closes rather than zero.
+
+**It shares `analytics.db` with the backup leg, and runs second.**
+`wifey-backup.timer` fires at 08:10 UTC — twenty minutes **ahead** of this unit,
+not behind it. The snapshot is measured at 2.7s and worst-cases at five minutes on
+its lock-retry path, so the lock is released well before the scan starts.
+⚠ **That ordering is the whole argument, and it holds only on a normal day.**
+Moving either time without re-deriving it puts a multi-minute scan in front of a
+backup that then has only its own retry budget to wait it out. And **both units
+set `Persistent=true`, so after a resume from suspend both missed fires are queued
+together** — the 20 minutes are gone, and `RandomizedDelaySec` (120 / 60) spreads
+them without guaranteeing order or non-overlap. `analytics/db_retry.py` and this
+script's own lock retry carry that case, not the timetable. ⚠ It is also
+*upstream's exact premise* for `db_retry` — unattended timers catching up
+simultaneously after a resume — which this fork's docs described as unreachable
+here until this unit existed. `TimeoutStartSec=900` then keeps a worst-case run (08:31
+start, 15 min) clear of the parent's `buibui-daily-check` at 09:10 — a different
+repo and a different database, so CPU contention only. The 900s is a **ceiling,
+not a measurement**: this unit's real runtime is unmeasured, and the first fire is
+the measurement.
+
+```bash
+systemctl --user list-timers wifey-signal-watch.timer   # scheduled?
+journalctl --user -t wifey-signal-watch -n 50           # -t: the unit sets SyslogIdentifier
+systemctl --user start wifey-signal-watch.service       # fire one now — ⚠ this SENDS
+```
+
+⚠ **`journalctl -u` returns nothing useful here.** journald tags entries with the
+executable name, which is `make`, so without the unit's `SyslogIdentifier` the
+lines land under another identity and `-u` reads empty while the output is sitting
+in the journal. Use `-t wifey-signal-watch`.
+
+⚠ **`buibui-signal-watch.*` in this same user instance is the crypto parent's**,
+fires every 15 minutes, and now differs from wifey's by prefix alone. Read
+`WorkingDirectory` before concluding anything from a unit name or a recent fire.
 
 ## Off-site — the leg that survives losing the laptop
 

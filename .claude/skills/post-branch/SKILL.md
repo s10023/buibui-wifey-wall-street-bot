@@ -731,9 +731,13 @@ one, not to keep the block.
 Name the exact command, target or unit, **and verify it exists here before
 writing it**. A previous handoff carried "restart signal watch" for a daemon this
 repo does not have — the `buibui-signal-watch` units belong to the crypto parent.
-Wifey dispatch is the manual one-shot `make go-live`. **A unit existing on the
-machine is not evidence it belongs to this repo**: read `WorkingDirectory`, check
-`grep -n '<target>:' Makefile`, check `wifey <cmd> --help`.
+Wifey dispatch is the one-shot `make go-live`, by hand or via the opt-in
+`wifey-signal-watch.timer` that runs it. **A unit existing on the machine is not
+evidence it belongs to this repo**: read `WorkingDirectory`, check
+`grep -n '<target>:' Makefile`, check `wifey <cmd> --help`. ⚠ That check got
+*harder* on 2026-08-25, not easier — `wifey-signal-watch.*` and
+`buibui-signal-watch.*` now differ by prefix alone, so a name is no longer even a
+weak signal, and neither is "it fired recently".
 
 ### Re-verify PR state — LAST content edit, never skip
 

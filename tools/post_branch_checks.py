@@ -126,6 +126,15 @@ NEGATIVE_CLAIM_EXEMPT: dict[tuple[str, str], str] = {
         "a parameter name in the engine signatures quoted on this line, not the "
         "subject of any absence claim in this file"
     ),
+    (".claude/context/analytics.md", "strategy_params"): (
+        "the same shape as the 'symbol' entry above — a parameter name in the "
+        "engine signatures quoted on this line, not the config file that "
+        "happens to share it. Editing that config scopes these lines in on the "
+        "bare word, and neither absence claim on them concerns it. ⚠ Keep this "
+        "reason free of the OTHER identifiers those signatures quote: the "
+        "scoping haystack is the diff itself, so naming one here re-scopes the "
+        "line this entry exists to release"
+    ),
     (".claude/context/analytics.md", "signal_watch"): (
         "names the live configs the paragraph describes; the claim beside it is "
         "about per-direction ADR overrides"

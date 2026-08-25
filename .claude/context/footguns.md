@@ -32,9 +32,16 @@ promised retry had no next cycle to happen in. **Scope an enumeration by the PRE
 reading.** Both directions are pinned by
 `tests/test_signal_runner.py::TestSyncIoErrorsAreNarrowed`.
 
-The retry helper is **preventive, not a repair**. Upstream's premise is colliding systemd timers;
-wifey has no daemon. Its budget deliberately does not outlast a `make db-update` sweep, because a
-job that collides with one should fail loudly rather than hang.
+The retry helper was **preventive, not a repair** — and that stopped being the whole story on
+2026-08-25. Upstream's premise is colliding systemd timers, and wifey now has two that both open
+`analytics.db`: `wifey-backup.timer` (08:10 / 13:10 UTC) and `wifey-signal-watch.timer` (08:30 UTC).
+⚠ **Their 20-minute separation is a property of the SCHEDULE, and `Persistent=true` suspends it** —
+after a resume from suspend both missed fires are queued at once, which is upstream's premise
+exactly. `RandomizedDelaySec` (120 / 60) spreads them but guarantees neither ordering nor
+non-overlap, so this budget and `backup-analytics.sh`'s own lock retry are what carry that case
+rather than the timetable. wifey still has no *daemon* — both units are `Type=oneshot`. The budget
+deliberately does not outlast a `make db-update` sweep, because a job that collides with one should
+fail loudly rather than hang.
 
 `web/api/routers/stats.py`'s cache write is the one deliberate exception to the retry rule: it sits
 on the request path, where a ~52s retry would block the very response the cache exists to speed up.

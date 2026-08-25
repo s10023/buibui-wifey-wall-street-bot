@@ -74,7 +74,7 @@ def parse(path: Path) -> list[tuple[str, str, str]]:
 def test_unit_dir_is_not_empty() -> None:
     """Positive control: every check below is vacuous over an empty directory."""
     units = unit_files()
-    assert len(units) >= 5, f"expected the 5 known units, found {len(units)}"
+    assert len(units) >= 7, f"expected the 7 known units, found {len(units)}"
 
 
 @pytest.mark.parametrize("path", unit_files(), ids=lambda p: p.name)
@@ -176,3 +176,64 @@ def test_referenced_repo_paths_exist(path: Path) -> None:
             assert Path(token).exists(), (
                 f"{path.name}: {key} references missing {token}"
             )
+
+
+def makefile_targets() -> set[str]:
+    """Every target name declared at the head of a Makefile rule."""
+    targets: set[str] = set()
+    for raw in (REPO_ROOT / "Makefile").read_text().splitlines():
+        if not raw or raw[0].isspace() or raw.startswith("#"):
+            continue
+        head, sep, rest = raw.partition(":")
+        # No colon at all is a variable assignment or a directive; `:=` and `::=`
+        # are assignments that happen to contain one, so they are not rules.
+        if not sep or rest.lstrip(":").startswith("=") or "=" in head:
+            continue
+        targets.update(head.split())
+    targets.discard(".PHONY")
+    return targets
+
+
+@pytest.mark.parametrize("path", unit_files(), ids=lambda p: p.name)
+def test_make_targets_referenced_by_units_exist(path: Path) -> None:
+    """A unit that runs `make <target>` has no path for the check above to see.
+
+    `test_referenced_repo_paths_exist` only inspects tokens that are absolute
+    in-repo paths. `ExecStart=/usr/bin/make go-live CATCH_UP=1` has none — the
+    binary is outside the repo and the real subject is a bare word — so a
+    renamed target would sail through every other check here and fail at fire
+    time, in a unit whose whole reason for existing is that nobody is watching
+    when it runs.
+
+    wifey-signal-watch.service calls `make` deliberately, so that the scheduled
+    run is the same recipe as the documented hand-run. That choice is what
+    creates this hole, which is why closing it ships alongside.
+    """
+    targets = makefile_targets()
+    for _section, key, value in parse(path):
+        if key != "ExecStart":
+            continue
+        tokens = value.split()
+        if not tokens or Path(tokens[0]).name != "make":
+            continue
+        for token in tokens[1:]:
+            if token.startswith("-") or "=" in token:
+                continue  # a flag, or a VAR=value override
+            assert token in targets, (
+                f"{path.name}: ExecStart runs `make {token}`, which is not a "
+                f"target in the Makefile"
+            )
+
+
+def test_makefile_targets_finds_the_targets_units_actually_use() -> None:
+    """Control for the parser above — without it the check passes vacuously.
+
+    A `makefile_targets` that returned an empty set would make every assertion
+    in the test above unreachable rather than false, since the loop only runs
+    for units that invoke `make`. Pin both directions: a target that exists and
+    a name that does not.
+    """
+    targets = makefile_targets()
+    assert "go-live" in targets
+    assert "backup" in targets
+    assert "go-live-nonexistent" not in targets
