@@ -21,13 +21,18 @@ Record-not-dispatch ported from parent #504 (itself a port of wifey #68/#69);
 closes ``project_signal_watch_followups.md`` item 4 (stale-alert flood).
 """
 
+import time
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import duckdb
 import pandas as pd
 
-from analytics.signal.scanner import run_scan_cycle, scan_symbol
+from analytics.signal.scanner import (
+    may_dispatch_candle,
+    run_scan_cycle,
+    scan_symbol,
+)
 from analytics.signal.types import SignalEvent
 from analytics.store import get_signals_history, init_schema
 from signals.cooldown_store import CooldownStore
@@ -166,6 +171,7 @@ def _drive_cycle(
     catch_up: bool,
     store: CooldownStore,
     ohlcv: pd.DataFrame | None = None,
+    max_alert_age_hours: float = 0.0,
 ) -> tuple[list[str], MagicMock, duckdb.DuckDBPyConnection]:
     """Run one cycle; returns (alerts, dispatch mock, DB conn) for inspection."""
     conn = duckdb.connect(":memory:")
@@ -185,6 +191,7 @@ def _drive_cycle(
             store=store,
             send_telegram=True,
             catch_up=catch_up,
+            max_alert_age_hours=max_alert_age_hours,
         )
     return alerts, dispatch, conn
 
@@ -325,3 +332,181 @@ class TestCooldownStoreLastMarked:
         store.mark_candle("AAPL", "1d", "bos", _C2, channel="wife")
         assert store.last_marked("AAPL", "1d", "bos") is None
         assert store.last_marked("AAPL", "1d", "bos", channel="wife") == _C2
+
+
+# --------------------------------------------------------------------------- #
+# max_alert_age_hours — the dispatch recency window (2026-08-25)              #
+# --------------------------------------------------------------------------- #
+#
+# Under one pre-open run a day the session's FIRST 4h bar can never BE the
+# newest closed candle, so at a window of 0.0 it was structurally undeliverable
+# — 120 of 351 ledger candles, 34%, every one the 13:30 UTC bar. These candles
+# are anchored to the REAL clock (unlike _C0.._C3 above, which sit in 2024 and
+# are therefore ancient under any window — that is what keeps the tests above
+# pinning the exclusion side for free).
+
+
+def _aged_open(hours_since_close: float) -> int:
+    """open_time of a 1d candle whose CLOSE is `hours_since_close` hours ago."""
+    return int(time.time() * 1000) - int(hours_since_close * 3_600_000) - _DAY_MS
+
+
+def _aged_frame() -> tuple[pd.DataFrame, int, int, int]:
+    """Three closed 1d candles at ~49h / ~25h / ~1h since close, oldest first."""
+    old, mid, latest = _aged_open(49), _aged_open(25), _aged_open(1)
+    return _ohlcv([(old, 100.0), (mid, 101.0), (latest, 102.0)]), old, mid, latest
+
+
+class TestDispatchRecencyWindow:
+    """Pure-function rules for may_dispatch_candle."""
+
+    def test_newest_closed_always_dispatches_even_at_zero(self) -> None:
+        assert may_dispatch_candle(500, 500, 100, 10_000, 0.0) is True
+
+    def test_zero_window_excludes_every_older_candle(self) -> None:
+        """0.0 is the pre-2026-08-25 rule and must stay reachable exactly."""
+        assert may_dispatch_candle(400, 500, 100, 10_000, 0.0) is False
+
+    def test_older_candle_inside_the_window_dispatches(self) -> None:
+        now, tf = 10_000_000, 4 * 3_600_000
+        ot = now - tf - 3_600_000  # closed one hour ago
+        assert may_dispatch_candle(ot, now, tf, now, 24.0) is True
+
+    def test_boundary_is_inclusive(self) -> None:
+        now, tf = 10_000_000, 4 * 3_600_000
+        ot = now - tf - int(24 * 3_600_000)  # closed exactly 24h ago
+        assert may_dispatch_candle(ot, now, tf, now, 24.0) is True
+        assert may_dispatch_candle(ot - 1, now, tf, now, 24.0) is False
+
+    def test_negative_age_is_not_dispatchable(self) -> None:
+        """A candle closing in the future is still forming, never an alert."""
+        now, tf = 10_000_000, 4 * 3_600_000
+        assert may_dispatch_candle(now, now + tf, tf, now, 24.0) is False
+
+
+class TestRunScanCycleRecencyWindow:
+    def test_window_admits_the_previous_sessions_older_candle(
+        self, tmp_path: Any
+    ) -> None:
+        """THE FIX: a ~25h-old candle now alerts alongside the newest closed one."""
+        df, old, mid, latest = _aged_frame()
+        store = CooldownStore(str(tmp_path / "s.json"))
+        store.mark_candle("AAPL", "1d", "bos", old - _DAY_MS)  # clear cold-start
+        alerts, dispatch, _conn = _drive_cycle(
+            [_event(mid), _event(latest)],
+            catch_up=True,
+            store=store,
+            ohlcv=df,
+            max_alert_age_hours=30.0,
+        )
+        assert _primary_sends(dispatch) == 2, (
+            "the ~25h candle must dispatch alongside the newest closed one"
+        )
+        assert len(alerts) == 2
+
+    def test_same_setup_at_zero_window_sends_only_the_newest(
+        self, tmp_path: Any
+    ) -> None:
+        """CONTROL for the test above — identical inputs, window the ONLY change.
+
+        Without this, a passing fix-test could be observing the fixture rather
+        than the window. It also pins that 0.0 still reproduces the old rule.
+        """
+        df, old, mid, latest = _aged_frame()
+        store = CooldownStore(str(tmp_path / "s.json"))
+        store.mark_candle("AAPL", "1d", "bos", old - _DAY_MS)
+        alerts, dispatch, conn = _drive_cycle(
+            [_event(mid), _event(latest)],
+            catch_up=True,
+            store=store,
+            ohlcv=df,
+            max_alert_age_hours=0.0,
+        )
+        assert _primary_sends(dispatch) == 1
+        assert len(alerts) == 1
+        recorded = {
+            int(r[0])
+            for r in conn.execute(
+                "SELECT candle_ts_ms FROM signal_alert_outcomes"
+            ).fetchall()
+        }
+        assert {mid, latest} <= recorded, (
+            "the suppressed candle must still reach the ledger — record-not-"
+            "dispatch is what the window changes the verdict of, not the record"
+        )
+
+    def test_candle_beyond_the_window_stays_backfill(self, tmp_path: Any) -> None:
+        """~49h old against a 30h window: recorded, watermarked, never alerted."""
+        df, old, mid, latest = _aged_frame()
+        store = CooldownStore(str(tmp_path / "s.json"))
+        store.mark_candle("AAPL", "1d", "bos", old - _DAY_MS)
+        _alerts, dispatch, conn = _drive_cycle(
+            [_event(old), _event(mid), _event(latest)],
+            catch_up=True,
+            store=store,
+            ohlcv=df,
+            max_alert_age_hours=30.0,
+        )
+        assert _primary_sends(dispatch) == 2, "the ~49h candle must not alert"
+        recorded = {
+            int(r[0])
+            for r in conn.execute(
+                "SELECT candle_ts_ms FROM signal_alert_outcomes"
+            ).fetchall()
+        }
+        assert old in recorded
+        assert _consumed(store, "AAPL", "1d", "bos", old)
+
+    def test_a_consumed_watermark_is_never_resent_by_a_wide_window(
+        self, tmp_path: Any
+    ) -> None:
+        """Widening the window must not replay history.
+
+        This is the safety property the config comment claims, constructed
+        rather than assumed: a candle a previous backfill already consumed is
+        dropped upstream at the is_new_candle filter, so no window can revive
+        it. Seed the watermark AT `mid`, then run with an absurd window.
+        """
+        df, _old, mid, latest = _aged_frame()
+        store = CooldownStore(str(tmp_path / "s.json"))
+        store.mark_candle("AAPL", "1d", "bos", mid)
+        _alerts, dispatch, conn = _drive_cycle(
+            [_event(mid), _event(latest)],
+            catch_up=True,
+            store=store,
+            ohlcv=df,
+            max_alert_age_hours=10_000.0,
+        )
+        recorded = {
+            int(r[0])
+            for r in conn.execute(
+                "SELECT candle_ts_ms FROM signal_alert_outcomes"
+            ).fetchall()
+        }
+        assert mid not in recorded, "an already-consumed candle must not reappear"
+        assert _primary_sends(dispatch) == 1, "only the newest closed candle is left"
+
+    def test_window_is_inert_without_catch_up(self, tmp_path: Any) -> None:
+        """The docs claim the window does nothing unless catch_up is on.
+
+        Constructed rather than asserted from reading: the non-catch-up branch
+        appends is_backfill=False unconditionally, so may_dispatch_candle is
+        never consulted there. Identical inputs, only the window changes — the
+        two runs must agree exactly.
+        """
+        df, old, mid, latest = _aged_frame()
+        sends = []
+        for window in (0.0, 10_000.0):
+            store = CooldownStore(str(tmp_path / f"s{window}.json"))
+            store.mark_candle("AAPL", "1d", "bos", old - _DAY_MS)
+            _alerts, dispatch, _conn = _drive_cycle(
+                [_event(mid), _event(latest)],
+                catch_up=False,
+                store=store,
+                ohlcv=df,
+                max_alert_age_hours=window,
+            )
+            sends.append(_primary_sends(dispatch))
+        assert sends[0] == sends[1], (
+            f"catch_up=False must ignore max_alert_age_hours entirely, got {sends}"
+        )

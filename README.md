@@ -566,7 +566,7 @@ poetry run python wifey.py signal watch
 - `--tp-r 2.0` — R multiplier for TP level in alert messages (default: `2.0`)
 - `--telegram` — send alerts via Telegram
 - `--once` — run a single scan cycle and exit (for cron / once-a-day use) instead of looping as a daemon
-- `--catch-up` — replay every un-alerted closed candle since the last run, not just the latest, so ledger rows from skipped run-days are recovered instead of lost (off by default). Backfilled candles are **recorded but never sent to Telegram** — only the newest closed candle can alert, so replay never floods the chat with stale, already-played-out setups. The first run for a fresh `signal_state.json` only seeds the latest candle. Depth is bounded by the 200-candle scan window (4h ~33 days, 1d ~200 days, 1wk ~4 years); gating context (regime/HTF-EMA/ADR/bias) is evaluated as-of-now, so a deep backfill is not clean out-of-sample evidence. Pairs naturally with `--once` for a once-a-day cron.
+- `--catch-up` — replay every un-alerted closed candle since the last run, not just the latest, so ledger rows from skipped run-days are recovered instead of lost (off by default). Backfilled candles are **recorded but never sent to Telegram** — only candles inside `max_alert_age_hours` can alert (shared base ships 24.0; `0.0` = newest closed candle only), so replay never floods the chat with stale, already-played-out setups. The first run for a fresh `signal_state.json` only seeds the latest candle. Depth is bounded by the 200-candle scan window (4h ~33 days, 1d ~200 days, 1wk ~4 years); gating context (regime/HTF-EMA/ADR/bias) is evaluated as-of-now, so a deep backfill is not clean out-of-sample evidence. Pairs naturally with `--once` for a once-a-day cron.
 - `--state-file signal_state.json` — path to cooldown/watermark state file
 - `--min-sl-pct 0.003` — minimum SL distance as a fraction of price (e.g. `0.003` = 0.3%); overrides structural SL if too tight (default: disabled)
 
@@ -798,9 +798,26 @@ A single-cycle run fires on only the latest closed candle, so a **skipped run-da
 host down) permanently loses that day's signals. Add `--catch-up` to replay every un-alerted
 candle since the last run instead — e.g. `make wifey-signal-watch ONCE=1 TELEGRAM=1 CATCH_UP=1`
 (or `wifey signal watch --once --catch-up --telegram`). Recovered candles land in the DB and
-outcome ledger but are **never sent to Telegram** — only the newest closed candle can alert —
-so it is safe to leave `CATCH_UP=1` on every run. The first run for a fresh state file only
-seeds the latest candle, so enabling it on an established deployment is safe (no burst).
+outcome ledger but are **never sent to Telegram** — only candles inside `max_alert_age_hours`
+can alert — so it is safe to leave `CATCH_UP=1` on every run. The first run for a fresh state file
+only seeds the latest candle, so enabling it on an established deployment is safe (no burst).
+
+**`max_alert_age_hours`** (shared base, `24.0`) sets how stale a candle may be and still alert,
+measured from its close. The newest closed candle always alerts; older ones alert only while
+they are this fresh. It exists because "newest closed candle only" is arbitrary under a fixed
+cadence: with one pre-open run a day the session's **first** 4h bar can never *be* the newest
+closed candle, so it was structurally undeliverable — 120 of 351 ledger candles (34%), all of
+them the 13:30 UTC bar, dropped at 19.3h stale while the 15.3h bar shipped. Set `0.0` to restore
+the newest-only rule; a negative value is refused at load.
+
+Two things it deliberately does **not** do. It cannot **replay history** — a candle whose
+watermark a previous backfill consumed stays consumed, so raising it never re-sends old alerts.
+And it does not recover a **skipped run day**: at a Monday run, Thursday's bars are ~87h old and
+stay ledger-only. That one is a cadence habit, and under `day_filter = "tue_thu"` the alerting
+days are **Wed/Thu/Fri** — a Monday or Tuesday pre-open run sees Friday/Monday bars, which the
+day filter discards, so it can never alert (it still does useful sync and ledger work).
+Running Friday is worth 66% vs 44% of the alert surface.
+See `docs/audits/2026-08-25-dispatch-recency-window.md`.
 
 To run as a **continuous daemon** instead (self-syncs every cycle and sleeps to the next
 candle boundary — keep it alive with tmux / systemd), drop the once flag:
