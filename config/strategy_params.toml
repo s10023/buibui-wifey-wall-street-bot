@@ -22,11 +22,18 @@ min_sl_pct = 0.005
 # session's bars and nothing before them. Under one pre-open run a day the
 # session's FIRST 4h bar can never BE the newest closed candle, so at 0.0 it was
 # structurally undeliverable — 120 of 351 ledger candles, 34%, every one the
-# 13:30 UTC bar. At a Wed 12:50 run that bar is 19.3h stale against the 15.3h
-# bar which dispatched happily, so the old cut was arbitrary rather than
-# principled. Ages at that run: prev-session 4h 19.3h / 15.3h (both admitted),
-# the session before 39.3h (excluded) — so the bound has ~4h of headroom on the
-# side that matters and ~15h of clearance on the side it must exclude.
+# 13:30 UTC bar. At the Wed 12:50 UTC run this was measured on, that bar is 19.3h
+# stale against the 15.3h bar which dispatched happily, so the old cut was
+# arbitrary rather than principled. Ages at that run: prev-session 4h 19.3h /
+# 15.3h (both admitted), the session before 39.3h (excluded).
+# ⚠ HEADROOM IS A FUNCTION OF THE CADENCE — re-derive it if the timer moves.
+# The shipped schedule is deploy/systemd/user/wifey-signal-watch.timer at 08:30
+# UTC, where those same two bars are 15.0h / 11.0h and the session before is
+# 35.0h: ~9h of headroom on the side that matters, ~11h of clearance on the side
+# it must exclude. ⚠ Moving the fire EARLIER buys headroom and SPENDS clearance —
+# the 12:50 run this was measured at had ~4.7h and ~15.3h. Both cadences sit well
+# inside both margins; a fire that did not would need the bound re-derived, not
+# nudged.
 #
 # ⚠ 0.0 restores the pre-2026-08-25 newest-only rule; negative is REFUSED
 # (it would read as stricter while behaving exactly like 0.0).

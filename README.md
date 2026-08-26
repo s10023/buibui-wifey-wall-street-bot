@@ -787,20 +787,53 @@ make go-live GO_LIVE_CONFIG=config/signal_watch_weekdays.toml   # weekday day-fi
 ```
 
 `make go-live` runs a **single cycle** (`signal watch --once`) and exits — ideal for a manual
-once-a-day run or a cron entry; the candle-watermark dedup in `signal_state.json` prevents
-re-alerting candles already seen. Example cron (weekdays, 12:00 UTC ≈ pre-market, ~1.5h before the US open):
+once-a-day run or a scheduled one; the candle-watermark dedup in `signal_state.json` prevents
+re-alerting candles already seen.
+
+**Scheduling it (recommended).** `deploy/systemd/user/wifey-signal-watch.{service,timer}` fire
+`make go-live CATCH_UP=1` once each weekday at **08:30 UTC**, pre-open under both EDT (13:30 bell)
+and EST (14:30). It is **opt-in like every other unit here — nothing installs it**, and it sends
+Telegram, so installing it is an operator decision:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp deploy/systemd/user/wifey-*.{service,timer} ~/.config/systemd/user/   # glob also picks up wifey-alert@
+systemd-analyze --user verify ~/.config/systemd/user/wifey-signal-watch.service   # parse before trusting
+systemctl --user daemon-reload
+systemctl --user enable --now wifey-signal-watch.timer
+
+systemctl --user list-timers wifey-signal-watch.timer
+systemctl --user start wifey-signal-watch.service    # fire one now — ⚠ this SENDS
+journalctl --user -t wifey-signal-watch -n 50        # -t, not -u: the unit sets SyslogIdentifier
+```
+
+Why 08:30 rather than any pre-open time — three constraints, and it is the only slot meeting all
+three. **Market:** after the 1d bar closes (04:00 UTC EDT / 05:00 UTC EST) and before the bell,
+clearing the EST close by 3h30m and the EDT bell by 5h. **Alert window:** it keeps the previous
+session's *first* 4h bar (13:30 UTC open, 17:30 UTC close) at 15h against the 24h
+`max_alert_age_hours` window, with 9h to spare — a materially later fire ages that bar out and
+silently restores the old newest-candle-only rule. **Uptime:** the host is not always on, and
+`Persistent=true` recovers a missed *run* but never its alerts, so the hour was picked from measured
+uptime (14/14 weekdays at hour 08 UTC over 2026-08-06→08-25) rather than from the market clock
+alone. Re-measure before moving it.
+
+Without systemd, the equivalent cron entry (same time, same flags):
 
 ```cron
-0 12 * * 1-5   cd /path/to/repo && make go-live >> go-live.log 2>&1
+30 8 * * 1-5   cd /path/to/repo && make go-live CATCH_UP=1 >> go-live.log 2>&1
 ```
 
 A single-cycle run fires on only the latest closed candle, so a **skipped run-day** (missed cron,
 host down) permanently loses that day's signals. Add `--catch-up` to replay every un-alerted
 candle since the last run instead — e.g. `make wifey-signal-watch ONCE=1 TELEGRAM=1 CATCH_UP=1`
-(or `wifey signal watch --once --catch-up --telegram`). Recovered candles land in the DB and
-outcome ledger but are **never sent to Telegram** — only candles inside `max_alert_age_hours`
-can alert — so it is safe to leave `CATCH_UP=1` on every run. The first run for a fresh state file
-only seeds the latest candle, so enabling it on an established deployment is safe (no burst).
+(or `wifey signal watch --once --catch-up --telegram`). A recovered candle **does** reach Telegram
+while its close is inside `max_alert_age_hours`; older ones land in the DB and outcome ledger only.
+(This sentence used to say recovered candles are *never* sent — that was the pre-#260 rule, and it
+contradicted the clause beside it.) Leaving `CATCH_UP=1` on every run is safe because the window is
+a **calendar** bound: a stale candle ages out rather than arriving late. The first run for a fresh
+state file only seeds the latest candle, so enabling it on an established deployment is safe (no
+burst). ⚠ `max_alert_age_hours` is **inert** without it — only catch-up emits an event for a
+non-latest candle in the first place, which is why the scheduled unit below passes it.
 
 **`max_alert_age_hours`** (shared base, `24.0`) sets how stale a candle may be and still alert,
 measured from its close. The newest closed candle always alerts; older ones alert only while
@@ -865,8 +898,8 @@ remote pinned to its own Drive folder so it cannot reach the crypto parent's bac
 ⚠ `sync` mirrors deletions in both directions — read the off-site section before setting
 `WIFEY_BACKUP_REMOTE`, and use `make backup-offsite-dry-run` first.
 
-Both legs ship **opt-in** systemd user timers — nothing installs them, and there is still no
-wifey daemon. ⚠ A green timer is not a current backup: alerting is failure-only, so a timer that
+Both legs ship **opt-in** systemd user timers — nothing installs them, exactly like the
+signal-watch timer above. Every wifey unit is `Type=oneshot`, so there is still no wifey daemon. ⚠ A green timer is not a current backup: alerting is failure-only, so a timer that
 silently stopped and one with nothing to report look identical. `make backup-check` dates the
 newest snapshot from its own manifest, which is the *input* the off-site leg copies rather than
 that copy's exit code. Full rationale, setup, coverage policy, and restore procedure:

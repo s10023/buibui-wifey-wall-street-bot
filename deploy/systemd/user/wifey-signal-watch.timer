@@ -1,0 +1,66 @@
+[Unit]
+Description=Run the wifey go-live cycle once each trading morning, pre-open
+
+[Timer]
+# ONE fire a day, pre-open. ⚠ Do NOT port the parent's OnCalendar=*:01/15 --
+# that cadence is matched to a 15m timeframe on a 24h tape. wifey has one RTH
+# session and scans 4h/1d/1wk, so between two fires on the same day there is
+# nothing new to see.
+#
+# WHY PRE-OPEN rather than after the close: yfinance stamps a 1d bar at 04:00 UTC
+# (05:00 under EST) and it forms for a full tf_ms, so Tuesday's daily bar does
+# not close until Wed 04:00/05:00 UTC -- at the 20:00/21:00 UTC bell it is still
+# forming and that session's 1d signals cannot alert. The last 4h RTH bar
+# (17:30 UTC) closes at 21:30 UTC, also after the bell. A pre-open run is safely
+# past both, reading the PREVIOUS session's closed bars.
+#
+# WHY 08:30 UTC SPECIFICALLY -- three constraints, and it is the only slot that
+# satisfies all three. ⚠ The first draft of this unit used 12:50 UTC, derived
+# from the market clock ALONE; that is how a fire time gets chosen without ever
+# asking whether the machine is switched on.
+#
+#   1. MARKET. After the 1d bar closes (04:00 UTC EDT / 05:00 UTC EST) and
+#      before the bell (13:30 UTC EDT / 14:30 UTC EST). 08:30 clears the EST
+#      close by 3h30m -- the tightest of the three margins -- and the EDT bell
+#      by 5h00m, which is also the operator's lead time to read an alert.
+#   2. ALERT WINDOW. The previous session's FIRST 4h bar (13:30 UTC open, 17:30
+#      UTC close) is 15h00m old here, against max_alert_age_hours = 24.0, so it
+#      has 9h00m of headroom. That bar is the one #260 made deliverable at all;
+#      ⚠ a materially later fire ages it back out and silently restores the old
+#      newest-candle-only rule.
+#   3. UPTIME. This box is not always on, and Persistent= only recovers a run,
+#      never an alert. Measured over 14 weekdays (2026-08-06..08-25) from the
+#      parent's 15-minute timer as an uptime record: hour 08 UTC was up 14/14,
+#      against 13/14 at 12:00 and 10/14 at 10:00. Re-measure before moving this;
+#      the whole point is that the number is observed rather than assumed.
+#
+# WHY Mon-Fri and not daily. A weekend fire sees no new bars, and Friday's own
+# bars are day-filtered regardless. Nothing is lost by skipping it -- ledger
+# recording does not depend on dispatch, so Friday's bars still land when Monday
+# fires.
+#
+# ⚠ The Telegram leg is effectively Wed/Thu/Fri, and that is a CONSEQUENCE of
+# day_filter = "tue_thu", not a setting here. A pre-open run sees the PREVIOUS
+# session's bars and tue_thu suppresses on the bar's OPEN weekday, so the Mon
+# fire (Fri bars) and the Tue fire (Mon bars) can never alert. Keep them anyway:
+# they still earn their keep on sync, ledger and outcome backfill.
+OnCalendar=Mon..Fri *-*-* 08:30:00 UTC
+
+# The whole point on a laptop: after suspend/shutdown, systemd runs the fire it
+# missed ONCE on resume, not once per missed slot.
+#
+# ⚠ This recovers the RUN, never the alerts. On a resume a day or more late,
+# every candle but the newest closed one has aged past max_alert_age_hours, and
+# the newest is subject to day_filter like any other -- so the scan happens, the
+# ledger fills, and nothing is sent. A timer fixes "forgot to run"; nothing
+# fixes "the box was off all week".
+Persistent=true
+
+# Small on purpose. wifey-backup.timer fires at 08:10 UTC on the same database,
+# so this unit's 20-minute lead is the separation that matters and a long jitter
+# would eat it. Nothing here needs one -- a single daily fire has no
+# thundering-herd problem to spread.
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

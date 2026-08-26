@@ -13,9 +13,21 @@ Description=Run the wifey local backup twice daily
 # different databases so they cannot deadlock, but they would otherwise run two
 # multi-hundred-MB DuckDB exports concurrently on one laptop.
 #
-# There is deliberately no quarter-hour dodge here: unlike the parent, this repo
-# has NO signal-watch timer to collide with -- dispatch is the manual one-shot
-# `make go-live`.
+# ⚠ There IS now a wifey signal timer writing the same analytics.db, and this
+# note said the opposite until 2026-08-25. wifey-signal-watch.timer fires at
+# 08:30 UTC, so THIS leg runs 20 minutes AHEAD of it, not behind: the snapshot is
+# measured at 2.7s and worst-cases at five minutes on the lock-retry path, so the
+# lock is released well before the scan starts. ⚠ That ordering is the whole
+# argument -- moving either time without re-deriving it puts a multi-minute scan
+# in front of a backup that then has only its own retry budget to wait it out.
+# The 13:10 fire has no such neighbour.
+# ⚠ AND IT HOLDS ONLY ON A NORMAL DAY. Both units set Persistent=true, so after a
+# resume from suspend both missed fires are queued together and the 20 minutes are
+# gone; RandomizedDelaySec spreads them without guaranteeing order. The lock retry
+# below is what carries that case, which is precisely the scenario db_retry.py was
+# written for -- see .claude/context/footguns.md.
+# Still no quarter-hour dodge: the parent's every-15-minutes cadence is what
+# makes one necessary there, and wifey fires once a day.
 OnCalendar=*-*-* 08:10:00 UTC
 OnCalendar=*-*-* 13:10:00 UTC
 

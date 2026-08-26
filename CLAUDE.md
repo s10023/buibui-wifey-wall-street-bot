@@ -174,10 +174,13 @@ assert a positive marker (`grep -q ALLDONE`), never an absence. Both variants we
 `reference_env_gotchas.md` and were not read, which cost three mutually-deadlocked waiters and an
 hour. That is why the rule is here rather than there.
 
-`CATCH_UP=1 make go-live` is the **manual one-shot** dispatch. There is no wifey signal daemon or
-scheduler — the only `wifey-*` unit is `wifey-backup-offsite.timer`, and `buibui-signal-watch.*` in
-systemd belongs to the parent — so "restart signal watch" is a non-instruction. It is operator-only
-because Telegram goes out, and ratings reload every run. **Run it pre-open, not after the close**:
+`CATCH_UP=1 make go-live` is the **one-shot** dispatch, run by hand or by the opt-in
+`wifey-signal-watch.timer` (Mon–Fri 08:30 UTC — **nothing installs it**, and installing is
+operator-only because Telegram goes out). There is still no wifey *daemon*: the unit is
+`Type=oneshot`, so "restart signal watch" stays a non-instruction — start the service or run the
+target. ⚠ **`buibui-signal-watch.*` in systemd is the PARENT's**, and a same-shaped
+`wifey-signal-watch.*` now sits beside it, so read `WorkingDirectory` rather than the name. Ratings
+reload every run. **Run it pre-open, not after the close**:
 `1d` bars stamp 04:00/05:00 UTC and close the next day, so at the bell that session's daily bar is
 still forming.
 
@@ -349,7 +352,7 @@ entries that have no audit of their own.
 | `migrations/` | **Five** one-shot migration scripts, run by hand. All five refuse to start without a `.bak`; only **001/002** rewrite `run_id` and cascade to `backtest_trades` — 003/004/005 target `signal_alert_outcomes`, whose key carries no measured value, so an in-place `UPDATE` is correct there. Check what the target table's key is made of rather than following the precedent. Routine schema changes go through `analytics/store/schema.py`'s migration list | `context/migrations.md` |
 | `.claude/hooks/` | Three `PreToolUse` hooks on `Bash`: a destructive-command guard, a foreground-run advisory, and an inline `gh pr create` reminder. **Two are files here, the third is inline in `.claude/settings.json`**, which registers all three. Tracked since the 2026-08-20 denylist inversion, so they survive a reclone and ruff + mypy cover them | `context/hooks.md` |
 | `config/` | `stocks.json` (gitignored 13-symbol live watchlist), `universe.json` (committed 505-member research universe), `strategy_params.toml` (shared base inherited via `extends`), `youtube_channels.toml` (gitignored; `.example` committed) | `context/config.md` |
-| `deploy/` | `backup-analytics.sh` (local leg), `backup-offsite.sh` (rclone leg), `notify-failure.sh`, and opt-in `wifey-*` systemd user units. Nothing installs them; there is still no wifey daemon | `deploy/README.md` |
+| `deploy/` | `backup-analytics.sh` (local leg), `backup-offsite.sh` (rclone leg), `notify-failure.sh`, and opt-in `wifey-*` systemd user units — backup ×2, the templated alert, and **signal-watch**. Nothing installs them; every one is `Type=oneshot`, so there is still no wifey daemon | `deploy/README.md` |
 
 ### Sleeve verdicts
 

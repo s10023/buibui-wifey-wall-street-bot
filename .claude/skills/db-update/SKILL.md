@@ -171,8 +171,13 @@ them; if any appear again, something re-created them and the warning says so.
    disproving it cost a full verification cycle in #150. The
    `buibui-signal-watch.service`/`.timer` pair in `systemctl --user` belongs to
    the **crypto parent** (`WorkingDirectory=/home/kng/repo/buibui-moon-trader-bot`,
-   `DATA_SOURCE=binance`). Wifey dispatch is the manual one-shot
-   `CATCH_UP=1 make go-live`, and `analytics/signal_runner.py:195` loads
+   `DATA_SOURCE=binance`) — and telling the two apart matters more since
+   2026-08-25, because a same-shaped `wifey-signal-watch.*` now sits beside it;
+   read `WorkingDirectory`, never the name. Wifey dispatch is the one-shot
+   `CATCH_UP=1 make go-live`, by hand or via the opt-in `wifey-signal-watch.timer`
+   that runs that same target. ⚠ **The timer does not weaken this step**: it is
+   `Type=oneshot`, so there is still no process holding stale ratings, and
+   `analytics/signal_runner.py:195` loads
    `confidence_ratings` *"once at startup"* — which, for a one-shot process, is
    every run. **A ratings change is picked up by the next `make go-live`
    automatically.**

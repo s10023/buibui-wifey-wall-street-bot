@@ -1,0 +1,95 @@
+[Unit]
+# One go-live cycle: refresh 1h OHLCV, scan 4h/1d/1wk, alert, backfill outcomes.
+# NOT a daemon -- Type=oneshot, driven by the .timer beside this file.
+#
+# NAMED wifey-*, NOT buibui-*. The crypto parent's buibui-signal-watch.service
+# and .timer are already installed in this same user systemd instance and fire
+# every 15 minutes; reusing the name would have one repo's unit silently shadow
+# the other's.
+Description=wifey go-live (one pre-open signal cycle, Telegram ON)
+Documentation=file:///home/kng/repo/buibui-wifey-wall-street-bot/deploy/README.md
+
+# Telegram goes out on this unit, so a silent failure is a silently missed
+# session -- and a missed run DESTROYS that day's alerts rather than deferring
+# them, because the next run's catch-up consumes the watermark without
+# dispatching. There is no healthchecks.io wiring in this fork (the parent's
+# run-job.sh dead-man's-switch has no counterpart here), so this alert is the
+# only signal an operator gets.
+#
+# ⚠ BELONGS IN [Unit], NOT [Service]. systemd parses it elsewhere as an unknown
+# key, logs "ignoring" at load and starts the unit anyway -- so the alert reads
+# as armed while being inert, which is the defect wifey-backup.service shipped
+# with for three days. Pinned by tests/test_systemd_units.py.
+OnFailure=wifey-alert@%N.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/kng/repo/buibui-wifey-wall-street-bot
+
+# The app loads .env itself (cli/main.py calls load_dotenv), so this line is not
+# what gets the Telegram credentials to the scan. It is here for the OnFailure
+# alert path, which shells out before any of our Python runs. Leading `-` keeps
+# a missing .env from failing the unit.
+EnvironmentFile=-/home/kng/repo/buibui-wifey-wall-street-bot/.env
+
+# User units get a minimal PATH. `make` is /usr/bin/make, but the recipe shells
+# out to `poetry`, which lives under linuxbrew -- without this line the scan does
+# not start at all, rather than starting and failing somewhere legible.
+Environment=PATH=/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin
+
+# Without this, journald tags output with the EXECUTABLE name and the entries
+# lose unit attribution: `journalctl -u` then returns NOTHING while the lines sit
+# in the journal under another identity (measured in the parent at 120 orphaned
+# lines). `make` is a worse identity than most, since any number of units could
+# plausibly run it. A stable identifier makes
+# `journalctl --user -t wifey-signal-watch` authoritative and keeps journald's
+# own rotation instead of growing an unmanaged logfile.
+SyslogIdentifier=wifey-signal-watch
+
+# `make go-live` rather than the CLI directly, so the SCHEDULED run is literally
+# the DOCUMENTED hand-run. The two cannot drift into different flag sets -- the
+# failure `make backup` already names in its own recipe, where a hand-run and a
+# timer applied different retention with nothing reporting the difference.
+# tests/test_systemd_units.py pins the target name, because a `make` ExecStart
+# has no in-repo path token for the existing dangling-path check to catch.
+#
+# CATCH_UP=1 is load-bearing, and it is also what makes max_alert_age_hours
+# (24.0 in the shared base) do anything at all: only catch-up emits an event for
+# a non-latest candle, and under one fire a day the session's FIRST 4h bar can
+# never BE the newest closed one. Without it that bar is ledger-only -- 120 of
+# 351 candles, 34%, measured in docs/audits/2026-08-25-dispatch-recency-window.md.
+#
+# GO_LIVE_CONFIG is deliberately NOT pinned; it defaults to
+# config/signal_watch.toml. ⚠ Do NOT port the parent's weekday config auto-pick.
+# Its unit must never pin --config because its three configs PARTITION the week;
+# wifey's two do not (weekdays' 32 declared cells are a strict superset of
+# signal_watch's 22) and they share signal_state.json, so whichever ran first
+# would alert the shared candles with ITS tp_r and the other would stay silent.
+ExecStart=/usr/bin/make go-live CATCH_UP=1
+
+# A ceiling, not an estimate -- this unit's real runtime is unmeasured, and the
+# first fire is the measurement.
+#
+# On analytics.db it has one scheduled neighbour, wifey-backup.timer, and ON A
+# NORMAL DAY that one runs first: backup fires 08:10 UTC and is measured at 2.7s,
+# so the lock is long released by 08:30. Even on its full lock-retry path
+# (WIFEY_LOCK_RETRIES x WIFEY_LOCK_SLEEP, 10 x 30s) it is done by 08:15.
+# ⚠ Do not reorder these without re-deriving that: with the scan first, the
+# argument runs the other way and this timeout becomes the only thing keeping a
+# pathological scan off the backup's lock.
+#
+# ⚠ THE 20-MINUTE GAP IS A PROPERTY OF THE SCHEDULE, AND Persistent=true SUSPENDS
+# IT. After a resume from suspend both units' missed fires are queued at once, so
+# the ordering above does not hold and RandomizedDelaySec (120 on backup, 60 here)
+# spreads them without guaranteeing either order or non-overlap. That case is
+# carried by analytics/db_retry.py and by backup-analytics.sh's own lock retry --
+# NOT by this timetable. It is also upstream's exact premise for db_retry, which
+# wifey's docs described as unreachable here until this unit existed; see
+# .claude/context/footguns.md.
+# The 900s ceiling then keeps a worst-case run (08:31 start + 15m = 08:46) clear
+# of the parent's buibui-daily-check at 09:10, which is a different repo and a
+# different database -- CPU contention only.
+# NOTE: unlike the parent's wrapper form, a timeout kill here is NOT silent --
+# systemd marks the unit failed, so OnFailure above still sends.
+TimeoutStartSec=900
+Nice=10

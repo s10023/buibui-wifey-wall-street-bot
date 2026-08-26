@@ -499,9 +499,21 @@ go-live-prep:
 # runner's — see the header of config/signal_watch_weekdays.toml.
 # To run as a continuous daemon instead (self-syncs + sleeps to candle boundaries),
 # drop the once flag: make wifey-signal-watch CONFIG=... TELEGRAM=1
-# Pass CATCH_UP=1 to replay candles missed since the last run (skipped run-day recovery).
-# Recovered candles land in the DB/outcome ledger only — never Telegram — so it is
-# safe to pass CATCH_UP=1 on every run.
+# Pass CATCH_UP=1 to replay candles missed since the last run. ⚠ The sentence that
+# stood here until 2026-08-25 — "recovered candles land in the DB/outcome ledger
+# only, never Telegram" — was the PRE-#260 rule and is now false. A replayed candle
+# whose CLOSE is within max_alert_age_hours (24.0 in the shared base) DOES dispatch;
+# see scanner.may_dispatch_candle. That is the point: under one pre-open run a day
+# the session's FIRST 4h bar is never the newest closed candle, so the old rule made
+# it structurally undeliverable (120 of 351 candles, 34%).
+# Still safe to pass on every run, for a narrower reason — the window is a CALENDAR
+# bound, so an old candle ages out rather than arriving as a stale alert. Two things
+# it deliberately will NOT do: re-send history (a consumed watermark stays consumed)
+# and recover a skipped run DAY's alerts (~87h stale, outside the window) — that day's
+# candles land as ledger evidence and nothing is sent.
+# ⚠ max_alert_age_hours is INERT without CATCH_UP=1: only catch-up emits an event for
+# a non-latest candle in the first place. The scheduled unit therefore passes it —
+# deploy/systemd/user/wifey-signal-watch.service.
 # Also refreshes watchlist 1h OHLCV first (non-fatal) — the Stats path cone's
 # substrate; the signal daemon itself only syncs its own signal TFs (4h/1d/1wk).
 go-live:

@@ -48,10 +48,16 @@ Detailed API reference for `analytics/`. Load this when working on any analytics
   is deliberately excluded** — it is on the request path, where a ~52s retry would block the
   response the cache exists to speed up; a lost cache write costs one recomputation. Do not
   "finish the sweep" there.
-- **This is preventive, not a repair.** Upstream's premise is unattended systemd timers
-  catching up simultaneously after a resume from suspend; this fork has **no daemon at all**,
-  so nothing here is on record dying of a lock conflict. The realistic collisions are operator
-  paced: a `make wifey-web` session up while `make go-live` or `make db-update` runs.
+- **This was preventive until 2026-08-25; one case is now real.** Upstream's premise is
+  unattended systemd timers catching up simultaneously after a resume from suspend — and
+  `wifey-signal-watch.timer` (08:30 UTC) now sits 20 minutes behind `wifey-backup.timer`'s
+  08:10 fire, both writing `analytics.db`, both `Persistent=true`. ⚠ **That 20-minute gap is a
+  property of the SCHEDULE only**: on a resume, both missed fires are queued together, which is
+  that premise instantiated here. Nothing is yet on record dying of a lock conflict and this
+  fork still has **no daemon** (both units are `Type=oneshot`), but *"it cannot happen here"* is
+  no longer the reason — the retry budget and `backup-analytics.sh`'s own lock retry are. The
+  other realistic collisions stay operator paced: a `make wifey-web` session up while
+  `make go-live` or `make db-update` runs.
 - The budget covers a brief RW open and **deliberately does not cover a `make db-update`
   sweep**, which holds for minutes and is meant to fail loudly rather than hang a cycle.
   `TestBudgetIsSizedForThisRepo` pins both ends so nobody inflates it into an effective hang.
