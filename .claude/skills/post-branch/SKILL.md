@@ -762,6 +762,16 @@ so; deleting it is standing habit here.
 bullet before the PR existed. MEMORY.md lives outside the repo, so this costs no
 commit and no CI.
 
+⚠ **No PR opened → STRIKE the placeholder; there is no query to fill it from.**
+Phase 4 omits the number because phase 5 is *assumed* to create the PR, and until
+now this step had no branch for the operator declining one — so the placeholder
+sat waiting for a fill that never came. Hit live 2026-08-25b, where a fake PR
+reference stood on two surfaces until a human caught it. Where the branch stayed
+local, **remove** the placeholder and write the SHA plus "local-only, still
+amendable". An absent number is a state to report, and a slot shaped like a PR
+reference gets filled with one: the next session reads `#NNN` as a lost lookup
+and the nearest plausible number as a fact.
+
 **This is the last action of all** — there is no stamp to write after it.
 
 ---

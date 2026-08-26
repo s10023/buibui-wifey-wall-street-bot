@@ -847,3 +847,60 @@ class TestInstructionFilesReachAHuman:
             sp.suggest_approach(sp.Bucket.PORT, sp.Confidence.LOW, wps)
             == "cherry-pick-with-edits"
         )
+
+
+class TestClassifierCaveatBanner:
+    """The counts must not read as rulings to a session that never opened the skill.
+
+    Round 16 (2026-08-26) printed `0 SKIP / 3 PORT / 19 EVALUATE /
+    0 ALREADY-APPLIED` where the rulings were **3 / 4 / 10 / 4 / 1**. The
+    ALREADY-APPLIED zero is the sharp half: all four were the parent adopting
+    *wifey's* work, which no path-resolution test can detect, because the path
+    resolves either way.
+
+    ⚠ **What is pinned here is the WARNING, not better counts.** The classifier
+    cannot see direction of travel, so the deliverable is a reader who distrusts
+    the table. The skill body already said this; the REPORT did not, and the
+    report is what gets read days later.
+    """
+
+    def _out(self) -> str:
+        pr = sp.PR(
+            number=1,
+            title="feat: thing (#1)",
+            commits=[],
+            files=["analytics/regime.py"],
+        )
+        report = sp.PRReport(
+            pr=pr,
+            bucket=sp.Bucket.EVALUATE,
+            confidence=sp.Confidence.LOW,
+            wifey_paths=[
+                sp.WifeyPath("analytics/regime.py", "analytics/regime.py", "direct")
+            ],
+            memory_excerpt="",
+            approach="re-implement",
+        )
+        return sp.format_report([report], "a", "b")
+
+    def test_the_report_carries_the_caveat(self) -> None:
+        out = self._out()
+        assert "not rulings" in out
+        assert "direction of travel" in out
+
+    def test_the_caveat_precedes_the_counts_it_qualifies(self) -> None:
+        """A warning printed under the table is read after the number is believed."""
+        out = self._out()
+        assert out.index("not rulings") < out.index("## Summary")
+
+    def test_the_caveat_names_the_ruling_set_the_table_cannot_show(self) -> None:
+        """NO PORT is a ruling with no bucket, so its absence from the table is
+        not visible IN the table — which is why the banner has to name it."""
+        out = self._out()
+        assert "NO PORT" in out
+
+    def test_the_measured_miss_is_quoted_not_summarised(self) -> None:
+        """An abstract "counts may be wrong" trains dismissal; the observed
+        distribution is what makes the warning checkable."""
+        out = self._out()
+        assert "0 ALREADY-APPLIED" in out

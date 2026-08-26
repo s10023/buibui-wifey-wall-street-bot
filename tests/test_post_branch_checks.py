@@ -16,10 +16,12 @@ import pytest
 from tools.post_branch_checks import (
     HANDOFF_MAX_LINES,
     NEGATIVE_CLAIM_EXEMPT,
+    NEGATIVE_CLAIM_PATHS,
     NEGATIVE_CLAIM_RE,
     UNCOVERED_STEPS,
     Runner,
     _check_handoff_size,
+    _run,
     added_paths,
     bad_atx_lines,
     check_handoff_symbols,
@@ -28,6 +30,7 @@ from tools.post_branch_checks import (
     check_new_modules,
     check_new_targets,
     check_queue_items,
+    claim_subject_tokens,
     current_state_bullets,
     enumerated_members,
     extract_tokens,
@@ -462,22 +465,48 @@ class TestNegativeClaimExempt:
         """External referent: a dead entry fails here rather than sitting silent.
 
         An allowlist nobody re-derives is how a mute survives the doc it was
-        written for. This asserts each `(path, token)` still names a token on a
-        line that actually trips the regex.
+        written for. This asserts each key still names something on a line that
+        actually trips the regex.
+
+        ⚠ **Two key KINDS, and the guard has to cover both.** Most entries key on
+        a backticked token. A line naming no subject this tool can reach has no
+        token to key on, so those key on the matched MARKER instead — and a guard
+        that only understood tokens would have to be loosened to admit them,
+        which is how the second kind ends up unguarded.
         """
-        for (path, token), reason in NEGATIVE_CLAIM_EXEMPT.items():
+        for (path, key), reason in NEGATIVE_CLAIM_EXEMPT.items():
             text = Path(path).read_text(encoding="utf-8")
-            on_claim_lines = {
-                tok
-                for line in text.splitlines()
-                if NEGATIVE_CLAIM_RE.search(line)
-                for tok in extract_tokens(line)
+            claim_lines = [
+                line for line in text.splitlines() if NEGATIVE_CLAIM_RE.search(line)
+            ]
+            tokens = {tok for line in claim_lines for tok in extract_tokens(line)}
+            markers = {
+                mm.group(0).lower()
+                for line in claim_lines
+                for mm in NEGATIVE_CLAIM_RE.finditer(line)
             }
-            assert token in on_claim_lines, (
-                f"{path}:{token} exempts a token no claim line carries any more — "
-                "delete the entry rather than leaving a mute behind"
+            assert key in tokens or key in markers, (
+                f"{path}:{key} exempts a token/marker no claim line carries any "
+                "more — delete the entry rather than leaving a mute behind"
             )
             assert reason.strip(), "every entry states why, inline"
+
+    def test_a_marker_entry_only_fires_where_there_is_NO_token(self) -> None:
+        """The marker key is the LAST resort, never a path-wide mute.
+
+        Its whole justification is that the line names no reachable subject. If
+        such a line ever gains a backticked token, token scoping takes over and
+        the marker entry must stop applying — otherwise one entry silently grows
+        from 'this one unscopable sentence' into 'this phrasing in this file'.
+        """
+        line = ".claude/skills/sanity-check/SKILL.md:9:`cluster.py` reads nothing reads"
+        findings, _, exempted = check_negative_claims(
+            self._runner(line),
+            diff="+import cluster.py\n",
+            diff_names="analytics/cluster.py",
+        )
+        assert exempted == 0
+        assert len(findings) == 1
 
     def test_the_TRUE_POSITIVE_tokens_are_NOT_exempt(self) -> None:
         """Regression control for the narrowing itself.
@@ -783,3 +812,245 @@ class TestUncoveredSteps:
         body.write_text("a perfectly ordinary PR body\n", encoding="utf-8")
         assert main(["--text", str(body), "--exit-zero"]) == 0
         assert "MECHANICAL half only" not in capsys.readouterr().out
+
+
+class TestPlainAbsenceForms:
+    """``NEGATIVE_CLAIM_RE`` is an allowlist of phrasings, so it can only catch
+    shapes already seen — and the plain "there is no X" / "X has no Y" form, which
+    is how absence is normally written, had no entry at all. Measured against the
+    signal-timer branch (#261): **8 of 8** claim lines that branch falsified went
+    unreported, after 3 misses the run before.
+
+    The fixtures below are those eight lines VERBATIM. A synthetic sentence would
+    test the regex against the phrasing its author had in mind while widening it,
+    which is the loop that produced the hole — the tree's own emphasis convention
+    (``has **no daemon at all**``) is exactly what a hand-written fixture omits.
+    """
+
+    FALSIFIED_BY_261 = [
+        # .claude/context/analytics.md — emphasis opens mid-phrase
+        "catching up simultaneously after a resume from suspend; this fork has "
+        "**no daemon at all**,",
+        # .claude/context/footguns.md
+        "wifey has no daemon. Its budget deliberately does not outlast a "
+        "`make db-update` sweep, because a",
+        # CLAUDE.md, twice
+        "`CATCH_UP=1 make go-live` is the **manual one-shot** dispatch. There is "
+        "no wifey signal daemon or",
+        "opt-in `wifey-*` systemd user units. Nothing installs them; there is "
+        "still no wifey daemon |",
+        # README.md
+        "Both legs ship **opt-in** systemd user timers — nothing installs them, "
+        "and there is still no",
+        # deploy/README.md — an adverb sits between "is" and "no"
+        "irreplaceable state alive**. There is deliberately no signal-watch "
+        "daemon, timer,",
+        # deploy/systemd/user/wifey-backup.timer, twice
+        "# There is deliberately no quarter-hour dodge here: unlike the parent, "
+        "this repo",
+        "# has NO signal-watch timer to collide with -- dispatch is the manual "
+        "one-shot",
+    ]
+
+    @pytest.mark.parametrize("line", FALSIFIED_BY_261)
+    def test_a_plain_absence_sentence_counts_as_a_claim(self, line: str) -> None:
+        assert NEGATIVE_CLAIM_RE.search(line), line
+
+    def test_emphasis_mid_phrase_does_not_hide_a_claim(self) -> None:
+        """The bold marker is the whole reason one of the eight was invisible."""
+        assert NEGATIVE_CLAIM_RE.search("wifey has **no daemon**")
+        assert NEGATIVE_CLAIM_RE.search("there is **no** wifey daemon")
+        assert NEGATIVE_CLAIM_RE.search("there is `no` wifey daemon")
+
+    def test_the_harvested_phrasings_still_match(self) -> None:
+        """Positive control: an alternation can only ADD matches.
+
+        The standing warning to re-measure a widening against the pre-#248 tree
+        is about the 2026-08-20h SCOPING change, which could REMOVE a match. This
+        pins that the widening is not that class of change — the `not ported`
+        alternation carried this leg's only true positive and still fires.
+        """
+        assert NEGATIVE_CLAIM_RE.search("`gate_audit.py` was never ported")
+        assert NEGATIVE_CLAIM_RE.search("the exporter is not yet wired")
+
+    def test_ordinary_prose_is_not_swept_in(self) -> None:
+        """Negative control. Generic absence words stay OUT of the regex — they
+        each pulled double-digit false positives for no catch."""
+        for line in (
+            "for now the sweep runs weekly",
+            "this is a stop-gap until the next refactor",
+            "the gate is unwired from the daemon",
+        ):
+            assert not NEGATIVE_CLAIM_RE.search(line), line
+
+
+class TestDeployIsInTheAbsenceCorpus:
+    """⚠ **The path and the regex widening ship TOGETHER or neither ships.**
+
+    Against the unwidened regex ``deploy/`` surfaced ZERO hits — this tree's
+    ``deploy/`` absence claims are all written in the plain form — so the path
+    alone was free and worthless. Two of the eight claims #261 falsified sat
+    there, out of reach at any regex, which is the half that made it worth doing.
+    """
+
+    def test_deploy_is_grepped(self) -> None:
+        """Pinned on the argv, not just the constant: the corpus is whatever the
+        grep is handed, and a constant nothing reads is not a corpus."""
+        seen: list[Sequence[str]] = []
+
+        def run(argv: Sequence[str]) -> str:
+            seen.append(argv)
+            return ""
+
+        check_negative_claims(run, diff="", diff_names="")
+        assert "deploy" in NEGATIVE_CLAIM_PATHS
+        assert "deploy" in seen[0]
+
+    def test_a_deploy_claim_the_branch_contradicts_is_reported(self) -> None:
+        line = (
+            "deploy/README.md:12:There is deliberately no signal-watch daemon or "
+            "`wifey-signal-watch.timer` here"
+        )
+
+        def run(argv: Sequence[str]) -> str:
+            return line
+
+        findings, suppressed, exempted = check_negative_claims(
+            run,
+            diff="+Description=wifey signal dispatch\n",
+            diff_names="deploy/systemd/user/wifey-signal-watch.timer",
+        )
+        assert len(findings) == 1
+        assert "deploy/README.md" in findings[0].detail
+        assert suppressed == 0
+
+
+class TestPhaseSixHandlesTheNoPrBranch:
+    """Phase 4 writes MEMORY.md's bullet with `#NNN` omitted because phase 5 is
+    *assumed* to open a PR; phase 6 fills it from a `gh` query. Where the operator
+    declines the PR there is no query to fill from, and until now no branch said
+    so — the placeholder waited for a fill that could not come. Hit live
+    2026-08-25b, where a fake PR reference stood on two surfaces until a human
+    caught it.
+
+    Prose tests are the weakest kind, so this one is scoped to a PAIR that must
+    co-occur: the step that says FILL must also say what to do with nothing to
+    fill from. The `#NNN` assertion is the positive control — without it the
+    guard passes vacuously once the fill instruction moves elsewhere.
+    """
+
+    SECTION = "### Re-verify PR state"
+
+    def _section(self) -> str:
+        skill = Path(".claude/skills/post-branch/SKILL.md").read_text(encoding="utf-8")
+        assert skill.count(self.SECTION) == 1
+        return skill.split(self.SECTION, 1)[1].split("\n## ", 1)[0]
+
+    def test_the_step_that_fills_NNN_also_handles_having_nothing_to_fill(
+        self,
+    ) -> None:
+        section = self._section()
+        assert "#NNN" in section, "positive control: the fill instruction moved"
+        assert "No PR opened" in section
+        assert "local-only" in section
+
+
+class TestClaimSubjectScoping:
+    """``extract_tokens`` keys on backticked spans, and prose absence claims often
+    have none — "this fork has **no daemon at all**" names its subject in bare
+    English. Such a line was unscopable and therefore reported on EVERY branch,
+    and widening the regex to the plain form took that population from **0 lines
+    to 11**, which would have made the leg permanently unclean.
+
+    ⚠ **This is not the token list #250 widened.** That knob scopes claim lines
+    IN wholesale; this one gives a previously-unscopable line a way to be scoped
+    OUT, so it can only ever REMOVE a report.
+    """
+
+    @staticmethod
+    def _runner(out: str) -> Runner:
+        def run(argv: Sequence[str]) -> str:
+            return out
+
+        return run
+
+    CLAIM = "deploy/README.md:9:There is deliberately no signal-watch daemon here"
+
+    def test_the_subject_scopes_the_claim_IN(self) -> None:
+        findings, suppressed, _ = check_negative_claims(
+            self._runner(self.CLAIM),
+            diff="+ExecStart=/usr/bin/make go-live\n",
+            diff_names="deploy/systemd/user/wifey-signal-watch.timer",
+        )
+        assert len(findings) == 1
+        assert "signal-watch" in findings[0].detail
+
+    def test_the_subject_scopes_an_unrelated_claim_OUT(self) -> None:
+        """The point of the fallback: countable, not reported, not dismissed."""
+        findings, suppressed, _ = check_negative_claims(
+            self._runner(self.CLAIM),
+            diff="+def unrelated() -> None:\n",
+            diff_names="analytics/other.py",
+        )
+        assert findings == []
+        assert suppressed == 1
+
+    def test_a_stopword_only_subject_still_FAILS_OPEN(self) -> None:
+        """Fail-open survives where it is still earned. "nothing installs them"
+        names a pronoun, so nothing can rule it out and it must be reported."""
+        findings, _, _ = check_negative_claims(
+            self._runner("docs/x.md:3:the legs ship — nothing installs them"),
+            diff="+anything\n",
+            diff_names="other.py",
+        )
+        assert len(findings) == 1
+        assert "no token to scope on" in findings[0].detail
+
+    def test_generic_subject_words_are_not_scope_keys(self) -> None:
+        """ "no allowlist FOR orphaned ratings" scoped in on "for" — a word in
+        every diff ever written. A subject word must mean something to find."""
+        assert claim_subject_tokens("There is no allowlist for orphan ratings") == {
+            "allowlist",
+            "orphan",
+        }
+        assert claim_subject_tokens("this fork has **no daemon at all**,") == {"daemon"}
+
+    def test_ALL_markers_on_a_line_must_be_exempt(self) -> None:
+        """One line can carry two claims and only one of them be settled.
+
+        #261's README line reads "nothing installs them, and there is still no"
+        — exempting the first marker hid the second. Same rule as the token
+        exemption: one unexempt hit reports the whole line.
+        """
+        line = (
+            "README.md:901:systemd user timers — nothing installs them, and "
+            "there is still no"
+        )
+        findings, _, exempted = check_negative_claims(
+            self._runner(line), diff="+anything\n", diff_names="x.py"
+        )
+        assert exempted == 0, "the second, unexempt claim must survive the first"
+        assert len(findings) == 1
+
+
+class TestTheLegIsCleanOnAnUNRELATEDBranch:
+    """The property that made the widening shippable, pinned against the real tree.
+
+    A leg that is never clean trains dismissal exactly as a check that is never
+    green stops being read — the reason this check was scoped to the branch in
+    the first place. So the corpus must contain **zero** claim lines that report
+    no matter what the branch did: every one is either scopable, or exempt with a
+    reason inline.
+
+    ⚠ This reads the working tree on purpose. The count is a property of the
+    DOCS, not of the code, so a future doc edit is exactly what should fail here
+    — and the fix is then to scope or exempt that one sentence, never to widen
+    ``_SUBJECT_STOP`` until the number goes away.
+    """
+
+    def test_no_claim_line_reports_unconditionally(self) -> None:
+        findings, _, _ = check_negative_claims(_run, diff="", diff_names="")
+        assert findings == [], (
+            "these claim lines report on every branch forever: "
+            + "; ".join(f.detail for f in findings)
+        )

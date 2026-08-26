@@ -82,25 +82,163 @@ ENUMERATING_DOCS = ("CLAUDE.md", "README.md", ".claude/context", "deploy/README.
 
 CONTEXT_DOCS = (".claude/context",)
 
-#: Absence-language. Kept narrow on purpose — generic phrases ("for now",
-#: "unwired", "stop-gap") each pulled double-digit false positives for no catch.
+#: Markdown emphasis, which this tree writes mid-phrase ("has **no daemon at
+#: all**"). Without a slot for it, every bolded absence claim reads as absent.
+_EMPH = r"[*_`]*"
+
+#: Absence-language. The first six alternations are phrasings harvested from past
+#: incidents, and an allowlist of phrasings can only catch shapes already seen:
+#: measured against the signal-timer branch (#261) it missed **8 of 8** claim
+#: lines that branch falsified, every one written in the plain "there is no X" /
+#: "X has no Y" form, which is how absence is normally written. The last three
+#: alternations are that form, and they restore 8 of 8 across 6 of 6 files.
+#: Generic phrases ("for now", "unwired", "stop-gap") stay OUT — each pulled
+#: double-digit false positives for no catch.
+#:
+#: ⚠ **``has no`` is ANCHORED to a repo-self subject, and that anchor is the
+#: difference between a usable leg and an unusable one.** Bare ``has no`` matches
+#: 16 corpus lines for 3 of the 8 catches, because most are claims about
+#: something ELSE lacking something — "yfinance OHLCV has no taker data", "the
+#: endpoint has no children field" — which no wifey branch can falsify. Anchoring
+#: cuts the corpus 33 -> 21 lines and keeps all 8. The line-initial arm exists for
+#: one real shape: a claim whose subject sits on the PREVIOUS line ("unlike the
+#: parent, this repo" / "has NO signal-watch timer").
+#:
+#: ⚠ **Widening this regex is a DIFFERENT knob from widening the token list**,
+#: which is #250's trap: tokens SCOPE a claim line against the diff, so widening
+#: those scopes lines in wholesale. This widens what counts as a claim.
+#:
+#: ⚠ **Re-measure any further widening against the pre-#248 tree, and price the
+#: TRIAGE LOAD, not just the catch.** Measured 2026-08-26 over four past
+#: branches, findings per run go from 0-5 (harvested alone) to 6-16. That cost is
+#: paid on EVERY branch and it is the real argument against going wider: a leg
+#: that is never clean trains dismissal exactly as a check that is never green
+#: stops being read. An alternation can only ADD matches — it was the 2026-08-20h
+#: SCOPING change that could REMOVE them, which is why that warning sits on
+#: ``NEGATIVE_CLAIM_EXEMPT`` and not here.
 NEGATIVE_CLAIM_RE = re.compile(
     r"(never|not) (yet )?ported"
     r"|no (reader|host|consumer)\b"
-    r"|this repo has no"
     r"|until (that|the) port lands"
     r"|silent accumulator"
     r"|accumulates? unscored"
-    r"|is not (yet )?(available|implemented|wired)",
+    r"|is not (yet )?(available|implemented|wired)"
+    rf"|there (is|are) {_EMPH}(\w+ )?{_EMPH}no\b"
+    rf"|(wifey|this (repo|fork|tree)|the (fork|repo)) (has|have) {_EMPH}no\b"
+    rf"|^#?\s*(has|have) {_EMPH}no\b"
+    r"|\bnothing (installs?|reads?|runs?|writes?|consumes?|enforces?|owns?|tracks?)\b",
     re.IGNORECASE,
 )
 
+#: Determiners, pronouns and degree words: real words that scope nothing. A
+#: claim's subject has to be specific enough that finding it in a diff means
+#: something, which is ``extract_tokens``' own rule applied to bare prose.
+_SUBJECT_STOP = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "it",
+        "its",
+        "them",
+        "they",
+        "this",
+        "that",
+        "these",
+        "those",
+        "such",
+        "any",
+        "one",
+        "more",
+        "longer",
+        "further",
+        "own",
+        "here",
+        "there",
+        "still",
+        "yet",
+        "real",
+        "single",
+        "other",
+        "second",
+        # Degree and manner adverbs: content-shaped, but they scope nothing.
+        # "no allowlist FOR orphaned ratings" scoped in on "for", a word in
+        # every diff ever written.
+        "for",
+        "exactly",
+        "like",
+        "simply",
+        "merely",
+        "only",
+        "just",
+        "almost",
+        "nearly",
+        "quite",
+        "very",
+        "rather",
+        "less",
+        "else",
+        "otherwise",
+        "far",
+        "all",
+        "and",
+        "but",
+        "with",
+        "from",
+        "than",
+        "then",
+    }
+)
+
+#: The subject of a plain-form absence claim: the words the "no" attaches to.
+_CLAIM_SUBJECT_RE = re.compile(
+    rf"(?:there (?:is|are) {_EMPH}(?:\w+ )?{_EMPH}no|(?:has|have) {_EMPH}no"
+    rf"|nothing {_EMPH}\w+)"
+    r"((?: [\w-]+){0,4})",
+    re.IGNORECASE,
+)
+
+
+def claim_subject_tokens(text: str) -> set[str]:
+    """Scoping fallback for a plain-form claim carrying no backticked token.
+
+    ``extract_tokens`` keys on backticked spans, which prose absence claims often
+    have none of — "this fork has **no daemon at all**" names its subject in bare
+    English. Before this, such a line was unscopable and therefore reported on
+    EVERY branch forever, and widening ``NEGATIVE_CLAIM_RE`` to the plain form
+    took that population from **0 lines to 11**. A leg that is never clean trains
+    dismissal exactly as a check that is never green stops being read, so the
+    widening and this fallback are one change, not two.
+
+    ⚠ **This is NOT the token list #250 widened.** That knob scopes claim lines
+    IN wholesale, adding findings; this one gives a previously-unscopable line a
+    way to be scoped OUT, and it can only ever REMOVE a report.
+
+    ⚠ **Fail-open survives where it is still earned.** A claim whose subject is
+    all stopwords — or that runs off the end of its line, as "…and there is still
+    no" does with "wifey daemon" on the next — yields nothing here and is
+    reported, because it genuinely cannot be ruled out.
+    """
+    m = _CLAIM_SUBJECT_RE.search(text)
+    if not m:
+        return set()
+    words = (w.strip('*_`.,:;()[]|"').lower() for w in m.group(1).split())
+    keep = [w for w in words if len(w) >= 3 and w not in _SUBJECT_STOP]
+    return set(keep[:2])
+
+
+#: ⚠ **``deploy/`` ships WITH the widened regex above, never alone.** Against the
+#: unwidened one it surfaces ZERO hits — this tree's ``deploy/`` absence claims
+#: are all written in the plain form — so adding the path by itself is free and
+#: worthless, while 2 of the 8 claims #261 falsified sat here, out of reach at
+#: any regex. Both halves ship together or neither does.
 NEGATIVE_CLAIM_PATHS = (
     "CLAUDE.md",
     "README.md",
     "Makefile",
     "docker-compose.yml",
     ".claude",
+    "deploy",
 )
 
 #: Tokens that scope a claim line IN while carrying no claim of their own, keyed
@@ -123,6 +261,31 @@ NEGATIVE_CLAIM_PATHS = (
 #: ``attribution`` is deliberately ABSENT: on two of these lines it is the
 #: claim's own subject, so a branch that ports it must still be told.
 NEGATIVE_CLAIM_EXEMPT: dict[tuple[str, str], str] = {
+    # ⚠ The two entries below are keyed on a matched MARKER, not a token: their
+    # lines name no subject this tool can reach, so without them the widened
+    # regex leaves the leg permanently unclean, which is what it was extracted
+    # from prose to stop being.
+    (".claude/skills/sanity-check/SKILL.md", "nothing reads"): (
+        "not an absence claim at all — the sentence is 'matching nothing reads "
+        "exactly like \"no problems found\"', where 'nothing' is the thing "
+        "MATCHED, not a missing artifact. The regex cannot tell a quantifier "
+        "from a subject, and this line is the one place in the tree where that "
+        "distinction bites"
+    ),
+    (".claude/skills/sync-parent/SKILL.md", "there are no"): (
+        "the sentence is 'there are no merge commits' and its subject sits on "
+        "the NEXT line, out of reach of a line-unit check. It is also a claim "
+        "about the PARENT's squash-merge habit, so no wifey branch can falsify "
+        "it — re-read this if the parent ever stops squashing"
+    ),
+    ("README.md", "nothing installs"): (
+        "'nothing installs them' — the subject is a pronoun, and the antecedent "
+        "('systemd user timers') sits earlier on a 3 KB line. The claim is a "
+        "DELIBERATE permanent property: nothing in the repo installs the units, "
+        "and the 2026-08-26 timer install was operator-side, which did not "
+        "falsify it. ⚠ Adding an installer to the repo does, so strike this "
+        "entry then rather than re-scoping the line"
+    ),
     (".claude/context/analytics.md", "symbol"): (
         "a parameter name in the engine signatures quoted on this line, not the "
         "subject of any absence claim in this file"
@@ -547,12 +710,25 @@ def check_negative_claims(
         m = NEGATIVE_CLAIM_RE.search(parts[2])
         if not m:
             continue
-        tokens = extract_tokens(parts[2])
+        tokens = extract_tokens(parts[2]) or claim_subject_tokens(parts[2])
         hits = sorted(t for t in tokens if t in haystack)
         if tokens and not hits:
             suppressed += 1
             continue
         if hits and all((parts[0], h) in NEGATIVE_CLAIM_EXEMPT for h in hits):
+            exempted += 1
+            continue
+        # An unscopable line has no token to key on, so the MARKER is the key.
+        # Still path-scoped and reason-carrying: this releases one sentence in one
+        # file, never the phrasing everywhere.
+        #
+        # ⚠ EVERY marker on the line must be exempt, mirroring the token rule
+        # above. Keying on the first match alone suppressed a real one: #261's
+        # README line carries "nothing installs" AND "there is still no", and
+        # exempting the former hid the latter — one line, two claims, and only
+        # one of them settled.
+        markers = {mm.group(0).lower() for mm in NEGATIVE_CLAIM_RE.finditer(parts[2])}
+        if not tokens and all((parts[0], k) in NEGATIVE_CLAIM_EXEMPT for k in markers):
             exempted += 1
             continue
         why = f" (matched {', '.join(hits[:3])})" if hits else " (no token to scope on)"

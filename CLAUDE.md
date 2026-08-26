@@ -726,7 +726,16 @@ prose did not enforce these constraints:
   reason inline, and drops a hit only when EVERY matched token is exempt** — one unexempt token
   still reports the line, so an entry narrows a finding rather than deleting it. Neither half of
   the key is safe alone, and `attribution` is off the list because on two claim lines it is the
-  claim's own subject. ⚠ **Do not re-scope this leg to a window around the regex match**: on 3–6 KB
+  claim's own subject. ⚠ **A claim line naming no subject the tool can reach keys on the matched
+  MARKER instead, and there too EVERY marker must be exempt** — keying on the first one hid a
+  second claim sitting on the same line. ⚠ **The corpus covers `deploy/` and the regex covers the
+  plain "there is no X" / "X has no Y" form as of 2026-08-26**; the harvested-phrasing allowlist
+  missed **8 of 8** claims the signal-timer branch falsified, 2 of them in `deploy/` and so out of
+  reach at any regex, which is why both halves shipped together. `has no` is **anchored to a
+  repo-self subject** — bare, it matches claims about what something ELSE lacks ("yfinance has no
+  taker data"), which no wifey branch can falsify. ⚠ **Price the TRIAGE LOAD of any further
+  widening, not just the catch**: this one took findings-per-run from 0–5 to 1–11, and a leg that
+  is never clean trains dismissal. ⚠ **Do not re-scope this leg to a window around the regex match**: on 3–6 KB
   paragraph lines that is the obvious remedy, and measured against the pre-#248 tree it would have
   **suppressed** the leg's only true positive, which a human found by re-reading the paragraph
   rather than the matched clause. Narrative: `context/tools.md`.
