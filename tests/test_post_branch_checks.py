@@ -770,8 +770,16 @@ class TestUncoveredSteps:
 
         The step list is noise at the one moment the operator is triaging under
         time pressure, and `--check` is a deliberate single-leg run.
+
+        ⚠ **`--exit-zero` is load-bearing, and `make preflight` is why.** The
+        `--text` leg reads the gitignored `.claude/sensitive-terms.txt`, which
+        exists on a developer box and on NO clean clone, where the leg correctly
+        reports `NOT CONFIGURED` and `main` returns 1. Asserting `== 0` therefore
+        passed locally and failed against a fresh clone — the exact class
+        preflight exists to catch. The subject here is the NOTICE, not the exit
+        code, so pin the notice and take the code out of the assertion.
         """
         body = tmp_path / "body.md"
         body.write_text("a perfectly ordinary PR body\n", encoding="utf-8")
-        assert main(["--text", str(body)]) == 0
+        assert main(["--text", str(body), "--exit-zero"]) == 0
         assert "MECHANICAL half only" not in capsys.readouterr().out
