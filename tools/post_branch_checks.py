@@ -95,27 +95,62 @@ _EMPH = r"[*_`]*"
 #: Generic phrases ("for now", "unwired", "stop-gap") stay OUT — each pulled
 #: double-digit false positives for no catch.
 #:
-#: ⚠ **``has no`` is ANCHORED to a repo-self subject, and that anchor is the
-#: difference between a usable leg and an unusable one.** Bare ``has no`` matches
-#: 16 corpus lines for 3 of the 8 catches, because most are claims about
-#: something ELSE lacking something — "yfinance OHLCV has no taker data", "the
-#: endpoint has no children field" — which no wifey branch can falsify. Anchoring
-#: cuts the corpus 33 -> 21 lines and keeps all 8. The line-initial arm exists for
-#: one real shape: a claim whose subject sits on the PREVIOUS line ("unlike the
-#: parent, this repo" / "has NO signal-watch timer").
+#: ⚠ **``has no`` is ANCHORED to a subject that is not a third party**, because
+#: most of this tree's bare ``has no`` lines are claims about something ELSE
+#: lacking something — "yfinance OHLCV has no taker data", "the endpoint has no
+#: children field" — which no wifey branch can falsify. The line-initial arm
+#: exists for one real shape: a claim whose subject sits on the PREVIOUS line
+#: ("unlike the parent, this repo" / "has NO signal-watch timer").
+#:
+#: ⚠ **EVERY FIGURE ONCE QUOTED IN THIS BLOCK WAS MEASURED ON 15% OF THE
+#: CORPUS** and has been removed rather than restated. Until 2026-08-26 the
+#: corpus query filtered on the letter ``x`` (see :func:`check_negative_claims`),
+#: so "16 corpus lines", "33 -> 21" and "0-5 to 6-16 findings per run" each
+#: described a tree this leg was never reading. ⚠ **A number is only re-usable
+#: if the thing it measured still exists** — re-derive against the current query
+#: before quoting any of it, and note that the direction of the error was
+#: flattering: the leg looked quiet because it was mostly blind.
 #:
 #: ⚠ **Widening this regex is a DIFFERENT knob from widening the token list**,
 #: which is #250's trap: tokens SCOPE a claim line against the diff, so widening
 #: those scopes lines in wholesale. This widens what counts as a claim.
 #:
-#: ⚠ **Re-measure any further widening against the pre-#248 tree, and price the
-#: TRIAGE LOAD, not just the catch.** Measured 2026-08-26 over four past
-#: branches, findings per run go from 0-5 (harvested alone) to 6-16. That cost is
+#: ⚠ **Re-measure any further widening, and price the TRIAGE LOAD, not just the
+#: catch.** Measured over the six branches to 7519f0b on the FIXED corpus, this
+#: leg reports **13.2 findings and 18.2 soft per run**, against 8.5 findings when
+#: it could see 15% of the tree — i.e. **4.2x quieter per corpus line** while no
+#: longer blind to 46 of 69 claim-shaped lines. That cost is
 #: paid on EVERY branch and it is the real argument against going wider: a leg
 #: that is never clean trains dismissal exactly as a check that is never green
 #: stops being read. An alternation can only ADD matches — it was the 2026-08-20h
 #: SCOPING change that could REMOVE them, which is why that warning sits on
 #: ``NEGATIVE_CLAIM_EXEMPT`` and not here.
+#: ⚠ **One adverb defeated the whole anchor.** ``wifey has no daemon`` matched
+#: while ``wifey still has no daemon`` did not, so two live repo-self claims sat
+#: outside the corpus for a word that carries no meaning here.
+_CLAIM_ADVERB = r"(?:\s+(?:still|now|yet|already|currently|itself))*"
+
+#: Subjects that are unambiguously this repo.
+_CLAIM_SELF = r"(?:wifey|this (?:repo|fork|tree|skill)|the (?:fork|repo))"
+_CLAIM_SELF_RE = re.compile(_CLAIM_SELF, re.IGNORECASE)
+
+#: Double-quoted prose spans — the bare-English equivalent of a backticked
+#: token, and the only subject some absence claims name at all.
+_QUOTED = re.compile(r'"([^"\n]{3,60})"')
+
+#: ⚠ **A definite noun phrase is repo-self unless it names a third party.** The
+#: allowlist above could not reach "**The 505-member research universe** has NO
+#: scheduled refresher" — a claim #265 falsified and that was still standing in
+#: ``Makefile`` when this was written. Only two third-party subjects in this tree
+#: take "the", so the exclusion is a two-word lookahead rather than a list to
+#: maintain; every other third party ("yfinance", "equities", "markdownlint")
+#: takes no determiner and so never reaches this arm at all. Measured cost over
+#: the six branches to 7519f0b: **+0.2 findings per run**, measured against the
+#: shipped scoping rather than against an earlier draft of it.
+_CLAIM_DEFINITE = (
+    r"(?:the (?!parent\b|endpoint\b|other\b|same\b)[\w-]+(?: [\w-]+){0,2})"
+)
+
 NEGATIVE_CLAIM_RE = re.compile(
     r"(never|not) (yet )?ported"
     r"|no (reader|host|consumer)\b"
@@ -124,7 +159,7 @@ NEGATIVE_CLAIM_RE = re.compile(
     r"|accumulates? unscored"
     r"|is not (yet )?(available|implemented|wired)"
     rf"|there (is|are) {_EMPH}(\w+ )?{_EMPH}no\b"
-    rf"|(wifey|this (repo|fork|tree)|the (fork|repo)) (has|have) {_EMPH}no\b"
+    rf"|(?:{_CLAIM_SELF}|{_CLAIM_DEFINITE}){_CLAIM_ADVERB}\s+(has|have) {_EMPH}no\b"
     rf"|^#?\s*(has|have) {_EMPH}no\b"
     r"|\bnothing (installs?|reads?|runs?|writes?|consumes?|enforces?|owns?|tracks?)\b",
     re.IGNORECASE,
@@ -198,6 +233,34 @@ _CLAIM_SUBJECT_RE = re.compile(
     re.IGNORECASE,
 )
 
+#: ⚠ **In the "X has no Y" form the discriminating noun phrase sits BEFORE the
+#: marker**, and reading only forwards is why "The 505-member research universe
+#: has NO scheduled refresher" scoped on ``{scheduled, refresher}`` — words
+#: absent from the very branch that falsified it, while ``universe`` sat one
+#: word to the left and was all over that diff. Words are taken RIGHT-to-left:
+#: the head noun abuts the verb, so "the 505-member research **universe**" is
+#: the half worth keeping.
+_CLAIM_HEAD_RE = re.compile(
+    rf"((?:[\w-]+ ){{0,4}})(?:has|have) {_EMPH}no\b",
+    re.IGNORECASE,
+)
+
+
+def _is_distinctive(token: str) -> bool:
+    """Is a diff hit on this token evidence, or a coincidence?
+
+    Structural rather than a word list, because a word list is the knob this
+    leg's own comments warn against widening until the number goes away.
+    ``signal-watch``, ``Type=oneshot`` and ``db_retry`` carry punctuation, a
+    digit or a capital and name one thing; ``state``, ``write`` and ``path`` are
+    plain lowercase English and appear in almost every diff for unrelated
+    reasons. ⚠ The proxy is imperfect in one known direction — a distinctive but
+    plain-lowercase name like ``codecov`` reads as generic and is demoted to the
+    note rather than reported. That is the safe direction: the note still names
+    it, so the cost is a re-read rather than a miss.
+    """
+    return any(c.isupper() or c.isdigit() or c in "-_./=" for c in token)
+
 
 def claim_subject_tokens(text: str) -> set[str]:
     """Scoping fallback for a plain-form claim carrying no backticked token.
@@ -219,12 +282,30 @@ def claim_subject_tokens(text: str) -> set[str]:
     no" does with "wifey daemon" on the next — yields nothing here and is
     reported, because it genuinely cannot be ruled out.
     """
-    m = _CLAIM_SUBJECT_RE.search(text)
-    if not m:
-        return set()
-    words = (w.strip('*_`.,:;()[]|"').lower() for w in m.group(1).split())
-    keep = [w for w in words if len(w) >= 3 and w not in _SUBJECT_STOP]
-    return set(keep[:2])
+
+    def _pick(raw: str, from_right: bool) -> list[str]:
+        words = [w.strip('*_`.,:;()[]|"').lower() for w in raw.split()]
+        keep = [w for w in words if len(w) >= 3 and w not in _SUBJECT_STOP]
+        return list(reversed(keep))[:2] if from_right else keep[:2]
+
+    out: set[str] = set()
+    # ⚠ EVERY marker, not just the first. README's "Nothing consumes it — there
+    # is no codecov/coveralls step" put an anaphoric "it" under the first marker
+    # and the real subject under the second, so keying on `.search` read the
+    # whole line as unscopable and it failed open on every branch forever.
+    for m in _CLAIM_SUBJECT_RE.finditer(text):
+        out.update(_pick(m.group(1), from_right=False))
+    for head in _CLAIM_HEAD_RE.finditer(text):
+        # ⚠ Skip a repo-self head: "this fork has no daemon" would otherwise
+        # scope on `fork`, a word that means nothing in a diff of this repo. The
+        # subject is worth extracting only when it names WHICH part is denied.
+        if not _CLAIM_SELF_RE.search(head.group(1)):
+            out.update(_pick(head.group(1), from_right=True))
+    # A quoted phrase names its subject as surely as a backticked one; this tree
+    # writes 'There is no "Agent Skills table"' where code would write a span.
+    for quoted in _QUOTED.findall(text):
+        out.update(_pick(quoted, from_right=False))
+    return out
 
 
 #: ⚠ **``deploy/`` ships WITH the widened regex above, never alone.** Against the
@@ -313,6 +394,34 @@ NEGATIVE_CLAIM_EXEMPT: dict[tuple[str, str], str] = {
     (".claude/context/analytics.md", "evaluate"): (
         "a forecast-book function name; the claim on its line is about the "
         "parent's book-dependent attribution"
+    ),
+    # ⚠ The three below are keyed on a matched MARKER and were surfaced only
+    # when the corpus query stopped filtering on the letter `x` (2026-08-26).
+    # Each is a sentence no branch can ever settle, so without an entry it fails
+    # open on every run forever — which is the state this leg was extracted from
+    # prose to stop being.
+    (".claude/context/tools.md", "nothing read"): (
+        "past tense, and about a defect already fixed: the sentence opens 'Live "
+        "consequence WHILE IT WAS MISSING'. It records what happened before "
+        "that flag had a reader, so no future branch can falsify it. "
+        "⚠ Reason kept free of the identifier the sentence names — the scoping "
+        "haystack is the diff itself, so writing it here re-scoped the "
+        "same-marker claim in ingest-video's SKILL.md on this very branch"
+    ),
+    (".claude/skills/pr-summary/SKILL.md", "there is no"): (
+        "'there is no collaborator permission to lack' is a claim about "
+        "GitHub's permission model on a single-owner fork, not about anything "
+        "this repo could grow. Its subject also wraps to the next line, so no "
+        "line-unit scoping can reach it"
+    ),
+    ("deploy/README.md", "nothing installs"): (
+        "the one claim here that is TRUE and meant to stay true: nothing in the "
+        "repo installs the systemd units, because installing one dispatches "
+        "Telegram and is an operator decision. CLAUDE.md states the same "
+        "property. ⚠ Known hole, taken deliberately: this mutes the marker for "
+        "BOTH sentences carrying it in this file, so if the repo ever does "
+        "install a unit, this leg will not be what tells you — the policy line "
+        "in CLAUDE.md is"
     ),
 }
 
@@ -433,9 +542,15 @@ def extract_tokens(text: str) -> set[str]:
         # A backticked command line is not a token; take its first word.
         first = tok.split()[0] if tok.split() else ""
         for cand in (tok, first):
-            cand = cand.strip("`*_.,:;()[]")
-            if len(cand) >= 3 and cand not in _STOPWORDS:
-                out.add(cand)
+            # ⚠ Strip emphasis and punctuation but keep the UNDERSCORE form as
+            # well. Stripping ``_`` unconditionally turned ``__main__`` into
+            # ``main``, which is a stopword — so the one genuinely distinctive
+            # token on "there is no `__main__` and no argparse" was destroyed on
+            # its way to the filter, and the line read as unscopable.
+            base = cand.strip("`*.,:;()[]")
+            for form in (base, base.strip("_")):
+                if len(form) >= 3 and form not in _STOPWORDS:
+                    out.add(form)
     out.update(_HYPOTHESIS.findall(text))
     return out
 
@@ -674,23 +789,42 @@ def check_new_targets(diff: str, doc_blob: str) -> list[Finding]:
 
 def check_negative_claims(
     runner: Runner, diff: str, diff_names: str
-) -> tuple[list[Finding], int, int]:
+) -> tuple[list[Finding], int, int, list[str]]:
     """Docs asserting the absence of something THIS branch just added.
 
-    Returns ``(findings, suppressed, exempted)``. The absence corpus is a
+    Returns ``(findings, suppressed, exempted, soft)``. The absence corpus is a
     property of the tree, not of the branch, so reporting all of it every run
     made this the one leg that was never clean — and a check that is never clean
     trains dismissal exactly as a check that is never green stops being read. The
     scope is the intersection with the branch, which is what the sentence beside
-    it always claimed; both remainders are counted into a note.
+    it always claimed; the remainders are counted into a note.
 
     Scoping is on the claim line's own distinctive tokens against the diff's
     ADDED lines. Additions only: a branch that REMOVES the named thing makes
     an absence claim more true, not less.
 
-    ⚠ A claim line with no extractable token cannot be ruled out, so it is
-    reported. This leg fails OPEN on purpose — a miss ships a doc denying
-    something now present, which is the whole harm the check exists to catch.
+    ⚠ **The corpus query is ``-e ""`` and the empty pattern is LOAD-BEARING.**
+    It read ``-e "x"`` from the #218 extraction until 2026-08-26, which is not
+    "every line" — it is *every line containing the letter x*, and it silently
+    cut the declared corpus to **1,892 of 12,277 non-blank lines tree-wide (15%)**,
+    and to **195 of CLAUDE.md's own 879 (22%)**.
+    **46 of the 69 claim-shaped lines then in the corpus (67%) contain no ``x`` at
+    all** and had never
+    been reachable, ``Makefile``'s "The 505-member research universe has NO
+    scheduled refresher" among them — a claim #265 falsified and this leg could
+    not see. Every triage figure once quoted for this leg was measured on that
+    truncated corpus. ⚠ **The tests inject a fake runner, so no test exercised
+    the real argv**; ``TestCorpusQueryReachesEveryLine`` now pins it, with a
+    line carrying no ``x`` as the positive control. A filter nobody declared
+    reads exactly like a corpus nobody wrote a claim into.
+
+    ⚠ **A finding requires a STRONG token — backticked or a hypothesis id.** A
+    claim scoped only by bare English ("there is no **state**") matches almost
+    any diff, so promoting those to findings put the leg at **31.7 per run**
+    against a status quo of 8.5. They are not dropped: they land in ``soft``,
+    gated to files this branch actually touched, and the caller counts them into
+    the note. Measured over the six branches to 7519f0b, that is **13.2 findings
+    and 18.2 soft per run** while reading 6.5x the corpus.
 
     ⚠ ``NEGATIVE_CLAIM_EXEMPT`` suppresses a hit only when EVERY matched token
     is exempt for that path. One unexempt token reports the whole line, so an
@@ -699,8 +833,9 @@ def check_negative_claims(
     """
     added = "\n".join(line for line in diff.splitlines() if line.startswith("+"))
     haystack = added + "\n" + diff_names
-    out = runner(["git", "grep", "-nI", "-e", "x", "--", *NEGATIVE_CLAIM_PATHS])
+    out = runner(["git", "grep", "-nI", "-e", "", "--", *NEGATIVE_CLAIM_PATHS])
     findings: list[Finding] = []
+    soft: list[str] = []
     suppressed = 0
     exempted = 0
     for line in out.splitlines():
@@ -710,7 +845,17 @@ def check_negative_claims(
         m = NEGATIVE_CLAIM_RE.search(parts[2])
         if not m:
             continue
-        tokens = extract_tokens(parts[2]) or claim_subject_tokens(parts[2])
+        # ⚠ EVERY marker on the line must be exempt, mirroring the token rule
+        # below. Keying on the first match alone suppressed a real one: #261's
+        # README line carries "nothing installs" AND "there is still no", and
+        # exempting the former hid the latter — one line, two claims, and only
+        # one of them settled.
+        markers = {mm.group(0).lower() for mm in NEGATIVE_CLAIM_RE.finditer(parts[2])}
+        # A backticked span is the author SAYING this is an identifier, so it
+        # always reports; the distinctiveness gate below applies only to tokens
+        # this tool inferred from bare prose.
+        strong = extract_tokens(parts[2])
+        tokens = strong or claim_subject_tokens(parts[2])
         hits = sorted(t for t in tokens if t in haystack)
         if tokens and not hits:
             suppressed += 1
@@ -718,24 +863,23 @@ def check_negative_claims(
         if hits and all((parts[0], h) in NEGATIVE_CLAIM_EXEMPT for h in hits):
             exempted += 1
             continue
-        # An unscopable line has no token to key on, so the MARKER is the key.
-        # Still path-scoped and reason-carrying: this releases one sentence in one
-        # file, never the phrasing everywhere.
-        #
-        # ⚠ EVERY marker on the line must be exempt, mirroring the token rule
-        # above. Keying on the first match alone suppressed a real one: #261's
-        # README line carries "nothing installs" AND "there is still no", and
-        # exempting the former hid the latter — one line, two claims, and only
-        # one of them settled.
-        markers = {mm.group(0).lower() for mm in NEGATIVE_CLAIM_RE.finditer(parts[2])}
         if not tokens and all((parts[0], k) in NEGATIVE_CLAIM_EXEMPT for k in markers):
             exempted += 1
+            continue
+        # ⚠ A hit on a bare English word is not evidence. "there is no **state**"
+        # scopes in on any diff that writes the word "state", which is most of
+        # them, and promoting those put the leg at 31.7 per run against a status
+        # quo of 8.5. They are DEMOTED, never dropped: the note names each one so
+        # a human can re-read the paragraph, which is how this leg's only
+        # confirmed true positive was ever found.
+        if hits and not strong and not any(_is_distinctive(h) for h in hits):
+            soft.append(f"{parts[0]}:{parts[1]}")
             continue
         why = f" (matched {', '.join(hits[:3])})" if hits else " (no token to scope on)"
         findings.append(
             Finding("negative-claims", f"{parts[0]}:{parts[1]}: {m.group(0)}{why}")
         )
-    return findings, suppressed, exempted
+    return findings, suppressed, exempted, soft
 
 
 # ------------------------------------------------------------------ execution
@@ -747,7 +891,9 @@ def _negative_claims_result(runner: Runner, diff: str, diff_names: str) -> Check
     The exempt count is printed rather than swallowed: an allowlist nobody can
     see is a mute, and a mute is what this leg's own history argues against.
     """
-    findings, suppressed, exempted = check_negative_claims(runner, diff, diff_names)
+    findings, suppressed, exempted, soft = check_negative_claims(
+        runner, diff, diff_names
+    )
     parts = []
     if suppressed:
         parts.append(
@@ -758,6 +904,16 @@ def _negative_claims_result(runner: Runner, diff: str, diff_names: str) -> Check
         parts.append(
             f"{exempted} scoped in only by token(s) on NEGATIVE_CLAIM_EXEMPT "
             "(reason inline there)"
+        )
+    if soft:
+        # Named, never summarised to a bare count: the whole point is that a
+        # human can re-read these paragraphs, which is how this leg's only
+        # confirmed true positive was ever found.
+        parts.append(
+            f"{len(soft)} claim(s) carry no token distinctive enough to scope "
+            "on, in files this branch touched — RE-READ, do not assume: "
+            + ", ".join(soft[:8])
+            + (f" (+{len(soft) - 8} more)" if len(soft) > 8 else "")
         )
     return CheckResult("negative-claims", findings, note="; ".join(parts) or None)
 

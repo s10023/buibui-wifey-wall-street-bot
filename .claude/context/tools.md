@@ -143,6 +143,26 @@ first draft naming all three terms, in the window the gate exists to make safe; 
 hand-check (#249) used a throwaway six-line loop, which is what this wires in. Belongs in
 phase 5 — a posted body is public on landing and a later edit does not unpublish it.
 
+⚠ **`negative-claims` read 15% of its own corpus for eight months, and nothing could see it.**
+From the #218 extraction until 2026-08-26 the corpus query was `git grep -nI -e x`, written as
+if the pattern meant "every line". It does not — it matches *every line containing the letter
+`x`*, which is **1,892 of 12,277 non-blank corpus lines (15%)**. **46 of the 69 claim-shaped
+lines then in the corpus carry no `x` at all** and had never been reachable, including `Makefile`'s "The 505-member
+research universe has NO scheduled refresher" — a claim #265 falsified while this leg reported
+nothing about it. Three things made it durable: every test injects a **fake runner**, so the
+real argv was never exercised; the leg's quietness read as a well-tuned scope rather than as
+blindness; and **every triage figure ever quoted for it** ("33 → 21 lines", "8 of 8", "0–5 to
+1–11 per run") was measured on the truncated slice, so the numbers corroborated the defect.
+⚠ **The error direction was flattering, which is why it survived** — a filter nobody declared
+reads exactly like a corpus nobody wrote a claim into. `TestCorpusQueryReachesEveryLine` now
+pins the argv and the behaviour separately, with an `x`-free line as the positive control;
+only the argv leg goes red when the defect is reintroduced, because the behaviour leg's fake
+runner cannot see it. On the fixed corpus the leg reports **13.2 findings + 18.2 soft per
+run** against 8.5 while blind — **4.2× quieter per corpus line**. A finding now needs a
+backticked or punctuated token; a hit on bare English ("there is no **state**") is demoted to
+a named re-read note rather than dropped, and the subject is read to the LEFT of `has no` as
+well as the right, since that is where the discriminating noun sits.
+
 `negative-claims` narrows through `NEGATIVE_CLAIM_EXEMPT`, `(path, token)` → reason. A hit
 is dropped only when **every** matched token is exempt, so one unexempt token still reports
 the line and an entry narrows rather than deletes; the count is printed, never swallowed,
@@ -168,12 +188,14 @@ all**` puts a bold marker mid-phrase — so the pattern carries an emphasis slot
 
 Three things bounded the cost, and each was measured rather than reasoned:
 
-- **`has no` is anchored to a repo-self subject** (`wifey`, `this repo|fork|tree`, `the
-  fork|repo`), plus a line-initial arm for a claim whose subject sits on the previous line.
-  Bare, it matched 16 corpus lines for 3 of the 8 catches — most are claims about what
-  something ELSE lacks (*"yfinance OHLCV has no taker data"*, *"the endpoint has no children
-  field"*), which no wifey branch can falsify. Anchoring cut the corpus 33 → 21 lines and kept
-  all 8.
+- **`has no` is anchored to a subject that is not a third party** — `wifey`, `this
+  repo|fork|tree|skill`, `the fork|repo`, or any definite noun phrase that is not `the parent`
+  or `the endpoint` — plus an intervening-adverb slot and a line-initial arm for a claim whose
+  subject sits on the previous line. Bare, it matches mostly claims about what something ELSE
+  lacks (*"yfinance OHLCV has no taker data"*, *"the endpoint has no children field"*), which
+  no wifey branch can falsify; unanchored it measures **57.5 findings per run**. ⚠ The
+  line-count figures once quoted here were measured through the `-e x` corpus filter and are
+  gone rather than restated — see the corpus note above.
 - **`claim_subject_tokens` is a scoping fallback, not a wider token list.** Widening the regex
   took claim lines carrying no backticked token — unscopable, therefore reported on *every*
   branch forever — from **0 to 11**, which would have made the leg permanently unclean. The
@@ -181,9 +203,11 @@ Three things bounded the cost, and each was measured rather than reasoned:
   ⚠ **It is the opposite knob from #250's**: that one scopes lines IN wholesale. Fail-open
   survives where it is still earned — a subject that is all stopwords, or that runs off the
   end of its line, still reports.
-- ⚠ **Price the TRIAGE LOAD, not just the catch.** Findings per run went from 0–5 to 1–11
-  across four past branches. That is paid on every branch and is the standing argument against
-  going wider: **a check that is never clean trains dismissal.**
+- ⚠ **Price the TRIAGE LOAD, not just the catch.** On the fixed corpus the leg reports
+  **13.2 findings + 18.2 soft per run** over the six branches to `7519f0b`, against 8.5 while
+  it was reading 15% of the tree — **4.2× quieter per corpus line**. That is paid on every
+  branch and is the standing argument against going wider: **a check that is never clean
+  trains dismissal.**
   `TestTheLegIsCleanOnAnUNRELATEDBranch` pins the property that made it shippable — zero claim
   lines report unconditionally — against the real tree, so a future doc edit fails there. The
   fix is then to scope or exempt that one sentence, never to grow `_SUBJECT_STOP` until the

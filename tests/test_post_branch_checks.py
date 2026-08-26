@@ -353,7 +353,7 @@ class TestCheckNegativeClaims:
 
     def test_a_claim_the_branch_CONTRADICTS_is_reported(self) -> None:
         """Positive control: the branch adds the very thing the doc denies."""
-        findings, suppressed, exempted = check_negative_claims(
+        findings, suppressed, exempted, _soft = check_negative_claims(
             self._runner(self.CLAIM),
             diff="+def pead_wiring() -> None:\n",
             diff_names="analytics/signal/pead_wiring.py",
@@ -363,7 +363,7 @@ class TestCheckNegativeClaims:
         assert suppressed == 0
 
     def test_a_claim_unrelated_to_the_diff_is_scoped_out_and_COUNTED(self) -> None:
-        findings, suppressed, exempted = check_negative_claims(
+        findings, suppressed, exempted, _soft = check_negative_claims(
             self._runner(self.CLAIM),
             diff="+def something_else() -> None:\n",
             diff_names="analytics/other.py",
@@ -373,7 +373,7 @@ class TestCheckNegativeClaims:
 
     def test_a_claim_with_no_token_FAILS_OPEN(self) -> None:
         """Unscopable means unruled-out; a miss is the harm this check exists for."""
-        findings, suppressed, exempted = check_negative_claims(
+        findings, suppressed, exempted, _soft = check_negative_claims(
             self._runner("docs/x.md:3:the exporter is not yet wired"),
             diff="+unrelated\n",
             diff_names="other.py",
@@ -384,7 +384,7 @@ class TestCheckNegativeClaims:
 
     def test_a_REMOVAL_does_not_report_the_claim(self) -> None:
         """Removing the named thing makes an absence claim MORE true, not less."""
-        findings, suppressed, exempted = check_negative_claims(
+        findings, suppressed, exempted, _soft = check_negative_claims(
             self._runner(self.CLAIM),
             diff="-def pead_wiring() -> None:\n",
             diff_names="",
@@ -394,7 +394,7 @@ class TestCheckNegativeClaims:
 
     def test_the_skill_itself_is_still_exempt(self) -> None:
         """post-branch's own file documents the language and must not self-match."""
-        findings, suppressed, exempted = check_negative_claims(
+        findings, suppressed, exempted, _soft = check_negative_claims(
             self._runner(
                 ".claude/skills/post-branch/SKILL.md:9:`pead_wiring` is not yet wired"
             ),
@@ -428,7 +428,7 @@ class TestNegativeClaimExempt:
         exempt[("docs/x.md", "symbol")] = "test fixture"
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr("tools.post_branch_checks.NEGATIVE_CLAIM_EXEMPT", exempt)
-            findings, suppressed, exempted = check_negative_claims(
+            findings, suppressed, exempted, _soft = check_negative_claims(
                 self._runner(self.CLAIM),
                 diff="+def uses(symbol: str) -> None:\n",
                 diff_names="analytics/other.py",
@@ -443,7 +443,7 @@ class TestNegativeClaimExempt:
         exempt[("docs/x.md", "symbol")] = "test fixture"
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr("tools.post_branch_checks.NEGATIVE_CLAIM_EXEMPT", exempt)
-            findings, _suppressed, exempted = check_negative_claims(
+            findings, _suppressed, exempted, _soft = check_negative_claims(
                 self._runner(self.CLAIM),
                 diff="+def pead_wiring(symbol: str) -> None:\n",
                 diff_names="analytics/signal/pead_wiring.py",
@@ -453,7 +453,7 @@ class TestNegativeClaimExempt:
 
     def test_the_exemption_is_keyed_on_the_PAIR_not_the_token(self) -> None:
         """The same token in another file is untouched — no cross-file hole."""
-        findings, _suppressed, exempted = check_negative_claims(
+        findings, _suppressed, exempted, _soft = check_negative_claims(
             self._runner("docs/other.md:3:`symbol` handling is not yet wired"),
             diff="+def uses(symbol: str) -> None:\n",
             diff_names="analytics/other.py",
@@ -500,7 +500,7 @@ class TestNegativeClaimExempt:
         from 'this one unscopable sentence' into 'this phrasing in this file'.
         """
         line = ".claude/skills/sanity-check/SKILL.md:9:`cluster.py` reads nothing reads"
-        findings, _, exempted = check_negative_claims(
+        findings, _, exempted, _soft = check_negative_claims(
             self._runner(line),
             diff="+import cluster.py\n",
             diff_names="analytics/cluster.py",
@@ -915,7 +915,7 @@ class TestDeployIsInTheAbsenceCorpus:
         def run(argv: Sequence[str]) -> str:
             return line
 
-        findings, suppressed, exempted = check_negative_claims(
+        findings, suppressed, exempted, _soft = check_negative_claims(
             run,
             diff="+Description=wifey signal dispatch\n",
             diff_names="deploy/systemd/user/wifey-signal-watch.timer",
@@ -977,7 +977,7 @@ class TestClaimSubjectScoping:
     CLAIM = "deploy/README.md:9:There is deliberately no signal-watch daemon here"
 
     def test_the_subject_scopes_the_claim_IN(self) -> None:
-        findings, suppressed, _ = check_negative_claims(
+        findings, suppressed, _, _soft = check_negative_claims(
             self._runner(self.CLAIM),
             diff="+ExecStart=/usr/bin/make go-live\n",
             diff_names="deploy/systemd/user/wifey-signal-watch.timer",
@@ -987,7 +987,7 @@ class TestClaimSubjectScoping:
 
     def test_the_subject_scopes_an_unrelated_claim_OUT(self) -> None:
         """The point of the fallback: countable, not reported, not dismissed."""
-        findings, suppressed, _ = check_negative_claims(
+        findings, suppressed, _, _soft = check_negative_claims(
             self._runner(self.CLAIM),
             diff="+def unrelated() -> None:\n",
             diff_names="analytics/other.py",
@@ -998,7 +998,7 @@ class TestClaimSubjectScoping:
     def test_a_stopword_only_subject_still_FAILS_OPEN(self) -> None:
         """Fail-open survives where it is still earned. "nothing installs them"
         names a pronoun, so nothing can rule it out and it must be reported."""
-        findings, _, _ = check_negative_claims(
+        findings, _, _, _soft = check_negative_claims(
             self._runner("docs/x.md:3:the legs ship — nothing installs them"),
             diff="+anything\n",
             diff_names="other.py",
@@ -1026,7 +1026,7 @@ class TestClaimSubjectScoping:
             "README.md:901:systemd user timers — nothing installs them, and "
             "there is still no"
         )
-        findings, _, exempted = check_negative_claims(
+        findings, _, exempted, _soft = check_negative_claims(
             self._runner(line), diff="+anything\n", diff_names="x.py"
         )
         assert exempted == 0, "the second, unexempt claim must survive the first"
@@ -1049,8 +1049,88 @@ class TestTheLegIsCleanOnAnUNRELATEDBranch:
     """
 
     def test_no_claim_line_reports_unconditionally(self) -> None:
-        findings, _, _ = check_negative_claims(_run, diff="", diff_names="")
+        findings, _, _, _soft = check_negative_claims(_run, diff="", diff_names="")
         assert findings == [], (
             "these claim lines report on every branch forever: "
             + "; ".join(f.detail for f in findings)
         )
+
+
+class TestCorpusQueryReachesEveryLine:
+    """⚠ The corpus query is the one part of this leg no test could see.
+
+    It read ``git grep -nI -e "x"`` from the #218 extraction until 2026-08-26.
+    That is not "every line" — it is *every line containing the letter x*, and
+    it silently cut the declared corpus to **195 of CLAUDE.md's 879 non-blank
+    lines (22%), and 1,892 of 12,277 tree-wide (15%)**. **46 of the 69
+    claim-shaped lines then in the corpus carry no ``x`` at all**,
+    ``Makefile``'s "The 505-member research universe has NO scheduled refresher"
+    among them — a claim #265 falsified while this leg reported nothing.
+
+    Every other test in this file injects a fake runner, which is exactly why
+    the defect survived: the leg was measured, tuned and documented against 15%
+    of what its own docstring claimed to read, and the suite stayed green
+    throughout. ⚠ **A mocked boundary is not an exercised boundary.**
+
+    The two halves fail differently and are asserted separately: the ARGV, where
+    a regression is a one-character edit, and the BEHAVIOUR, where the control
+    is a claim line chosen because it contains no ``x``.
+    """
+
+    def test_the_corpus_pattern_is_empty_not_a_letter(self) -> None:
+        seen: list[Sequence[str]] = []
+
+        def run(argv: Sequence[str]) -> str:
+            seen.append(argv)
+            return ""
+
+        check_negative_claims(run, diff="", diff_names="")
+        assert seen, "the check must query the git surface at all"
+        argv = list(seen[0])
+        assert "-e" in argv, f"no pattern flag in {argv}"
+        assert argv[argv.index("-e") + 1] == "", (
+            "a non-empty pattern silently filters the corpus to lines "
+            f"containing it, which is the #218 defect: {argv}"
+        )
+
+    def test_a_claim_line_carrying_no_letter_x_is_reachable(self) -> None:
+        """Positive control: the exact line the old pattern could not see.
+
+        ⚠ The control is void if the fixture ever gains an ``x``, so that is
+        asserted first rather than assumed.
+        """
+        text = "## The 505-member research universe has NO scheduled refresher"
+        assert "x" not in text.lower(), "control is vacuous once the line has an x"
+        assert NEGATIVE_CLAIM_RE.search(text), (
+            "the definite-subject arm must match: an allowlist of repo-self "
+            "subjects could not reach 'The 505-member research universe'"
+        )
+
+        def run(argv: Sequence[str]) -> str:
+            return f"Makefile:588:{text}"
+
+        findings, _suppressed, _exempted, soft = check_negative_claims(
+            run,
+            diff="+wifey-universe-sync.timer\n",
+            diff_names="deploy/systemd/user/wifey-universe-sync.timer",
+        )
+        # Scoped on `universe`, taken from the subject to the LEFT of "has no"
+        # and matched against the timer this branch added. It lands in the
+        # re-read note rather than the findings list because the line carries no
+        # backticked token, so the hit is inferred from prose rather than stated.
+        assert soft == ["Makefile:588"], (findings, soft)
+
+    def test_an_unrelated_branch_does_not_scope_that_line_in(self) -> None:
+        """The other half of the control: scoping still has to do its job."""
+
+        def run(argv: Sequence[str]) -> str:
+            return (
+                "Makefile:588:## The 505-member research universe has NO "
+                "scheduled refresher"
+            )
+
+        findings, suppressed, _exempted, soft = check_negative_claims(
+            run, diff="+def unrelated() -> None:\n", diff_names="analytics/other.py"
+        )
+        assert findings == [] and soft == []
+        assert suppressed == 1
