@@ -106,4 +106,41 @@ hardcodes None, which is the defect wearing a different hat. Both mutations were
 reds the positive control, the distinctness test and the collision regression.
 
 `make test-regression` passes with **no golden moved**, as predicted: the change alters what a
-run is *called*, never what it computes.
+run is *called*, never what it computes. Full suite 3,375 passed / 3 skipped.
+
+## Reproducing the figures
+
+Every count above came from the live `analytics.db` on 2026-08-26 and is reproducible. The DB is
+machine-local single-copy state, so these are stated as *measured then*, not as invariants.
+
+```python
+# saturation of the key, and what separates the tuples that carry two ids
+with t as (
+  select symbol,timeframe,strategy,days,sl_pct,tp_r,fee_pct,day_filter,
+         adr_suppress_threshold,volume_suppress,cost_model,
+         count(distinct run_id) n_ids,
+         count(*) filter (where sweep_id is null)     n_nosweep,
+         count(*) filter (where sweep_id is not null) n_sweep
+  from backtest_runs group by 1,2,3,4,5,6,7,8,9,10,11
+)
+select n_ids, count(*) tuples, sum(n_nosweep), sum(n_sweep) from t group by 1 order by 1;
+-- n_ids=1 -> 3140 tuples; n_ids=2 -> 84 tuples, 84 no-sweep rows and 84 sweep rows
+```
+
+```python
+-- era split, against the flip commit rather than a month bucket
+select count(*) filter (where run_at_ms <  epoch_ms(timestamp '2026-08-07')) as pre,   -- 2431
+       count(*) filter (where run_at_ms >= epoch_ms(timestamp '2026-08-07')) as post   -- 877
+from backtest_runs;                                                                    -- 3308 total
+```
+
+⚠ **Do not date a row by `cost_model IS NULL`.** The 2,080 NULL rows look coextensive with the
+pre-flip era in a month-bucket view and are not: **351 pre-flip rows carry a cost_model**. The
+first pass of this audit made that inference and it was wrong; `run_at_ms` against `2bd93ec`'s
+date is the discriminator.
+
+The −41.6% / −42.5% closed-trade figures are **not re-derived here** — they are quoted from
+`config/strategy_params.toml`'s own committed comment, which cites
+`docs/plans/scripts/live_parity_rating_fallout.py`. The six test-local INSERT statements are
+`git grep -c "INSERT INTO backtest_runs VALUES" tests/`; the writer inventory is
+`git grep -n "upsert_backtest_run(" -- analytics cli web`.
