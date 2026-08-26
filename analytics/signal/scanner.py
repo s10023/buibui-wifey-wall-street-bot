@@ -1297,6 +1297,10 @@ def run_scan_cycle(
                         tf,
                         adr_exempt=_is_adr_exempt(strategy_params, strategy),
                     ),
+                    # `bt_cache._compute_backtest` calls `run_backtest` with no
+                    # LiveParityConfig at all, so no gate can have run here.
+                    # None is the executed truth, not an omission.
+                    live_parity=None,
                     volume_suppress=_resolve_volume_suppress(
                         strategy_params, strategy, backtest_cfg.volume_suppress
                     )

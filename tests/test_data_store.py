@@ -547,6 +547,9 @@ _BT_PARAMS: dict[str, Any] = {
     # Note mypy cannot enforce this through a `**dict` splat — the 12 call
     # sites below type-checked clean and failed at runtime.
     "adr_suppress_threshold": None,
+    # Required since 2026-08-26, and unenforceable here for the same reason —
+    # the EXECUTED live-parity gate set, not a config's declared block.
+    "live_parity": None,
 }
 
 
@@ -670,7 +673,7 @@ class TestGetWinRateByStrategy:
             "INSERT INTO backtest_runs VALUES (?, 'BTCUSDT', '4h', 'bos', "
             "1690000000000, 1700000000000, 90, 0.02, 2.0, 0.0, 'off', "
             "25, 25, 15, 10, 0.6, 0.5, 12.5, 3.0, 1700000001000, NULL, "
-            "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)",
+            "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)",
             [run_id],
         )
         df = get_win_rate_by_strategy(conn)
@@ -686,7 +689,7 @@ class TestGetWinRateByStrategy:
             "INSERT INTO backtest_runs VALUES (?, 'BTCUSDT', '4h', 'fvg', "
             "1690000000000, 1700000000000, 90, 0.02, 2.0, 0.0, 'off', "
             "5, 5, 3, 2, 0.6, 0.4, 2.0, 1.0, 1700000001000, NULL, "
-            "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)",
+            "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)",
             [run_id],
         )
         df = get_win_rate_by_strategy(conn)
@@ -712,7 +715,7 @@ class TestGetWinRateByStrategy:
                 f"'off', {closed}, {closed}, {wins}, {closed - wins}, "
                 f"{wins / closed}, {avg_r}, 0.0, 3.0, 1700000001000, NULL, "
                 "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "
-                "NULL, NULL, NULL, NULL, NULL)"
+                "NULL, NULL, NULL, NULL, NULL, NULL)"
             )
         df = get_win_rate_by_strategy(conn)
         assert len(df) == 1
@@ -1051,6 +1054,7 @@ class TestBacktestRunIdOrigin:
             "fee_pct": 0.0,
             "day_filter": "tue_thu",
             "adr_suppress_threshold": None,
+            "live_parity": None,
         }
         swept = BacktestResult(symbol="SPY", timeframe="4h", strategy="bos")
         upsert_backtest_run(conn, swept, sweep_id="sweep-1", origin="sweep", **params)
@@ -1079,6 +1083,7 @@ class TestBacktestRunIdOrigin:
             "fee_pct": 0.0,
             "day_filter": "weekdays",
             "adr_suppress_threshold": None,
+            "live_parity": None,
         }
         upsert_backtest_run(
             conn,
@@ -1144,6 +1149,7 @@ class TestBacktestRunIdCostModel:
             cost_model='{"impact_coef":1.0}',
             origin="sweep",
             adr_suppress_threshold=None,
+            live_parity=None,
         )
         row = conn.execute(
             "SELECT cost_model FROM backtest_runs WHERE run_id = ?", [run_id]

@@ -176,8 +176,9 @@ def run_backtest_endpoint(
         origin="web",
         # The ad-hoc UI backtest above passes neither live_parity nor bias_cfg,
         # so no ADR gate can run on this path — NULL is the executed truth, not
-        # an omission.
+        # an omission. Same for the gate set, and for the same reason.
         adr_suppress_threshold=None,
+        live_parity=None,
     )
     upsert_backtest_trades(db, result, run_id)
     return _result_to_response(result)

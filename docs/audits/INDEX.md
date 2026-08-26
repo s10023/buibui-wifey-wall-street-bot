@@ -4,13 +4,14 @@
 `make docs-index-check` (and `tests/test_docs_index.py`) fails when this file
 drifts from the corpus.
 
-**40 audits.** A verdict line is shown only where one could be read
-out of a Verdict heading as prose — that is **30 of 40**.
+**41 audits.** A verdict line is shown only where one could be read
+out of a Verdict heading as prose — that is **31 of 41**.
 An em dash means the doc states its verdict in a table, a blockquote or the body,
 **not** that it lacks one; open the file. Nothing here is keyword-guessed.
 
 | Date | Audit | Verdict (as written) | File |
 | --- | --- | --- | --- |
+| 2026-08-26 | `backtest_runs` identity ignored the live-parity gate set | FOUND, and closed in this branch. The `run_id` hash carried thirteen axes and none of them recorded the live-parity gate set,… | [2026-08-26-run-id-live-parity-axis.md](2026-08-26-run-id-live-parity-axis.md) |
 | 2026-08-26 | `negative-claims` read 15% of its own corpus, and every figure it reported agreed | FOUND and FIXED — a coverage defect in a doc-drift gate, not an edge claim. No sleeve verdict moves and no measured `avg_r`… | [2026-08-26-negative-claims-corpus-filter.md](2026-08-26-negative-claims-corpus-filter.md) |
 | 2026-08-25 | The dispatch recency window — a third of the alert surface never reached Telegram | FOUND and FIXED — a delivery defect, not an edge claim. No sleeve verdict moves and no measured `avg_r` changes; the ledger was… | [2026-08-25-dispatch-recency-window.md](2026-08-25-dispatch-recency-window.md) |
 | 2026-08-20 | Symmetric gap fill — the mirror the first measurement missed | CORRECTNESS — no edge claim, and no sleeve verdict moves. | [2026-08-20-symmetric-gap-fill.md](2026-08-20-symmetric-gap-fill.md) |

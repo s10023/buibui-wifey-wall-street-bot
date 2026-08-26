@@ -584,6 +584,11 @@ def _collect_sweep_results(
                 cost_model=cfg.cost_model.to_json()
                 if cfg.cost_model is not None
                 else None,
+                # The gate set this sweep RAN under. The shared base turns five
+                # on, and `cli/backtest.py` can override any of them per run, so
+                # without this axis an overridden sweep replaces the routine
+                # one's row at the same id.
+                live_parity=cfg.live_parity.identity(),
                 origin="sweep",
             )
             upsert_backtest_trades(conn, bt, run_id)
@@ -975,6 +980,10 @@ def run_backtest_cmd(
                     timeframe,
                     adr_exempt=_is_adr_exempt(live_strategy_params, strategy),
                 ),
+                # This is the path `--live-parity-<gate>` reaches, i.e. the one
+                # that can differ from the routine sweep on nothing but its
+                # gates. `live_parity` is None when the caller passed none.
+                live_parity=live_parity.identity() if live_parity is not None else None,
             )
             upsert_backtest_trades(conn, bt_result, run_id)
             print(f"\n  Results saved to DB (run_id={run_id})")
