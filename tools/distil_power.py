@@ -128,7 +128,23 @@ def price(args: argparse.Namespace) -> list[str]:
             )
         if args.corpus_best is not None:
             out.append(f"  corpus best       {args.corpus_best:+.4f}")
-            if args.sd is not None and sr * args.sd > args.corpus_best:
+            if args.sd is None:
+                # `--corpus-best` is quoted in effect units, so comparing it to
+                # the bar needs `--sd` to convert the required Sharpe into those
+                # units. Without it there is no comparison to make -- and this
+                # branch used to fall through to the same bare REACHABLE a
+                # cleared bar prints, so "did not compare" rendered as "passed"
+                # on a gate `/research-distil` mandates running. Name the
+                # missing input instead. Ported from parent #692 (ST76).
+                out.append("  VERDICT           REACHABLE, corpus best NOT COMPARED")
+                out.append(
+                    "                    --corpus-best is in effect units; without"
+                )
+                out.append(
+                    "                    --sd there is nothing to compare it to."
+                )
+                out.append("                    Re-run with --sd to close the gate.")
+            elif sr * args.sd > args.corpus_best:
                 out.append(
                     "  VERDICT           REACHABLE, but the bar EXCEEDS the corpus best"
                 )

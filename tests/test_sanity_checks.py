@@ -26,10 +26,12 @@ from tools.sanity_checks import (
     check_fork_drift,
     check_missing_paths,
     check_parent_leakage,
+    check_regression_surface,
     check_router_wiring,
     gather,
     is_path_like,
     makefile_targets,
+    regression_filter_patterns,
     render,
     subcommand_names,
     surface_paths,
@@ -406,3 +408,79 @@ class TestSymbolMetavar:
 
     def test_trailing_dash_is_also_stripped(self) -> None:
         assert _drift("run `--symbols SYMBOL-` now") == []
+
+
+WORKFLOW = """jobs:
+  lint-typecheck-test:
+    steps:
+      - uses: dorny/paths-filter@v4
+        id: changes
+        with:
+          filters: |
+            python:
+              - 'analytics/**/*.py'
+              - 'poetry.lock'
+              - 'tests/test_regression.py'
+
+  frontend-check:
+    steps:
+      - uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            frontend:
+              - 'web/ui/**'
+"""
+
+
+class TestRegressionSurface:
+    """CLAUDE.md's test-regression trigger list vs CI's own paths filter.
+
+    Until 2026-08-26 the doc list diverged in BOTH directions, and only the
+    narrowing one was harmful, so these tests assert the finding EXISTS as much as
+    they assert clean.
+    """
+
+    def test_reads_the_regression_block_not_the_frontend_one(self) -> None:
+        """Two `filters:` blocks in one file; a positional read grabs the wrong one."""
+        assert regression_filter_patterns(WORKFLOW) == [
+            "analytics/**/*.py",
+            "poetry.lock",
+            "tests/test_regression.py",
+        ]
+
+    def test_catches_a_path_ci_fires_on_that_the_doc_omits(self) -> None:
+        doc = (
+            "required when the diff touches `poetry.lock` or `tests/test_regression.py`"
+        )
+        assert check_regression_surface(doc, WORKFLOW) == [
+            Finding(
+                "regression-surface",
+                "CLAUDE.md does not name CI filter path: analytics/**/*.py",
+            )
+        ]
+
+    def test_a_verbatim_mirror_is_clean(self) -> None:
+        doc = "`analytics/**/*.py`, `poetry.lock`, `tests/test_regression.py`"
+        assert check_regression_surface(doc, WORKFLOW) == []
+
+    def test_a_paraphrase_does_not_count_as_naming_the_path(self) -> None:
+        """`analytics/backtest/` for `analytics/**/*.py` is exactly the old defect."""
+        doc = "`analytics/backtest/`, `poetry.lock`, `tests/test_regression.py`"
+        assert len(check_regression_surface(doc, WORKFLOW)) == 1
+
+    def test_a_missing_filter_is_a_finding_never_a_silent_pass(self) -> None:
+        """If the workflow moves, the check must say so rather than grade nothing."""
+        findings = check_regression_surface("anything", "jobs:\n  build:\n")
+        assert len(findings) == 1
+        assert "cannot see what it grades" in findings[0].detail
+
+    def test_the_live_tree_mirrors_its_own_ci_filter(self) -> None:
+        """The real check, against the real files — the reason the leg exists."""
+        workflow = Path(".github/workflows/lint.yaml").read_text(encoding="utf-8")
+        assert regression_filter_patterns(workflow), "no regression filter found"
+        assert (
+            check_regression_surface(
+                Path("CLAUDE.md").read_text(encoding="utf-8"), workflow
+            )
+            == []
+        )

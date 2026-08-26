@@ -32,6 +32,7 @@ import argparse
 import re
 import subprocess  # noqa: S404 - git plumbing, fixed argv, no shell
 import sys
+import textwrap
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -931,7 +932,68 @@ def _read_text_arg(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
-def render(results: Sequence[CheckResult]) -> tuple[list[str], int]:
+UNCOVERED_STEPS: tuple[tuple[str, str], ...] = (
+    (
+        "Phase 2",
+        "the behaviour gate — whether this PR is user-facing at all. No check "
+        "can read intent from a diff.",
+    ),
+    (
+        "Phase 3",
+        "the doc-surface walk. The sweep finds UNDOCUMENTED new files, targets "
+        "and modules; it cannot tell you an existing paragraph went false.",
+    ),
+    (
+        "Phase 4",
+        "the SoT reconcile and the BLOCKED re-read — naming each blocked item's "
+        "unblocking condition. An item whose blocker you cannot restate is "
+        "unexamined, not blocked.",
+    ),
+    (
+        "Phase 5",
+        "`make preflight` (it REPLACES this branch's `make test`) and "
+        "`make post-branch-text FILE=<path>` on the composed PR title and body. "
+        "Neither is any leg above: a posted body is public the moment it lands.",
+    ),
+    (
+        "Phase 6",
+        "the zero-commit tail — re-verify PR state, then stamp the handoff, in "
+        "that order.",
+    ),
+)
+
+
+def uncovered_notice(steps: Sequence[tuple[str, str]] = UNCOVERED_STEPS) -> list[str]:
+    """Name the `/post-branch` phases this sweep does NOT reach.
+
+    Ported from parent #697. Upstream found BOTH parallel sessions of one wave
+    substituting the mechanical half for the walk, neither being careless — its
+    always-loaded tier carried a sibling sentence licensing the substitution. The
+    fix belongs on REACHABILITY rather than on another rule: passing the
+    mechanical half should not be able to FEEL like passing the walk.
+
+    ⚠ **Two upstream specifics deliberately NOT ported, because their reasons are
+    the parent's.** Its notice cites ``Step N`` and a mutation test pins the
+    absence of the word *phase*, because its skill's phases are table rows that
+    declare no headings, so a phase citation there is a dead anchor. wifey's
+    skill has real ``## Phase N`` headings AND ``tools/stale_anchors.py``
+    resolves ``phase N`` citations against them (``_HEAD_TYPED``), so here a
+    phase number is a CHECKED anchor and the better citation. Porting the
+    upstream rule verbatim would have traded a live reference for a vague one.
+    """
+    out = ["", "  This sweep is the MECHANICAL half only. It does NOT cover:"]
+    for name, detail in steps:
+        wrapped = textwrap.wrap(detail, width=68)
+        out.append(f"    {name:<9} {wrapped[0] if wrapped else ''}")
+        out.extend(f"    {'':<9} {line}" for line in wrapped[1:])
+    out.append("")
+    out.append("  Passing every leg above is not passing /post-branch.")
+    return out
+
+
+def render(
+    results: Sequence[CheckResult], *, show_uncovered: bool = False
+) -> tuple[list[str], int]:
     out = ["post_branch_checks — mechanical sweep", ""]
     total = 0
     for r in results:
@@ -955,6 +1017,8 @@ def render(results: Sequence[CheckResult]) -> tuple[list[str], int]:
         "  automatic edit — a false positive costs a glance, a silent miss ships a",
         "  doc that reads as complete.",
     ]
+    if show_uncovered:
+        out += uncovered_notice()
     return out, total
 
 
@@ -1004,7 +1068,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not results:
             print(f"post_branch_checks: no such check: {args.check}", file=sys.stderr)
             return 2
-    lines, total = render(results)
+    # `--check` runs one leg on purpose; the notice belongs on the full sweep,
+    # which is the run a session can mistake for the walk.
+    lines, total = render(results, show_uncovered=not args.check)
     for line in lines:
         print(line)
     return 0 if (args.exit_zero or total == 0) else 1

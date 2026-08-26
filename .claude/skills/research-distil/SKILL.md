@@ -226,6 +226,10 @@ Three outcomes:
 If `sr_variance` for the trial family is unknown, **the REACHABILITY leg cannot
 run and the claim is `INSUFFICIENT`, not a pass.** Never default it.
 
+⚠ **`--corpus-best` needs `--sd`** — the comparison converts the required Sharpe into
+effect units, so without `--sd` there is nothing to compare and the tool now says so
+rather than printing a bare `REACHABLE`. Passing it alone is not a corpus comparison.
+
 ⚠ **That bar does not apply to the powered-null leg, and for a null-shaped claim
 the null leg is the decisive one.** `--bar`/`--sd` compute the CI half-width from
 `n` alone (`Z_95 * sd / sqrt(n)`), so `powered_null` returns a verdict whether or

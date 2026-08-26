@@ -64,6 +64,9 @@ sixteen shell blocks embedded in this file, which a session had to notice and
 copy by hand — *a hand walk is not the walk*, and the same defects recurred
 because prose cannot enforce.
 
+**The sweep now closes by naming the phases below that it does NOT reach**, so passing
+it cannot feel like passing the walk. Suppressed for `--text` and for a single `--check`.
+
 | Check | Asks |
 | --- | --- |
 | `queue-items` | Does this branch **close** a task the handoff still lists as to-do? |
