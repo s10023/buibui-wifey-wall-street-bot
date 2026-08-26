@@ -30,12 +30,24 @@ def _backtest_run_id(
     adr_exempt: bool = False,
     atr_sl_floor: bool = False,
     cost_model: str | None = None,
+    live_parity: str | None = None,
     origin: str = "sweep",
 ) -> str:
     """Return a deterministic 16-char hex ID for a backtest param combination.
 
     Optional suffixes are appended only when set so existing run_ids are
     unchanged (None = flag not applied, same hash as before these columns).
+
+    ``live_parity`` is the canonical token for the gate set that EXECUTED
+    (`LiveParityConfig.identity()`), and it is here for the same reason
+    ``origin`` is. The five gates on in `config/strategy_params.toml`'s shared
+    base cut closed trades by ~42%, and `cli/backtest.py` exposes
+    `--live-parity-<gate>` / `--no-live-parity-<gate>` on top of that — so two
+    runs of the identical param tuple under different gate sets measured
+    different populations and hashed to the same id, letting `INSERT OR REPLACE`
+    overwrite the routine sweep's row with an ad-hoc one. `confidence_ratings`
+    is built from that table. None (no gate on) appends nothing, so every
+    run_id written before this axis existed is unchanged.
 
     ``origin`` identifies the *writer*, not the parameters. It exists because a
     param combination does not uniquely identify a measurement: the sweep
@@ -78,6 +90,8 @@ def _backtest_run_id(
         key += "|atr_floor"
     if cost_model is not None:
         key += f"|cost:{cost_model}"
+    if live_parity is not None:
+        key += f"|lp:{live_parity}"
     if origin != "sweep":
         key += f"|origin:{origin}"
     return hashlib.sha256(key.encode()).hexdigest()[:16]
@@ -100,6 +114,7 @@ def upsert_backtest_run(
     *,
     origin: str,
     adr_suppress_threshold: float | None,
+    live_parity: str | None,
 ) -> str:
     """Insert or replace a backtest aggregate result row.
 
@@ -113,6 +128,15 @@ def upsert_backtest_run(
     `_backtest_run_id`. Making this required (rather than defaulting it) is the
     same enforcement `adr_gate_applies(timeframe)` uses: a new call site cannot
     silently inherit another writer's identity.
+
+    ``live_parity`` is a REQUIRED keyword for the same reason, and like
+    ``adr_suppress_threshold`` it is what EXECUTED — pass
+    `cfg.live_parity.identity()`, never a config's declared block. Two of the
+    four writers run gates (the sweep and `single_run`, both of which already
+    read `live_parity` to decide which ADR branch applies); the other two pass
+    None because no gate can reach them. Defaulting it would reproduce the
+    defect it closes: a defaulted argument cannot distinguish "this path runs no
+    gates" from "nobody thought about it".
 
     ``adr_suppress_threshold`` is a REQUIRED keyword for the same reason, and it
     is the threshold that was **executed**, not the one the config declared —
@@ -136,6 +160,7 @@ def upsert_backtest_run(
         adr_suppress_threshold,
         volume_suppress,
         cost_model=cost_model,
+        live_parity=live_parity,
         origin=origin,
     )
     row: dict[str, Any] = {
@@ -175,6 +200,7 @@ def upsert_backtest_run(
         "volume_suppress": volume_suppress,
         "universe_policy": universe_policy,
         "cost_model": cost_model,
+        "live_parity": live_parity,
     }
     df = pd.DataFrame([row])
     conn.register("_bt_run_upsert_df", df)
@@ -188,7 +214,7 @@ def upsert_backtest_run(
             "long_closed_trades, long_win_count, long_win_rate, long_avg_r, "
             "short_closed_trades, short_win_count, short_win_rate, short_avg_r, "
             "long_total_r, short_total_r, volume_suppress, adr_suppress_threshold, "
-            "recovery_factor, universe_policy, cost_model "
+            "recovery_factor, universe_policy, cost_model, live_parity "
             "FROM _bt_run_upsert_df"
         )
     finally:

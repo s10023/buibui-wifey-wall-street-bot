@@ -201,7 +201,7 @@ def _seed_backtest_runs(conn: duckdb.DuckDBPyConnection) -> None:
         "INSERT INTO backtest_runs VALUES "
         "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
         "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "
-        "NULL, NULL, NULL)",
+        "NULL, NULL, NULL, NULL)",
         [
             [
                 r["run_id"],
@@ -581,7 +581,7 @@ def _seed_directional_runs(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(
         "INSERT INTO backtest_runs VALUES "
         "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-        "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             "dir_bos",
             "BTCUSDT",
@@ -620,7 +620,8 @@ def _seed_directional_runs(conn: duckdb.DuckDBPyConnection) -> None:
             None,  # recovery_factor (added via ALTER TABLE)
             None,  # volume_suppress (added via ALTER TABLE)
             None,  # universe_policy (added via ALTER TABLE)
-            None,  # cost_model (added via ALTER TABLE, last column)
+            None,  # cost_model (added via ALTER TABLE)
+            None,  # live_parity (added via ALTER TABLE, last column)
         ],
     )
 
@@ -855,7 +856,7 @@ def _insert_run(
         "(?, ?, ?, ?, 0, 1, 90, 0.02, 2.0, 0.0005, 'off', ?, ?, ?, 0, 0.5, ?, "
         "0.0, 0.0, ?, ?, "
         "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "
-        "NULL, NULL, NULL)",
+        "NULL, NULL, NULL, NULL)",
         [
             run_id,
             symbol,

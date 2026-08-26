@@ -66,3 +66,32 @@ class LiveParityConfig:
         checked against what executed — the same defect class as #144's `days`.
         """
         return " ".join(f"{g}={'on' if self.is_on(g) else 'off'}" for g in self.GATES)
+
+    def identity(self) -> str | None:
+        """Canonical token for the gate set that EXECUTED, for the run_id hash.
+
+        Returns None when no gate is on, so a default-constructed config appends
+        no suffix and every run_id written before this axis existed is unchanged
+        — the same contract the optional flags above it keep.
+
+        Built from `is_on`, not from the fields directly, because `is_on` is what
+        the engine consults: `enabled` is a resolver-time convenience that never
+        reaches `run_backtest`, so folding it in here would invent a distinction
+        the engine does not make. Same rule as `effective_adr_threshold` — credit
+        the gate that ran, never the one that was declared.
+
+        `cooldown_bars_per_tf` joins the token only while `cooldown` is on, since
+        the map is inert otherwise and an inert value must not split one cell into
+        two identities.
+        """
+        on = [g for g in self.GATES if self.is_on(g)]
+        if not on:
+            return None
+        token = "+".join(on)
+        if self.is_on("cooldown") and self.cooldown_bars_per_tf is not None:
+            bars = ",".join(
+                f"{tf}:{self.cooldown_bars_per_tf[tf]}"
+                for tf in sorted(self.cooldown_bars_per_tf)
+            )
+            token += f"/bars({bars})"
+        return token

@@ -151,6 +151,15 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
         # NULL = flat-fee run) — migration-list only, same positional-INSERT
         # constraint as universe_policy above.
         ("cost_model", "TEXT"),
+        # Live-parity gate set that EXECUTED (`LiveParityConfig.identity()`),
+        # the same token the run_id hashes — so a stored row can be checked
+        # against its own id instead of being dated from `run_at_ms`. NULL means
+        # NOT RECORDED, which for a row written before this column covers both
+        # "no gate ran" and "ran under the shared base's five" — a column added
+        # later cannot describe rows written earlier, exactly as universe_policy
+        # and cost_model cannot. Migration-list only, same positional-INSERT
+        # constraint as both.
+        ("live_parity", "TEXT"),
     ]:
         if col not in existing_bt_cols:
             conn.execute(f"ALTER TABLE backtest_runs ADD COLUMN {col} {dtype}")

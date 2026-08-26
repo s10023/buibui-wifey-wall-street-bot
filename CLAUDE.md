@@ -528,6 +528,19 @@ sweep and is wrong for a per-leg operational gate, where Bonferroni z ≈ 3.5 wo
 fail-open gate. `BacktestSnapshot` is the hot path, so a new statistic has to be added to both the
 cached and the computed type. Audit: `docs/audits/2026-08-07-ev-gate-significance-test.md`.
 
+**`upsert_backtest_run` requires `live_parity` naming the gate set that EXECUTED** — pass
+`cfg.live_parity.identity()`, never a declared block. The shared base runs five live-parity gates
+and `cli/backtest.py` overrides any of them per run, so a parameter tuple does not identify a
+measurement: an ad-hoc override hashed to the routine sweep's `run_id` and `INSERT OR REPLACE`
+replaced it, in the table `confidence_ratings` is built from. `identity()` returns None when no
+gate is on, so every historical `run_id` is unchanged and **no migration is owed** —
+`recalibrate_lib` keeps only the latest row per (strategy, timeframe, symbol), and a migration
+could only guess, since the column recording the gate set is the one that closed this. ⚠ **Two
+enforcement gaps bit here**: mypy cannot see a required kwarg through a `**dict` splat, and
+`test_schema_insert_arity.py`'s `SCANNED_DIRS` excludes `tests/`, so six test-local positional
+INSERTs surfaced only under the suite — grep `tests/` for `INSERT INTO backtest_runs VALUES`
+before adding a column. Audit: `docs/audits/2026-08-26-run-id-live-parity-axis.md`.
+
 **`upsert_backtest_run` requires `effective_adr_threshold(declared, timeframe, adr_exempt=…)`** — a
 column recording what was *declared* is not provenance. Three things this cost: mypy cannot enforce
 a required kwarg through a `**dict` splat, so run the suite; a column in the identity hash cannot be
