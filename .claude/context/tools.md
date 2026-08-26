@@ -479,6 +479,79 @@ alone. And **it refuses nothing**: wiring a staleness refusal into `deploy/backu
 the second candidate fix in `deploy/README.md` and stays a deliberate user call, because a guard
 that costs you the backup is worse than the gap it closes.
 
+## freshness_check.py — did the scheduled work actually run?
+
+`make freshness-check` runs `tools/freshness_check.py`. Same premise as `backup_check.py` — all
+three `wifey-*` units alert through `OnFailure=wifey-alert@%N.service`, and that channel cannot
+tell a quiet timer from a stopped one — applied to the two surfaces the backup probe cannot see.
+Ported from the parent's `ohlcv_freshness.py` (#681/#698 — that path exists upstream, not here),
+whose motivating measurement was **22 of
+25 universe symbols frozen for eleven weeks, all `TRADING`, nothing broken and nothing watching**.
+
+### The port's one hard divergence: sessions, not wall-clock
+
+The parent computes `age_bars = (now - newest) / bar_ms`. That is correct on a 24h tape and **wrong
+here in the direction that reds everything forever**: `4h` RTH is 2 bars/day, not 6, so a healthy
+two-session-old series reads ~12 bars behind, and every Monday adds a phantom weekend on top. Wifey
+counts NYSE sessions via `analytics/trading_calendar.py::nyse_sessions` and multiplies by
+`cost_model.BARS_PER_DAY` — the single shared table, imported rather than forked, so a change there
+reaches this too. `TestRthDivergenceFromParent` pins it, which is what makes a future "tidy-up"
+back to the parent's formula fail in the suite rather than in production.
+
+`sessions_elapsed` floors at zero, so a bar stamped in the future cannot read as freshness with
+room to spare — that is a different defect and must not be laundered into a green.
+
+### Why the watermark is dated but UNGRADED
+
+The first build graded the `signal_state.json` watermarks against the timer's daily cadence and
+printed **STALE at 4 sessions on a healthy system**, with run evidence on **two of the three**
+intervening sessions (`fired_at_ms` rows on 08-24 and 08-25). ⚠ The third (08-21) carries no row,
+which is **not** evidence of no run: a scan detecting nothing new writes nothing, so this channel
+can confirm a run happened and can never confirm one did not.
+The watermark advances on **dispatch**, not on every run, and dispatch is intermittent by design:
+`day_filter = tue_thu` suppresses on the bar's open weekday, so a Mon run (Fri bars) and a Tue run
+(Mon bars) can never alert. There is deliberately **no signal-side tolerance constant** — the
+cadence is a consequence of `day_filter` rather than a schedule, so any constant would lack an
+external referent, and a hand-picked one reds a healthy system.
+
+The module's own stated principle ("staleness is meaningless without a declared cadence") is what
+condemned its first draft. **Run-liveness moved to the ohlcv leg**: a `go-live` run's first act is
+a watchlist sync, so fresh watchlist bars *are* the evidence a run happened, and that quantity has
+a cadence. The signal leg's only finding is **no watermarks at all** — a scan has never run here,
+or the state file is unreadable. Primary and `:wife` are dated separately because they mean
+different things; a primary mark ahead of `:wife` is the normal resting state, not a fault.
+
+### Two tiers, because grading everything trains dismissal
+
+A series is **scheduled** only when its symbol is on the watchlist the timer syncs *and* its
+timeframe is one the live scan reads (`4h`/`1d`). Everything else — the whole 505-member research
+universe, and `1wk` for every symbol including watchlist names — has no scheduled refresher and is
+summarised in **one line** rather than graded. Measured 2026-08-26: 26 scheduled series fresh,
+**1131 unscheduled spanning 2026-05-04 … 2026-08-24**. Grading those would print ~490 findings a
+run, and a leg that is never green stops being read — the same argument that bounds
+`negative-claims`' triage load.
+
+⚠ **The absence is still a hazard, and the report says so.** A pooled cross-section run today mixes
+~10-week-stale names with the fresh watchlist **inside one query**, and the fresh set is precisely
+the mega-cap tilt `4h`'s 21% coverage already carries, so recency skew and coverage skew compound
+in the same direction. Nothing errors; `n_eff`, breadth counts and any `1wk` panel are just quietly
+wrong.
+
+An **empty** `scheduled_symbols` — an absent or unreadable watchlist — puts every series in the
+unscheduled tier. That degrades toward "nothing was graded", which reports an absence, rather than
+toward "everything is graded against a cadence it does not have", which would report ~500 phantom
+faults. Every reader (`read_watermarks`, `read_scheduled_symbols`, `read_series`) degrades the same
+way; `read_series` returns None on a lock conflict too, because a writer holding the DB is not a
+finding about the data.
+
+⚠ **ADVISORY, never in `make test` / `make sanity-checks` / CI** — both legs read machine-local
+single-copy state no clone has. The **pure grading half** is in `make test`
+(`tests/test_freshness_check.py`), positive control included: `TestScheduledTierHasTeeth`
+constructs a stale scheduled series at wifey's real 2026-06-18 freeze date and asserts it is
+caught, plus the other half — that a fresh one is not — because a check that has never been red is
+indistinguishable from one that cannot be. `--exit-nonzero` opts in for a shell condition, and the
+unscheduled tier deliberately cannot make it fire.
+
 ## clone_preflight.py — does the suite pass on a machine that is not this one?
 
 `make preflight` clones HEAD into a temp dir, runs `poetry install --no-root` against the clone's
