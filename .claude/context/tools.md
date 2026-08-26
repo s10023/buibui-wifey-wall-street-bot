@@ -156,6 +156,39 @@ earlier on the same line. The finding's value was a human re-reading the paragra
 why the line stays the unit and `attribution` stays off the allowlist — on two of those
 lines it is the claim's own subject.
 
+⚠ **The phrasing allowlist was the leg's real hole, and it was invisible for the reason
+allowlists always are.** Measured 2026-08-26 against the signal-timer branch (#261): of the
+absence claims that branch falsified, it reported **0 of 8** — every one written in the plain
+*"there is no X"* / *"X has no Y"* form, which is simply how absence gets written, and which
+had no entry because no past incident had happened to use it. Two of the eight sat in
+`deploy/`, outside `NEGATIVE_CLAIM_PATHS` entirely and so unreachable at any regex; the path
+and the widening therefore ship together, since `deploy/` alone surfaces **zero** hits against
+the unwidened regex. The tree's own emphasis convention hid one more — `has **no daemon at
+all**` puts a bold marker mid-phrase — so the pattern carries an emphasis slot.
+
+Three things bounded the cost, and each was measured rather than reasoned:
+
+- **`has no` is anchored to a repo-self subject** (`wifey`, `this repo|fork|tree`, `the
+  fork|repo`), plus a line-initial arm for a claim whose subject sits on the previous line.
+  Bare, it matched 16 corpus lines for 3 of the 8 catches — most are claims about what
+  something ELSE lacks (*"yfinance OHLCV has no taker data"*, *"the endpoint has no children
+  field"*), which no wifey branch can falsify. Anchoring cut the corpus 33 → 21 lines and kept
+  all 8.
+- **`claim_subject_tokens` is a scoping fallback, not a wider token list.** Widening the regex
+  took claim lines carrying no backticked token — unscopable, therefore reported on *every*
+  branch forever — from **0 to 11**, which would have made the leg permanently unclean. The
+  fallback scopes such a line on its own subject noun, so it can only ever REMOVE a report.
+  ⚠ **It is the opposite knob from #250's**: that one scopes lines IN wholesale. Fail-open
+  survives where it is still earned — a subject that is all stopwords, or that runs off the
+  end of its line, still reports.
+- ⚠ **Price the TRIAGE LOAD, not just the catch.** Findings per run went from 0–5 to 1–11
+  across four past branches. That is paid on every branch and is the standing argument against
+  going wider: **a check that is never clean trains dismissal.**
+  `TestTheLegIsCleanOnAnUNRELATEDBranch` pins the property that made it shippable — zero claim
+  lines report unconditionally — against the real tree, so a future doc edit fails there. The
+  fix is then to scope or exempt that one sentence, never to grow `_SUBJECT_STOP` until the
+  number goes away.
+
 Two are new and fix defects the prose form structurally could not:
 
 - **`queue-items`** — nothing swept the handoff's own task list for work the branch just

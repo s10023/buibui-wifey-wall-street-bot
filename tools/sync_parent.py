@@ -784,6 +784,32 @@ def _detail_block(r: PRReport) -> str:
     return "\n".join(lines)
 
 
+#: Emitted into every report header. The skill body already warns that a bucket
+#: label is not a ruling; the REPORT did not, and the report is the artifact read
+#: days later, by a session that never opened the skill.
+#:
+#: ⚠ **Do NOT answer a wrong count by trying to fix the classifier.** It resolves
+#: paths, and a path resolves identically whether the parent wrote the code or
+#: adopted wifey's — so the ALREADY-APPLIED zero is not a tuning failure, it is
+#: outside what a path test can observe. The deliverable is a reader who
+#: distrusts the counts, not counts that deserve trust.
+CLASSIFIER_CAVEAT = [
+    "> ⚠ **These are the classifier's buckets, not rulings.** It resolves paths,",
+    "> so it defaults to EVALUATE whenever one resolves, and it cannot see",
+    "> **direction of travel**: where the PARENT adopted wifey's work the path",
+    "> resolves either way, and the PR lands anywhere but ALREADY-APPLIED.",
+    ">",
+    "> Round 16 (2026-08-26) printed `0 SKIP / 3 PORT / 19 EVALUATE /",
+    "> 0 ALREADY-APPLIED`. The rulings were **3 PORT / 4 EVALUATE / 10 NO PORT /",
+    "> 4 ALREADY-APPLIED / 1 never** — and all four of that bucket the table",
+    "> reported as EMPTY were the parent adopting wifey's work.",
+    ">",
+    "> **Check the wifey-side artifact's DATE before ruling.** The ruling buckets",
+    "> are PORT · ALREADY-APPLIED · EVALUATE · NO PORT — not this table's four.",
+    "",
+]
+
+
 def format_report(reports: list[PRReport], from_hash: str, to_hash: str) -> str:
     sections: dict[str, list[PRReport]] = {
         "SKIP": [],
@@ -801,6 +827,7 @@ def format_report(reports: list[PRReport], from_hash: str, to_hash: str) -> str:
         f"**PRs found**: {len(reports)}",
         f"**Pointer-bump command**: `poetry run python tools/sync_parent.py --bump-to {to_hash}`",
         "",
+        *CLASSIFIER_CAVEAT,
         "## Summary",
         "",
         "| Bucket | Count |",
