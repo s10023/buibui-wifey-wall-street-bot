@@ -12,7 +12,7 @@ PYTHON_FILES = $(shell find . -name "*.py" -not -path "./venv/*" -not -path "./.
 DOCKER_IMAGE = wifey-bot
 MEMORY = $(HOME)/.claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot/memory/MEMORY.md
 
-.PHONY: status wait-ci wait-ci-main lint lint-md lint-md-fix docs-index docs-index-check lint-py-check lint-py typecheck test test-cov test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-pundit-sync wifey-pundit-backfill wifey-universe-backfill universe-coverage universe-stamp-listed wifey-forecast-audit wifey-xsmom-audit wifey-xsmom-residual-audit wifey-lowvol-audit wifey-xasset-audit wifey-xasset-backfill wifey-pead-audit wifey-pead-backfill wifey-velocity-audit wifey-exit-audit wifey-exit-replay wifey-warning-value-audit wifey-n-eff wifey-pundit-score wifey-check-levels wifey-route-dedup-seed wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep backup backup-check freshness-check backup-dry-run backup-offsite backup-offsite-dry-run wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent check-dead-surfaces check-orphan-tests post-branch-checks post-branch-text sanity-checks preflight cadence-check cadence-stamp wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
+.PHONY: status wait-ci wait-ci-main lint lint-md lint-md-fix docs-index docs-index-check lint-py-check lint-py typecheck test test-cov test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-pundit-sync wifey-pundit-backfill wifey-universe-backfill wifey-universe-sync universe-coverage universe-stamp-listed wifey-forecast-audit wifey-xsmom-audit wifey-xsmom-residual-audit wifey-lowvol-audit wifey-xasset-audit wifey-xasset-backfill wifey-pead-audit wifey-pead-backfill wifey-velocity-audit wifey-exit-audit wifey-exit-replay wifey-warning-value-audit wifey-n-eff wifey-pundit-score wifey-check-levels wifey-route-dedup-seed wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep backup backup-check freshness-check backup-dry-run backup-offsite backup-offsite-dry-run wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent check-dead-surfaces check-orphan-tests post-branch-checks post-branch-text sanity-checks preflight cadence-check cadence-stamp wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
 
 lint: lint-md lint-py
 
@@ -151,6 +151,27 @@ wifey-universe-backfill:
 	@echo "📥 Backfilling the research breadth universe (config/universe.json)..."
 	@poetry run python wifey.py analytics backfill --universe \
 		--timeframes 4h 1d 1wk --since $(or $(SINCE),2018-01-01)
+
+# INCREMENTAL refresh of the same universe, and the target
+# `wifey-universe-sync.timer` drives -- so the scheduled run is literally the
+# documented hand-run, the property `go-live` already relies on.
+#
+# ⚠ NOT a thinner `wifey-universe-backfill`. The backfill re-fetches from
+# --since (2018) for 505 symbols x 3 timeframes; this asks each series for the
+# tail after its own newest bar. Measured 2026-08-26 on a 10-week-stale tree:
+# 2m15s wall clock for the whole universe. A weekly BACKFILL would be minutes of
+# redundant network for bars already stored.
+#
+# ⚠ `sync` REFUSES a symbol with no bars at all ("run backfill first") and skips
+# it rather than failing the run. That is why this cannot be the only universe
+# target: a newly-added constituent needs `wifey-universe-backfill` once. It is
+# also why 400 of 505 `4h` series stay absent here -- yfinance's intraday history
+# window, not a staleness problem, and the reason this target cannot close the
+# 21% `4h` coverage gap. See memory `reference_ohlcv_timeframe_coverage.md`.
+wifey-universe-sync:
+	@echo "🔄 Syncing the research breadth universe (config/universe.json)..."
+	@poetry run python wifey.py analytics sync --universe \
+		--timeframes $(or $(TIMEFRAMES),4h 1d 1wk)
 
 universe-coverage:
 	@PYTHONPATH=. poetry run python tools/universe_coverage.py \

@@ -1,0 +1,80 @@
+[Unit]
+# One incremental refresh of the 505-member research breadth universe
+# (config/universe.json) across 4h/1d/1wk. Type=oneshot, driven by the .timer
+# beside this file. Sends no Telegram and touches no live dispatch -- it moves
+# research data only.
+#
+# WHY THIS UNIT EXISTS. Until 2026-08-26 nothing refreshed the research universe
+# at all: `make go-live` syncs the 13-symbol config/stocks.json watchlist, and
+# the universe was a hand-run `make wifey-universe-backfill`. Measured that day,
+# 493 of 526 `1d` series had a last bar on or before 2026-06-18 -- ~10 weeks --
+# while the watchlist ran to the previous session. That is not a fault in any
+# unit; it is the absence of one, and its cost lands on any POOLED CROSS-SECTION,
+# which mixes ~10-week-stale names with the fresh watchlist inside one query. The
+# recency skew compounds `4h`'s existing 21%-coverage mega-cap tilt in the SAME
+# direction. `make freshness-check` reports it.
+#
+# NAMED wifey-*, NOT buibui-*. The crypto parent's units are installed in this
+# same user systemd instance; reusing a name would have one repo's unit silently
+# shadow the other's. Read WorkingDirectory, never the name.
+Description=wifey research-universe refresh (incremental 4h/1d/1wk sync of 505 members)
+Documentation=file:///home/kng/repo/buibui-wifey-wall-street-bot/deploy/README.md
+
+# ⚠ BELONGS IN [Unit], NOT [Service]. systemd parses it in [Service] as an
+# unknown key, logs "ignoring" at load and starts the unit anyway -- so the alert
+# reads as armed while being inert. That is the defect wifey-backup.service
+# shipped with for three days; `systemd-analyze verify` is what names it.
+# Pinned by tests/test_systemd_units.py.
+#
+# ⚠ AND AN OnFailure= ALERT CANNOT SEE THE FAILURE THIS UNIT IS ABOUT. A run that
+# never fires, or one that fires and refreshes nothing, exits 0 and stays silent.
+# That is the whole premise of `make freshness-check`, which dates observed state
+# instead -- the alert covers a crash, the probe covers a silence. Do not read
+# this line as making the probe redundant.
+OnFailure=wifey-alert@%N.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/kng/repo/buibui-wifey-wall-street-bot
+
+# Only needed by the OnFailure alert path, which shells out before any of our
+# Python runs. Leading `-` keeps a missing .env from failing the unit -- a
+# research refresh must still run for an operator who has never configured
+# alerting.
+EnvironmentFile=-/home/kng/repo/buibui-wifey-wall-street-bot/.env
+
+# User units get a minimal PATH. The recipe shells out to `poetry`, which lives
+# under linuxbrew -- without this line the sync does not start at all, rather
+# than starting and failing somewhere legible.
+Environment=PATH=/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin
+
+# Without this, journald tags output with the EXECUTABLE name (`make`) and the
+# entries lose unit attribution: `journalctl -u` then returns NOTHING while the
+# lines sit in the journal under another identity. `make` is a worse identity
+# than most, since any number of units could plausibly run it. Read this unit
+# with `journalctl --user -t wifey-universe-sync`.
+SyslogIdentifier=wifey-universe-sync
+
+# `make wifey-universe-sync` rather than the CLI directly, so the SCHEDULED run
+# is literally the DOCUMENTED hand-run and the two cannot drift into different
+# flag sets. tests/test_systemd_units.py pins the target name, because a `make`
+# ExecStart has no in-repo path token for the dangling-path check to catch.
+#
+# ⚠ SYNC, NOT BACKFILL. `wifey-universe-backfill` re-fetches from 2018 for
+# 505 symbols x 3 timeframes; this asks each series for the tail after its own
+# newest bar. The backfill target stays hand-run for a NEW constituent, which
+# arrives with no bars and which `sync` skips by design.
+ExecStart=/usr/bin/make wifey-universe-sync
+
+# Measured 2026-08-26: 2m15s for the full 505 x 3 sweep against a tree ~10 weeks
+# stale, i.e. close to the worst case this unit will ever meet -- a weekly run
+# fetches a week, not ten. The ceiling is generous because the job is
+# NETWORK-bound on yfinance, where a slow or throttled day is the realistic
+# failure, and because a timeout kill here is NOT silent: systemd marks the unit
+# failed, so OnFailure above still sends.
+TimeoutStartSec=3600
+
+# Research data, not latency-sensitive, and the longest-running writer on
+# analytics.db. Yield to anything interactive.
+Nice=15
+IOSchedulingClass=idle

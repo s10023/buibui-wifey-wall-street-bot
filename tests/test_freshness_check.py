@@ -24,15 +24,22 @@ from tools.freshness_check import (
     BASE_TOLERANCE_SESSIONS,
     SCHEDULED_GAP_SESSIONS,
     SCHEDULED_TIMEFRAMES,
+    UNIVERSE_CADENCE,
+    UNIVERSE_GAP_SESSIONS,
+    WATCHLIST_CADENCE,
     Series,
     evaluate_ohlcv,
     evaluate_signal,
     grade,
     latest_session,
     read_scheduled_symbols,
+    read_universe_symbols,
     read_watermarks,
+    resolve_cadence,
     sessions_elapsed,
+    sessions_per_bar,
     tolerance_sessions_for,
+    universe_timer_enabled,
 )
 
 
@@ -56,6 +63,22 @@ THU = date(2026, 8, 20)
 FRI = date(2026, 8, 21)
 MON = date(2026, 8, 24)
 TUE = date(2026, 8, 25)
+
+
+def _sessions_back(now: date, n: int) -> date:
+    """The session `n` weekday-sessions before `now`, by the test calendar.
+
+    Derived by walking rather than hand-counting dates: a literal would encode
+    the answer this file is meant to be checking, and a weekend miscount is
+    exactly the class of error these tests exist to catch.
+    """
+    day = now
+    remaining = n
+    while remaining > 0:
+        day -= timedelta(days=1)
+        if day.weekday() < 5:
+            remaining -= 1
+    return day
 
 
 def _ms(day: date, hour: int = 13, minute: int = 30) -> int:
@@ -90,14 +113,71 @@ class TestSessionsElapsed:
 class TestToleranceSessionsFor:
     def test_scheduled_timeframes_have_a_tolerance(self) -> None:
         expected = BASE_TOLERANCE_SESSIONS + SCHEDULED_GAP_SESSIONS
-        assert tolerance_sessions_for("4h") == expected
-        assert tolerance_sessions_for("1d") == expected
+        assert tolerance_sessions_for("4h", WATCHLIST_CADENCE) == expected
+        assert tolerance_sessions_for("1d", WATCHLIST_CADENCE) == expected
 
     def test_unscheduled_timeframes_return_none(self) -> None:
         """No declared cadence must not silently become a tight default."""
-        assert tolerance_sessions_for("1wk") is None
-        assert tolerance_sessions_for("1h") is None
-        assert tolerance_sessions_for("nonsense") is None
+        assert tolerance_sessions_for("1wk", WATCHLIST_CADENCE) is None
+        assert tolerance_sessions_for("1h", WATCHLIST_CADENCE) is None
+        assert tolerance_sessions_for("nonsense", WATCHLIST_CADENCE) is None
+
+    def test_the_bar_span_term_leaves_intraday_and_daily_untouched(self) -> None:
+        """Regression pin: adding the third term must not move a shipped bar.
+
+        4h and 1d bars close inside one session, so `max(0, span - 1)` is 0 for
+        both. If this moves, every previously-FRESH watchlist series has silently
+        been regraded.
+        """
+        assert sessions_per_bar("4h") == 0.5
+        assert sessions_per_bar("1d") == 1.0
+        for timeframe in ("4h", "1d"):
+            assert tolerance_sessions_for(timeframe, UNIVERSE_CADENCE) == (
+                BASE_TOLERANCE_SESSIONS + UNIVERSE_GAP_SESSIONS
+            )
+
+    def test_a_weekly_bar_is_not_graded_on_the_daily_footing(self) -> None:
+        """The `1wk` term exists so the weekly tier can ever be green.
+
+        A weekly bar stamps Monday and closes Friday, so a perfectly refreshed
+        weekly series trails a daily one by four sessions for reasons that are
+        not staleness. Without the term the tolerance would be 7 and every
+        weekly series would red forever — the parent's wall-clock failure mode
+        in a new place.
+        """
+        assert sessions_per_bar("1wk") == 5.0
+        naive = BASE_TOLERANCE_SESSIONS + UNIVERSE_GAP_SESSIONS
+        assert tolerance_sessions_for("1wk", UNIVERSE_CADENCE) == naive + 4.0
+
+    def test_an_unknown_bars_per_day_returns_none_rather_than_a_default(self) -> None:
+        """A timeframe absent from the shared table has no derivable span."""
+        assert sessions_per_bar("nonsense") is None
+
+
+class TestResolveCadence:
+    def test_the_tightest_cadence_wins_when_both_cover_a_series(self) -> None:
+        """A watchlist name is refreshed daily whether or not the weekly timer
+        also touches it, so grading it weekly would let it sit stale and read
+        FRESH."""
+        cadence = resolve_cadence(
+            "SPY", "1d", watchlist=frozenset({"SPY"}), universe=frozenset({"SPY"})
+        )
+        assert cadence is WATCHLIST_CADENCE
+
+    def test_a_watchlist_symbols_weekly_bars_take_the_universe_cadence(self) -> None:
+        """The live scan does not read 1wk, so only the universe timer covers it."""
+        cadence = resolve_cadence(
+            "SPY", "1wk", watchlist=frozenset({"SPY"}), universe=frozenset({"SPY"})
+        )
+        assert cadence is UNIVERSE_CADENCE
+
+    def test_nothing_covering_a_series_returns_none(self) -> None:
+        assert (
+            resolve_cadence(
+                "ZTS", "1d", watchlist=frozenset({"SPY"}), universe=frozenset()
+            )
+            is None
+        )
 
 
 class TestRthDivergenceFromParent:
@@ -168,7 +248,11 @@ class TestScheduledTierHasTeeth:
 
 class TestUnscheduledTier:
     def test_unscheduled_series_never_makes_the_report_fail(self) -> None:
-        """Nothing refreshes the 505 universe, so its age is an absence, not a fault."""
+        """With no cadence covering it, a series' age is an absence, not a fault.
+
+        ⚠ This is the timer-NOT-enabled world, which `evaluate_ohlcv`'s empty
+        `universe_symbols` default expresses. It was once unconditional.
+        """
         rows = [Series("ZTS", "1d", _ms(date(2026, 6, 18)))]
         report = evaluate_ohlcv(
             rows,
@@ -182,8 +266,12 @@ class TestUnscheduledTier:
         assert report.unscheduled_oldest == date(2026, 6, 18)
 
     def test_1wk_is_unscheduled_even_for_a_watchlist_symbol(self) -> None:
-        """The live scan does not read 1wk, so a watchlist name's weekly bars
-        go stale exactly like the universe's."""
+        """The live scan does not read 1wk, so the DAILY timer never covers it.
+
+        With the weekly timer off, a watchlist name's weekly bars go stale
+        exactly like the universe's. `TestResolveCadence` covers the other
+        world, where the universe timer picks them up.
+        """
         rows = [Series("AAPL", "1wk", _ms(date(2026, 6, 15)))]
         report = evaluate_ohlcv(
             rows,
@@ -204,6 +292,97 @@ class TestUnscheduledTier:
         assert report.ok
         assert report.scheduled_total == 0
         assert report.unscheduled_total == 1
+
+
+class TestUniverseTierIsGatedOnTheTimer:
+    """The universe tier must be graded only where its timer actually runs.
+
+    The units are opt-in and nothing in the repo installs them, so "the universe
+    has a cadence" is true on one box and false on the next. These pin both
+    worlds, because a tool that hardcodes either answer is wrong on half the
+    machines — and the wrong direction (grading with no timer) prints ~1,100
+    phantom faults, which is how a leg stops being read.
+    """
+
+    def test_a_stale_universe_series_is_graded_when_members_are_passed(self) -> None:
+        """Positive control: the perturbation the new tier exists to catch."""
+        rows = [Series("ZTS", "1d", _ms(date(2026, 6, 18)))]
+        report = evaluate_ohlcv(
+            rows,
+            now=TUE,
+            scheduled_symbols=frozenset({"AAPL"}),
+            sessions_fn=_weekday_sessions,
+            universe_symbols=frozenset({"ZTS"}),
+        )
+        assert not report.ok
+        assert [(g.symbol, g.timeframe) for g in report.stale] == [("ZTS", "1d")]
+        assert report.universe_scheduled
+
+    def test_the_same_series_is_an_absence_when_the_timer_is_off(self) -> None:
+        """The other half: identical input, no members, no fault reported."""
+        rows = [Series("ZTS", "1d", _ms(date(2026, 6, 18)))]
+        report = evaluate_ohlcv(
+            rows,
+            now=TUE,
+            scheduled_symbols=frozenset({"AAPL"}),
+            sessions_fn=_weekday_sessions,
+        )
+        assert report.ok
+        assert report.unscheduled_total == 1
+        assert not report.universe_scheduled
+
+    def test_a_weekly_series_inside_its_cadence_is_green(self) -> None:
+        """End-to-end proof the bar-span term lets the weekly tier be green.
+
+        Eight sessions behind is stale under the naive 7-session bar and fresh
+        under the correct 11. Without the term this tier could never report
+        FRESH, and a leg that is never green stops being read.
+        """
+        newest = _sessions_back(TUE, 8)
+        rows = [Series("ZTS", "1wk", _ms(newest))]
+        report = evaluate_ohlcv(
+            rows,
+            now=TUE,
+            scheduled_symbols=frozenset(),
+            sessions_fn=_weekday_sessions,
+            universe_symbols=frozenset({"ZTS"}),
+        )
+        assert report.scheduled_total == 1
+        assert report.ok
+
+    def test_a_weekly_series_past_its_cadence_is_still_caught(self) -> None:
+        """...and the loosened bar is not so loose that nothing can trip it."""
+        newest = _sessions_back(TUE, 20)
+        rows = [Series("ZTS", "1wk", _ms(newest))]
+        report = evaluate_ohlcv(
+            rows,
+            now=TUE,
+            scheduled_symbols=frozenset(),
+            sessions_fn=_weekday_sessions,
+            universe_symbols=frozenset({"ZTS"}),
+        )
+        assert not report.ok
+
+
+class TestUniverseReaders:
+    def test_the_committed_universe_parses_to_its_members(self) -> None:
+        """Reads the real committed file: the members key is the seam."""
+        symbols = read_universe_symbols(Path("config/universe.json"))
+        assert len(symbols) > 400
+        assert "AAPL" in symbols
+        # `universe_policy` and `membership_as_of` are config, not symbols.
+        assert "universe_policy" not in symbols
+        assert "membership_as_of" not in symbols
+
+    def test_an_absent_universe_reads_empty_rather_than_raising(self) -> None:
+        """A probe must report an absent universe, never crash on one."""
+        assert read_universe_symbols(Path("does/not/exist.json")) == frozenset()
+
+    def test_an_unknown_timer_is_not_enabled(self) -> None:
+        """Every unreadable state degrades to False — the direction that cannot
+        invent faults. Covers the no-systemd and non-Linux boxes too, where the
+        subprocess raises rather than returning a state."""
+        assert not universe_timer_enabled("wifey-does-not-exist.timer")
 
 
 class TestEvaluateSignal:

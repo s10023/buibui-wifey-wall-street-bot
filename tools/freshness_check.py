@@ -69,6 +69,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
@@ -91,6 +92,15 @@ SCHEDULED_TIMEFRAMES: frozenset[str] = frozenset({"4h", "1d"})
 # Sessions between two scheduled refreshes. One fire per trading day, so a
 # correctly-running series is refreshed every session.
 SCHEDULED_GAP_SESSIONS: float = 1.0
+
+# Sessions between two research-universe refreshes. `wifey-universe-sync.timer`
+# is `OnCalendar=Sat *-*-* 10:00:00 UTC`, one fire a week = five sessions.
+UNIVERSE_GAP_SESSIONS: float = 5.0
+
+DEFAULT_UNIVERSE = Path("config/universe.json")
+
+# The timer whose presence turns the universe from an absence into a graded tier.
+UNIVERSE_TIMER = "wifey-universe-sync.timer"
 
 # The floor every graded series keeps, in SESSIONS. Two sessions absorbs the
 # in-progress bar plus the pre-open lag: the 08:30 UTC scan runs before the bell,
@@ -120,6 +130,38 @@ SessionsFn = Callable[[date, date], Sequence[date]]
 
 
 # --- Pure core --------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Cadence:
+    """A declared refresh schedule: which series it covers and how often it runs.
+
+    Two exist. The WATCHLIST cadence is `wifey-signal-watch.timer` refreshing
+    `config/stocks.json` on the timeframes the live scan reads; the UNIVERSE
+    cadence is `wifey-universe-sync.timer` refreshing all 505 research members.
+
+    ⚠ A cadence is a claim that something RUNS, so it must be derived from
+    observed state rather than asserted here. `resolve_cadences` takes the
+    universe member set as an argument and callers pass an EMPTY one whenever
+    the timer is not enabled — see `universe_timer_enabled`. Asserting the
+    schedule instead would grade ~1,100 series against a timer that may never
+    have been installed, printing phantom faults on a healthy box.
+    """
+
+    name: str
+    timeframes: frozenset[str]
+    gap_sessions: float
+
+
+WATCHLIST_CADENCE = Cadence("watchlist", SCHEDULED_TIMEFRAMES, SCHEDULED_GAP_SESSIONS)
+
+# ⚠ Covers `1wk` where the watchlist cadence does not. The live scan does not
+# read `1wk`, so a watchlist name's weekly bars used to go stale exactly like the
+# universe's; `make wifey-universe-sync` fetches 4h/1d/1wk, so for a symbol in
+# both sets the weekly series now has a cadence where it previously had none.
+UNIVERSE_CADENCE = Cadence(
+    "universe", frozenset({"4h", "1d", "1wk"}), UNIVERSE_GAP_SESSIONS
+)
 
 
 @dataclass(frozen=True)
@@ -160,6 +202,10 @@ class OhlcvReport:
     unscheduled_total: int
     unscheduled_oldest: date | None
     unscheduled_newest: date | None
+    # Whether the weekly universe timer was observed enabled. Distinguishes "the
+    # universe is fresh" from "the universe was never graded", which the counts
+    # alone cannot separate — the same trap as a SKIPPED CI job reading green.
+    universe_scheduled: bool = False
 
     @property
     def ok(self) -> bool:
@@ -224,17 +270,78 @@ def sessions_elapsed(newest: date, now: date, sessions_fn: SessionsFn) -> int:
     return max(0, len(sessions_fn(newest, now)) - 1)
 
 
-def tolerance_sessions_for(timeframe: str) -> float | None:
+def sessions_per_bar(timeframe: str) -> float | None:
+    """Sessions one bar of ``timeframe`` spans; None when the table has no entry.
+
+    The reciprocal of the shared `BARS_PER_DAY`, imported rather than forked so a
+    bar-count constant cannot drift from the one the cost model uses.
+    """
+    per_day = BARS_PER_DAY.get(timeframe)
+    if per_day is None or per_day <= 0:
+        return None
+    return 1.0 / per_day
+
+
+def tolerance_sessions_for(timeframe: str, cadence: Cadence) -> float | None:
     """Sessions a correctly-refreshed ``timeframe`` may trail before it is stale.
 
-    ``base + gap``: the base absorbs the in-progress bar and the pre-open lag,
-    the second term one whole refresh cycle. Returns None for a timeframe nothing
-    schedules, so a caller reports "no declared cadence" rather than silently
-    applying a tight default to a series it does not know the cadence of.
+    Three terms. The base absorbs the in-progress bar and the pre-open lag; the
+    gap is one whole refresh cycle of the cadence that covers this series; the
+    third is how much longer than a session this timeframe's own bar takes to
+    close.
+
+    ⚠ THAT THIRD TERM IS WHY `1wk` CAN BE GRADED AT ALL. A weekly bar stamps on
+    the week's Monday open and does not close until Friday, so a perfectly
+    refreshed weekly series is routinely four sessions behind a daily one for
+    reasons that have nothing to do with staleness. Grading it on the daily
+    footing reds every weekly series forever — the same shape as the parent's
+    wall-clock age, which this tool's session-based age exists to avoid. It is
+    ``max(0, …)`` so 4h and 1d, whose bars close inside a session, keep exactly
+    the tolerance they had before this term existed.
+
+    ``cadence`` is required rather than defaulted so mypy forces every call site
+    to state which schedule it is grading against: the same series has different
+    tolerances under the daily and weekly timers, and a default would silently
+    pick one.
+
+    Returns None for a timeframe the cadence does not cover, or one absent from
+    the bars-per-day table, so a caller reports "no declared cadence" rather than
+    applying a tight default to a series whose cadence it does not know.
     """
-    if timeframe not in SCHEDULED_TIMEFRAMES:
+    if timeframe not in cadence.timeframes:
         return None
-    return BASE_TOLERANCE_SESSIONS + SCHEDULED_GAP_SESSIONS
+    span = sessions_per_bar(timeframe)
+    if span is None:
+        return None
+    return BASE_TOLERANCE_SESSIONS + cadence.gap_sessions + max(0.0, span - 1.0)
+
+
+def resolve_cadence(
+    symbol: str,
+    timeframe: str,
+    *,
+    watchlist: frozenset[str],
+    universe: frozenset[str],
+) -> Cadence | None:
+    """The cadence covering one series, or None when nothing schedules it.
+
+    ⚠ When both cover it, the TIGHTEST gap wins. A watchlist name is refreshed
+    daily whether or not the weekly timer also touches it, so the tight bar is
+    both achievable and the only one that would notice the daily timer stopping.
+    Taking the loose one would let a watchlist series sit four sessions stale and
+    still read FRESH.
+    """
+    covering = [
+        cadence
+        for cadence, members in (
+            (WATCHLIST_CADENCE, watchlist),
+            (UNIVERSE_CADENCE, universe),
+        )
+        if symbol in members and timeframe in cadence.timeframes
+    ]
+    if not covering:
+        return None
+    return min(covering, key=lambda cadence: cadence.gap_sessions)
 
 
 def grade(series: Series, *, now: date, sessions_fn: SessionsFn) -> Graded:
@@ -252,34 +359,42 @@ def evaluate_ohlcv(
     now: date,
     scheduled_symbols: frozenset[str],
     sessions_fn: SessionsFn,
+    universe_symbols: frozenset[str] = frozenset(),
 ) -> OhlcvReport:
     """Split rows into the graded scheduled tier and the summarised unscheduled one.
 
-    A series is scheduled only when BOTH its symbol is on the watchlist the timer
-    syncs and its timeframe is one the live scan reads. `1wk` is unscheduled for
-    every symbol, watchlist included — the scan does not read it, so a watchlist
-    name's weekly bars go stale exactly like the universe's.
+    A series is scheduled when some declared cadence covers it — see
+    `resolve_cadence`. Two do: the watchlist the daily signal timer syncs on the
+    timeframes the live scan reads, and the 505 research members the weekly
+    universe timer syncs on 4h/1d/1wk.
 
-    An empty ``scheduled_symbols`` (an unreadable or absent watchlist) puts every
-    series in the unscheduled tier. That degrades toward "nothing is graded",
-    which reports an absence, rather than toward "everything is graded against a
-    cadence it does not have", which would report ~500 phantom faults.
+    ⚠ ``universe_symbols`` DEFAULTS TO EMPTY, and that default is the safe one.
+    The universe timer is opt-in and nothing in the repo installs it, so a caller
+    that has not checked whether it is enabled must not get the graded tier by
+    accident. `main` passes members only when `universe_timer_enabled` says so.
+
+    An empty watchlist (unreadable or absent) likewise puts its series in the
+    unscheduled tier. Both defaults degrade toward "nothing is graded", which
+    reports an absence, rather than toward "everything is graded against a
+    cadence it does not have", which would report ~1,100 phantom faults.
     """
     stale: list[Graded] = []
     scheduled_total = 0
     unscheduled: list[date] = []
 
     for series in rows:
-        is_scheduled = (
-            series.symbol in scheduled_symbols
-            and series.timeframe in SCHEDULED_TIMEFRAMES
+        cadence = resolve_cadence(
+            series.symbol,
+            series.timeframe,
+            watchlist=scheduled_symbols,
+            universe=universe_symbols,
         )
         graded = grade(series, now=now, sessions_fn=sessions_fn)
-        if not is_scheduled:
+        if cadence is None:
             unscheduled.append(graded.newest_session)
             continue
         scheduled_total += 1
-        limit = tolerance_sessions_for(series.timeframe)
+        limit = tolerance_sessions_for(series.timeframe, cadence)
         if limit is None or not graded.measurable:
             # Scheduled but unmeasurable: report it. An unknown bars-per-day is
             # the more urgent finding, since nothing can say how far behind it is.
@@ -297,6 +412,7 @@ def evaluate_ohlcv(
         unscheduled_total=len(unscheduled),
         unscheduled_oldest=min(unscheduled) if unscheduled else None,
         unscheduled_newest=max(unscheduled) if unscheduled else None,
+        universe_scheduled=bool(universe_symbols),
     )
 
 
@@ -369,6 +485,57 @@ def read_scheduled_symbols(path: Path = DEFAULT_STOCKS) -> frozenset[str]:
         # `universe_policy` is a config block, not a symbol.
         return frozenset(str(k) for k in raw if k != "universe_policy")
     return frozenset()
+
+
+def read_universe_symbols(path: Path = DEFAULT_UNIVERSE) -> frozenset[str]:
+    """The research breadth universe's members; empty when absent or unreadable.
+
+    Reads the file directly rather than through `load_research_universe`, for
+    `read_scheduled_symbols`' reason: this is a probe, and it must report an
+    absent universe rather than crash on one.
+    """
+    try:
+        raw = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return frozenset()
+    if not isinstance(raw, dict):
+        return frozenset()
+    members = raw.get("members")
+    if not isinstance(members, dict):
+        return frozenset()
+    return frozenset(str(k) for k in members)
+
+
+def universe_timer_enabled(timer: str = UNIVERSE_TIMER) -> bool:
+    """Whether the weekly universe timer is enabled in this user's systemd.
+
+    ⚠ THIS IS THE PROBE'S ONE PIECE OF NON-DB OBSERVED STATE, and it is what
+    keeps the universe tier honest. The units are opt-in and nothing in the repo
+    installs them, so "the universe has a cadence" is true on one box and false
+    on the next. Deriving it here means the tool reports an ABSENCE where the
+    timer is not installed and GRADES where it is, instead of hardcoding either
+    answer — which is exactly the coupling that made this file assert "nothing
+    refreshes the 505-member research universe" as a constant.
+
+    Every failure degrades to False — no systemd, no `systemctl`, a timeout, a
+    non-Linux box, a permission error. False means "report the absence", which is
+    the direction that cannot invent faults; True on a box with no timer would
+    grade ~1,100 series against a schedule that never runs.
+    """
+    try:
+        proc = subprocess.run(
+            ["systemctl", "--user", "is-enabled", timer],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    # `is-enabled` prints the state and uses the exit code for it; "enabled" and
+    # "enabled-runtime" both mean the timer will fire. "static", "disabled",
+    # "masked" and "not-found" do not.
+    return proc.stdout.strip() in {"enabled", "enabled-runtime"}
 
 
 def read_series(db_path: Path) -> list[Series] | None:
@@ -456,9 +623,13 @@ def render_ohlcv(report: OhlcvReport) -> str:
             " unscheduled tier below."
         )
     elif report.ok:
+        # ⚠ No single tolerance to quote any more: the daily and weekly cadences
+        # carry different ones, and `1wk` adds its own bar-span term on top. A
+        # figure here would be right for one tier and wrong for the other, which
+        # is worse than naming neither.
         lines.append(
             f"      + FRESH   all {report.scheduled_total} scheduled series within"
-            f" {BASE_TOLERANCE_SESSIONS + SCHEDULED_GAP_SESSIONS:g} sessions"
+            " their declared cadence"
         )
     else:
         lines.append(
@@ -485,18 +656,31 @@ def render_ohlcv(report: OhlcvReport) -> str:
             f" — last session {report.unscheduled_oldest} … {report.unscheduled_newest}"
         )
         lines.append(
-            "        Not a fault: nothing refreshes the 505-member research"
-            " universe or any `1wk`"
+            "        Not a fault: no timer on this box covers them. ⚠ It IS a"
+            " hazard for a pooled"
         )
         lines.append(
-            "        series. ⚠ It IS a hazard for a pooled cross-section, which"
-            " would mix these"
+            "        cross-section, which would mix these with the fresh"
+            " watchlist inside one query."
         )
         lines.append(
-            "        with the fresh watchlist inside one query. Refresh with"
-            " `make wifey-universe-backfill`"
+            "        Refresh with `make wifey-universe-sync` /"
+            " `make wifey-pundit-sync` before any"
         )
-        lines.append("        / `make wifey-pundit-sync` before any breadth study.")
+        lines.append("        breadth study.")
+        if not report.universe_scheduled:
+            lines.append(
+                "        · The 505-member universe has a WEEKLY TIMER available"
+                " and NOT ENABLED here"
+            )
+            lines.append(
+                "          (`wifey-universe-sync.timer`). Until it is, this tier"
+                " is a hand-run"
+            )
+            lines.append(
+                "          habit — see deploy/README.md. The pundit ledger has"
+                " no timer at all."
+            )
     return "\n".join(lines)
 
 
@@ -537,6 +721,12 @@ def main() -> None:
         "--stocks", type=Path, default=DEFAULT_STOCKS, help="Path to the watchlist."
     )
     ap.add_argument(
+        "--universe",
+        type=Path,
+        default=DEFAULT_UNIVERSE,
+        help="Path to the research breadth universe.",
+    )
+    ap.add_argument(
         "--exit-nonzero",
         action="store_true",
         help="Exit 1 when any leg reports STALE, for use as a shell condition.",
@@ -560,11 +750,20 @@ def main() -> None:
     ohlcv = None
     if args.leg in ("ohlcv", "both"):
         series = read_series(args.db)
+        # ⚠ Members are passed ONLY when the timer is enabled. Handing them over
+        # unconditionally would grade the universe against a schedule that may
+        # not exist on this box — see `universe_timer_enabled`.
+        universe = (
+            read_universe_symbols(args.universe)
+            if universe_timer_enabled()
+            else frozenset()
+        )
         ohlcv = evaluate_ohlcv(
             series or [],
             now=today,
             scheduled_symbols=read_scheduled_symbols(args.stocks),
             sessions_fn=nyse_sessions,
+            universe_symbols=universe,
         )
 
     print(render(signal, ohlcv))

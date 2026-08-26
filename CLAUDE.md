@@ -222,7 +222,8 @@ since backfill marks primary alone and a real send marks both.
 Audit: `docs/audits/2026-08-25-dispatch-recency-window.md`.
 
 Re-run `make universe-stamp-listed` after any membership or backfill change: a new constituent
-arrives unstamped, and unstamped is the permissive value.
+arrives unstamped, and unstamped is the permissive value. The weekly `wifey-universe-sync` does not
+move the `listed` seam — it never adds a member, only extends existing series.
 
 Markdown changes: `make lint-md`, which covers `.claude/` skills and context, so a skill edit lints
 like any other file (`make lint-md-fix` applies the auto-fixable subset). **Do not re-add a
@@ -337,6 +338,14 @@ behind and every Monday adds a phantom weekend. It reds everything forever, whic
 mode the parent's own docstring warns about. Sessions come from `analytics/trading_calendar.py` and
 bars-per-day from `cost_model.BARS_PER_DAY`, imported rather than forked.
 
+⚠ **A weekly series cannot be graded on the daily footing.** A `1wk` bar stamps on the week's
+Monday open and closes Friday, so a perfectly refreshed weekly series trails a daily one by four
+sessions for reasons that are not staleness. The tolerance is `base + cadence gap +
+max(0, sessions_per_bar - 1)`, with `sessions_per_bar` the reciprocal of `cost_model.BARS_PER_DAY`
+rather than a new constant. Without that third term every weekly series reds forever — the parent's
+wall-clock failure mode in a new place. `4h` and `1d` close inside a session, so the term is 0 for
+both and their shipped tolerances did not move.
+
 ⚠ **The watermark is a DISPATCH oracle, not a RUN oracle, so it is dated but UNGRADED.** It
 advances only when a candle is consumed by an alert, and `day_filter = tue_thu` makes dispatch
 intermittent by design — a Mon run (Fri bars) and a Tue run (Mon bars) can never alert. The first
@@ -346,14 +355,23 @@ detecting nothing new writes nothing). **Run-liveness is the ohlcv leg instead**
 watchlist sync, so fresh watchlist bars *are* the evidence a run happened, and that quantity does
 have a declared cadence. The only finding this leg makes is **no watermarks at all**.
 
-⚠ **The 505-member research universe has NO scheduled refresher, and that is reported as an
-ABSENCE rather than graded.** Measured 2026-08-26: the 13-symbol watchlist ran to the previous
-session while **493 of 526** `1d` series had a last bar on or before **2026-06-18**, and `1wk` is unscheduled
-for every symbol including the watchlist. Grading it would print ~490 findings a run, and a leg
-that is never green stops being read. **It is still a live hazard for any pooled cross-section**,
-which would mix ~10-week-stale names with the fresh watchlist inside one query — and the fresh set
-is exactly the mega-cap tilt `4h`'s 21% coverage already carries, so the two skews compound.
-Run `make wifey-universe-backfill` / `make wifey-pundit-sync` before a breadth study.
+⚠ **The 505-member research universe now HAS a refresher, and whether it is graded depends on the
+BOX.** `make wifey-universe-sync` is the incremental target (4h/1d/1wk) and
+`wifey-universe-sync.timer` runs it **Sat 10:00 UTC** — opt-in like every unit here, so **nothing
+installs it**. The probe reads `systemctl --user is-enabled` and grades the 505 members on a weekly
+tolerance only where the timer is enabled; everywhere else it reports the absence and names the
+timer. Grading unconditionally would print ~1,100 findings on a box that installed nothing, and a
+leg that is never green stops being read. ⚠ **`sync` is not `backfill`** — the backfill re-fetches
+from 2018 and stays hand-run for a NEW constituent, which arrives with no bars and which `sync`
+skips by design; that is also why **400 of 505 `4h` series stay absent** (yfinance's intraday
+window), so this timer **cannot close the 21% `4h` coverage gap**.
+
+⚠ **The staleness it fixes was measured, and it is a live hazard for any pooled cross-section.**
+On 2026-08-26 the 13-symbol watchlist ran to the previous session while **493 of 526** `1d` series
+had a last bar on or before **2026-06-18** — a breadth query would mix ~10-week-stale names with
+the fresh watchlist inside one query, and the fresh set is exactly the mega-cap tilt `4h`'s 21%
+coverage already carries, so the two skews compound. **The pundit ledger still has no timer**: run
+`make wifey-pundit-sync` by hand before a ledger glance.
 
 ⚠ **ADVISORY — it must never enter `make test`, `make sanity-checks` or CI**, for `backup-check`'s
 reason: both legs read machine-local single-copy state (`analytics.db`, the gitignored
@@ -405,7 +423,7 @@ entries that have no audit of their own.
 | `migrations/` | **Five** one-shot migration scripts, run by hand. All five refuse to start without a `.bak`; only **001/002** rewrite `run_id` and cascade to `backtest_trades` — 003/004/005 target `signal_alert_outcomes`, whose key carries no measured value, so an in-place `UPDATE` is correct there. Check what the target table's key is made of rather than following the precedent. Routine schema changes go through `analytics/store/schema.py`'s migration list | `context/migrations.md` |
 | `.claude/hooks/` | Three `PreToolUse` hooks on `Bash`: a destructive-command guard, a foreground-run advisory, and an inline `gh pr create` reminder. **Two are files here, the third is inline in `.claude/settings.json`**, which registers all three. Tracked since the 2026-08-20 denylist inversion, so they survive a reclone and ruff + mypy cover them | `context/hooks.md` |
 | `config/` | `stocks.json` (gitignored 13-symbol live watchlist), `universe.json` (committed 505-member research universe), `strategy_params.toml` (shared base inherited via `extends`), `youtube_channels.toml` (gitignored; `.example` committed) | `context/config.md` |
-| `deploy/` | `backup-analytics.sh` (local leg), `backup-offsite.sh` (rclone leg), `notify-failure.sh`, and opt-in `wifey-*` systemd user units — backup ×2, the templated alert, and **signal-watch**. Nothing installs them; every one is `Type=oneshot`, so there is still no wifey daemon | `deploy/README.md` |
+| `deploy/` | `backup-analytics.sh` (local leg), `backup-offsite.sh` (rclone leg), `notify-failure.sh`, and opt-in `wifey-*` systemd user units — backup ×2, the templated alert, **signal-watch** and **universe-sync**. Nothing installs them; every one is `Type=oneshot`, so there is still no wifey daemon | `deploy/README.md` |
 
 ### Sleeve verdicts
 
