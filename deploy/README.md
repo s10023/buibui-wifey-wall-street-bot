@@ -240,6 +240,8 @@ presence check caught it:
 | `wifey-backup-offsite.timer` | 13:55 UTC | once daily, after both legs above |
 | `wifey-signal-watch.service` | by `wifey-signal-watch.timer` | one `make go-live CATCH_UP=1` cycle — sync, scan, Telegram, outcome backfill |
 | `wifey-signal-watch.timer` | Mon–Fri 08:30 UTC | once each trading morning, pre-open, `Persistent=true` |
+| `wifey-universe-sync.service` | by `wifey-universe-sync.timer` | one `make wifey-universe-sync` — incremental 4h/1d/1wk refresh of the 505 research members |
+| `wifey-universe-sync.timer` | Sat 10:00 UTC | once a week, `Persistent=true` |
 | `wifey-alert@.service` | `OnFailure=wifey-alert@%N.service` on any service above | Telegrams the last 25 journal lines **of the unit that actually failed** |
 
 ⚠ **The `cp` glob below is `wifey-*`, not `wifey-backup*`, and that is a fix.**
@@ -421,6 +423,69 @@ in the journal. Use `-t wifey-signal-watch`.
 ⚠ **`buibui-signal-watch.*` in this same user instance is the crypto parent's**,
 fires every 15 minutes, and now differs from wifey's by prefix alone. Read
 `WorkingDirectory` before concluding anything from a unit name or a recent fire.
+
+## Scheduled research-universe refresh
+
+`wifey-universe-sync.{service,timer}` fire **one** `make wifey-universe-sync` a
+week: an incremental 4h/1d/1wk sync of the 505 members in `config/universe.json`.
+`Type=oneshot`, so this is not a daemon either.
+
+⚠ **This unit exists because of a measurement, not a tidiness impulse.** Until
+2026-08-26 nothing refreshed the research universe at all — `make go-live` syncs
+the 13-symbol `config/stocks.json` watchlist, and the universe was a hand-run
+`make wifey-universe-backfill` that nobody had a reason to remember. Measured that
+day: **493 of 526 `1d` series had a last bar on or before 2026-06-18** (~10 weeks)
+while the watchlist ran to the previous session. Nothing was broken; there was
+simply no unit, which is why no `OnFailure=` alert could ever have said so.
+
+⚠ **The cost lands on POOLED CROSS-SECTIONS, and it compounds an existing skew in
+the same direction.** A breadth query mixes ~10-week-stale names with the fresh
+watchlist, and the fresh set is exactly the mega-cap tilt `4h`'s 21% coverage
+already carries. Two skews, one direction. `make freshness-check` reports it.
+
+⚠ **SYNC, NOT BACKFILL — they are different targets and only one belongs on a
+timer.** `wifey-universe-backfill` re-fetches from 2018 for 505 symbols × 3
+timeframes; `wifey-universe-sync` asks each series for the tail after its own
+newest bar (measured 2m15s for the whole universe against a 10-week-stale tree).
+`sync` **refuses a symbol with no bars at all** and skips it, so a newly-added
+constituent still needs the backfill once — that is why both targets exist. It is
+also why 400 of 505 `4h` series stay absent: yfinance's intraday history window,
+not staleness, and **this unit cannot close that 21% coverage gap.**
+
+**Saturday 10:00 UTC**, for three reasons that all have to hold. It is the
+longest-running writer on `analytics.db` (2m15s) and shares that file with two
+other units — on a weekday it would sit between `wifey-backup` (08:10) and
+`wifey-signal-watch` (08:30), putting a multi-minute writer in front of the signal
+scan whose 20-minute separation is load-bearing and derived. Saturday removes the
+signal unit entirely (it is `Mon..Fri`), leaving only backup, 1h50m away. Second,
+`1wk` bars stamp on the week's Monday open and form until Friday's close, so a
+Saturday run reads a **settled** week rather than a forming one. Third, nothing
+downstream waits on this data — only a hand-run breadth study does.
+
+⚠ **Weekend uptime here is UNMEASURED**, and that is the honest difference from
+`wifey-signal-watch.timer`, whose 08:30 slot came from 14 weekdays of observed
+uptime. `Persistent=true` carries the case, and it carries it *fully* here in a
+way it does not for the signal unit: a late refresh loses nothing, because no
+alert has a window to miss. `sync` fetches the tail after each series' own newest
+bar, so lateness costs freshness, never data.
+
+```bash
+systemctl --user list-timers wifey-universe-sync.timer  # scheduled?
+journalctl --user -t wifey-universe-sync -n 50          # -t: the unit sets SyslogIdentifier
+systemctl --user start wifey-universe-sync.service      # fire one now — safe, sends nothing
+```
+
+⚠ **`make freshness-check` reads this timer's enabled state and changes what it
+grades.** With the timer enabled the 505 members become a graded tier on a
+weekly tolerance; without it they are reported as an absence. That is deliberate —
+the units are opt-in, so "the universe has a cadence" is true on one box and false
+on the next, and grading it unconditionally would print ~1,100 phantom faults on a
+box that never installed anything.
+
+⚠ **The pundit ledger still has no timer.** `make wifey-pundit-sync` stays a
+hand-run before any ledger glance; see the note in `CLAUDE.md`. It is a third
+universe with a third symbol convention (`^GSPC`, `GC=F`), and nothing refreshes
+it.
 
 ## Off-site — the leg that survives losing the laptop
 

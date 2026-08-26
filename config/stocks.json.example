@@ -2,7 +2,7 @@
   "universe_policy": {
     "scope": "liquid_large_cap",
     "as_of": "today",
-    "survivorship_note": "Watchlist hand-picked at fork time (2026-05-14) from today's mega-caps — a forward-looking selection over the backtested history. Results carry survivorship/selection bias; do not extrapolate these results beyond this watchlist."
+    "survivorship_note": "Watchlist hand-picked at fork time (2026-05-14) from symbols that are liquid US mega-caps today — i.e. survivors. Backtests over earlier history carry forward-looking selection (survivorship) bias: names that crashed, shrank or delisted never enter the sample. The delisting bias is small for mega-caps (rare mid-sample delistings) but the selection bias is unbounded for broader universes — do not extrapolate these results beyond this watchlist."
   },
   "AAPL": { "sl_pct": 0.05 },
   "MSFT": { "sl_pct": 0.05 },

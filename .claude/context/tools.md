@@ -523,26 +523,53 @@ different things; a primary mark ahead of `:wife` is the normal resting state, n
 
 ### Two tiers, because grading everything trains dismissal
 
-A series is **scheduled** only when its symbol is on the watchlist the timer syncs *and* its
-timeframe is one the live scan reads (`4h`/`1d`). Everything else — the whole 505-member research
-universe, and `1wk` for every symbol including watchlist names — has no scheduled refresher and is
-summarised in **one line** rather than graded. Measured 2026-08-26: 26 scheduled series fresh,
-**1131 unscheduled spanning 2026-05-04 … 2026-08-24**. Grading those would print ~490 findings a
-run, and a leg that is never green stops being read — the same argument that bounds
-`negative-claims`' triage load.
+A series is **scheduled** when some declared `Cadence` covers it. Two exist: the **watchlist**
+cadence (`wifey-signal-watch.timer`, `4h`/`1d`, one fire per trading day) and the **universe**
+cadence (`wifey-universe-sync.timer`, `4h`/`1d`/`1wk`, one fire a week). When both cover a series
+the **tightest gap wins** — a watchlist name is refreshed daily whether or not the weekly timer also
+touches it, so the tight bar is both achievable and the only one that would notice the daily timer
+stopping.
 
-⚠ **The absence is still a hazard, and the report says so.** A pooled cross-section run today mixes
-~10-week-stale names with the fresh watchlist **inside one query**, and the fresh set is precisely
-the mega-cap tilt `4h`'s 21% coverage already carries, so recency skew and coverage skew compound
-in the same direction. Nothing errors; `n_eff`, breadth counts and any `1wk` panel are just quietly
-wrong.
+⚠ **Whether the universe tier exists at all is read from the BOX, not asserted here.**
+`universe_timer_enabled` shells out to `systemctl --user is-enabled`, and `main` passes the 505
+members to `evaluate_ohlcv` **only** when that returns enabled. The units are opt-in and nothing in
+the repo installs them, so "the universe has a cadence" is true on one machine and false on the
+next; hardcoding either answer is wrong on half of them. Every failure — no systemd, a timeout, a
+non-Linux box — degrades to **not enabled**, the direction that cannot invent faults. This is the
+tool's one piece of non-DB observed state, and it exists because the file previously asserted
+"nothing refreshes the 505-member research universe" as a **constant**, which stopped being true the
+day a timer was written.
 
-An **empty** `scheduled_symbols` — an absent or unreadable watchlist — puts every series in the
-unscheduled tier. That degrades toward "nothing was graded", which reports an absence, rather than
-toward "everything is graded against a cadence it does not have", which would report ~500 phantom
-faults. Every reader (`read_watermarks`, `read_scheduled_symbols`, `read_series`) degrades the same
-way; `read_series` returns None on a lock conflict too, because a writer holding the DB is not a
-finding about the data.
+Measured 2026-08-26, both worlds on the same tree: **timer off → 26 graded, 1131 unscheduled**;
+**timer on → 1115 graded, 42 unscheduled, 4 findings**. All four were true positives (`SATS`
+delisted, `EA` wound down post-acquisition), which is the point — grading unconditionally on a box
+with no timer would have printed ~1,100, and a leg that is never green stops being read, the same
+argument that bounds `negative-claims`' triage load.
+
+⚠ **A weekly bar cannot be graded on the daily footing.** A `1wk` bar stamps on the week's Monday
+open and closes Friday, so a perfectly refreshed weekly series trails a daily one by four sessions
+for reasons that are not staleness. `tolerance_sessions_for` is `base + cadence gap +
+max(0, sessions_per_bar - 1)`, with `sessions_per_bar` the reciprocal of `cost_model.BARS_PER_DAY`
+— imported, never a new constant. Without the third term every weekly series reds forever, which is
+**the parent's wall-clock failure mode arriving by a different route**: the port already fixed
+wall-clock-vs-sessions and this is the same error one level down, in bar span rather than clock.
+`4h` and `1d` close inside a session, so the term is 0 for both and their shipped tolerances did not
+move — pinned by a regression test, because that is the half a reader would not think to check.
+
+⚠ **The residual absence is still a hazard, and the report still says so.** The pundit ledger has no
+timer at all, and a pooled cross-section that reaches unrefreshed names mixes stale series with the
+fresh watchlist **inside one query** — the fresh set being precisely the mega-cap tilt `4h`'s 21%
+coverage already carries, so recency skew and coverage skew compound in the same direction. Nothing
+errors; `n_eff`, breadth counts and any `1wk` panel are just quietly wrong.
+
+An **empty** member set — an absent or unreadable watchlist, or a universe timer that is not enabled
+— puts those series in the unscheduled tier. That degrades toward "nothing was graded", which
+reports an absence, rather than toward "everything is graded against a cadence it does not have".
+`universe_symbols` **defaults to empty** for the same reason: a caller that has not checked the
+timer must not get the graded tier by accident. Every reader (`read_watermarks`,
+`read_scheduled_symbols`, `read_universe_symbols`, `read_series`) degrades the same way;
+`read_series` returns None on a lock conflict too, because a writer holding the DB is not a finding
+about the data.
 
 ⚠ **ADVISORY, never in `make test` / `make sanity-checks` / CI** — both legs read machine-local
 single-copy state no clone has. The **pure grading half** is in `make test`

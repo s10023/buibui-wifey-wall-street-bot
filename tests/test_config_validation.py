@@ -814,15 +814,46 @@ class TestShippedStocksExample:
         )
         assert validate_universe_policy(config[UNIVERSE_POLICY_KEY])
 
-    def test_example_policy_is_declared_not_defaulted(self) -> None:
+    def test_example_policy_is_declared_not_defaulted(self, tmp_path: Path) -> None:
         """The load path must return the example's own block, not the fallback.
 
         This is the assertion with teeth: the two previous tests still pass if the
-        loader ignores the block entirely. Deleting the block from the example
-        turns this red while leaving the shape tests green.
+        loader ignores the block entirely.
+
+        ⚠ IT PERTURBS THE BLOCK RATHER THAN COMPARING TO THE DEFAULT, and that is
+        a correctness fix, not a style one. The original asserted
+        `policy != DEFAULT_UNIVERSE_POLICY`, which reads as "the loader returned
+        the declaration" only while the shipped note happens to differ from the
+        default's text. It is a proxy, and the sentence above is the claim: an
+        input satisfying the claim but failing the guard is a block that IS
+        declared and IS returned but whose value coincides with the default —
+        legitimate, and exactly what happened on 2026-08-26 when the declared note
+        was restored to the default's fuller bounding wording. The guard was
+        stricter than its own sentence, so it forbade a legal state and would have
+        forced the config to stay divergent just to keep a test green.
+
+        Perturbing observes the channel directly: write a copy whose note nothing
+        else could produce, and require the loader to hand it back. That stays red
+        if the loader ignores the block, and stays green however the shipped text
+        happens to compare to the default.
         """
+        marker = "SENTINEL-declared-block-was-read"
+        config = json.loads(self._EXAMPLE.read_text())
+        config[UNIVERSE_POLICY_KEY]["survivorship_note"] = marker
+        perturbed = tmp_path / "stocks.json"
+        perturbed.write_text(json.dumps(config))
+
+        assert load_universe_policy(perturbed).survivorship_note == marker, (
+            "the loader returned the fallback for a file that declares a block"
+        )
+        # The fallback is still reachable, so the control is not vacuous: an
+        # undeclared file must yield exactly DEFAULT_UNIVERSE_POLICY.
+        del config[UNIVERSE_POLICY_KEY]
+        undeclared = tmp_path / "undeclared.json"
+        undeclared.write_text(json.dumps(config))
+        assert load_universe_policy(undeclared) == DEFAULT_UNIVERSE_POLICY
+
         policy = load_universe_policy(self._EXAMPLE)
-        assert policy != DEFAULT_UNIVERSE_POLICY
         assert policy.as_of in ("today", "fixed")
         assert "survivorship" in policy.survivorship_note.lower(), (
             "the bounded claim must survive in the declared note, not only in the "

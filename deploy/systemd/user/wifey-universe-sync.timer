@@ -1,0 +1,61 @@
+[Unit]
+Description=Refresh the wifey research breadth universe once a week
+
+[Timer]
+# ONE fire a week, Saturday. Three constraints, and Saturday morning is the only
+# slot that satisfies all three.
+#
+#   1. LOCK CONTENTION. This is the longest-running writer on analytics.db
+#      (2m15s measured) and it shares that file with two other units. On a
+#      weekday it would sit between wifey-backup (08:10, 13:10 UTC) and
+#      wifey-signal-watch (Mon..Fri 08:30 UTC) -- a multi-minute writer in front
+#      of the signal scan, whose own 20-minute separation from backup is
+#      load-bearing and derived. ⚠ Saturday removes the signal unit from the
+#      picture entirely: it is Mon..Fri. Only wifey-backup remains, and 10:00 UTC
+#      sits 1h50m after its 08:10 fire and 3h10m before its 13:10 one -- both
+#      margins are two orders of magnitude larger than either job's runtime.
+#
+#   2. THE WEEK IS COMPLETE. `1wk` bars stamp on the week's MONDAY open and form
+#      until Friday's close; `1d` closes Friday's bar at 04:00/05:00 UTC Saturday.
+#      A Saturday-morning run is past both, so it reads a settled week rather
+#      than a forming one. A midweek fire would store a partial weekly bar and
+#      overwrite it on the next run -- correct, but it means the value a study
+#      reads depends on when the timer last fired.
+#
+#   3. NOTHING DOWNSTREAM IS WAITING. No dispatch, no alert, no gate reads this
+#      data on a schedule; only a hand-run breadth study does. So the cadence is
+#      set by how stale a study may tolerate, not by a deadline.
+#
+# ⚠ WHY WEEKLY AND NOT DAILY. The refresh exists so a pooled cross-section is not
+# mixing ~10-week-stale names with a fresh watchlist. Weekly bounds that skew at
+# 5 sessions, which is inside the noise of any cross-sectional study run here,
+# and it is ~1/5 the yfinance traffic of a daily sweep for 505 symbols. If a
+# study ever needs same-session universe data, run `make wifey-universe-sync` by
+# hand -- do not tighten this timer into a daily 505-symbol fetch.
+#
+# ⚠ UPTIME HERE IS UNMEASURED, and that is the honest difference from
+# wifey-signal-watch.timer, whose 08:30 UTC slot was chosen from 14 weekdays of
+# observed uptime. That record covers WEEKDAYS; this box's Saturday-morning
+# uptime has never been measured. Persistent=true below is what carries the case,
+# and it carries it fully here in a way it does not for the signal unit: a late
+# refresh loses nothing, because no alert has a window to miss.
+OnCalendar=Sat *-*-* 10:00:00 UTC
+
+# The whole point on a laptop: after suspend/shutdown, systemd runs the fire it
+# missed ONCE on resume, not once per missed slot.
+#
+# ⚠ Unlike wifey-signal-watch.timer, this recovers EVERYTHING it was for. That
+# unit's Persistent= recovers the run but never the alerts, because dispatch
+# ages out. Here a run three days late still fetches exactly the bars a run on
+# time would have fetched -- `sync` asks each series for the tail after its own
+# newest bar, so lateness costs freshness, never data.
+Persistent=true
+
+# Larger than the other two units' (120 on backup, 60 on signal-watch), because
+# nothing here is racing a market clock and the only reason to spread at all is
+# to keep a resume-from-suspend pile-up off one disk. Nothing downstream reads a
+# fire time.
+RandomizedDelaySec=900
+
+[Install]
+WantedBy=timers.target
