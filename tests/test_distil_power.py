@@ -237,3 +237,73 @@ def test_single_flag_deflator_error_exits_cleanly(
     assert "supplied together" in captured.err
     assert "Traceback" not in captured.err
     assert "Traceback" not in captured.out
+
+
+def _verdict_lines(out: str) -> list[str]:
+    """Every VERDICT line, stripped — so a bare pass cannot hide behind a prefix."""
+    return [ln.strip() for ln in out.splitlines() if ln.strip().startswith("VERDICT")]
+
+
+def test_corpus_best_without_sd_never_reads_as_a_cleared_bar(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`--corpus-best` alone cannot be compared, and must not print a bare pass.
+
+    Parent #692 (ST76). The comparison needs `--sd` to convert the required
+    Sharpe into effect units; without it this branch used to fall through to the
+    same bare ``VERDICT REACHABLE`` a genuine pass prints. `/research-distil`'s
+    G3 gate mandates running this tool, so *did not compare* read as *passed*.
+    """
+    code = distil_power.main(
+        [
+            "--units",
+            "per_trade",
+            "--n-obs",
+            "4000",
+            "--n-trials",
+            "16",
+            "--sr-variance",
+            "0.05",
+            "--corpus-best",
+            "1.196",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "corpus best" in out
+    # The whole point: the un-comparable case is distinguishable from a pass.
+    assert _verdict_lines(out) == [
+        "VERDICT           REACHABLE, corpus best NOT COMPARED"
+    ]
+    assert "--sd" in out
+
+
+def test_corpus_best_with_sd_still_reads_as_a_clean_pass(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Positive control: the guard must not swallow a genuine comparison.
+
+    Same family, same corpus best, `--sd` supplied — this one really does clear
+    the bar, so it must still print the unqualified verdict. Without this the
+    test above passes equally if the tool stopped ever emitting a clean pass.
+    """
+    code = distil_power.main(
+        [
+            "--units",
+            "per_trade",
+            "--n-obs",
+            "4000",
+            "--n-trials",
+            "16",
+            "--sr-variance",
+            "0.05",
+            "--sd",
+            "1.2",
+            "--corpus-best",
+            "1.196",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert _verdict_lines(out) == ["VERDICT           REACHABLE"]
+    assert "NOT COMPARED" not in out

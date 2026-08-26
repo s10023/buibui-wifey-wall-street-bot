@@ -219,6 +219,26 @@ edit. The asymmetry is the point: a false positive costs a glance, a silent miss
 that enumerates every sibling but one and reads as complete. The Makefile is deliberately
 **not** an enumerating doc; a build rule is not documentation.
 
+**The full sweep closes by naming the `/post-branch` phases it does NOT reach**
+(`UNCOVERED_STEPS` / `uncovered_notice()`), so passing the mechanical half cannot feel like
+passing the walk. Upstream shipped this after finding **both** parallel sessions of one wave
+substituting the sweep for the skill, *neither being careless* — its always-loaded tier carried a
+sibling sentence licensing the substitution. **The fix belongs on reachability, not on another
+rule**: a rule that competes with a nearby rule loses to whichever is read last.
+
+⚠ **wifey cites `Phase N` where upstream cites `Step N`, and that divergence is deliberate.**
+Upstream's phases are table rows declaring no headings, so a phase citation there is a dead anchor
+its own `stale_anchors` correctly flags — hence its mutation test pinning the ABSENCE of the word
+*phase*. Here the skill has real `## Phase N` headings **and** `tools/stale_anchors.py` resolves
+`phase N` against them (`_HEAD_TYPED`), so the citation is a CHECKED anchor and the better one;
+porting the upstream rule verbatim would have swapped a live reference for a vague one.
+`TestUncoveredSteps::test_every_cited_phase_resolves_in_the_skill` is what makes that falsifiable.
+**Port the rule, re-derive the reason.** Ported from parent #697.
+
+The notice is suppressed for `--text` (which screens one composed PR body seconds before a
+visibility flip, and wants no step list at the moment the operator is triaging under time
+pressure) and for a single `--check` run, which is a deliberate one-leg invocation.
+
 **Run:** `make post-branch-checks` (passes `--exit-zero`), or
 `PYTHONPATH=. poetry run python tools/post_branch_checks.py [--check NAME] [--exit-zero]`
 to let it exit 1 on findings.
@@ -486,9 +506,23 @@ that is broken.
 
 ## sanity_checks.py — every mechanical `/sanity-check` check, in one run
 
-Seven checks: `fork-drift` (invocable artifacts a doc names but the code lacks — make targets,
+Eight checks: `fork-drift` (invocable artifacts a doc names but the code lacks — make targets,
 timeframes, `--strategy`, `SYMBOL`), `parent-leakage`, `missing-paths`, `context-coverage`,
-`router-wiring`, `config-strategies`, `cli-documented`. Same shape as `post_branch_checks.py` —
+`router-wiring`, `config-strategies`, `cli-documented`, `regression-surface`.
+
+`regression-surface` reads the globs CI's regression paths-filter fires on straight out of
+`.github/workflows/lint.yaml` and asserts CLAUDE.md names each one. ⚠ **It keys on the block
+mentioning `tests/test_regression.py`, never on a job name or a position** — there is a second
+`filters:` block in that file (the frontend one) and a positional read silently grades the wrong
+one; the first draft's regex did exactly that, matching across blocks because `\s+` spans
+newlines. ⚠ **An empty filter is a FINDING, not a pass**: if the workflow moves, the leg must say
+it can no longer see what it grades rather than reporting clean against nothing. The comparison is
+**verbatim** for a reason — until 2026-08-26 the doc list diverged in BOTH directions (narrower on
+`analytics/` and `config/`, silent on four paths, *wider* on `tests/fixtures/`), and a paraphrase
+(`analytics/backtest/` for `analytics/**/*.py`) is not diffable by any tool. ⚠ **Only the
+narrowing direction is harmful** — over-running the gate costs ~8s, under-running it costs a
+metered Actions cycle. The first draft of this note called the list a *strict subset*; the claims
+audit caught it, which is the audit working on its own branch. Ported from parent #698 (ST89). Same shape as `post_branch_checks.py` —
 pure functions over text, git injected as `runner`, one `Finding` per thing a human must look at —
 with two deliberate differences.
 
@@ -638,9 +672,21 @@ figure that looks portable silently changes meaning with the panel — `regime.p
 crypto bar counts across the fork, so its "90-day" ATR window really spanned ~270 sessions
 on `4h` (RTH is 2 bars/day, not 6) and 12.02% of `4h` labels moved when it was corrected.
 `--n-series`/`--n-eff` must be supplied together — one alone raises, and omitting both on
-a pooled multi-symbol panel overstates `n`. ⚠ **This repo has no measured `n_eff`**, so
-every undeflated run prints an **upper bound** on n and therefore a bar smaller than the
-true one; never present such a pass as having margin it did not measure.
+a pooled multi-symbol panel overstates `n`. ⚠ **Omitting both still prints an UNDEFLATED
+`n`**, i.e. an upper bound and therefore a bar smaller than the true one; never present
+such a pass as having margin it did not measure. ⚠ **The repo DOES now have a measured
+`n_eff`** — `make wifey-n-eff`, ≈2.96 at `1d` on the 505-member universe (2026-08-20), so
+there is no longer any excuse for an undeflated run. The sentence here said the opposite
+until 2026-08-26; it was written before the measurement existed and nothing touched it
+after → the absence-claim decay class.
+
+⚠ **`--corpus-best` without `--sd` is NOT a pass, and used to render as one.** The
+comparison converts the required Sharpe into effect units, which needs `--sd`; without it
+the branch fell through to the same bare `VERDICT REACHABLE` a cleared bar prints. Since
+`/research-distil`'s G3 gate **mandates** running this tool, *did not compare* read as
+*passed*. It now names the missing input. **That is the second fail-open path found in
+this one file** — the first being the undeflated `n` above — so treat a `REACHABLE` here
+as a claim to check rather than a result to quote. Ported from parent #692 (ST76).
 
 `UNREACHABLE` is a **successful output**, not a failure: more data of that shape cannot
 fix it, only a smaller trial family can. The null-containment verdict is delegated to

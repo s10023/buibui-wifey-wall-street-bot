@@ -18,11 +18,26 @@ plainly: eight sleeves have come back non-positive and each of those is a findin
 
 ⚠ **`make test-regression` is a separate gate, and a green `make test` says nothing about it** —
 the suite runs with `--ignore=tests/test_regression.py`. It is **required** when the diff touches
-anything the golden pipeline reads: `analytics/backtest_lib.py`, `analytics/backtest/`,
-`analytics/strategies/`, `analytics/signal_config.py`, `config/*signal_watch*.toml`,
-`config/strategy_params.toml`, `tests/fixtures/`, or `poetry.lock`. Say which branch you took.
+any path CI's own regression filter fires on, quoted here **verbatim** from
+`.github/workflows/lint.yaml`: `analytics/**/*.py`, `pyproject.toml`, `poetry.lock`,
+`config/*.toml`, `tests/test_regression.py`, `tests/fixtures/**.parquet`,
+`tests/fixtures/golden_*.json`, `scripts/extract_regression_fixture.py`,
+`.github/workflows/lint.yaml`. Say which branch you took.
 
-The path list here marks a **coverage gap, not a cost**: the gate runs in ~8s wall clock, so when in
+⚠ **This list used to be hand-written, and it diverged from that filter in BOTH directions.**
+It named four `analytics/` paths against CI's `analytics/**/*.py` and two config patterns against
+CI's `config/*.toml`, omitted `pyproject.toml`, `tests/test_regression.py`,
+`scripts/extract_regression_fixture.py` and the workflow entirely — and ran *wider* than CI on
+`tests/fixtures/`, against CI's two narrower fixture globs. ⚠ **Only the narrowing direction is
+harmful**, and conflating the two is what made this look tidier than it was: running the gate when
+CI would not costs ~8s, while not running it when CI would costs a metered cycle. So a diff touching
+`analytics/store/`, `analytics/audit_guard.py` or `analytics/signal/` read as *gate not required*
+here while CI ran the golden suite on it — you learn the golden moved **after** the push, in a
+metered Actions cycle, which is the cost `make preflight` exists to avoid. It is now pinned by
+`make sanity-checks`' `regression-surface` leg, because prose does not enforce. Ported from
+parent #698 (ST89).
+
+The path list marks a **coverage gap, not a cost**: the gate runs in ~8s wall clock, so when in
 doubt just run it. (Do not port the parent's rationale, where the same gate costs ~95s and the list
 exists to avoid paying for a chain the diff cannot reach.) When it applies and a golden moves, that
 is a *decision* rather than a failure, which is why it stays local instead of being left to CI.
@@ -102,10 +117,12 @@ make test           # full pytest suite (make test-cov for coverage)
 MEMORY.md size and bullet count, audits, skills, tools. **Print these rather than writing any of
 them into a doc** — each has a history of being quoted stale.
 
-`make sanity-checks` runs the seven mechanical `/sanity-check` checks from
+`make sanity-checks` runs the eight mechanical `/sanity-check` checks from
 `tools/sanity_checks.py`: fork drift against invocable artifacts, parent-repo leakage in skills,
 dead repo paths, package coverage in `.claude/context/`, the three hand-maintained router lists,
-`[strategy_params.X]` keys, and README's CLI coverage. ⚠ **It gates rather than advises** — it exits
+`[strategy_params.X]` keys, README's CLI coverage, and `regression-surface` — this file's
+`make test-regression` trigger list against CI's own paths filter, compared **verbatim** because a
+paraphrase cannot be diffed by anything. ⚠ **It gates rather than advises** — it exits
 non-zero, `tests/test_sanity_checks.py` runs the same sweep inside `make test`, and CI's
 `markdownlint` job runs it **unconditionally**. That last placement is load-bearing: the test job
 sits behind a `**/*.py` paths filter, so on a docs-only PR the pytest gate never fires — on exactly

@@ -407,6 +407,64 @@ def check_cli_documented(subcommands: Iterable[str], readme: str) -> list[Findin
     ]
 
 
+def regression_filter_patterns(workflow: str) -> list[str]:
+    """The globs CI's regression paths-filter fires on, read from the workflow.
+
+    Keyed on the block that mentions ``tests/test_regression.py`` rather than on
+    a job name or a position, because there is a second ``filters:`` block in the
+    same file (the frontend one) and a positional read would silently grab it.
+    """
+    lines = workflow.splitlines()
+    for i, line in enumerate(lines):
+        if not line.strip().startswith("filters:"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        block: list[str] = []
+        for nxt in lines[i + 1 :]:
+            if not nxt.strip():
+                continue
+            if len(nxt) - len(nxt.lstrip()) <= indent:
+                break
+            block.append(nxt)
+        body = "\n".join(block)
+        if "tests/test_regression.py" not in body:
+            continue
+        return re.findall(r"^\s*-\s*'([^']+)'", body, re.MULTILINE)
+    return []
+
+
+def check_regression_surface(claude_md: str, workflow: str) -> list[Finding]:
+    """CLAUDE.md's `make test-regression` trigger list mirrors CI's filter.
+
+    Until 2026-08-26 the doc list diverged in BOTH directions — narrower on
+    ``analytics/`` and ``config/``, silent on four paths, and *wider* than CI on
+    ``tests/fixtures/``. Only the narrowing direction is harmful: a diff CI runs
+    the golden suite on read as "gate not required" locally, so the golden move
+    surfaced after the push in a metered Actions cycle. Over-running the gate
+    costs ~8s and nothing else, which is why "strict subset" was the wrong
+    diagnosis even though the fix is the same. Comparing verbatim is what makes the two checkable against each
+    other at all — a paraphrase (`analytics/backtest/` for `analytics/**/*.py`)
+    cannot be diffed by anything. Ported from parent #698 (ST89).
+
+    An empty filter is itself a finding: it means the workflow moved and this
+    check was silently comparing against nothing.
+    """
+    patterns = regression_filter_patterns(workflow)
+    if not patterns:
+        return [
+            Finding(
+                "regression-surface",
+                "no regression paths-filter found in .github/workflows/lint.yaml"
+                " — the check cannot see what it grades",
+            )
+        ]
+    return [
+        Finding("regression-surface", f"CLAUDE.md does not name CI filter path: {pat}")
+        for pat in patterns
+        if f"`{pat}`" not in claude_md
+    ]
+
+
 def _read_surfaces() -> list[tuple[str, str]]:
     return [(str(p), p.read_text(encoding="utf-8")) for p in surface_paths()]
 
@@ -498,10 +556,19 @@ def gather(runner: Runner = _run) -> list[CheckResult]:
         )
 
     on_disk, imported, registered = _router_lists()
+    workflow_path = Path(".github/workflows/lint.yaml")
+    regression_surface = CheckResult(
+        "regression-surface",
+        check_regression_surface(
+            Path("CLAUDE.md").read_text(encoding="utf-8"),
+            workflow_path.read_text(encoding="utf-8") if workflow_path.exists() else "",
+        ),
+    )
 
     return [
         fork_drift,
         CheckResult("parent-leakage", check_parent_leakage(surfaces)),
+        regression_surface,
         CheckResult(
             "missing-paths",
             check_missing_paths(

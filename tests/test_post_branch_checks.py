@@ -17,6 +17,7 @@ from tools.post_branch_checks import (
     HANDOFF_MAX_LINES,
     NEGATIVE_CLAIM_EXEMPT,
     NEGATIVE_CLAIM_RE,
+    UNCOVERED_STEPS,
     Runner,
     _check_handoff_size,
     added_paths,
@@ -35,9 +36,11 @@ from tools.post_branch_checks import (
     mask_term,
     numbered_items,
     probe_names,
+    render,
     scan_text_for_terms,
     sensitive_terms_result,
     sensitive_text_result,
+    uncovered_notice,
 )
 
 # CLAUDE.md's real sentence — the one that made every skill report COVERED.
@@ -713,3 +716,62 @@ class TestSensitiveTerms:
             "# a comment\n\nAcmeCorp\n  Other Co  # trailing note\n"
         )
         assert terms == ["acmecorp", "other co"]
+
+
+class TestUncoveredSteps:
+    """The sweep must not be mistakable for the walk (parent #697).
+
+    Upstream found BOTH sessions of one wave substituting the mechanical half,
+    neither being careless, so the fix is reachability rather than another rule.
+    """
+
+    def test_notice_names_every_declared_step(self) -> None:
+        text = "\n".join(uncovered_notice())
+        for name, _ in UNCOVERED_STEPS:
+            assert name in text
+        assert "MECHANICAL half only" in text
+        assert "not passing /post-branch" in text
+
+    def test_render_omits_the_notice_unless_asked(self) -> None:
+        lines, _ = render([])
+        assert "MECHANICAL half only" not in "\n".join(lines)
+
+    def test_render_appends_the_notice_when_asked(self) -> None:
+        lines, _ = render([], show_uncovered=True)
+        assert "MECHANICAL half only" in "\n".join(lines)
+
+    def test_every_cited_phase_resolves_in_the_skill(self) -> None:
+        """wifey cites `Phase N` where upstream cites `Step N`, and this is why.
+
+        Upstream's phases are table rows declaring no headings, so a phase
+        citation there is a dead anchor and its mutation test pins the ABSENCE of
+        the word. Here the skill has real `## Phase N` headings and
+        `tools/stale_anchors.py` resolves `phase N` against them, so the citation
+        is CHECKED — porting upstream's rule verbatim would have swapped a live
+        reference for a vague one. This test is what makes that claim falsifiable.
+        """
+        skill = Path(".claude/skills/post-branch/SKILL.md").read_text(encoding="utf-8")
+        headings = {
+            line.split("—")[0].strip().lstrip("#").strip().lower()
+            for line in skill.splitlines()
+            if line.startswith("## ")
+        }
+        for name, _ in UNCOVERED_STEPS:
+            assert name.lower() in headings, f"{name} is not a heading in the skill"
+
+    def test_long_entries_wrap_rather_than_running_wide(self) -> None:
+        """One over-wide line drags the whole block sideways in a terminal."""
+        assert max(len(line) for line in uncovered_notice()) <= 82
+
+    def test_a_single_check_run_does_not_print_the_notice(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """`--text` screens a composed body seconds before a flip; it runs alone.
+
+        The step list is noise at the one moment the operator is triaging under
+        time pressure, and `--check` is a deliberate single-leg run.
+        """
+        body = tmp_path / "body.md"
+        body.write_text("a perfectly ordinary PR body\n", encoding="utf-8")
+        assert main(["--text", str(body)]) == 0
+        assert "MECHANICAL half only" not in capsys.readouterr().out

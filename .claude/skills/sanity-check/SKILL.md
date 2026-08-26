@@ -22,7 +22,7 @@ Everything mechanical is now code. This file holds what a script cannot decide.
 make sanity-checks
 ```
 
-Seven checks in `tools/sanity_checks.py`. They were prose plus three embedded
+Eight checks in `tools/sanity_checks.py`. They were prose plus three embedded
 shell blocks until 2026-08-18, i.e. checks that ran only when a session
 remembered to copy them.
 
@@ -35,6 +35,7 @@ remembered to copy them.
 | `router-wiring` | Do the three hand-maintained router lists agree — disk, import tuple, registration loop? |
 | `config-strategies` | Does every `[strategy_params.X]` key name a real strategy? |
 | `cli-documented` | Does every `wifey` subcommand appear in README? |
+| `regression-surface` | Does CLAUDE.md name every path CI's regression filter fires on? |
 
 ⚠ **Unlike `/post-branch`'s sweep, this one GATES.** It exits non-zero on any
 finding, and the same sweep runs in `make test`
