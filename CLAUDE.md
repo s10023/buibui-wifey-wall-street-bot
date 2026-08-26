@@ -326,6 +326,42 @@ shrinks the invisible-timer gap rather than closing it. Wiring a staleness refus
 `backup-offsite.sh` stays a user call: a guard that costs you the backup is worse than the gap it
 closes. Narrative: `context/tools.md`.
 
+`make freshness-check` is the same probe for the two surfaces `backup-check` cannot see, and it
+answers **two different questions that must not be graded the same way**. Ported from the
+parent's `ohlcv_freshness.py` (#681/#698).
+
+⚠ **Age is in NYSE SESSIONS, never wall-clock — this is the port's one hard divergence and a
+verbatim copy is WRONG here.** The parent computes `(now - newest) / bar_ms` against a 24h tape;
+on an RTH tape `4h` is 2 bars/day rather than 6, so a healthy two-session-old series reads ~12 bars
+behind and every Monday adds a phantom weekend. It reds everything forever, which is the failure
+mode the parent's own docstring warns about. Sessions come from `analytics/trading_calendar.py` and
+bars-per-day from `cost_model.BARS_PER_DAY`, imported rather than forked.
+
+⚠ **The watermark is a DISPATCH oracle, not a RUN oracle, so it is dated but UNGRADED.** It
+advances only when a candle is consumed by an alert, and `day_filter = tue_thu` makes dispatch
+intermittent by design — a Mon run (Fri bars) and a Tue run (Mon bars) can never alert. The first
+build graded it and printed STALE at 4 sessions on a healthy system, with run evidence on two of
+the three intervening sessions (the third carries no row, which is not evidence of no run — a scan
+detecting nothing new writes nothing). **Run-liveness is the ohlcv leg instead**: a `go-live` run's first act is a
+watchlist sync, so fresh watchlist bars *are* the evidence a run happened, and that quantity does
+have a declared cadence. The only finding this leg makes is **no watermarks at all**.
+
+⚠ **The 505-member research universe has NO scheduled refresher, and that is reported as an
+ABSENCE rather than graded.** Measured 2026-08-26: the 13-symbol watchlist ran to the previous
+session while **493 of 526** `1d` series had a last bar on or before **2026-06-18**, and `1wk` is unscheduled
+for every symbol including the watchlist. Grading it would print ~490 findings a run, and a leg
+that is never green stops being read. **It is still a live hazard for any pooled cross-section**,
+which would mix ~10-week-stale names with the fresh watchlist inside one query — and the fresh set
+is exactly the mega-cap tilt `4h`'s 21% coverage already carries, so the two skews compound.
+Run `make wifey-universe-backfill` / `make wifey-pundit-sync` before a breadth study.
+
+⚠ **ADVISORY — it must never enter `make test`, `make sanity-checks` or CI**, for `backup-check`'s
+reason: both legs read machine-local single-copy state (`analytics.db`, the gitignored
+`signal_state.json` and `config/stocks.json`) that no clone has. Every unreadable state degrades to
+a reported absence rather than to freshness, and an absent watchlist grades **nothing** rather than
+everything. The pure grading half *is* in `make test` (`tests/test_freshness_check.py`), positive
+control included. Narrative: `context/tools.md`.
+
 ## CLI
 
 `wifey.py` is the single entry point. Each Makefile `wifey-*` target wraps the equivalent
