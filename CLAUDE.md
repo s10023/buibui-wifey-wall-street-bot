@@ -786,10 +786,17 @@ prose did not enforce these constraints:
   plain "there is no X" / "X has no Y" form as of 2026-08-26**; the harvested-phrasing allowlist
   missed **8 of 8** claims the signal-timer branch falsified, 2 of them in `deploy/` and so out of
   reach at any regex, which is why both halves shipped together. `has no` is **anchored to a
-  repo-self subject** — bare, it matches claims about what something ELSE lacks ("yfinance has no
-  taker data"), which no wifey branch can falsify. ⚠ **Price the TRIAGE LOAD of any further
-  widening, not just the catch**: this one took findings-per-run from 0–5 to 1–11, and a leg that
-  is never clean trains dismissal. ⚠ **Do not re-scope this leg to a window around the regex match**: on 3–6 KB
+  subject that is not a third party** — bare, it matches claims about what something ELSE lacks
+  ("yfinance has no taker data"); a definite noun phrase ("The 505-member research universe")
+  counts as repo-self, which the old allowlist could not reach.
+  ⚠ **Until 2026-08-26 the corpus query filtered on the letter `x`** (`git grep -e x`, written as
+  if it meant "every line"), so the leg read **15% of its declared corpus** and **46 of the 69 claim-shaped lines
+  then in the corpus (67%) were unreachable** — every figure ever quoted for it was measured on that slice,
+  and because the tests mock the runner **no test ever saw the real argv**.
+  ⚠ **Price the TRIAGE LOAD of any further widening, not just the catch**: on the fixed corpus it
+  reports **13.2 findings + 18.2 soft per run** against 8.5 while blind, and a leg that
+  is never clean trains dismissal. A finding needs a backticked or punctuated token; a hit on bare
+  English ("no **state**") is demoted to a named re-read note, never dropped. ⚠ **Do not re-scope this leg to a window around the regex match**: on 3–6 KB
   paragraph lines that is the obvious remedy, and measured against the pre-#248 tree it would have
   **suppressed** the leg's only true positive, which a human found by re-reading the paragraph
   rather than the matched clause. Narrative: `context/tools.md`.

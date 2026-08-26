@@ -585,9 +585,11 @@ backup-check:
 ## cannot tell a timer with nothing to report from one that STOPPED FIRING.
 ## Age is in NYSE SESSIONS, never wall-clock — on an RTH tape `4h` is 2 bars/day,
 ## so the parent tool's `(now - newest) / bar_ms` would red every series forever.
-## ⚠ The 505-member research universe has NO scheduled refresher and is reported
-## as an absence rather than graded, because a leg that is never green stops being
-## read. Refresh it with `make wifey-universe-backfill` before any breadth study.
+## ⚠ The 505-member research universe is graded ONLY where `wifey-universe-sync.timer`
+## reads enabled, never unconditionally: the units are opt-in, so on a box that
+## installed nothing this would print ~1,100 findings and a leg that is never green
+## stops being read. Refresh it with `make wifey-universe-sync`; the 2018
+## `wifey-universe-backfill` stays hand-run for a NEW constituent, which `sync` skips.
 ## ADVISORY and deliberately NOT in `make test`, `make sanity-checks` or CI — both
 ## legs read machine-local single-copy state no clone has. The PURE grading half
 ## is unit-tested in `tests/test_freshness_check.py`, which does run in `make test`.
