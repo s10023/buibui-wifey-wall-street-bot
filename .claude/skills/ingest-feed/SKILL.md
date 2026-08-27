@@ -189,6 +189,9 @@ that files the first testable one, and the report should not read as though it w
   opening past-calls as if they were today's — on 2026-08-03 that put a never-filled
   entry and a past trade's exit management into the sinks. Both keys are opt-in; a
   channel without them behaves exactly as before, and `handle` is required for
-  `intro_recap_s` to have any effect at all.
+  `intro_recap_s` to have any effect at all. ⚠ **Still fill it in even though a video's
+  own chapters now override it**: chapters are absent on roughly half the measured
+  corpus, so the constant is the fallback rather than dead weight — and where both
+  exist the chapter wins, so a roughly-right constant costs nothing.
 - Quota: poll ≈ 2–3 units/channel/day against 10,000/day — never call `search.list`
   (100 units); the tool doesn't, don't add it.

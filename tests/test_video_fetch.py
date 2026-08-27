@@ -6,7 +6,7 @@ import json
 import random
 import subprocess
 from collections.abc import Callable
-from dataclasses import asdict, dataclass, fields, replace
+from dataclasses import MISSING, asdict, dataclass, fields, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -19,6 +19,7 @@ from tools.video_fetch import (
     SOURCE_CAPTIONS_UNKNOWN,
     SOURCE_MANUAL,
     BatchResult,
+    Chapter,
     TranscriptResult,
     Unavailable,
     VideoMeta,
@@ -34,6 +35,7 @@ from tools.video_fetch import (
     main,
     parse_video_url,
     parse_vtt,
+    recap_window_s,
     split_audio,
 )
 from tools.video_marks import FrameMark, TranscriptSegment
@@ -1061,6 +1063,156 @@ CAPTION_JSON = json.dumps(
 )
 
 
+# Chapters ride in on the `--dump-json` call `fetch_meta` ALREADY makes, so reading
+# them costs parsing, not quota. `CHAPTER_JSON` is also the fixture that keeps
+# `test_cache_round_trip_covers_every_video_meta_field` from going vacuous: it is the
+# only payload that leaves NO VideoMeta field sitting at its default.
+CHAPTER_JSON = json.dumps(
+    {
+        **json.loads(YTDLP_JSON),
+        "language": None,
+        "chapters": [
+            {"start_time": 0, "title": "策略回顧", "end_time": 186},
+            {"start_time": 186, "title": "BTC技術分析", "end_time": 519},
+        ],
+        "subtitles": {"zh-Hant": [{"ext": "vtt"}]},
+        "automatic_captions": {"zh-Hant": [{"ext": "vtt"}], "en": [{"ext": "vtt"}]},
+    }
+)
+
+
+def _chapter_payload(*titled: tuple[float, float, str]) -> str:
+    return json.dumps(
+        {
+            **json.loads(YTDLP_JSON),
+            "chapters": [
+                {"start_time": a, "end_time": b, "title": t} for a, b, t in titled
+            ],
+        }
+    )
+
+
+def test_fetch_meta_parses_chapters() -> None:
+    meta = fetch_meta(YT_URL, run=make_run(FakeProc(0, CHAPTER_JSON)))
+    assert isinstance(meta, VideoMeta)
+    assert [c.title for c in meta.chapters] == ["策略回顧", "BTC技術分析"]
+    assert meta.chapters[0].start_s == 0.0
+    assert meta.chapters[0].end_s == 186.0
+
+
+def test_fetch_meta_chapters_empty_when_absent() -> None:
+    meta = fetch_meta(YT_URL, run=make_run(FakeProc(0, YTDLP_JSON)))
+    assert isinstance(meta, VideoMeta)
+    assert meta.chapters == ()
+
+
+def test_fetch_meta_skips_malformed_chapters_without_raising() -> None:
+    """yt-dlp's chapter list is author-supplied, so a partial entry is a live
+    possibility and must not cost the whole fetch."""
+    payload = json.dumps(
+        {
+            **json.loads(YTDLP_JSON),
+            "chapters": [
+                {"title": "no times"},
+                {"start_time": 10, "end_time": 20, "title": "good"},
+                "not even a dict",
+                {"start_time": "x", "end_time": 30, "title": "bad times"},
+            ],
+        }
+    )
+    meta = fetch_meta(YT_URL, run=make_run(FakeProc(0, payload)))
+    assert isinstance(meta, VideoMeta)
+    assert [c.title for c in meta.chapters] == ["good"]
+
+
+def test_recap_window_reads_the_leading_recap_chapter() -> None:
+    meta = fetch_meta(YT_URL, run=make_run(FakeProc(0, CHAPTER_JSON)))
+    assert isinstance(meta, VideoMeta)
+    assert recap_window_s(meta.chapters) == 186.0
+
+
+def test_recap_window_zero_when_no_chapter_looks_like_a_recap() -> None:
+    meta = fetch_meta(
+        YT_URL, run=make_run(FakeProc(0, _chapter_payload((0, 300, "認識市場結構"))))
+    )
+    assert isinstance(meta, VideoMeta)
+    assert recap_window_s(meta.chapters) == 0.0
+
+
+def test_recap_window_zero_without_chapters() -> None:
+    """Degrade to the per-channel constant rather than trimming everything."""
+    assert recap_window_s(()) == 0.0
+
+
+def test_recap_window_only_counts_a_LEADING_recap_chapter() -> None:
+    """A mid-video recap is a different thing and must not swallow real content."""
+    meta = fetch_meta(
+        YT_URL,
+        run=make_run(
+            FakeProc(
+                0,
+                _chapter_payload((0, 100, "BTC技術分析"), (100, 200, "回顧")),
+            )
+        ),
+    )
+    assert isinstance(meta, VideoMeta)
+    assert recap_window_s(meta.chapters) == 0.0
+
+
+def test_recap_window_ignores_a_plain_educational_intro() -> None:
+    """Parent #695: a leading chapter titled `Intro` running 0-295s of an 1128s video
+    marked the first 26% of an educational upload as a position recap -- on a channel
+    configured `intro_recap_s: 0`, which is EXACTLY wifey's setting for both live
+    channels. An introduction OPENS content; a recap REPLAYS prior calls."""
+    meta = fetch_meta(
+        YT_URL, run=make_run(FakeProc(0, _chapter_payload((0, 295, "Intro"))))
+    )
+    assert isinstance(meta, VideoMeta)
+    assert recap_window_s(meta.chapters) == 0.0
+
+
+def test_recap_window_ignores_a_longer_introduction_title() -> None:
+    """The hint matches as a substring, so `Introduction ...` carried the defect too."""
+    meta = fetch_meta(
+        YT_URL,
+        run=make_run(
+            FakeProc(0, _chapter_payload((0, 240, "Introduction to Market Structure")))
+        ),
+    )
+    assert isinstance(meta, VideoMeta)
+    assert recap_window_s(meta.chapters) == 0.0
+
+
+def test_recap_window_still_reads_an_intro_that_says_it_recaps() -> None:
+    """The narrowing must not cost the real case."""
+    meta = fetch_meta(
+        YT_URL,
+        run=make_run(
+            FakeProc(0, _chapter_payload((0, 300, "Intro & Recap of Last Week")))
+        ),
+    )
+    assert isinstance(meta, VideoMeta)
+    assert recap_window_s(meta.chapters) == 300.0
+
+
+def test_cache_round_trip_rehydrates_chapters_as_objects(tmp_path: Path) -> None:
+    """`asdict` flattens chapters to dicts and `VideoMeta(**raw)` would store them AS-IS.
+
+    A frozen dataclass does no coercion, so the field would claim `tuple[Chapter, ...]`
+    while holding `list[dict]`, and `recap_window_s` would die on `chapter.title` at the
+    first cache hit. mypy cannot see it -- `**` builds the lie at runtime.
+    """
+    meta = fetch_meta(YT_URL, run=make_run(FakeProc(0, CHAPTER_JSON)))
+    assert isinstance(meta, VideoMeta)
+    _write_cache(tmp_path, BatchResult(url=YT_URL, meta=meta), meta)
+    got = _load_cached(tmp_path, meta.video_id)
+    assert got is not None
+    assert isinstance(got.meta, VideoMeta)
+    assert all(isinstance(c, Chapter) for c in got.meta.chapters)
+    # The consumer that would have blown up on raw dicts.
+    assert recap_window_s(got.meta.chapters) == 186.0
+
+
 def test_fetch_meta_records_caption_provenance_sets() -> None:
     """`subtitles` is author-written, `automatic_captions` is ASR. Nothing
     downstream could tell them apart before this — both land as `sub.<code>.vtt`."""
@@ -1214,8 +1366,23 @@ def test_cache_round_trip_covers_every_video_meta_field(tmp_path: Path) -> None:
     """`_meta_from_cache` lists VideoMeta's fields by hand, so it can drift behind the
     dataclass. Pin it against the real field list: a new field that is not carried
     through fails HERE rather than silently reading back as its default forever."""
-    meta = fetch_meta(YT_URL, run=make_run(FakeProc(0, CAPTION_JSON)))
+    meta = fetch_meta(YT_URL, run=make_run(FakeProc(0, CHAPTER_JSON)))
     assert isinstance(meta, VideoMeta)
+    # POSITIVE CONTROL on the control. The round-trip assertion below compares the
+    # cached value to the fetched one, so any field the FIXTURE leaves at its default
+    # compares a default to a default and passes whether or not `_meta_from_cache`
+    # carries it. That is not a hypothetical: `chapters` was added with a fixture that
+    # had no `chapters` key, and deleting the field from `_meta_from_cache` left this
+    # test GREEN. Assert the fixture actually moves every defaulted field first.
+    at_default = sorted(
+        f.name
+        for f in fields(VideoMeta)
+        if f.default is not MISSING and getattr(meta, f.name) == f.default
+    )
+    assert not at_default, (
+        "CHAPTER_JSON leaves these fields at their default, so the round-trip "
+        f"assertion below cannot fail for them: {at_default}"
+    )
     _write_cache(tmp_path, BatchResult(url=YT_URL, meta=meta), meta)
     got = _load_cached(tmp_path, meta.video_id)
     assert got is not None
