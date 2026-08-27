@@ -1343,6 +1343,45 @@ class TestIsIntroRecap:
         assert is_intro_recap(5.0, None) is False
 
 
+class TestChapterDerivedRecapWindow:
+    """A video's own chapters beat the hand-tuned per-channel constant.
+
+    `intro_recap_s` is fitted per CHANNEL from a sample of uploads, so it is wrong on
+    any upload that opens differently. The window itself comes from
+    `video_fetch.recap_window_s`; these tests pin only how it overrides the constant.
+    """
+
+    def test_chapter_window_overrides_a_too_short_channel_constant(self) -> None:
+        ch = make_channel(intro_recap_s=120)
+        assert is_intro_recap(150.0, ch) is False
+        assert is_intro_recap(150.0, ch, recap_end_s=186.0) is True
+
+    def test_chapter_window_overrides_a_too_long_channel_constant(self) -> None:
+        """The override must cut BOTH ways, or it is just a bigger constant."""
+        ch = make_channel(intro_recap_s=120)
+        assert is_intro_recap(60.0, ch) is True
+        assert is_intro_recap(60.0, ch, recap_end_s=30.0) is False
+
+    def test_falls_back_to_the_channel_constant_without_chapters(self) -> None:
+        """Upstream measured no chapters at all on about half its corpus, so this is
+        the common path rather than the edge case."""
+        ch = make_channel(intro_recap_s=120)
+        assert is_intro_recap(60.0, ch, recap_end_s=0.0) is True
+        assert is_intro_recap(130.0, ch, recap_end_s=0.0) is False
+
+    def test_chapters_trim_even_for_an_unconfigured_channel(self) -> None:
+        """A video's own chapters need no channel row to be authoritative.
+
+        This is the live path here: BOTH of wifey's configured channels sit at
+        `intro_recap_s = 0`, so the chapter window is the only trim that can fire.
+        """
+        assert is_intro_recap(60.0, None, recap_end_s=186.0) is True
+        assert is_intro_recap(200.0, None, recap_end_s=186.0) is False
+
+    def test_no_channel_and_no_chapters_still_flags_nothing(self) -> None:
+        assert is_intro_recap(0.0, None) is False
+
+
 class TestIntroRecapConfigParsing:
     def test_new_fields_parse(self, tmp_path: Path) -> None:
         p = tmp_path / "channels.toml"

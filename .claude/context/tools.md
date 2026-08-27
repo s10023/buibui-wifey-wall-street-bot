@@ -1766,7 +1766,28 @@ download, never by reading the code.
   `en`), and caps the list at `_MAX_SUB_LANGS = 6` so no video can request a translate matrix —
   upstream measured 157 auto codes led by `ab`/`aa`/`af`, answered with HTTP 429 partway through,
   leaving the transcript's language decided by which file survived the rate limit. Ported from
-  parent #668 + #674; the chapters/recap half of #668 was deliberately NOT taken (see below)
+  parent #668 + #674. ⚠ **The chapters/recap half of #668 is now PORTED too** (2026-08-27), at
+  its **post-#695 shape** rather than as merged
+- `Chapter` / `_parse_chapters` / `recap_window_s` — a video's own leading recap chapter answers
+  per VIDEO what `intro_recap_s` answers per CHANNEL, and beats it in **both** directions (a
+  shorter chapter window must narrow the trim too, or the override is just a bigger constant).
+  Chapters ride in on the `--dump-json` call `fetch_meta` already makes, so this costs parsing,
+  not quota; `_parse_chapters` drops a malformed entry rather than failing the fetch, since the
+  list is author-supplied. `recap_window_s` returns `0.0` for "no answer here", leaving the
+  constant in charge — upstream found no chapters at all on about half its corpus.
+  ⚠ **`_RECAP_TITLE_HINTS` deliberately EXCLUDES `intro`.** Upstream shipped it, then removed it
+  in #695 after a leading chapter titled `Intro` marked the first 26% of an educational upload as
+  a position recap — **on a channel configured `intro_recap_s: 0`, which is exactly wifey's
+  setting for BOTH live channels**. So the unamended list would have reproduced that defect here
+  on day one rather than importing it dormant. An introduction OPENS content; a recap REPLAYS
+  prior calls, and only the second is what the window trims. `review` and 概述 are the same
+  shape and are UNMEASURED — treat a sighting on either as this defect again, not a new one.
+  ⚠ **Here the chapter window is the ONLY trim that can fire**, both channels being at 0, so a
+  false positive has no constant to fall back to and costs the whole trim.
+  ⚠ **`_meta_from_cache` must COERCE chapters back into `Chapter` objects** — `asdict` flattens
+  them to dicts and a frozen dataclass does no coercion, so the field would claim
+  `tuple[Chapter, ...]` while holding dicts and `recap_window_s` would die on `chapter.title` at
+  the first cache hit. mypy cannot see it: `**` builds the lie at runtime
 - `extract_frames` (one ffmpeg seek per caller-supplied `FrameMark`, never speculative; retries
   the whole download-and-seek on **total** failure only — 3 attempts spaced by
   `_FRAME_RETRY_BACKOFF_S`, since a partial result means those marks individually failed to

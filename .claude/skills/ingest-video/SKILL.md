@@ -204,6 +204,32 @@ Both knobs otherwise degrade **quietly** to a default: `matched: false` or
 `intro_recap_s: 0` means no recap rule and nothing changes, and `item_cap` falls back to
 `video_marks.ITEM_CAP` (**12 here**, not the parent's 5).
 
+⚠ **`intro_recap_s` is a per-CHANNEL constant and the video's own chapters BEAT it.**
+Compute the per-video window from step 1's `meta.chapters`:
+
+```bash
+PYTHONPATH=. poetry run python -c "
+import json,sys
+from tools.video_fetch import Chapter, recap_window_s
+ch = tuple(Chapter(**c) for c in json.load(sys.stdin))
+print(recap_window_s(ch))
+" <<< '<meta.chapters as JSON>'
+```
+
+A **positive** result REPLACES `intro_recap_s` for that video, in **both** directions — a
+shorter chapter window must narrow the trim too, or the override is just a bigger
+constant. **`0.0` means fall back to `intro_recap_s`** (no leading recap chapter, or no
+chapters at all — upstream measured that on about half its corpus, so it is the common
+path rather than the edge case).
+
+⚠ **Here, the chapter window is the ONLY trim that can fire.** Both channels in this
+repo's live `config/youtube_channels.toml` sit at `intro_recap_s = 0`, so before this the
+rule never fired at all. That also means a false positive costs more here than upstream:
+with no constant to fall back to, a wrongly-matched chapter is the whole trim. The hint
+list is narrowed accordingly (`_RECAP_TITLE_HINTS` excludes `intro`, parent #695) —
+an introduction OPENS content, a recap REPLAYS prior calls, and only the second is
+what this window exists to trim.
+
 **`item_cap` is applied by the pass-1 PROMPT, not by code — so a value fetched here and
 not passed on does nothing.** Carry it into the ranking rule as a literal. This shipped
 broken upstream: #558 added the key to the config, `tools/yt_feed.py`, its tests and the
@@ -223,8 +249,9 @@ less.
 `yt_feed.py` does not validate it. Treat a channel needing more as a reason to revisit
 the global constants, not to set this key.
 
-**If `intro_recap_s` came back non-zero**, set `is_intro_recap: true` on every candidate
-with `ts < intro_recap_s`. For a `setup`, ALSO set `retrospective: true` — a call lifted
+**If the effective window came back non-zero** — the chapter-derived `recap_window_s`
+when it is positive, `intro_recap_s` otherwise — set `is_intro_recap: true` on every
+candidate with `ts < window`. For a `setup`, ALSO set `retrospective: true` — a call lifted
 from a recap block is a *past* call that would otherwise be stamped with today's
 `call_ts_utc` and score the author on an already-resolved trade. For a `claim` or
 `mechanic`, set `is_intro_recap` and **keep** the candidate: an idea stays portable

@@ -67,6 +67,94 @@ def _caption_langs(raw: object) -> tuple[str, ...]:
 
 
 @dataclass(frozen=True)
+class Chapter:
+    """One author-declared segment of a video, from yt-dlp's `chapters`."""
+
+    start_s: float
+    end_s: float
+    title: str
+
+
+# Titles a leading chapter uses when it recaps prior calls rather than opening new
+# content. Matched case-insensitively as substrings, across the languages actually
+# present in the follow list (en + zh-Hans/zh-Hant).
+#
+# ⚠ This list IS the content test, so a hint that merely means "the video starts
+# here" belongs nowhere in it. `intro` was one upstream and was removed there
+# (parent #695) after a leading chapter titled `Intro` running 0-295s of an 1128s
+# video marked the first 26% of an educational upload as a position recap -- on a
+# channel configured `intro_recap_s: 0`, which is EXACTLY wifey's setting for both
+# live channels. So this ships in its post-#695 form ON PURPOSE: porting the original
+# list would reproduce that defect here on day one rather than import it dormant.
+# An introduction OPENS content; a recap REPLAYS prior calls, and only the second is
+# what this window exists to trim. A channel whose recap chapter really is titled
+# `Intro` keeps its per-channel constant, which is the designed fallback -- a false
+# positive silently drops Stream C setups, the only stream carrying dated calls.
+# ⚠ `review` and 概述 are the same shape and are UNMEASURED, kept because both
+# routinely do head a genuine recap; treat a sighting on either as this defect again
+# rather than as a new one.
+_RECAP_TITLE_HINTS: tuple[str, ...] = (
+    "recap",
+    "review",
+    "last week",
+    "previous",
+    "回顧",
+    "回顾",
+    "概述",
+    "前情",
+    "上回",
+    "复盘",
+    "復盤",
+)
+
+
+def recap_window_s(chapters: tuple[Chapter, ...]) -> float:
+    """End of the LEADING run of recap-shaped chapters, or 0.0 when there is none.
+
+    This is the per-VIDEO answer to the question `intro_recap_s` answers per CHANNEL.
+    The constant is hand-tuned from a sample and is wrong on any upload that opens
+    differently -- upstream measured a configured 120s against a recap chapter that
+    actually ran to 186s, i.e. 66s of recap read as fresh content.
+
+    ⚠ Only a LEADING recap counts. A mid-video 回顧 is a different thing, and
+    treating it as an intro would swallow the real content before it. Returning 0.0 is
+    the honest "no answer here", which leaves the channel constant in charge --
+    upstream found chapters on only about half its measured corpus, so degrading
+    rather than overriding is the common path, not the edge case.
+    """
+    end = 0.0
+    for chapter in chapters:
+        title = chapter.title.casefold()
+        if not any(hint.casefold() in title for hint in _RECAP_TITLE_HINTS):
+            break
+        end = max(end, chapter.end_s)
+    return end
+
+
+def _parse_chapters(raw: object) -> tuple[Chapter, ...]:
+    """yt-dlp `chapters` -> Chapter tuple, dropping anything malformed.
+
+    The list is author-supplied, so a partial entry is a live possibility; one bad
+    chapter must not cost the whole fetch.
+    """
+    if not isinstance(raw, list):
+        return ()
+    out: list[Chapter] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            start = float(entry["start_time"])
+            end = float(entry["end_time"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        out.append(
+            Chapter(start_s=start, end_s=end, title=str(entry.get("title") or ""))
+        )
+    return tuple(out)
+
+
+@dataclass(frozen=True)
 class VideoMeta:
     source: str
     video_id: str
@@ -76,6 +164,7 @@ class VideoMeta:
     duration_s: float
     lang: str
     url: str
+    chapters: tuple[Chapter, ...] = ()
     # `subtitles` is author-written, `automatic_captions` is YouTube ASR. Both land
     # on disk as `sub.<code>.vtt`, so the filename cannot tell them apart — these two
     # fields are the ONLY provenance signal, and they come free with the metadata call.
@@ -168,6 +257,7 @@ def fetch_meta(url: str, *, run: RunProc = _subprocess_run) -> VideoMeta | Unava
         duration_s=duration,
         lang=str(data.get("language") or ""),
         url=url,
+        chapters=_parse_chapters(data.get("chapters")),
         caption_langs_manual=_caption_langs(data.get("subtitles")),
         caption_langs_auto=_caption_langs(data.get("automatic_captions")),
     )
@@ -698,7 +788,8 @@ def _meta_from_cache(raw: dict[str, Any]) -> VideoMeta:
     """Rehydrate VideoMeta from `asdict` output.
 
     Written out field by field ON PURPOSE. `VideoMeta(**raw)` would store the
-    `caption_langs_*` fields as the plain `list[str]` `asdict` produced — a frozen
+    `chapters` field as the plain `list[dict]` `asdict` produced, and the
+    `caption_langs_*` fields as plain `list[str]` — a frozen
     dataclass does no coercion, so each field would claim `tuple[str, ...]` while
     holding a list. **mypy cannot see that**: `**` builds the lie at runtime. A
     missing key raises, which `_load_cached` already treats as a cache miss — the
@@ -717,6 +808,10 @@ def _meta_from_cache(raw: dict[str, Any]) -> VideoMeta:
         duration_s=float(raw["duration_s"]),
         lang=str(raw["lang"]),
         url=str(raw["url"]),
+        chapters=tuple(
+            c if isinstance(c, Chapter) else Chapter(**c)
+            for c in raw.get("chapters") or ()
+        ),
         caption_langs_manual=tuple(
             str(c) for c in raw.get("caption_langs_manual") or ()
         ),

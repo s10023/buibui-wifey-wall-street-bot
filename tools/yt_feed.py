@@ -163,15 +163,35 @@ def channel_hint(
     return None
 
 
-def is_intro_recap(ts: float, channel: ChannelConfig | None) -> bool:
-    """True when `ts` falls in the channel's opening recap/teaser window.
+def is_intro_recap(
+    ts: float, channel: ChannelConfig | None, *, recap_end_s: float = 0.0
+) -> bool:
+    """True when `ts` falls in the opening recap/teaser window.
 
-    Deliberately `<` rather than `<=`: `intro_recap_s` names the first second of real
-    content, so a channel with no rule (0) never flags anything, including ts=0.0.
+    Deliberately `<` rather than `<=`: the window names the first second of real
+    content, so no rule at all (0) never flags anything, including ts=0.0.
+
+    `recap_end_s` is the VIDEO's own recap window, derived from its yt-dlp chapters by
+    `video_fetch.recap_window_s`. It WINS over the per-channel constant whenever it is
+    positive, in BOTH directions — a chapter window that is SHORTER must narrow the
+    trim too, or the override is just a bigger constant. `intro_recap_s` is fitted per
+    channel from a sample of uploads and is wrong on any upload that opens differently.
+
+    0.0 means the video had no leading recap chapter, or no chapters at all — upstream
+    measured the latter on about half its corpus — so the constant stays in charge
+    rather than being replaced by it.
+
+    ⚠ Both of wifey's live channels are configured `intro_recap_s = 0`, so today this
+    function only ever fires on a positive `recap_end_s`. That makes the chapter path
+    the ONLY live trim here, which is why the hint list it depends on ships in its
+    narrowed post-#695 form.
     """
-    if channel is None or channel.intro_recap_s <= 0:
+    window = (
+        recap_end_s if recap_end_s > 0 else (channel.intro_recap_s if channel else 0)
+    )
+    if window <= 0:
         return False
-    return ts < channel.intro_recap_s
+    return ts < window
 
 
 def uploads_playlist_id(channel_id: str) -> str:
