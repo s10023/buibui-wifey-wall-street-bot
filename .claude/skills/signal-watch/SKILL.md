@@ -11,7 +11,7 @@ allowed-tools: "*"
 
 # Signal Watch Daemon
 
-24/7 signal detection daemon — scans symbols × strategies × TFs on each new candle close, deduplicates, and sends Telegram alerts.
+Foreground poll loop — scans symbols × strategies × TFs on each new candle close, deduplicates, and sends Telegram alerts. (Production dispatch is the one-shot `CATCH_UP=1 make go-live`, by hand or via the opt-in `wifey-signal-watch.timer` — nothing installs a persistent daemon; see CLAUDE.md.)
 
 ## What it does
 
@@ -53,7 +53,7 @@ wifey signal watch --config config/signal_watch.toml --telegram
 make wifey-signal-watch CONFIG=config/signal_watch.toml
 
 # Override specific params via CLI (CLI takes precedence over TOML)
-wifey signal watch --config config/signal_watch.toml --timeframes 1h 4h --strategies bos engulfing
+wifey signal watch --config config/signal_watch.toml --timeframes 4h 1d --strategies bos engulfing
 ```
 
 Note: the subcommand is `signal watch` (two words), not `signal-watch`.
@@ -76,9 +76,6 @@ min_sl_pct = 0.005
 # load_signal_config now REFUSES that combination (here and in
 # strategy_timeframes) rather than letting it scan and dispatch nothing.
 day_filter = "tue_thu"
-
-# EMA-50 trend gate for bos
-smt_trend_filter = 1
 
 # Active strategies list
 strategies = ['bos', 'engulfing', 'pin_bar', ...]
@@ -135,19 +132,17 @@ Run a single scan cycle manually:
 
 ```bash
 # Backtest a strategy (validates detection logic)
-wifey backtest --symbol AAPL --strategy engulfing --interval 1h
+wifey backtest --symbol AAPL --strategy engulfing --interval 4h
 
 # Force a scan cycle (via Python — no CLI yet)
 python -c "
 import duckdb
 from analytics.signal_lib import scan_symbol
-from analytics.data_store import DEFAULT_DB_PATH
-conn = duckdb.connect(str(DEFAULT_DB_PATH))
-from analytics.signal_config import SignalWatchConfig
-from analytics.data_store import get_ohlcv
+from analytics.data_store import DEFAULT_DB_PATH, get_ohlcv
 import time
-ohlcv = get_ohlcv(conn, 'AAPL', '1h', 0, int(time.time() * 1000))
-result = scan_symbol(conn, 'AAPL', '1h', ['engulfing'], ohlcv)
+conn = duckdb.connect(str(DEFAULT_DB_PATH))
+ohlcv = get_ohlcv(conn, 'AAPL', '4h', 0, int(time.time() * 1000))
+result = scan_symbol(ohlcv, 'AAPL', '4h', ['engulfing'])
 print(result)
 "
 ```
@@ -179,7 +174,7 @@ duckdb analytics.db "SELECT * FROM signals ORDER BY ts DESC LIMIT 20"
 | `analytics/signal_config.py` | `SignalWatchConfig`, `BacktestFilterConfig`, `load_signal_config()` |
 | `signals/cooldown_store.py` | Two-layer dedup: candle watermark + cooldown timer (JSON-persisted) |
 | `signals/alert_formatter.py` | `format_signal_alert()` → Telegram Markdown message |
-| `signals/registry.py` | `SIGNAL_REGISTRY` — 20 actionable strategies |
+| `signals/registry.py` | `SIGNAL_REGISTRY` — 16 registered strategies (count moves; `make status` / `tests/test_signal_registry.py` are the referents) |
 
 ## Task: configure or debug signal watch
 

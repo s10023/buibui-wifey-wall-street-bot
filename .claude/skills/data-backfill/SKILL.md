@@ -50,14 +50,12 @@ make wifey-analytics-backfill SYMBOLS="AAPL MSFT" TIMEFRAMES="1h 4h" SINCE=2025-
 
 ### Fill a known gap
 
-The MEMORY note "Data gap RESOLVED" lists the canonical re-fill date when the
-DB is wiped. Currently:
-
-```bash
-make wifey-analytics-backfill SINCE=2025-09-12
-```
-
-Use this exact anchor date for any saved backtest so results stay comparable.
+There is no single canonical re-fill date — pick a deliberate `--since` and keep
+it constant across saved runs so results stay comparable (`run_backtest_sweep`
+otherwise anchors on now-minus-`days`, so two ordinary runs never share a
+window). The research universe's own backfill floor is **2018-01-02**
+(`make wifey-universe-backfill` re-fetches from there; 477 of 505 members share
+that first bar).
 
 ### Incremental sync (one-shot)
 
@@ -93,8 +91,8 @@ Before kicking off a backtest, sanity-check coverage:
 duckdb analytics.db <<'SQL'
 SELECT symbol, timeframe,
        count(*) AS candles,
-       to_timestamp(min(open_time_ms)/1000) AS first,
-       to_timestamp(max(open_time_ms)/1000) AS last
+       to_timestamp(min(open_time)/1000) AS first,
+       to_timestamp(max(open_time)/1000) AS last
 FROM ohlcv
 GROUP BY 1, 2
 ORDER BY 1, 2;
@@ -115,16 +113,17 @@ Look for:
 - For a gap-fill or data refresh, the daemon will see the new candles on its
   next cycle — no restart needed unless `stocks.json` changed.
 - For a wiped DB, follow this order:
-  1. `make wifey-analytics-backfill SINCE=2025-09-12`
+  1. `make wifey-analytics-backfill SINCE=<your anchor>`
   2. `make db-update`
-  3. Restart `wifey signal watch`
+  3. Nothing to restart — there is no daemon; the next one-shot
+     `CATCH_UP=1 make go-live` picks everything up
 
 ## Implementation files
 
 | File | Role |
 | ------ | ------ |
 | `analytics/data_fetcher.py` | yfinance fetch + 4h resample from 1h; `fetch_bars()` |
-| `analytics/data_sync.py` | `backfill_symbol()`, `sync_symbol()` orchestration; upserts to `ohlcv` |
+| `analytics/data_sync.py` | `backfill()`, `sync()` orchestration; upserts to `ohlcv` |
 | `analytics/data_store.py` | `ohlcv` table schema; `upsert_ohlcv()` |
 | `analytics/analytics_runner.py` | Thin runner wrappers `run_backfill()`, `run_sync()` |
 | `wifey.py` | `analytics backfill` / `analytics sync` subcommands |

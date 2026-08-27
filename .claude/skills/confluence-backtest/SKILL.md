@@ -44,7 +44,7 @@ Direct CLI:
 
 ```bash
 wifey backtest --combo --config config/signal_watch.toml --save
-wifey backtest --combo --symbols AAPL --timeframes 1h --window 2
+wifey backtest --combo --symbols AAPL --timeframes 4h --window 2
 ```
 
 Key flags: `--window N` (candles between co-firing signals; default tuned per
@@ -57,10 +57,13 @@ config), `--workers N` (parallel pairs), `--day-filter`, `--min-trades N`,
 # All 5 canonical HTF:LTF pairs
 make wifey-cross-tf-backtest CONFIG=config/signal_watch.toml SAVE=1
 
-# Specific pairs only
+# Specific pairs only. All 5 canonical defaults are fetchable here (the dead
+# `15m` pairs the fork inherited are gone — tests/test_cross_tf_cofire.py pins
+# it), but live scans run 4h/1d only, so a pair with a `1h` leg can never
+# co-fire on the live path — prefer the live-reachable ones:
 make wifey-cross-tf-backtest \
   CONFIG=config/signal_watch.toml \
-  HTF_LTF="1d:1h 1d:4h 4h:1h" \
+  HTF_LTF="1wk:1d 1wk:4h 1d:4h" \
   SAVE=1
 
 # Sweep window_hours (the LTF lookback for HTF context)
@@ -72,7 +75,7 @@ Direct CLI:
 
 ```bash
 wifey backtest --cross-tf --config config/signal_watch.toml --save
-wifey backtest --cross-tf --htf-ltf 1d:1h 4h:1h --window-hours 4.0
+wifey backtest --cross-tf --htf-ltf 1wk:1d 1d:4h --window-hours 4.0
 ```
 
 Key flags: `--htf-ltf "HTF:LTF ..."` (default: 5 canonical pairs),
@@ -135,10 +138,12 @@ Same-TF combos: edit `[combo]` in `config/signal_watch.toml` (or the variant
 config) — list pair allowlists / suppress rules. The signal daemon refreshes
 the combo lookup every 10 cycles.
 
-Cross-TF: there is **no live gate yet** — results currently inform the D10
-roadmap and Card 12 in the digest UI. When wiring lands, it will live in
-`signal_lib.run_scan_cycle()`'s Phase 3 step (HTF-first ordering — see
-2026-04-22 fix in MEMORY).
+Cross-TF: the live wiring HAS landed (D10 step 4) — `signal_runner` loads
+`get_cross_tf_combo_lookup` at startup and refreshes it on the same 10-cycle
+cadence, and `run_scan_cycle` tags co-fires via `_find_cross_tf_cofire`.
+⚠ Both combo tables currently hold **0 rows**, so the whole co-fire layer is
+inert until a `SAVE=1` combo / cross-TF refresh writes them — `combo_health`
+reporting empty means *never refreshed*, not refresh-failed.
 
 After updating the config, `/db-update` (or at minimum
 `make wifey-recalibrate`) so star ratings reflect the new gate.
@@ -162,7 +167,7 @@ After updating the config, `/db-update` (or at minimum
 | `analytics/signal_config.py` | `ComboConfig` (`[combo]` section parser) |
 | `analytics/signal_lib.py` | Live combo detection in `run_scan_cycle()` Phase 3 |
 | `analytics/digest_lib.py` | Card 12 `query_cross_tf_combos` |
-| `analytics/data_store.py` | Combo result tables; `confluence_ratings` join |
+| `analytics/data_store.py` | Combo result tables (`backtest_combos`, `backtest_cross_tf_combos`; real home `analytics/store/`) |
 | `wifey.py` | `--combo`, `--cross-tf`, `--htf-ltf`, `--window`, `--window-hours` flags |
 | `Makefile` | `wifey-combo-backtest`, `wifey-cross-tf-backtest` targets |
 | `tools/combo_health.py` | Post-run spot-check: totals, freshness, live-gate viable counts, top combos |

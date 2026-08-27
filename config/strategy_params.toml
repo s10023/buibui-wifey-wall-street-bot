@@ -52,7 +52,7 @@ days = 365              # fallback lookback window (ignored when since is set); 
 min_trades = 20         # hide combos with fewer trades in sweep table (global fallback)
 # Per-TF overrides — equity TFs only (4h | 1d | 1wk).
 # Signal rate scales by candles-per-year:
-#   4h:  ~6.5/day × 252 RTH days ≈ 1638 candles/yr
+#   4h:  2/day × 252 RTH days ≈ 504 candles/yr (RTH is 6.5 HOURS -> 2 four-hour bars)
 #   1d:  252 candles/yr
 #   1wk: 52 candles/yr
 # Thresholds are first-pass; T14 WFO refines per equity backtest results.

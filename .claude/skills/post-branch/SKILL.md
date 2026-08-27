@@ -393,9 +393,12 @@ other. Re-derive it from the code before writing it down.
 ### MEMORY.md
 
 Rewrite "Last session" to today's date + branch + a one-line summary. **The roll
-is THREE-way**: today → **Last session**, the existing Last session → **Prior
-session**, the existing Prior session → verbatim into
-`memory/project_session_log_<month>.md`. Grep the log afterwards to confirm it
+is N-way, and N comes from the LIVE index, never from this sentence**: today →
+**Last session**, each existing dated session bullet down one slot, and the
+oldest rolls verbatim into `memory/project_session_log_<month>.md`. With no
+`Prior session` bullet in the index — its current shape — that is a two-way
+roll; ⚠ do not add one to match an older description of this step, since the
+cap is 6 bullets / ~17KB. Grep the log afterwards to confirm the rolled bullet
 landed. Convert relative dates to absolute. Update
 `memory/project_open_questions.md`.
 
@@ -788,7 +791,7 @@ phase 1 sweep      — <n> findings triaged: <what> | clean
 behaviour gate     — walked | skipped (<reason>)
 CLAUDE.md          — updated: <what> | no change needed: <reason>
 README.md          — …
-MEMORY.md          — Current State rolled 3-way  (never committed)
+MEMORY.md          — Current State rolled N-way per the live index  (never committed)
 SoT reconcile      — <row> closed | no SoT row affected  (never committed)
 claims audit       — <n> claims, each with its reproducing query | no new prose
 Makefile / compose — no change needed: <reason>

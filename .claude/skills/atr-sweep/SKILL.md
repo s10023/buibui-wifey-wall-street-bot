@@ -46,8 +46,10 @@ wifey param-sweep --strategy <s> --symbol <sym> --timeframe <tf> \
   --atr-sl-floor --atr-sl-multiplier <winning_mult>
 ```
 
-See `memory/project_f9_joint_sweep_findings.md` for the methodology and
-the per-tp_r-aggregate decision rule used for TOML commits.
+The methodology and the per-tp_r-aggregate decision rule live in the PARENT's
+memory
+(`~/.claude-personal/projects/-home-kng-repo-buibui-moon-trader-bot/memory/project_f9_joint_sweep_findings.md`)
+— its numbers are crypto-cohort, so port the method, never the values.
 
 Or in TOML:
 
@@ -80,7 +82,7 @@ Per-strategy override (goes inside `[strategy_params.STRATEGY]`):
 ```toml
 [strategy_params.eqh_eql]
 atr_sl_multiplier = 1.2        # strategy-wide
-atr_sl_multiplier_1h = 0.8     # 1h-specific override
+atr_sl_multiplier_4h = 0.8     # 4h-specific override
 ```
 
 ## CLI
@@ -96,7 +98,7 @@ wifey backtest --config config/signal_watch.toml --atr-sl-floor --atr-sl-values 
 wifey backtest --config config/signal_watch.toml --atr-sl-floor --atr-sl-multiplier 2.0
 
 # Single-combo mode (floor on)
-wifey backtest --symbol AAPL --strategy bos --interval 1h --atr-sl-floor --atr-sl-multiplier 1.5
+wifey backtest --symbol AAPL --strategy bos --interval 4h --atr-sl-floor --atr-sl-multiplier 1.5
 ```
 
 ## Output format
@@ -106,9 +108,9 @@ ATR SL Multiplier Comparison (aggregated across symbols)
 ══════════════════════════════════════════════════════════
   Strategy              TF      0.5×    1.0×    1.5×    2.0×    2.5×
   ──────────────────────────────────────────────────────────────────
-  bos                   1h    -0.05R  +0.12R  +0.18R  +0.14R  +0.09R
   bos                   4h    +0.08R  +0.22R  +0.31R  +0.28R  +0.19R
-  eqh_eql               1h    +0.15R  +0.38R  +0.45R  +0.41R  +0.33R
+  bos                   1d    -0.05R  +0.12R  +0.18R  +0.14R  +0.09R
+  eqh_eql               4h    +0.15R  +0.38R  +0.45R  +0.41R  +0.33R
   ...
   ──────────────────────────────────────────────────────────────────
   Pick the multiplier column where avg R peaks per strategy × TF row.
@@ -157,7 +159,7 @@ When sweeping both: run sequentially, produce separate findings, and write per-s
 When the user asks to run an ATR sweep or find optimal ATR multipliers:
 
 1. Ask: "Which config — `signal_watch.toml` (tue_thu), `signal_watch_weekdays.toml`, or both?" Default to `signal_watch.toml` if not specified.
-2. Suggest range: `[0.5, 1.0, 1.5, 2.0, 2.5]` for swing/1h+; `[0.3, 0.5, 0.8, 1.0, 1.5]` for scalping
+2. Suggest range: `[0.5, 1.0, 1.5, 2.0, 2.5]` — wifey's TFs (4h/1d/1wk) are all swing-grade, so there is no scalping range here
 3. Add `atr_sl_multiplier_values = [...]` to the chosen TOML (or use `--atr-sl-values` CLI flag to avoid editing the file)
 4. Run with the floor on: `wifey backtest --config <file> --atr-sl-floor --atr-sl-values <vals>` (skipping the floor is the #1 way to get a useless sweep)
 5. Read the output table — identify peak column per strategy × TF. If rows are flat across all columns, the floor was off — re-run.

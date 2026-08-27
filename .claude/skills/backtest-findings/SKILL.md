@@ -16,16 +16,17 @@ Workflow for reading a sweep table and translating results into committed TOML c
 
 ## Min-trades thresholds (before trusting any result)
 
-These are the calibrated minimums per TF (from TOML comments, derived from DB p25 directional counts):
+These are the calibrated minimums per TF — the referent is `config/strategy_params.toml`
+(top-level `min_trades_*` for the sweep table, `[backtest].min_trades_*` for the daemon):
 
 | TF | Sweep table (`min_trades_*`) | Signal watch daemon (`[backtest].min_trades_*`) |
 | ---- | ------------------------------ | ------------------------------------------------ |
-| 1h | 30 | 20 |
-| 1h | 20 | 12 |
+| global fallback | 20 | 12 |
 | 4h | 10 | 5 |
 | 1d | 5 | 2 |
+| 1wk | 2 | 1 |
 
-Rows below threshold are hidden or should be ignored. Higher thresholds for the daemon's directional filter because it filters per-direction (long or short), not total.
+Rows below threshold are hidden or should be ignored. The daemon's thresholds are lower because its gate counts only the tested direction's closed trades (a subset of the total) — and remember it **fails open** below the floor, so raising a `min_trades_*` makes it suppress less.
 
 ## Reading a TP sweep table
 
@@ -81,13 +82,13 @@ Always printed alongside main results (regardless of `volume_suppress` setting):
 
 See `/volume-sweep` and `docs/audits/2026-08-06-adr-volume-gate-conjunction.md`.
 
-**A14b findings (current per-strategy tp_r — see `volume-sweep` skill for full table):**
-
-- Suppress: `bos`, `orb`, `ote_entry`, `doji`, `bos`, `eqh_eql`
-- Do NOT suppress: `pin_bar`, `hammer_hanging_man`, `marubozu`, `fvg`, `morning_evening_star`
-- Neutral: `engulfing`, `eqh_eql`, `fvg`, `inside_bar`, `order_block`, `trend_day`
-
-Note: A13 findings (at tp_r=2.0) are superseded by A14b. `eqh_eql` and `morning_evening_star` reversed direction after per-strategy tp_r was applied. Always re-run the volume split after any tp_r change.
+**A14b findings — SUPERSEDED; do not re-apply.** Every A14b volume flag was removed on
+2026-08-06: three because the ADR-gate conjunction voided their strategies, and `bos`
+because its claim failed retest on equities (p ≥ 0.113 on every cell). **As of
+2026-08-06 no strategy in either config sets `volume_suppress*`.** The old
+suppress/do-not lists survive only in `/volume-sweep`'s superseded table, kept as a
+record of how the decisions were made. Always re-run the volume split after any tp_r
+change before trusting any old Δ.
 
 ## Reading the duration table
 
@@ -97,13 +98,12 @@ Note: A13 findings (at tp_r=2.0) are superseded by A14b. `eqh_eql` and `morning_
   bos         1h    4356     1.4d       13.0h         39.8d
 ```
 
-Speed tiers:
+Speed tiers (⚠ crypto-era illustration — wifey's TFs are 4h/1d/1wk and its bars are RTH;
+re-derive tiers from a current duration table before quoting any of these):
 
-- **Fast < 1d median**: marubozu, eqh_eql, trend_day (1h) — hits SL/TP quickly
+- **Fast < 1d median**: marubozu, eqh_eql, trend_day — hits SL/TP quickly
 - **Overnight 13–16h**: all candlestick patterns regardless of TF — NOT scalping strategies
 - **Multi-day**: bos 4h (2.2d), order_block 1d (6.3d) — need patient management
-
-Warning: 1h candlestick patterns have the same hold time as 4h — more signals, same duration = more noise.
 
 ## Committing TOML config
 
@@ -117,9 +117,9 @@ tp_r = 3.0              # applies to all TFs
 ### TF-specific override
 
 ```toml
-[strategy_params.ote_entry]
+[strategy_params.engulfing]
 tp_r_4h = 3.0           # 4h only
-tp_r_1h = 2.0           # 1h only
+tp_r_1d = 2.0           # 1d only
 # other TFs fall back to global tp_r
 ```
 
@@ -132,7 +132,7 @@ atr_sl_floor = true
 
 [strategy_params.bos]
 atr_sl_multiplier = 1.5
-atr_sl_multiplier_1h = 2.0    # TF-specific
+atr_sl_multiplier_4h = 2.0    # TF-specific
 ```
 
 ### Suppressing a TF via strategy_timeframes
@@ -161,10 +161,11 @@ wifey recalibrate --apply --config config/signal_watch.toml  # writes confidence
 
 ## Where findings are stored
 
-- `project_f6_tp_sweep_findings.md` — F6 TP sweep results (weekdays, 200d, 3 symbols)
-- `project_a13_volume_findings.md` — Volume impact delta per strategy (A13)
-- `config/signal_watch.toml` — Committed `[strategy_params.*]` overrides
-- `analytics.db` — All saved `backtest_runs` rows (queryable via DuckDB)
+- `config/signal_watch.toml` — committed `[strategy_params.*]` overrides, each with an
+  inline WFO-evidence comment (the durable record of *why* a value was picked)
+- `analytics.db` — all saved `backtest_runs` rows (queryable via DuckDB)
+- (The old `project_f6_tp_sweep_findings.md` / `project_a13_volume_findings.md` memory
+  files no longer exist in either repo's tree — do not cite them)
 
 ## Task: interpret and commit sweep results
 
@@ -176,5 +177,5 @@ When the user pastes a sweep table or asks to translate findings:
 4. Open `config/signal_watch.toml` (or target config) and update `[strategy_params.*]` entries
 5. Commit the changes
 6. Run `make wifey-backtest CONFIG=<file> SAVE=1`
-7. Update `project_f6_tp_sweep_findings.md` (or create new findings file) with key observations
+7. Record the evidence as inline TOML comments beside each changed value
 8. Update MEMORY.md with session summary

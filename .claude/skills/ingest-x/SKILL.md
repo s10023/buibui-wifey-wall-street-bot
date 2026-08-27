@@ -269,9 +269,8 @@ When unsure, return `NOVEL` and let the human review gate decide — a wrong
 `FROZEN-CATEGORY` drops the item silently, a wrong `NOVEL` costs one line of review.
 
 **Already-tested (verdict known → `ALREADY-TESTED`, drop unless materially new
-evidence).** All six research sleeves audited on the ~500-name US-equity breadth
-universe FAILED their gates; the free-data edge arc is CONCLUDED (honest exit,
-2026-06-24):
+evidence).** All eight research sleeves measured on US equities came back
+non-positive; the free-data edge arc is CONCLUDED (honest exit, 2026-06-24):
 
 - Absolute **trend** (multi-speed EWMAC): G2 FAIL — portfolio Sharpe −0.05,
   negative even pre-cost (a signal failure, not a cost failure).
@@ -286,20 +285,28 @@ universe FAILED their gates; the free-data edge arc is CONCLUDED (honest exit,
 - **PEAD-lite** (seasonal SUE on free EDGAR data): FAIL — β-guardrail fired on
   the broad arm; the controlled mega arm showed *negative* drift. No PEAD in
   liquid large-caps net of cost on free data.
+- **Gap-fill magnet** (unfilled gaps as magnets / "gaps always fill"):
+  EXCLUDED, direction REFUTED — cost-free the magnet returns −0.460, so gaps
+  continue rather than revert; the post-hoc inverse never reaches the bar, and
+  ~211× daily gross turnover kills both directions. "90.3% of gaps fill within
+  60 sessions" is true and almost entirely diffusion (matched placebo 88.9%).
+- **Velocity alternation** (the pace of a decline predicts the pace of the
+  next move): EXCLUDED as a null — β-guardrail fired, beta-hedged −0.169 at
+  alpha t −0.49, and the velocity ratio performs indistinguishably from depth
+  alone.
 - DOW / day-of-week seasonality (e.g. "Monday is the weekly high → short"):
   parent-inherited verdict — base rate real but the tradeable edge decays OOS;
   the gorgeous version is look-ahead.
-- Exit-policy fixes ("your stops are wrong, not your entries"): MFE/MAE
-  diagnostic run, INCONCLUSIVE at n=22 — live ledger too young; re-audit before
-  building anything.
+- Exit-policy fixes ("your stops are wrong, not your entries"): BOUNDED — the
+  replay A/B measured the lever's ceiling at +0.368R of paired uplift, entirely
+  the time-stop, and no arm's own mean R clears zero. Re-run trigger is ledger
+  growth, not a restated claim.
 
 **Parked / captured / blocked:**
 
 - IPO post-hype dip-buy (long a faded recent IPO reclaiming its listing price):
   **already captured** as a thesis memo — a reassertion is "already in inbox",
   don't duplicate the H-row.
-- Gap-fill magnet (unfilled gaps as intraday magnets, esp. in range regime):
-  **already captured** as a thesis memo — same rule.
 - Anything requiring paid data (Polygon intraday, options flow, L2/auction
   feeds, futures breadth): `NOVEL` in principle but **data-blocked** — say so in
   `gap_note` (paid data currently declined).

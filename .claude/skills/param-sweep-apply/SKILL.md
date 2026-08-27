@@ -29,7 +29,8 @@ Either:
 
 1. **Filter**: keep only rows where `flag = ok` (drop `⚠ OVERFIT`)
 2. **Filter**: keep only rows with OOS n ≥ min_trades threshold for that TF:
-   - 1h: 30 | 4h: 20 | 1d: 10 | 1wk: 5
+   - 4h: 10 | 1d: 5 | 1wk: 2 — the same `min_trades_*` referent as the sweep
+     table (`config/strategy_params.toml` top level); re-read it if they diverge
 3. **Filter**: keep only rows where `OOS avg_r > 0`
 4. **Pick**: highest `OOS avg_r` among remaining rows
 5. If **all rows are OVERFIT** → skip strategy × TF, note "fully overfit"
@@ -56,7 +57,7 @@ filters above lack). It is **additive** to filters 1–3 (both must hold):
 ### TF-specific vs strategy-wide
 
 - If all TFs point to the same tp_r → use strategy-wide `tp_r`
-- If one or more TFs differ → use TF-specific keys (`tp_r_1h`, `tp_r_4h`, etc.)
+- If one or more TFs differ → use TF-specific keys (`tp_r_4h`, `tp_r_1d`, etc.)
 - If a TF is fully overfit or no-edge → note it but do NOT add to strategy_timeframes without explicit user instruction
 
 ### Day-filter caveat
@@ -87,12 +88,12 @@ After completing all steps, print:
 Changes applied:
   strategy          TF    old tp_r → new tp_r   OOS avg_r  OOS n
   ──────────────────────────────────────────────────────────────
-  morning_evening_star  1h   3.0 → 3.5          +0.339R    162
-  trend_day             4h    3.0 → 5.0          +0.519R     53
+  morning_evening_star  4h   3.0 → 3.5          +0.339R    162
+  trend_day             1d    3.0 → 5.0          +0.519R     53
 
 Skipped (overfit / insufficient trades / marginal):
-  pin_bar   1h — fully overfit
-  doji      1h  — marginal (+0.023R, 41 trades)
+  pin_bar   4h — fully overfit
+  doji      1d  — marginal (+0.023R, 41 trades)
 
 Backtest saved. Recalibration: N changed / M unchanged.
 ```

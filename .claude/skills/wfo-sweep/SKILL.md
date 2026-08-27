@@ -29,7 +29,8 @@ User invokes `/wfo-sweep` with an optional config argument:
 
 - `/wfo-sweep` — defaults to `config/signal_watch.toml`
 - `/wfo-sweep config/signal_watch_weekdays.toml`
-- `/wfo-sweep all` — runs on all 3 active TOMLs sequentially
+- `/wfo-sweep all` — runs on both signal_watch TOMLs sequentially
+  (`strategy_params.toml` is the shared base they inherit, never a run target)
 
 ## Step-by-step execution
 
@@ -43,7 +44,7 @@ cat config/signal_watch.toml
 
 Extract:
 
-- `timeframes` — list of TFs to sweep (e.g. `["1h", "4h", "1d", "1wk"]`)
+- `timeframes` — list of TFs to sweep (e.g. `["4h", "1d", "1wk"]`)
 - `symbols` — if set; otherwise default to `["AAPL", "MSFT", "NVDA"]`
 - `fee_pct` — from `[backtest].fee_pct` or top-level, default `0.0005`
 - `day_filter` — passed as `--day-filter` to every `param-audit` and `param-sweep` call so WFO runs on the correct trade population for this config
@@ -81,7 +82,9 @@ Strategies to skip (never sweep):
 
 Build a **candidate list**: strategies where OOS avg_r > 0 and OOS n ≥ min_trades threshold.
 
-Min trades by TF: `1h→20, 4h→12, 1d→5, 1wk→2`
+Min trades by TF: `4h→10, 1d→5, 1wk→2` (global fallback 20) — the referent is
+`config/strategy_params.toml`'s top-level `min_trades_*` keys; re-read them
+rather than this line if they diverge.
 
 ### Step 3: Phase 2 — Deep sweep (candidates only)
 
@@ -102,8 +105,10 @@ Optional joint `tp_r × atr_sl_multiplier` sweep: append
 `--atr-sl-floor --atr-sl-multiplier <N>` to score every tp_r in the grid
 with the F9 floor on at multiplier `N`. Useful for follow-up after an
 ATR-sweep winner — e.g. `--atr-sl-multiplier 2.0 --atr-sl-floor` plus
-`--param tp_r=1.0:5.0:0.5` finds the best tp_r at that multiplier. See
-`memory/project_f9_joint_sweep_findings.md` for the methodology.
+`--param tp_r=1.0:5.0:0.5` finds the best tp_r at that multiplier. The
+methodology lives in the PARENT's memory
+(`~/.claude-personal/projects/-home-kng-repo-buibui-moon-trader-bot/memory/project_f9_joint_sweep_findings.md`)
+— its numbers are crypto-cohort, so port the method, never the values.
 
 Collect results per (strategy, TF, symbol): best tp_r, OOS avg_r, OOS n, flag.
 

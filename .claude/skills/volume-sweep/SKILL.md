@@ -166,7 +166,7 @@ Key reversals vs A13 (old tp_r=2.0):
 - **eqh_eql**: A13 said don't suppress (-0.11R delta); at current tp_r now +0.17R → **suppress**
 - **morning_evening_star**: A13 said suppress (+0.10R delta); at current tp_r now -0.14R → **don't suppress**
 
-Configs use config-specific sweeps — weekdays/all configs have slightly different decisions. See inline comments in each TOML.
+Configs use config-specific sweeps — the two signal_watch TOMLs can reach different decisions (the day filter changes the trade population). See inline comments in each TOML.
 
 ## Workflow
 
@@ -190,7 +190,7 @@ make wifey-backtest CONFIG=config/signal_watch.toml
 #     Without it `load_signal_config` now raises (voided_volume_gates). See above.
 
 # 3. Add volume_suppress to [strategy_params.X] in TOML
-# 4. Repeat for weekdays and all configs separately (day filter changes trade population)
+# 4. Repeat for signal_watch_weekdays.toml separately (day filter changes trade population)
 
 # 5. Run quality gates
 make lint-py && make typecheck && make test
