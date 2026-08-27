@@ -12,6 +12,10 @@ allowed-tools: "*"
 
 # New Strategy Wiring Checklist
 
+⚠ **The TA detector book is FROZEN — no new boolean detectors without an explicit user
+go** (inherited category verdict; CLAUDE.md § Fork lineage). This checklist stays
+maintained for guard work and for any detector the operator explicitly unfreezes.
+
 Guided workflow for adding a new trading strategy to wifey. All 4 locations must be updated together or the web UI will 500 on the strategy.
 
 After strat-2 (PR #338) the detection layer is one file per detector under `analytics/strategies/`. There is no `analytics/indicators_lib.py` at all any more — it was removed in strat-3, so `analytics/strategies/` is the only import surface.
@@ -74,7 +78,7 @@ STRATEGY_REGISTRY: dict[str, StrategySpec] = {
         params=[
             ParamSpec("threshold", "float", 0.5, 0.0, 1.0, "Param description for TOML tuning."),
         ],
-        confidence={"1h": 1, "4h": 2, "1d": 3},   # per-TF stars; recalibrate updates this
+        confidence={"4h": 2, "1d": 3, "1wk": 2},   # per-TF stars; recalibrate updates this
     ),
 }
 
@@ -179,7 +183,7 @@ make typecheck
 make lint-py
 
 # Run a quick single-symbol backtest to confirm signals fire
-wifey backtest --symbol AAPL --strategy my_strategy --interval 1h
+wifey backtest --symbol AAPL --strategy my_strategy --interval 4h
 
 # Run full sweep and save to DB
 make wifey-backtest CONFIG=config/signal_watch.toml SAVE=1
@@ -201,7 +205,7 @@ strategies = [
 
 # Optionally restrict to specific TFs
 [strategy_timeframes]
-my_strategy = ["1h", "4h"]
+my_strategy = ["4h", "1d"]
 
 # Optionally set optimal tp_r from sweep
 [strategy_params.my_strategy]
@@ -215,7 +219,7 @@ tp_r = 3.0
 | `analytics/strategies/<name>.py` | Create new file with the `detect_X()` function (one detector per file) |
 | `analytics/strategies/_registry.py` | Add the import, the `STRATEGY_REGISTRY` entry, and the `DETECTOR_REGISTRY` entry |
 | `analytics/strategies/__init__.py` | Add the import + `__all__` entry for eager re-export |
-| `signals/registry.py` | `SignalPlugin` entry (only if the strategy is actionable for live alerts — `seasonality` and `fibonacci_retracement` excluded) |
+| `signals/registry.py` | `SignalPlugin` entry (only if the strategy is actionable for live alerts — `seasonality` is the registered-but-not-actionable case) |
 | `tests/test_signal_registry.py` | Only when the strategy is a deliberate DETECTOR_REGISTRY exclusion — add it to `_REGISTRY_EXCLUDED` |
 | `tests/test_<name>.py` | Unit tests for the new detector |
 | `analytics/backtest_runner.py` | Only for strategies needing funding / secondary OHLCV data |
@@ -232,5 +236,5 @@ When the user asks to add a new strategy:
 6. Add `SignalPlugin` entry to `signals/registry.py` (skip for non-actionable strategies).
 7. Write at least 2 tests: one that fires a signal, one edge case that produces no signal.
 8. Run `make lint-py && make typecheck && make test` (must end clean).
-9. Run quick backtest: `wifey backtest --symbol AAPL --strategy <name> --interval 1h`.
+9. Run quick backtest: `wifey backtest --symbol AAPL --strategy <name> --interval 4h`.
 10. If positive results, add to `config/signal_watch.toml` strategies list.

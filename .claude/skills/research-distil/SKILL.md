@@ -50,7 +50,8 @@ has also done its job.
    subagents run at once here** — a third launch is blocked outright, so more
    than two sources must be pipelined by hand in pairs.
 3. **Gate** — the main thread applies G1 → G4 in order, cheapest rejection
-   first, running `tools/distil_power.py` for every G3.
+   first, running `tools/distil_power.py` for every G3 (drag-shaped mechanics
+   rows excepted — see G3).
 4. **Review** — present **ONE** consolidated digest for the whole batch:
    survivors *and* rejections, each with its citation. Write nothing before the
    operator approves.
@@ -223,8 +224,18 @@ Three outcomes:
   that saves a multi-session build. It is *not* underpowered — more data of that
   shape cannot fix it, only a smaller trial family can.
 
+A mechanics claim that describes a **drag or capacity constraint** rather than
+an effect has nothing for G3 to power — there is no effect size to detect.
+Record `G3 N/A (drag, no effect size)` on the row rather than skipping
+silently; G4 is where a drag is priced.
+
 If `sr_variance` for the trial family is unknown, **the REACHABILITY leg cannot
-run and the claim is `INSUFFICIENT`, not a pass.** Never default it.
+run and the claim is `INSUFFICIENT`, not a pass.** Never default it — **derive
+it**: the sanctioned recipe is the **sample variance of this repo's own filed
+sleeve Sharpes** (0.0652 across the eight as of 2026-08-27 — re-derive from the
+current sleeve table rather than reusing the number). A pass is CONDITIONAL on
+that input, so stress it: H-023 passes at 0.0652 and its bar exceeds the corpus
+best at 0.25, which is why its trial family is fixed at 4 in advance.
 
 ⚠ **`--corpus-best` needs `--sd`** — the comparison converts the required Sharpe into
 effect units, so without `--sd` there is nothing to compare and the tool now says so
@@ -277,10 +288,12 @@ Every surviving row repeats two standing caveats:
 - **Costs are MODELLED, not realised.** Raw stays exactly −1.0 = declared risk,
   so no figure here expresses gap risk, and every number is an optimistic bound
   whose error runs one way.
-- **The live ledger is GROSS and the backtest is NET, so they are not
-  comparable.** `outcome_backfill.py` has no fee or slippage path at all. A
-  live-versus-backtest comparison is therefore biased *in favour of live* — the
-  opposite of the assumption a reader brings when a live book underperforms.
+- **The live ledger is NET of costs on the backtest's own basis** (since
+  2026-08-19): `outcome_r` is `gross − outcome_cost_r`, priced by `live_cost_r`
+  in `analytics/signal/outcome_backfill.py`, which mirrors `engine.Trade.pnl_r`
+  exactly. So live-versus-backtest is a legitimate comparison — the residual
+  caveat is `outcome_cost_r IS NULL`, which means UNPRICED, never "cost
+  nothing". Audit: `docs/audits/2026-08-19-live-ledger-net-of-cost.md`.
 
 ## Refusals
 

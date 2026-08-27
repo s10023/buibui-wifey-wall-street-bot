@@ -177,16 +177,16 @@ them; if any appear again, something re-created them and the warning says so.
    `CATCH_UP=1 make go-live`, by hand or via the opt-in `wifey-signal-watch.timer`
    that runs that same target. ⚠ **The timer does not weaken this step**: it is
    `Type=oneshot`, so there is still no process holding stale ratings, and
-   `analytics/signal_runner.py:195` loads
+   `analytics/signal_runner.py:203` loads
    `confidence_ratings` *"once at startup"* — which, for a one-shot process, is
    every run. **A ratings change is picked up by the next `make go-live`
    automatically.**
 
    Ratings also do **not** drive `min_avg_r`, as this step previously claimed.
    They become `confidence_override` → the per-signal star score, which feeds
-   the `conflict_resolver` gate (`scanner.py:568` picks the side with higher
-   confidence), the DOW soft-suppress step, the alert's displayed stars, and
-   `confidence_at_fire` in the outcome ledger. `min_avg_r` is an independent
+   the `conflict_resolver` gate (`analytics/signal/gates.py::_apply_conflict_resolver`
+   picks the side with higher confidence), the DOW soft-suppress step, the alert's
+   displayed stars, and `confidence_at_fire` in the outcome ledger. `min_avg_r` is an independent
    threshold from the config's `[backtest]` block. There is no `min_confidence`
    gate anywhere in the tree.
 

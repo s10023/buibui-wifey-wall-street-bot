@@ -117,7 +117,8 @@ make regression-update
 # 5. Review golden file diffs before committing
 git diff tests/fixtures/golden_*.json
 
-# 6. Restart signal watch daemon to pick up new ratings
+# 6. Nothing to restart — there is no daemon. Ratings load at startup of each
+#    one-shot `make go-live` run, so the next dispatch picks them up automatically.
 ```
 
 ## What the output looks like
@@ -127,10 +128,10 @@ Strategy Recalibration Report
 ══════════════════════════════════════════════════════════
   Strategy              TF    Trades  Win%  Avg R   Old★  New★  L★  S★
   ──────────────────────────────────────────────────────────────────────
-  engulfing             1h       328   58%  +0.42R   3★  → 3★    3   3  (unchanged)
+  engulfing             4h       328   58%  +0.42R   3★  → 3★    3   3  (unchanged)
   ote_entry             4h        34   62%  +1.42R   3★  → 5★    5   4  ★ CHANGED
-  eqh_eql               1h       201   44%  -0.08R   3★  → 1★    1   2  ★ CHANGED
-  pin_bar               1h       175   61%  +0.51R   4★  → 4★    4   3  (unchanged)
+  eqh_eql               1d       201   44%  -0.08R   3★  → 1★    1   2  ★ CHANGED
+  pin_bar               1d       175   61%  +0.51R   4★  → 4★    4   3  (unchanged)
   ...
 
   Dry-run mode — no changes applied. Use --apply to write to confidence_ratings table.

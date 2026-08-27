@@ -18,7 +18,9 @@ allowed-tools: Bash, Write, Read, Edit
 
 Turn the user's manual trade into a structured journal entry. The journal is the ground-truth corpus
 for the eventual trade-planning system — every entry is a closed-loop prediction (plan) + result
-(outcome) + lesson (retrospective). See `[[project_trade_journal_procedure]]` in memory.
+(outcome) + lesson (retrospective). The procedure memory lives in the PARENT's tree
+(`~/.claude-personal/projects/-home-kng-repo-buibui-moon-trader-bot/memory/project_trade_journal_procedure.md`);
+wifey has no local copy.
 
 ## When to use
 
@@ -29,9 +31,12 @@ for the eventual trade-planning system — every entry is a closed-loop predicti
 ## Where it lives
 
 - Directory: `docs/plans/journal/` — **gitignored** (under `docs/plans/`; personal financial data, never
-  committed). Run `mkdir -p docs/plans/journal` if absent.
+  committed). ⚠ **It does not exist yet on this box** (0 entries ever, measured 2026-08-19) — run
+  `mkdir -p docs/plans/journal` on first use.
 - One markdown file per trade. Filename: `YYYY-MM-DD-<symbol>-<direction>.md` (date = entry date, **UTC**).
-- `docs/plans/journal/TEMPLATE.md` holds the canonical template — read it if unsure of current fields.
+- `docs/plans/journal/TEMPLATE.md` holds the canonical template. On first use, seed it from the parent's copy
+  (`~/repo/buibui-moon-trader-bot/docs/plans/journal/TEMPLATE.md` — gitignored on both sides, so no clone
+  carries it).
 
 ## Procedure (new entry)
 

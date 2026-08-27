@@ -43,7 +43,7 @@ Before running the sweep, check `[strategy_timeframes]` for missing entries vs t
 Every strategy in the `strategies = [...]` list should have an entry in `[strategy_timeframes]`
 unless it genuinely runs well on ALL timeframes (rare).
 
-**Missing entry = strategy runs on every TF in `timeframes = [...]` → typically fires on 1h noise.**
+**Missing entry = strategy runs on every TF in `timeframes = [...]`, including ones it was never validated on.**
 
 Cross-reference with the reference config's `[strategy_timeframes]`. If the reference suppresses a TF,
 the target should too (unless the day filter changes the distribution enough to unlock it — the sweep will show).
@@ -63,9 +63,9 @@ Based on the gap analysis from Step 0, add or remove TFs:
 
 ```toml
 [strategy_timeframes]
-morning_evening_star = ["1h", "4h", "1d"]   # 1wk suppressed (no edge)
-order_block          = ["1d", "1wk"]        # 1h/4h suppressed (negative)
-bos                  = ["1h", "4h", "1d"]   # 1wk excluded: 0% wins
+morning_evening_star = ["4h", "1d"]   # 1wk suppressed (no edge)
+order_block          = ["1d", "1wk"]  # 4h suppressed (negative)
+bos                  = ["4h", "1d"]   # 1wk excluded: 0% wins
 ```
 
 **`1wk` here is subject to the same day-filter guard as the top-level list.** The
@@ -100,8 +100,8 @@ section before setting it:**
 ## Step 3 — Sync `day_filter` and other top-level fields
 
 Confirm `day_filter`, `min_sl_pct`, and any other top-level fields match the
-intent of this config (tue_thu vs weekdays vs all). These rarely change but
-drift in if a global change was made to one config and not others.
+intent of this config (tue_thu vs weekdays). These rarely change but
+drift in if a global change was made to one config and not the other.
 
 ## Step 4 — Validation run
 

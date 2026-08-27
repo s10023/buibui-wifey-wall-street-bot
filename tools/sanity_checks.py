@@ -104,6 +104,9 @@ LEAKAGE_EXEMPT: dict[str, str] = {
     "sanity-check/SKILL.md": "quotes the pattern in order to hunt for it",
     "ingest-feed/SKILL.md": "names the sibling repo path deliberately, as the sibling",
     "db-update/SKILL.md": "names the parent's systemd unit AS the parent's, to disown it",
+    "wfo-sweep/SKILL.md": "points at the parent's F9 memory AS the parent's (method-only)",
+    "atr-sweep/SKILL.md": "points at the parent's F9 memory AS the parent's (method-only)",
+    "journal-trade/SKILL.md": "seeds the template from the sibling's copy, named as the sibling's",
 }
 
 #: `.claude/context/` documents real legacy code paths by design.

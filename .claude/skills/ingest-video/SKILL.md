@@ -86,8 +86,9 @@ otherwise). Per element:
 - `url` — the URL actually requested at this position
 - `cached` — bool; `true` = zero network, served from `.cache/video/<id>/`
 - `meta` — `{source, video_id, author, title, publish_ts_utc, duration_s, lang, url,
-  caption_langs_manual, caption_langs_auto}`, or `null` when the video itself was
-  unreachable. The two `caption_langs_*` lists are the ONLY provenance signal:
+  chapters, caption_langs_manual, caption_langs_auto}`, or `null` when the video itself
+  was unreachable. `chapters` is the video's own chapter list (often empty) and feeds
+  step 3's recap window. The two `caption_langs_*` lists are the ONLY provenance signal:
   `manual` is author-written, `auto` is YouTube ASR, and both land on disk under the
   same `sub.<code>.vtt` name
 - `segments` — `[{ts_s, text, lang}, …]` (empty when there is no transcript)
@@ -122,8 +123,8 @@ Only shape-3 videos continue through the rest of this flow.
 ### 2b. Sibling-repo check — before spending any subagent tokens
 
 This repo and the crypto parent (`~/repo/buibui-moon-trader-bot/`) follow overlapping
-channels — Benjamin Cowen sits in both queues today, and 4 of his videos are already
-ingested here. `tools/route_dedup.py`'s identity ledger is **per-repo**, so it cannot see
+channels — Benjamin Cowen sits in both follow configs, and 18 of his videos are already
+ingested here (2026-08-27). `tools/route_dedup.py`'s identity ledger is **per-repo**, so it cannot see
 the parent's work at all, and its `check` runs later in this flow (step 7) — after the
 subagent spend this step exists to protect. The `.cache/video/<id>/` cache only spares the
 re-download, never the re-ingest. So this grep stays the first line of defence:
@@ -667,8 +668,9 @@ a near-verbatim restatement is *already in scope* and can still rank below thres
 That makes it a **lexical ranking** limit, which is why no flag is offered as a fix: the
 digest's human gate is doing the real work here. Two wifey-specific notes, both diverging
 from upstream: `route_dedup.py` here has **no `--author` flag at all**, so the upstream
-warning not to reach for one does not apply; and `mechanics-backlog.md` is currently
-**21 lines**, so a ranking miss is unlikely today and will get likelier as it fills.
+warning not to reach for one does not apply; and `mechanics-backlog.md` is still short
+(~70 lines, 2026-08-27), so a ranking miss is unlikely today and will get likelier as
+it fills.
 
 **Then run the intra-video pass, once per video that has two or more Stream-C-bound
 items.** `check` cannot catch these: every check runs *before* the approval that writes
@@ -926,9 +928,8 @@ When unsure, return `NOVEL` and let the human review gate decide — a wrong
 `FROZEN-CATEGORY` drops the item silently, a wrong `NOVEL` costs one line of review.
 
 **Already-tested (verdict known → `ALREADY-TESTED`, drop unless materially new
-evidence).** All six research sleeves audited on the ~500-name US-equity breadth
-universe FAILED their gates; the free-data edge arc is CONCLUDED (honest exit,
-2026-06-24):
+evidence).** All eight research sleeves measured on US equities came back
+non-positive; the free-data edge arc is CONCLUDED (honest exit, 2026-06-24):
 
 - Absolute **trend** (multi-speed EWMAC): G2 FAIL — portfolio Sharpe −0.05,
   negative even pre-cost (a signal failure, not a cost failure).
@@ -943,20 +944,28 @@ universe FAILED their gates; the free-data edge arc is CONCLUDED (honest exit,
 - **PEAD-lite** (seasonal SUE on free EDGAR data): FAIL — β-guardrail fired on
   the broad arm; the controlled mega arm showed *negative* drift. No PEAD in
   liquid large-caps net of cost on free data.
+- **Gap-fill magnet** (unfilled gaps as magnets / "gaps always fill"):
+  EXCLUDED, direction REFUTED — cost-free the magnet returns −0.460, so gaps
+  continue rather than revert; the post-hoc inverse never reaches the bar, and
+  ~211× daily gross turnover kills both directions. "90.3% of gaps fill within
+  60 sessions" is true and almost entirely diffusion (matched placebo 88.9%).
+- **Velocity alternation** (the pace of a decline predicts the pace of the
+  next move): EXCLUDED as a null — β-guardrail fired, beta-hedged −0.169 at
+  alpha t −0.49, and the velocity ratio performs indistinguishably from depth
+  alone.
 - DOW / day-of-week seasonality (e.g. "Monday is the weekly high → short"):
   parent-inherited verdict — base rate real but the tradeable edge decays OOS;
   the gorgeous version is look-ahead.
-- Exit-policy fixes ("your stops are wrong, not your entries"): MFE/MAE
-  diagnostic run, INCONCLUSIVE at n=22 — live ledger too young; re-audit before
-  building anything.
+- Exit-policy fixes ("your stops are wrong, not your entries"): BOUNDED — the
+  replay A/B measured the lever's ceiling at +0.368R of paired uplift, entirely
+  the time-stop, and no arm's own mean R clears zero. Re-run trigger is ledger
+  growth, not a restated claim.
 
 **Parked / captured / blocked:**
 
 - IPO post-hype dip-buy (long a faded recent IPO reclaiming its listing price):
   **already captured** as a thesis memo — a reassertion is "already in inbox",
   don't duplicate the H-row.
-- Gap-fill magnet (unfilled gaps as intraday magnets, esp. in range regime):
-  **already captured** as a thesis memo — same rule.
 - Anything requiring paid data (Polygon intraday, options flow, L2/auction
   feeds, futures breadth): `NOVEL` in principle but **data-blocked** — say so in
   `gap_note` (paid data currently declined).

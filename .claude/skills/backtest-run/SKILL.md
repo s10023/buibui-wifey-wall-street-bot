@@ -34,9 +34,9 @@ Saves to `backtest_runs` and `backtest_trades` tables in `analytics.db`. Require
 ### Single symbol + strategy + TF
 
 ```bash
-wifey backtest --symbol AAPL --strategy engulfing --interval 1h
-wifey backtest --symbol MSFT --strategy pin_bar --interval 4h --tp-r 3.0
-wifey backtest --symbol AAPL --strategy bos --interval 1h --atr-sl-multiplier 1.5
+wifey backtest --symbol AAPL --strategy engulfing --interval 4h
+wifey backtest --symbol MSFT --strategy pin_bar --interval 1d --tp-r 3.0
+wifey backtest --symbol AAPL --strategy bos --interval 4h --atr-sl-multiplier 1.5
 ```
 
 ### Single strategy, all symbols
@@ -97,7 +97,8 @@ wifey backtest
   --config FILE            TOML config file; CLI flags override TOML values
   --symbol SYMBOL          Single symbol (e.g. AAPL)
   --strategy STRATEGY      Single strategy name
-  --interval TF            Timeframe: 1h | 4h | 1d | 1wk
+  --interval TF            Timeframe: 4h | 1d | 1wk (default 4h; 1h bars exist for the
+                           watchlist but live scans run 4h/1d only)
   --days N                 Lookback in days (default: 200; floating window)
   --since YYYY-MM-DD       Anchor start date — use for saved/comparable runs (e.g. 2025-09-12)
   --tp-r FLOAT             Take-profit ratio (e.g. 2.0)
@@ -127,7 +128,7 @@ Saved runs are stored in `analytics.db` in the `backtest_runs` table. View them 
 curl http://localhost:8000/api/backtest/runs
 
 # Via DuckDB CLI
-duckdb analytics.db "SELECT strategy, timeframe, symbol, avg_r, closed_trades FROM backtest_runs ORDER BY created_at DESC LIMIT 20"
+duckdb analytics.db "SELECT strategy, timeframe, symbol, avg_r, closed_trades FROM backtest_runs ORDER BY run_at_ms DESC LIMIT 20"
 ```
 
 ## After running

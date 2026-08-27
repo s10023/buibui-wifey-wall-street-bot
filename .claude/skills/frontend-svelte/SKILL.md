@@ -43,22 +43,19 @@ web/ui/src/
 │   ├── BacktestResult.svelte
 │   ├── CandleChart.svelte    ← lightweight-charts wrapper
 │   ├── ErrorBanner.svelte
+│   ├── LiveOutcomes.svelte   ← self-fetching card (see /stats-dashboard)
 │   ├── LoadingSpinner.svelte
 │   ├── Nav.svelte
-│   ├── PositionRow.svelte
-│   └── PriceRow.svelte
+│   ├── PathCone.svelte
+│   └── WeeklyCone.svelte
 ├── pages/              one file per top-level tab
 │   ├── Backtest.svelte
 │   ├── Chart.svelte
-│   ├── Positions.svelte
-│   ├── Prices.svelte
 │   ├── SignalFeed.svelte
 │   └── Stats.svelte
 └── stores/             writable / derived stores; one concern per file
     ├── activeConfig.ts
     ├── config.ts
-    ├── positions.ts
-    ├── prices.ts
     ├── signals.ts
     ├── strategies.ts
     └── watchlist.ts

@@ -70,12 +70,12 @@ Both directories, deliberately — this subsumes the re-presented-candidate guar
 covers the case that guard misses, since a hit in **this repo's** dir is a same-repo
 re-ingest and `.cache/video/<id>/` only spares the re-download, never the re-ingest.
 
-**Grep the frontmatter, not the filename — in both repos.** This repo's `/ingest-video`
-names notes `<date>-<author-slug>-<title-slug>.md` (it has not received the parent's #522
-`video_id`-slug fix), and the parent's own pre-#522 notes carry title slugs too, so
-filenames are not comparable across the two repos *nor even within this one*. `video_id:`
-in frontmatter is the one key present in every note on both sides. (Porting #522's slug
-rule **here** is a `/sync-parent` item; until then, never match on filenames.)
+**Grep the frontmatter, not the filename — in both repos.** Both repos now name notes
+`<date>-<author-slug>-<video_id>.md` (the parent's #522 rule, applied here in
+`/ingest-video` step 9), but each still holds pre-existing notes carrying title slugs
+(here, everything before 2026-08-03), so filenames are not reliably comparable across
+the two repos *nor even within one*. `video_id:` in frontmatter is the one key present
+in every note on both sides — never match on filenames.
 
 A hit is **not** automatically a skip — apply the subject rule: **equities / macro / gold
 / oil / DXY / bonds → HERE, crypto → the parent**, and a video covering both legitimately
@@ -143,8 +143,8 @@ Guardrails).
 **You no longer pass `--channel-seen` by hand.** The poll payload's `channels` array
 already carries both fields it wanted, so `--candidates-json` now derives the pairs —
 previously this flag took ONE pair per use and had to be repeated once per followed
-channel (nine times today), with the values copied out of the very file already being
-passed on the line above. The flag still exists and still wins over a derived pair, for
+channel, with the values copied out of the very file already being passed on the line
+above. The flag still exists and still wins over a derived pair, for
 the rare case of persisting a channel the poll did not report. Either way the write is a
 `setdefault`, so a recorded floor is static and **can never move** — the derived pairs go
 through the same path, which is what keeps the watermark-advances-on-its-own defect class
