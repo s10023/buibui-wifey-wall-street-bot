@@ -68,6 +68,10 @@ EXEMPT_CLASSES: dict[str, str] = {
     # (3) the subject is a PARAMETER name, not a callable — the matched
     #     candidates (_day_filter_to_weekdays, query_day_filter_ab) are unrelated
     "tests/test_signal_lib.py::TestDayFilter": "day_filter is a param of scan_symbol",
+    # (4) the subject matches the RETURN TYPE, not the callable under test: the
+    #     class drives join_verdicts(), whose result is a VerdictJoin, and asserts
+    #     on that result's fields rather than constructing one
+    "tests/test_cadence_check.py::TestVerdictJoin": "calls join_verdicts, which returns VerdictJoin",
 }
 
 _CAMEL_BOUNDARY = re.compile(r"(?<!^)(?=[A-Z])")

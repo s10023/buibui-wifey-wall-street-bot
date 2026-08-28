@@ -252,20 +252,16 @@ class TestBacktestFilterConfig:
         assert cfg.mode == "soft"
         assert cfg.days == 90
         assert cfg.min_trades == 12
-        assert cfg.filter_threshold == 0.45
 
     def test_load_from_toml(self, tmp_path: Any) -> None:
         from analytics.signal_config import load_signal_config
 
         p = tmp_path / "cfg.toml"
-        p.write_text(
-            "[backtest]\nmode = 'hard'\ndays = 60\nmin_trades = 10\nfilter_threshold = 0.5\n"
-        )
+        p.write_text("[backtest]\nmode = 'hard'\ndays = 60\nmin_trades = 10\n")
         cfg = load_signal_config(p)
         assert cfg.backtest.mode == "hard"
         assert cfg.backtest.days == 60
         assert cfg.backtest.min_trades == 10
-        assert cfg.backtest.filter_threshold == 0.5
 
     def test_missing_backtest_section_uses_defaults(self, tmp_path: Any) -> None:
         from analytics.signal_config import load_signal_config
@@ -275,6 +271,33 @@ class TestBacktestFilterConfig:
         cfg = load_signal_config(p)
         assert cfg.backtest.mode == "soft"
         assert cfg.backtest.days == 90
+
+    def test_a_dead_filter_threshold_key_is_REFUSED_not_parsed(
+        self, tmp_path: Any
+    ) -> None:
+        """The old win-rate gate must not load as an inert field.
+
+        It was kept parseable "for TOML back-compat" while nothing read it, so a
+        config declaring it got a suppression that could never fire. Asserting it
+        PARSED — which is what this file used to do — cannot detect that; the only
+        assertion that can is that the load refuses.
+        """
+        import pytest
+
+        from analytics.signal_config import load_signal_config
+
+        p = tmp_path / "cfg.toml"
+        p.write_text("[backtest]\nmode = 'hard'\nfilter_threshold = 0.5\n")
+        with pytest.raises(ValueError, match="min_avg_r"):
+            load_signal_config(p)
+
+    def test_a_config_without_the_dead_key_still_loads(self, tmp_path: Any) -> None:
+        """Positive control: the refusal keys on the dead key, not on hard mode."""
+        from analytics.signal_config import load_signal_config
+
+        p = tmp_path / "cfg.toml"
+        p.write_text("[backtest]\nmode = 'hard'\nmin_avg_r = 0.25\n")
+        assert load_signal_config(p).backtest.min_avg_r == 0.25
 
     def test_min_avg_r_default(self) -> None:
         cfg = BacktestFilterConfig()

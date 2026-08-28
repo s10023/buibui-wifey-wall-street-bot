@@ -115,7 +115,12 @@ min_avg_r_z = 1.64       # ...and only when the shortfall is significant (0.0 = 
 # volume_spike_boost = false
 ```
 
-**Note**: `filter_threshold` was renamed to `min_avg_r`. Update any old TOML that still has the old key.
+**Note**: `min_avg_r` replaced the old win-rate gate `filter_threshold`, and it was a
+REPLACEMENT rather than a rename — the two gate different quantities (directional `avg_r`
+vs win rate). ⚠ **`filter_threshold` is now REFUSED at load** (`ValueError`): until
+2026-08-28 it stayed a parsed field "for TOML back-compat" that nothing read, so a config
+declaring it got a suppression that could never fire. Remove the key; express the intent as
+`min_avg_r` if a gate is wanted.
 
 **Both sample-size knobs fail OPEN.** `min_trades` and `min_avg_r_z` each cause the gate to
 *abstain* when unmet, so raising either makes the daemon dispatch **more**, not less — at
