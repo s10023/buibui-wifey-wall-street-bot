@@ -228,7 +228,7 @@ class BacktestFilterConfig:
     """Configuration for the per-signal backtest filter."""
 
     # "soft": always fire alert, append win rate line
-    # "hard": suppress alert if win_rate < filter_threshold (and enough trades)
+    # "hard": suppress alert if directional avg_r < min_avg_r (and enough trades)
     # "off":  disable entirely
     mode: str = "soft"
     days: int = 90
@@ -246,8 +246,6 @@ class BacktestFilterConfig:
     # Signal rate is NOT uniform — higher TFs fire less frequently per candle.
     # To scale for a different lookback: new_value = base × (your_days / 200)
     min_trades_per_tf: dict[str, int] = field(default_factory=dict)
-    # hard mode only: suppress if win_rate < this (legacy — kept for TOML back-compat)
-    filter_threshold: float = 0.45
     # hard mode only: suppress if directional avg_r < this (replaces win-rate gate)
     # 0.0 = must have positive EV; set lower to allow marginally negative strategies
     min_avg_r: float = 0.0
@@ -641,13 +639,27 @@ def load_signal_config(path: str | Path) -> SignalWatchConfig:
         for k, v in raw_bt.items()
         if k.startswith("min_trades_") and k != "min_trades"
     }
+    # Same defect class as max_alert_age_hours below: `filter_threshold` was the
+    # win-rate gate that `min_avg_r` replaced. It was kept as a parsed field "for
+    # TOML back-compat", but nothing ever read it and unknown keys in [backtest]
+    # are ignored anyway — so the field bought no compatibility and instead made a
+    # dead key look honoured. A config carrying it declares a suppression that
+    # cannot fire. Refuse it rather than accepting it inertly.
+    if "filter_threshold" in raw_bt:
+        raise ValueError(
+            f"[backtest] filter_threshold={raw_bt['filter_threshold']} is a dead "
+            "key: it was the win-rate gate that min_avg_r replaced, and nothing "
+            "has read it since. Left in place it reads as an active suppression "
+            "while gating nothing. Remove it, and express the intent as min_avg_r "
+            "(a directional avg_r floor) if a gate is wanted."
+        )
+
     backtest = BacktestFilterConfig(
         mode=str(raw_bt.get("mode", "soft")),
         days=int(raw_bt.get("days", 90)),
         since=str(raw_bt["since"]) if raw_bt.get("since") else None,
         min_trades=int(raw_bt.get("min_trades", 20)),
         min_trades_per_tf=bt_per_tf,
-        filter_threshold=float(raw_bt.get("filter_threshold", 0.45)),
         min_avg_r=float(raw_bt.get("min_avg_r", 0.0)),
         min_avg_r_long=(
             float(raw_bt["min_avg_r_long"])
