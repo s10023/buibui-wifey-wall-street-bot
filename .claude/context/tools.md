@@ -452,6 +452,33 @@ action clears it — and the reason each rejected candidate fails one (`make bac
 go-live`, `/db-update`, `/ingest-feed`) live beside `TASKS` in the module, so the table cannot
 grow into noise without someone stating which rule the new line satisfies.
 
+**The audit-verdict → SoT ownership join rides in the same report** (parent #641's other half,
+its `daily_check.py` § 6b). An audit whose verdict recommends action and that NO SoT row names is
+a finding with no owner — the parent measured its only BUILD verdict in 47 audits sitting unowned
+for seven weeks in a generated, test-enforced index, because a research chain of audits has an
+owner at every link except the last: each link's owner is the next audit, and the terminal
+recommendation is owned by nobody. It reads `docs/audits/INDEX.md`, never the audit bodies — the
+index's currency is already gated by `tests/test_docs_index.py`, so a stale index reds that test,
+not this line. **Ownership = a SoT row naming the audit's FILENAME**, open or closed — "is it
+implemented" needs a judgement no string match can make, and green being reachable two ways (do
+the work, or record where it was already done) is what keeps this from becoming an amber nobody
+believes. It is NOT a `Task`: no mark, no cadence — an observed-state join, hosted here because
+the audits are in the repo, the SoT is in `~/.claude-personal`, and no pytest can see both.
+
+Three divergences from the parent's join, same discipline as the block above. The **predicates are
+re-derived** against wifey's FOUND / BOUNDED / EXCLUDED / BLOCKED taxonomy — the parent keys on
+BUILD / NO-EDGE, words wifey audits never say — and `INSUFFICIENT` is deliberately OFF the settled
+list, because the corpus's one live SUPPRESS-CANDIDATE rides in an "INSUFFICIENT on 11 of 12
+cells" verdict and a global veto would silently skip exactly the row carrying a recommendation
+(pinned by a test). **Rows match by date shape, not the parent's `| 2026-` prefix**, which goes
+blind at the new year with every row silently dropped — and a 0-rows parse prints as parser
+drift, never as clean. **The predicates are under real pytest** (`tests/test_cadence_check.py`,
+including the parent's decisive strip-the-owner mutation and an empty-SoT positive control on the
+committed index): the parent's module executes on import, so its proof is a hand-run sibling that
+duplicates the regexes and must be edited in lockstep — this file is importable, so drift between
+code and test is structurally impossible. The blind bracket (`31/41 readable, 10 state it in a
+table`) prints because a green line is a claim about the readable rows only.
+
 ## backup_check.py — is the newest snapshot actually recent?
 
 `make backup-check` runs `tools/backup_check.py`, which reads `$WIFEY_BACKUP_ROOT` (default

@@ -47,20 +47,44 @@ skipped. All four must hold:
   3. the check is one cheap field, and
   4. exactly one action clears it.
 
+**The audit-verdict → SoT ownership join rides along here** (ported from the
+parent's `daily_check.py` § 6b, the other half of parent #641). An audit whose
+verdict recommends action and that NO SoT row names is a finding with no owner —
+the parent measured a BUILD verdict sitting unowned for seven weeks in a
+test-enforced index, because a research chain of audits has an owner at every
+link except the last. This is the only check that joins the two trees (audits in
+the repo, SoT in ``~/.claude-personal``), which is why it lives in an advisory
+tool: no pytest can see both. It is NOT a :class:`Task` — it reads observed
+state, not a mark, so the four inclusion rules above do not apply to it.
+Divergences from the parent, each because its reason does not hold here: the
+predicates are re-derived against wifey's FOUND / BOUNDED / EXCLUDED / BLOCKED
+verdict taxonomy (the parent's key on BUILD / NO-EDGE, which wifey audits never
+say), rows are matched by date *shape* rather than the parent's ``| 2026-``
+prefix (which goes silently blind at the new year, in the direction of green),
+and because this file is tracked and importable the predicates are tested in
+``make test`` (`tests/test_cadence_check.py`) instead of by a hand-run sibling
+that duplicates them. Ownership = a SoT row naming the audit's FILENAME, open or
+closed — green is reachable two ways (do the work, or record where it was
+already done), so this cannot become an amber nobody believes. The coverage
+bracket is printed because the grandfathered audits state their verdict where
+the index cannot parse it — a green line is a claim about the READABLE rows only.
+
 Usage::
 
-    make cadence-check                 # report
+    make cadence-check                 # report, including the verdict join
     poetry run python tools/cadence_check.py --stamp sanity-check
 """
 
 from __future__ import annotations
 
 import argparse
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 MARKS = Path("docs/plans/task-marks")
+AUDIT_INDEX = Path("docs/audits/INDEX.md")
 
 
 @dataclass(frozen=True)
@@ -105,6 +129,85 @@ TASKS: tuple[Task, ...] = (
         "by 2026-08-20 while the handoff called the range empty",
     ),
 )
+
+
+#: A verdict that recommends action someone must own. Re-derived against the live
+#: corpus (41 audits, 2026-08-28), not copied from the parent: `FOUND` is wifey's
+#: defect/edge-found label, `CANDIDATE` covers SUPPRESS-CANDIDATE, `EXIT-FIXABLE`
+#: and `UNBLOCKED` are the two actionable labels CLAUDE.md's verdict tables use,
+#: and the last three are plain actionable English. The parent's `→` marker is
+#: deliberately absent — wifey verdict prose uses arrows decoratively.
+_ACTIONABLE = re.compile(
+    r"\bFOUND\b|CANDIDATE|EXIT-FIXABLE|UNBLOCKED|justified|recommend|next step"
+)
+#: Vetoes a row that matched _ACTIONABLE: the recommendation was already acted on
+#: or ruled. Deliberately NOT a bare negative-verdict list — `INSUFFICIENT` must
+#: stay off it, because the one live SUPPRESS-CANDIDATE rides in an
+#: "INSUFFICIENT on 11 of 12 cells" verdict and a global veto would silently
+#: skip exactly the row that carries a recommendation.
+_SETTLED = re.compile(
+    r"\bFIXED\b|\bclosed\b|\bcorrected\b|\bDECLINED\b|does not exist",
+    re.IGNORECASE,
+)
+#: An index row: `| YYYY-MM-DD | title | verdict | [file](file) |`. Date SHAPE,
+#: not a year literal — the parent matches `| 2026-` and goes blind on 2027-01-01,
+#: with every row silently dropped and the check reading green on 0/0.
+_INDEX_ROW = re.compile(r"^\| \d{4}-\d{2}-\d{2} \|")
+
+
+@dataclass(frozen=True)
+class VerdictJoin:
+    """The join's three facts: who is unowned, and the coverage bracket."""
+
+    unowned: tuple[str, ...]  #: actionable audit stems no SoT row names
+    blind: int  #: rows whose verdict the index could not read (`—`)
+    total: int  #: all audit rows parsed — 0 means the parser drifted, not "clean"
+
+
+def join_verdicts(index_text: str, sot_text: str) -> VerdictJoin:
+    """Actionable audit verdicts that no SoT row names.
+
+    Reads the generated ``docs/audits/INDEX.md`` rather than the audit bodies —
+    the index's currency is already gated by ``tests/test_docs_index.py``, so
+    this inherits that guarantee instead of re-implementing it.
+    """
+    unowned: list[str] = []
+    blind = total = 0
+    for line in index_text.splitlines():
+        if not _INDEX_ROW.match(line):
+            continue
+        cells = [c.strip() for c in line.split("|")]
+        if len(cells) < 5:
+            continue
+        total += 1
+        verdict, link = cells[3], cells[4]
+        if verdict == "—":
+            blind += 1
+            continue
+        if not _ACTIONABLE.search(verdict) or _SETTLED.search(verdict):
+            continue
+        stem = link.partition("](")[2].rstrip(")").removesuffix(".md")
+        if stem and stem not in sot_text:
+            unowned.append(stem)
+    return VerdictJoin(tuple(unowned), blind, total)
+
+
+def sot_path(repo_root: Path) -> Path:
+    """This checkout's SoT master to-do, by the project-dir naming rule.
+
+    Derived rather than hardcoded so no tracked file carries a machine-specific
+    literal; a moved repo or another machine resolves to an absent path, which
+    degrades to a printed note rather than a wrong answer.
+    """
+    slug = str(repo_root.resolve()).replace("/", "-")
+    return (
+        Path.home()
+        / ".claude-personal"
+        / "projects"
+        / slug
+        / "memory"
+        / "project_todo_master.md"
+    )
 
 
 def parse_mark(text: str) -> datetime | None:
@@ -187,13 +290,41 @@ def main() -> None:
             print(f"       → run it, then: make cadence-stamp TASK={st.task.slug}")
             print(f"       → why it matters: {st.task.consequence}")
 
+    unowned = 0
+    print("\n  audit verdicts → SoT ownership (the join no pytest can make)")
+    sot = sot_path(Path(__file__).resolve().parents[1])
+    if not AUDIT_INDEX.exists():
+        print("  i docs/audits/INDEX.md absent — run: make docs-index")
+    elif not sot.exists():
+        print(f"  i SoT not on this machine ({sot})")
+    else:
+        j = join_verdicts(
+            AUDIT_INDEX.read_text(encoding="utf-8"),
+            sot.read_text(encoding="utf-8"),
+        )
+        cov = f"{j.total - j.blind}/{j.total} readable, {j.blind} state it in a table"
+        if j.total == 0:
+            print("  ! 0 index rows parsed — the parser drifted, this is NOT clean")
+        elif j.unowned:
+            unowned = len(j.unowned)
+            print(
+                f"  ! {unowned} actionable verdict(s) no SoT row names: "
+                f"{', '.join(j.unowned)}  [{cov}]"
+            )
+            print(
+                "       → file a SoT row naming the audit filename — or, if already"
+                " satisfied, record WHERE in the row that owns it"
+            )
+        else:
+            print(f"  + every actionable verdict is owned  [{cov}]")
+
     n = sum(s.overdue for s in statuses)
     print(
         f"\n  {n} overdue of {len(statuses)}. Advisory only — a missing mark reads as\n"
         "  overdue on purpose, and this never gates CI (the marks are gitignored, so a\n"
         "  fresh clone would report every task overdue forever).\n"
     )
-    if args.exit_nonzero and n:
+    if args.exit_nonzero and (n or unowned):
         raise SystemExit(1)
 
 

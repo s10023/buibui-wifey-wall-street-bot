@@ -17,7 +17,15 @@ from pathlib import Path
 
 import pytest
 
-from tools.cadence_check import TASKS, Task, evaluate, parse_mark, stamp
+from tools.cadence_check import (
+    TASKS,
+    Task,
+    evaluate,
+    join_verdicts,
+    parse_mark,
+    sot_path,
+    stamp,
+)
 
 NOW = datetime(2026, 8, 20, 12, 0, 0, tzinfo=UTC)
 WEEKLY = Task("/demo", "demo", 7.0, "the named consequence")
@@ -139,3 +147,86 @@ class TestDeclaredTasks:
     def test_every_period_is_positive(self) -> None:
         for t in TASKS:
             assert t.every_days > 0, t.slug
+
+
+def _row(date: str, verdict: str, stem: str) -> str:
+    return f"| {date} | a title | {verdict} | [{stem}.md]({stem}.md) |"
+
+
+class TestVerdictJoin:
+    """The audit-verdict → SoT ownership join (the other half of parent #641).
+
+    The parent's predicates live in a gitignored file and are proven by a
+    hand-run sibling that DUPLICATES them; here the module is tracked and
+    importable, so the real predicates are under test — drift is impossible.
+    """
+
+    STEM = "2026-08-20-audit-guard-cross-sectional-clustering"
+
+    def test_the_decisive_mutation_strip_the_owner_and_it_reds(self) -> None:
+        """The parent's seven-week class: same index, owning SoT row removed."""
+        idx = _row("2026-08-20", "FOUND — the CI is too narrow", self.STEM)
+        owned = join_verdicts(idx, f"closed by docs/audits/{self.STEM}.md")
+        assert owned.unowned == ()
+        orphaned = join_verdicts(idx, "a SoT that names nothing")
+        assert orphaned.unowned == (self.STEM,)
+
+    def test_the_live_index_flags_against_an_empty_sot(self) -> None:
+        """Positive control on the COMMITTED corpus: the predicates reach it.
+
+        If this audit's verdict text is ever legitimately edited, this pin
+        moves with it — update the stem, do not weaken the empty-SoT assertion.
+        """
+        idx = Path("docs/audits/INDEX.md").read_text(encoding="utf-8")
+        res = join_verdicts(idx, "")
+        assert res.total >= 41
+        assert self.STEM in res.unowned
+
+    def test_a_settled_FOUND_never_flags(self) -> None:
+        for verdict in (
+            "FOUND and FIXED — a coverage defect",
+            "FOUND, and closed in this branch.",
+            "FOUND but DECLINED as net harmful",
+        ):
+            res = join_verdicts(_row("2026-08-26", verdict, "some-audit"), "")
+            assert res.unowned == (), verdict
+
+    def test_INSUFFICIENT_carrying_a_CANDIDATE_still_flags(self) -> None:
+        """Pins that INSUFFICIENT stays OFF the settled list: the one live
+        SUPPRESS-CANDIDATE rides in an 'INSUFFICIENT on 11 of 12' verdict, and
+        a global veto would silently skip exactly the row with the payload."""
+        idx = _row(
+            "2026-08-13",
+            "INSUFFICIENT on 11 of 12 cells; one SUPPRESS-CANDIDATE",
+            "warning-audit",
+        )
+        assert join_verdicts(idx, "").unowned == ("warning-audit",)
+
+    def test_a_blind_verdict_counts_and_never_flags(self) -> None:
+        res = join_verdicts(_row("2026-08-07", "—", "grandfathered"), "")
+        assert res.unowned == () and res.blind == 1 and res.total == 1
+
+    def test_rows_match_by_date_shape_not_by_year(self) -> None:
+        """The parent keys on `| 2026-` and goes blind — green on 0/0 — at the
+        new year. A 2027 row must parse."""
+        res = join_verdicts(_row("2027-01-05", "FOUND — a defect", "next-year"), "")
+        assert res.total == 1 and res.unowned == ("next-year",)
+
+    def test_a_malformed_row_is_skipped_not_crashed(self) -> None:
+        assert join_verdicts("| 2026-08-20 | too few cells |", "").total == 0
+
+    def test_zero_rows_is_reported_as_zero_not_as_clean(self) -> None:
+        """total=0 is the parser-drift state; the caller prints it loud."""
+        res = join_verdicts("# no table here\n", "anything")
+        assert res.total == 0 and res.blind == 0 and res.unowned == ()
+
+    def test_sot_path_encodes_the_repo_root(self) -> None:
+        p = sot_path(Path("/srv/demo"))
+        assert p == (
+            Path.home()
+            / ".claude-personal"
+            / "projects"
+            / "-srv-demo"
+            / "memory"
+            / "project_todo_master.md"
+        )
