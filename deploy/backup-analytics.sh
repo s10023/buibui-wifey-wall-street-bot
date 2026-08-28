@@ -45,11 +45,15 @@
 # Byte copy survives only as the FALLBACK, because it takes no DuckDB lock and
 # therefore still works when something else holds the database.
 #
-# LOCK CONTENTION IS POSSIBLE BUT NOT SCHEDULED
-# ---------------------------------------------
-# Unlike the crypto parent, this repo has NO signal-watch daemon, timer, or cron
-# -- dispatch is the manual one-shot `make go-live`. So there is no fixed window
-# to schedule around, and contention here comes from whatever the operator is
+# LOCK CONTENTION IS POSSIBLE AND MAY BE SCHEDULED
+# ------------------------------------------------
+# There is still no signal-watch DAEMON -- every wifey unit is Type=oneshot --
+# but "no timer or cron" stopped being true on 2026-08-26. The repo now ships
+# `wifey-signal-watch.timer` (`make go-live CATCH_UP=1`, Mon-Fri 08:30 UTC) and
+# `wifey-universe-sync.timer` (Sat 10:00 UTC), both opt-in: nothing installs
+# them, so whether a fixed window exists is a property of the BOX, not the repo.
+# Read `systemctl --user list-timers` rather than assuming either way. Beyond
+# any such window, contention comes from whatever the operator is
 # running: `make go-live`, `make db-update`, or a `make wifey-web` session
 # holding the DB open. On duckdb 1.5.5 a second PROCESS is refused even with
 # read_only=True (only reader-vs-reader shares), so "open read-only to dodge the
