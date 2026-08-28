@@ -30,7 +30,10 @@ scan, alert and backfill outcomes against stale data, and `make go-live` runs `-
 promised retry had no next cycle to happen in. **Scope an enumeration by the PREDICATE it claims
 (here, `git grep 'except duckdb.IOException'`), never by the directory you happened to be
 reading.** Both directions are pinned by
-`tests/test_signal_runner.py::TestSyncIoErrorsAreNarrowed`.
+`tests/test_signal_runner.py::TestSyncIoErrorsAreNarrowed`, and since the handler was extracted
+as `_sync_watched_series` (parent #688's other half), `TestSyncWatchedSeriesDirect` also pins
+the `ValueError` fallback — first backfill plus the cache pop — which the end-to-end tests
+could only assert the absence of.
 
 The retry helper was **preventive, not a repair** — and that stopped being the whole story on
 2026-08-25. Upstream's premise is colliding systemd timers, and wifey now has two that both open

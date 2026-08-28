@@ -104,6 +104,59 @@ def _update_ohlcv_cache(
         cache[key] = get_ohlcv(conn, symbol, tf, start_ms, now_ms)
 
 
+def _sync_watched_series(
+    *,
+    conn: duckdb.DuckDBPyConnection,
+    symbols: list[str],
+    timeframes: list[str],
+    backfill_start_ms: int,
+    ohlcv_cache: dict[tuple[str, str], pd.DataFrame],
+) -> None:
+    """Refresh every watched (symbol, timeframe), backfilling a series we lack.
+
+    A ``ValueError`` means the series is new — backfill it and drop its cache
+    entry so the next read is cold.
+
+    A ``duckdb.IOException`` is swallowed ONLY when it is a lock conflict
+    (narrowed for the same reason as ``web/api/deps.py`` and ``web/api/main.py``:
+    DuckDB raises that one class for every I/O failure, so a bare handler
+    reports a missing, full or corrupt database as "will retry"). Anything else
+    propagates and kills the cycle, which is the point: the caller goes on to
+    scan, alert, write ``signal_alert_outcomes`` and advance the cooldown
+    watermarks, and doing that against bars we failed to refresh puts stale rows
+    into the live ledger — the OOS evidence base — while catch-up consumes the
+    real candles as already seen. Production runs ``--once`` (``make go-live``,
+    by hand or via ``wifey-signal-watch.timer``), so there is no next cycle for
+    a promised retry to happen in; failing loudly hands it to the next timer
+    firing, with ``OnFailure=`` reporting the miss.
+
+    The lock case is worth waiting out and is also the least likely to arrive
+    here: ``conn`` came from ``connect_with_retry``, which has already spent its
+    budget, so this process holds the write lock.
+    """
+    for symbol in symbols:
+        for tf in timeframes:
+            try:
+                sync(conn, symbol, tf)
+            except ValueError:
+                logger.info(
+                    "No data for %s/%s — running initial backfill",
+                    symbol,
+                    tf,
+                )
+                backfill(conn, symbol, tf, backfill_start_ms)
+                ohlcv_cache.pop((symbol, tf), None)  # force cold read
+            except duckdb.IOException as exc:
+                if not is_lock_conflict(exc):
+                    raise
+                logger.warning(
+                    "DB sync failed for %s/%s (lock held; will retry): %s",
+                    symbol,
+                    tf,
+                    exc,
+                )
+
+
 def run_signal_watch(
     symbols: list[str] | None = None,
     timeframes: list[str] | None = None,
@@ -286,35 +339,13 @@ def run_signal_watch(
                     )
                 else:
                     cache_start_ms = backfill_start_ms
-                for symbol in resolved_symbols:
-                    for tf in resolved_timeframes:
-                        try:
-                            sync(conn, symbol, tf)
-                        except ValueError:
-                            logger.info(
-                                "No data for %s/%s — running initial backfill",
-                                symbol,
-                                tf,
-                            )
-                            backfill(conn, symbol, tf, backfill_start_ms)
-                            ohlcv_cache.pop((symbol, tf), None)  # force cold read
-                        except duckdb.IOException as exc:
-                            # Narrowed for the same reason as `web/api/deps.py`
-                            # and `web/api/main.py`: DuckDB raises one class for
-                            # every I/O failure, so a bare handler reports a
-                            # missing, full or corrupt database as "will retry"
-                            # and the cycle goes on to scan, alert and backfill
-                            # outcomes against stale data. Under `--once` — how
-                            # `make go-live` runs — there is no next cycle for
-                            # the promised retry to happen in.
-                            if not is_lock_conflict(exc):
-                                raise
-                            logger.warning(
-                                "DB sync failed for %s/%s (lock held; will retry): %s",
-                                symbol,
-                                tf,
-                                exc,
-                            )
+                _sync_watched_series(
+                    conn=conn,
+                    symbols=resolved_symbols,
+                    timeframes=resolved_timeframes,
+                    backfill_start_ms=backfill_start_ms,
+                    ohlcv_cache=ohlcv_cache,
+                )
 
                 # Incrementally refresh OHLCV cache for all primary symbols.
                 for symbol in resolved_symbols:

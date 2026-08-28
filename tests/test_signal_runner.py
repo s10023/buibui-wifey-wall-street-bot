@@ -12,7 +12,7 @@ import pytest
 
 from analytics import signal_runner
 from analytics.data_store import init_schema, upsert_ohlcv
-from analytics.signal_runner import _update_ohlcv_cache
+from analytics.signal_runner import _sync_watched_series, _update_ohlcv_cache
 
 _MS = 15 * 60 * 1000  # 15 minutes in ms
 _T0 = 1_700_000_000_000  # arbitrary base timestamp (ms)
@@ -274,3 +274,50 @@ class TestSyncIoErrorsAreNarrowed:
         # The whole point: no scan, no alert, no outcome backfill on stale data.
         daemon_mocks["run_scan_cycle"].assert_not_called()
         daemon_mocks["backfill_outcomes"].assert_not_called()
+
+
+class TestSyncWatchedSeriesDirect:
+    """Unit tests on the extracted helper (parent #688's other half).
+
+    ``TestSyncIoErrorsAreNarrowed`` above proves the same narrowing END-TO-END
+    through ``run_signal_watch`` and stays; what only this class covers is the
+    ``ValueError`` fallback — first backfill plus the cache pop that forces the
+    next read cold. The end-to-end tests could only assert that path's absence.
+    """
+
+    @staticmethod
+    def _call(
+        sync_effect: object,
+        cache: dict[tuple[str, str], pd.DataFrame] | None = None,
+    ) -> list[tuple[str, str, int]]:
+        backfilled: list[tuple[str, str, int]] = []
+        with (
+            patch("analytics.signal_runner.sync", side_effect=sync_effect),
+            patch(
+                "analytics.signal_runner.backfill",
+                side_effect=lambda c, s, t, ms: backfilled.append((s, t, ms)),
+            ),
+        ):
+            _sync_watched_series(
+                conn=object(),  # type: ignore[arg-type]  # never touched: sync is patched
+                symbols=["AAPL"],
+                timeframes=["4h"],
+                backfill_start_ms=123,
+                ohlcv_cache={} if cache is None else cache,
+            )
+        return backfilled
+
+    def test_a_lock_conflict_is_swallowed(self) -> None:
+        self._call(duckdb.IOException('Conflicting lock is held in "analytics.db"'))
+
+    def test_a_non_lock_io_error_propagates(self) -> None:
+        with pytest.raises(duckdb.IOException, match="corrupt"):
+            self._call(duckdb.IOException("IO Error: database is corrupt"))
+
+    def test_a_missing_series_backfills_and_forces_a_cold_read(self) -> None:
+        """The path the end-to-end tests never drive: a new series must get its
+        first backfill (with the caller's window) AND lose its cache entry, or
+        the cycle scans a warm cache that predates the bars just written."""
+        cache = {("AAPL", "4h"): pd.DataFrame({"open_time": [1]})}
+        assert self._call(ValueError("no data"), cache) == [("AAPL", "4h", 123)]
+        assert ("AAPL", "4h") not in cache

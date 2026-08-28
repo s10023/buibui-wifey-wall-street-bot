@@ -146,7 +146,11 @@ CI**: the marks are gitignored, so a fresh clone sees every one absent and would
 permanently overdue. A check that can only be red in CI is worse than no check. Two tasks are
 declared (`/sanity-check`, `/sync-parent`, both 7d); the four inclusion rules and the reason each
 rejected candidate fails one live beside `TASKS` in `tools/cadence_check.py`. **Nothing auto-runs
-anything** — these only record that a run happened.
+anything** — these only record that a run happened. The report's second section is the
+**audit-verdict → SoT ownership join** (parent #641's other half): an actionable verdict in
+`docs/audits/INDEX.md` that no SoT row names is a finding with no owner — the class where a research
+chain of audits owns every link except the last, measured upstream as a BUILD verdict sitting
+unowned for seven weeks in a test-enforced index.
 
 `make preflight` runs the suite against a **fresh clone of HEAD** and **REPLACES** that branch's
 `make test` rather than adding to it — it mirrors that recipe's argv, pinned by a test so the
@@ -243,10 +247,12 @@ prose does not enforce. The consumer that makes it mechanical is the generated `
 which renders each verdict in a column, so an unparseable one shows up as an empty cell that reads
 exactly like an audit that reached no conclusion. **10 pre-2026-08-21 audits are grandfathered in a
 frozen set that can only SHRINK** — fixing or deleting one without removing it from the set fails the
-test, so a spent exemption cannot quietly re-admit the blind spot. ⚠ **It buys legibility, not
-ownership.** The parent pairs this with a gitignored join asking whether an actionable verdict has an
-OWNER; wifey has no such join (`cadence_check.py` reads task marks, not verdicts), so the ownership
-question stays with `/post-branch`'s SoT reconcile. Ported from parent #641.
+test, so a spent exemption cannot quietly re-admit the blind spot. ⚠ **Legibility and ownership are
+separate legs.** The ownership half is `make cadence-check`'s **verdict→owner join**: an actionable
+verdict (FOUND / CANDIDATE / EXIT-FIXABLE / UNBLOCKED, unless settled) that no SoT row names is a
+finding, and green is reachable two ways — do the work, or record in the SoT where it was already
+done. Advisory like the rest of that tool, since the SoT is machine-local. Both halves ported from
+parent #641.
 
 UI or API changes: `make web-build` for a production bundle, `make web-dev` for the Vite dev
 server, `make web-check` for `svelte-check` types without a build.

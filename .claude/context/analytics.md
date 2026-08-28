@@ -375,6 +375,10 @@ Retired parent API this replaced (`cme_gap_lib.py`, kept here for historical ref
 - Creates client, opens DB, syncs candles, polls `run_scan_cycle` in a loop
 - All TOML params wired through: `sl_pct`, `cooldown_seconds`, `fee_pct`, `day_filter`, `bias_cfg`
 - Loads `confidence_override` + `directional_confidence_override` from DB at startup
+- **Watched-series sync**: `_sync_watched_series()` — extracted (parent #688's other half) so the
+  `ValueError` → first-backfill → cache-pop fallback is directly testable
+  (`TestSyncWatchedSeriesDirect`); swallows a `duckdb.IOException` only on `is_lock_conflict`,
+  anything else kills the cycle on purpose (see footguns.md)
 - **OHLCV cache**: `_update_ohlcv_cache()` re-fetches from `cached_max_ts` inclusive; replaces cache[-1] + appends new rows; invalidates when `>2` rows arrive (`_CACHE_INVALIDATE_THRESHOLD = 2`)
 - **Live backtest window** (2026-08-06): one `bt_days = backtest_cfg.days` feeds **both** the cold cache read above and `run_scan_cycle(days=)`. They must move together — `run_scan_cycle` prefers a populated `ohlcv_cache` over its own `get_ohlcv(start_ms)`, so passing `days` alone widens the `_backtest_run_id` key and `backtest_runs.days` while `_compute_backtest` still sees the old window. Falls back to `_DEFAULT_BACKFILL_DAYS = 90` only when no `backtest_cfg` is supplied; `backtest_cfg.since`, when set, overrides the cache start
 - **Combo refresh**: `combo_lookup` + `cross_tf_lookup` reloaded every `_COMBO_REFRESH_CYCLES = 10` cycles
