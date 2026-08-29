@@ -4,23 +4,24 @@
 `make docs-index-check` (and `tests/test_docs_index.py`) fails when this file
 drifts from the corpus.
 
-**16 specs on disk.** Reconcile status is **derived** — a spec counts as
+**17 specs on disk.** Reconcile status is **derived** — a spec counts as
 reconciled when an audit that both names its filename and identifies itself as a
 spec-vs-code reconcile says so, recomputed from disk on every run rather than
 carried in prose where nothing would catch it going stale.
 
-- **Reconciled (derived): 0 of 16 — and 0 is the only value this
+- **Reconciled (derived): 0 of 17 — and 0 is the only value this
   column can currently take**, because no audit in `docs/audits/` identifies
   itself as a spec-vs-code reconcile. Read it as *no reconcile has been written up*,
-  never as *16 specs went unreconciled*: the two are indistinguishable
+  never as *17 specs went unreconciled*: the two are indistinguishable
   from here, and the second is a claim this table cannot support.
-- Referenced by no audit at all: 11.
+- Referenced by no audit at all: 12.
 
 The column starts working the moment one audit says so in its own filename or
 H1 — that is the whole detector, and it is deliberately not a body keyword.
 
 | Date | Spec | Reconciled by | Also referenced by | File |
 | --- | --- | --- | --- | --- |
+| 2026-08-29 | H-024 — routine vs opportunistic insider trades: build design + pre-registration | — | — | [2026-08-29-h024-insider-routine-opportunistic-design.md](2026-08-29-h024-insider-routine-opportunistic-design.md) |
 | 2026-08-18 | Wife-channel alert layout — condensed mirror (design) | — | — | [2026-08-18-wife-alert-layout-design.md](2026-08-18-wife-alert-layout-design.md) |
 | 2026-08-14 | Edge-hunt #5 — gap-fill "magnet" sleeve (design + pre-registration) | — | 2026-08-14-edge-hunt-5-gapfill-magnet.md | [2026-08-14-edge-hunt-5-gapfill-magnet-design.md](2026-08-14-edge-hunt-5-gapfill-magnet-design.md) |
 | 2026-07-28 | `/ingest-video` — video → research pipeline (design) | — | — | [2026-07-28-ingest-video-design.md](2026-07-28-ingest-video-design.md) |
