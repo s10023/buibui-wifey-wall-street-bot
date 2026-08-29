@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<ownershipDocument>
+    <documentType>4</documentType>
+    <issuer><issuerCik>0000000001</issuerCik></issuer>
+    <reportingOwner>
+        <reportingOwnerId>
+            <rptOwnerCik>0000000901</rptOwnerCik>
+            <rptOwnerName>Example Insider A</rptOwnerName>
+        </reportingOwnerId>
+        <reportingOwnerRelationship><isOfficer>1</isOfficer></reportingOwnerRelationship>
+    </reportingOwner>
+    <nonDerivativeTable>
+        <nonDerivativeTransaction>
+            <transactionDate><value>2026-06-01</value></transactionDate>
+            <transactionCoding><transactionCode>S</transactionCode></transactionCoding>
+            <transactionAmounts>
+                <transactionShares><value>300</value></transactionShares>
+                <transactionPricePerShare><footnoteId id="F1"/></transactionPricePerShare>
+                <transactionAcquiredDisposedCode><value>D</value></transactionAcquiredDisposedCode>
+            </transactionAmounts>
+        </nonDerivativeTransaction>
+    </nonDerivativeTable>
+    <footnotes><footnote id="F1">Weighted average price, see footnote.</footnote></footnotes>
+</ownershipDocument>

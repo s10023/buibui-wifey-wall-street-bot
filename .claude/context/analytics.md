@@ -270,6 +270,19 @@ a second reader (a ported Brief board) imports the same definition rather than r
 
 ## pead/ — post-earnings-announcement-drift sleeve (edge-hunt #4; PR #104)
 
+- `insider/` — **H-024 routine-vs-opportunistic insider sleeve, phase 1 only** (the first
+  non-price sleeve; design and frozen pre-registration:
+  `docs/superpowers/specs/2026-08-29-h024-insider-routine-opportunistic-design.md`). Ships
+  ingestion ONLY — `form4.py` is pure Form 4 parsing (`parse_form4`, `iter_form4_filings`,
+  `raw_document_name`), writing `insider_transactions` via `analytics/store/insider.py`.
+  **No book, no return, no verdict yet**: phases 2 (classification) and 3 (book/report/audit)
+  are unbuilt, and phase 3 must not start until the parse-coverage observable passes its 80%
+  floor. `ParseOutcome` returns failures rather than dropping them precisely because that
+  coverage number is the phase gate — a parser that skips what it cannot read reports 100% by
+  construction. The pre-registered study population is transaction codes P/S, and the filter
+  lives in `get_insider_transactions` (default `codes=("P","S")`) rather than in ingestion, so
+  what the study excluded stays auditable from the table. Backfill: `make wifey-insider-backfill`
+  (⚠ needs `EDGAR_CONTACT_EMAIL`; see `context/tools.md`).
 - `pead/` — post-earnings-announcement-drift sleeve (edge-hunt #4, PR #104; additive — the only writes are the new `earnings_facts` table + `utils/edgar_client.py`; book/replay/report/audit are read-only → goldens byte-identical). The first **event-driven / fundamentals** family (orthogonal to the five price-factor fails), trading a free **seasonal-random-walk SUE** (Foster-Olsen-Shevlin / Bernard-Thomas — EPS minus same-fiscal-quarter prior year, ÷ trailing UE std; no paid estimates) sourced from EDGAR `companyfacts`, entered the next NYSE session **strictly after** the 8-K item-2.02 announcement (10-Q `filed` fallback), held a pre-registered **60-session** drift window. Modules: `signals.py` (pure causal `seasonal_sue` + `sue_leverage` — vol-parity SUE cohorts, dollar-neutral demean for L/S or clip≥0 for long-only; the no-lookahead heart), `replay.py` (only DB-touching, read-only: `replay_pead_grid` runs the 2×2 `{broad,mega}×{long-short,long-only}` via the `xsmom.book.run_xs_backtest(leverage=…)` cost-aware injection + `pead_market_return` SPY benchmark; mega arm = `config/universe_sp100_snapshot.json` ∩ active), `report.py` (`PeadGridReport` + `evaluate_pead_grid` — reuses `forecast.report.evaluate` for DSR/PBO/boot-CI/MinTRL over the 4-book family + `xsmom.diagnostics.beta_attribution` for the equity-β-to-SPY guardrail; gate on committed `broad_ls`, `_GATE_SHARPE=0.7`/`_DEPLOY_SHARPE=1.0`). **Verdict = FAIL** (committed `broad_ls` Sharpe +0.10 @2bps ≪ 0.7, DSR 0.20, boot_lo<0, MinTRL=∞ at 0/2/8 bps) **AND the equity-β guardrail FIRED (β ≈ +113)** → like edge-hunt #2 a governor-saturation pathology on *sparse daily earnings cohorts*, so a fail of *this construction's neutrality*, not a clean premium test; the controlled mega arm (β −0.40) showed **negative drift (−0.53)** — the honest read: no PEAD in liquid large-caps net of cost on free data. **Sixth sleeve to FAIL → all four roadmap free-data families exhausted → honest-exit decision due.** Audited via `tools/pead_audit.py` (`make wifey-pead-audit`); backfill via `make wifey-pead-backfill` (EDGAR; 480/504 names, 24,747 quarters); `docs/audits/2026-06-23-edge-hunt-4-pead-lite.md`.
 
 ## gapfill/ — gap-fill "magnet" sleeve (edge-hunt #5; PR #198)
