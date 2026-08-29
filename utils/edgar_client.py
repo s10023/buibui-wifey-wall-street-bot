@@ -136,7 +136,8 @@ def fetch_submissions(cik: str) -> dict[str, Any]:
 def fetch_submissions_shard(name: str) -> dict[str, Any]:
     """One older-filings shard named by ``filings.files[].name``.
 
-    ⚠ ``filings.recent`` holds at most 1000 entries and is NOT a history: for a
+    ⚠ ``filings.recent`` is a WINDOW, not a history — SEC documents it as the
+    most recent 1,000 filings, and that bound was confirmed on ONE company: for a
     heavy Form 4 filer it can start well inside the study window (measured for
     AAPL 2026-08-29: 1000 entries reaching back only to 2015-06-10, with one
     shard covering 1994→2015). A fetcher that reads ``recent`` alone silently

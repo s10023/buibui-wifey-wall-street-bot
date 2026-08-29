@@ -125,9 +125,13 @@ def iter_form4_filings(
     Accepts either the full submissions document or a bare shard (which has the
     column arrays at top level). ``since`` filters on filing date, inclusive.
 
-    ⚠ This reads ONE payload. ``filings.recent`` caps at 1000 entries, so a
-    caller covering a multi-year window must also walk ``filings.files`` — see
-    :func:`utils.edgar_client.fetch_submissions_shard`.
+    ⚠ This reads ONE payload, and ``filings.recent`` is a WINDOW rather than a
+    history, so a caller covering a multi-year span must also walk
+    ``filings.files`` — see :func:`utils.edgar_client.fetch_submissions_shard`.
+    (SEC documents ``recent`` as the most recent 1,000 filings; measured on one
+    company, AAPL 2026-08-29, it held exactly 1000 and reached back only to
+    2015-06-10. The shard walk is unconditional, so it does not depend on that
+    figure being the same for every filer.)
     """
     block = submissions.get("filings", {}).get("recent", submissions)
     forms = block.get("form", [])

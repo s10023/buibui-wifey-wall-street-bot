@@ -1025,9 +1025,12 @@ One-shot ingest for the **first non-price sleeve** (design and frozen pre-regist
 research universe, walks each CIK's Form 4 index, fetches each filing's ownership XML, upserts
 `insider_transactions`. Pure units = `build_rows` / `collect_filings`; network in `main`.
 
-⚠ **`filings.recent` caps at 1000 entries and is NOT a history** — measured for AAPL on
-2026-08-29, it reached back only to 2015-06-10, with one shard covering 1994→2015. A fetcher
-reading `recent` alone returns a truncated history that reads exactly like a quiet insider, so
+⚠ **`filings.recent` is a WINDOW, not a history** — SEC documents it as the most recent 1,000
+filings, and that bound was confirmed on **one** company (AAPL, 2026-08-29: exactly 1000 entries
+reaching back only to 2015-06-10, with one shard covering 1994→2015). The shard walk is
+unconditional, so nothing depends on 1,000 holding for every filer; what matters is the shape,
+since a fetcher reading `recent` alone returns a truncated history that reads exactly like a
+quiet insider, so
 `collect_filings` also walks every `filings.files` shard whose `filingTo` lands on/after the
 window start (and skips the rest, which is what keeps a full run off the 1990s).
 
