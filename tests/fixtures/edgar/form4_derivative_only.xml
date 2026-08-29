@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<ownershipDocument>
+    <documentType>4</documentType>
+    <issuer><issuerCik>0000000001</issuerCik></issuer>
+    <reportingOwner>
+        <reportingOwnerId>
+            <rptOwnerCik>0000000901</rptOwnerCik>
+            <rptOwnerName>Example Insider A</rptOwnerName>
+        </reportingOwnerId>
+        <reportingOwnerRelationship><isDirector>1</isDirector></reportingOwnerRelationship>
+    </reportingOwner>
+    <derivativeTable>
+        <derivativeTransaction>
+            <transactionDate><value>2026-05-01</value></transactionDate>
+            <transactionCoding><transactionCode>M</transactionCode></transactionCoding>
+        </derivativeTransaction>
+    </derivativeTable>
+</ownershipDocument>

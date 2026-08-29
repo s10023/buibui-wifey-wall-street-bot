@@ -1018,6 +1018,50 @@ network in `main`.
 
 **Run:** `make wifey-pead-backfill` (or `tools/pead_backfill.py [--limit N] [--db PATH]`)
 
+## insider_backfill.py — H-024 phase 1, EDGAR Form 4 ingestion
+
+One-shot ingest for the **first non-price sleeve** (design and frozen pre-registration:
+`docs/superpowers/specs/2026-08-29-h024-insider-routine-opportunistic-design.md`). Loops the
+research universe, walks each CIK's Form 4 index, fetches each filing's ownership XML, upserts
+`insider_transactions`. Pure units = `build_rows` / `collect_filings`; network in `main`.
+
+⚠ **`filings.recent` is a WINDOW, not a history** — SEC documents it as the most recent 1,000
+filings, and that bound was confirmed on **one** company (AAPL, 2026-08-29: exactly 1000 entries
+reaching back only to 2015-06-10, with one shard covering 1994→2015). The shard walk is
+unconditional, so nothing depends on 1,000 holding for every filer; what matters is the shape,
+since a fetcher reading `recent` alone returns a truncated history that reads exactly like a
+quiet insider, so
+`collect_filings` also walks every `filings.files` shard whose `filingTo` lands on/after the
+window start (and skips the rest, which is what keeps a full run off the 1990s).
+
+⚠ **`primaryDocument` points at the XSL-RENDERED HTML** (`xslF345X06/form4.xml`); the
+machine-readable XML is the bare filename under the same accession. `raw_document_name` is that
+one-line strip, and fetching the prefixed path yields a document carrying no ownership elements.
+
+⚠ **The window starts 3 years before the study** (`--since 2015-01-01` by default): the
+classifier needs a trade in each of three preceding years, so a run covering only 2018→ leaves
+every insider unclassifiable.
+
+⚠ **Requires `EDGAR_CONTACT_EMAIL`** — see the `edgar_client` note below. The run's last line is
+the **phase-1 acceptance observable**: parse coverage against its 80% floor, printed PASS/FAIL.
+A footnote-only price counts as a FAILURE (not a drop), while a derivative-only filing counts as
+clean-but-empty — conflating those two is how a parser reports 100% coverage by construction.
+
+**Run:** `make wifey-insider-backfill` (or
+`tools/insider_backfill.py [--since ISO] [--limit N] [--db PATH]`)
+
+## edgar_client.py — the SEC User-Agent contract
+
+⚠ **MEASURED 2026-08-29: a User-Agent carrying a URL is refused (HTTP 403) by both SEC hosts**,
+with or without parentheses. The module used to fall back to the repo URL when
+`EDGAR_CONTACT_EMAIL` was unset, documented as "SEC may throttle an address-less UA harder" —
+too kind by the time it was measured: unset meant a hard 403 everywhere, so
+`make wifey-pead-backfill` could not run on an unconfigured box and failed as though SEC were
+down. Probe matrix (`data.sec.gov` / `www.sec.gov`): **name+email 200/200 · name only 200/403 · URL
+with parens 403/403 · URL without parens 403/403**. `_user_agent()` now raises
+`EdgarContactMissing` when the contact is absent or has no `@`, so an unconfigured box fails
+loud at the call site instead of three frames away.
+
 ## pead_audit.py — edge-hunt #4 audit for the PEAD-lite sleeve
 
 Read-only **edge-hunt #4** audit (PR #104) for the `analytics/pead/` PEAD-lite sleeve: runs the

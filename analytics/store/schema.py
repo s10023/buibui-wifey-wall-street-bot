@@ -370,6 +370,32 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
             PRIMARY KEY (symbol, fy, fp)
         )
     """)
+    # H-024 (routine vs opportunistic insiders): free EDGAR Form 4 transactions.
+    # Brand-new table touched by nothing legacy, so it lives in CREATE TABLE with
+    # no positional-INSERT hazard; read-only after the one-shot backfill.
+    # The key is (accession, owner_cik, seq): one filing can report for several
+    # owners against one set of transactions, and can carry several transactions,
+    # so none of the three alone identifies a row.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS insider_transactions (
+            symbol            TEXT    NOT NULL,
+            issuer_cik        TEXT,
+            owner_cik         TEXT    NOT NULL,
+            owner_name        TEXT,
+            is_officer        BOOLEAN,
+            is_director       BOOLEAN,
+            transaction_date  DATE    NOT NULL,
+            transaction_code  TEXT    NOT NULL,
+            shares            DOUBLE,
+            price_per_share   DOUBLE,
+            acquired_disposed TEXT,
+            accession         TEXT    NOT NULL,
+            filing_date       DATE,
+            acceptance_ts     TIMESTAMP,
+            seq               INTEGER NOT NULL,
+            PRIMARY KEY (accession, owner_cik, seq)
+        )
+    """)
     # Backfill existing runs from trades table where split columns are still NULL.
     # Runs after backtest_trades is created so the table always exists.
     conn.execute("""
