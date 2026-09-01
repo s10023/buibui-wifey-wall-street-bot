@@ -16,7 +16,8 @@ The run reports the phase-1 acceptance observable — the share of fetched filin
 that parsed cleanly — and that number is the deliverable, not a return.
 
 Run via ``make wifey-insider-backfill`` or
-``PYTHONPATH=. poetry run python tools/insider_backfill.py [--limit N] [--db PATH]``.
+``PYTHONPATH=. poetry run python tools/insider_backfill.py
+[--stride N] [--limit N] [--symbols A,B] [--db PATH]``.
 Requires ``EDGAR_CONTACT_EMAIL`` (SEC 403s any other User-Agent shape).
 """
 
@@ -95,6 +96,67 @@ def collect_filings(submissions: dict[str, Any], since: str) -> list[Form4Filing
     return filings
 
 
+def select_symbols(
+    universe: list[str],
+    *,
+    symbols: str | None = None,
+    stride: int = 1,
+    limit: int | None = None,
+) -> list[str]:
+    """Pick this run's symbols from the research universe.
+
+    ⚠ **``--limit`` alone takes the HEAD, and `config/universe.json` is grouped by
+    SECTOR** — so ``--limit 15`` is fifteen Information Technology mega-caps rather
+    than a sample of anything. Measured 2026-09-01: those fifteen carry **18,549**
+    Form 4 documents, of which CRM (4,175) and ACN (2,922) are ~38% on their own, so
+    the head is simultaneously the slowest slice in the universe and the least
+    representative one.
+
+    That matters beyond runtime. Parse coverage is phase 1's pre-registered
+    acceptance observable, and malformed filings concentrate among small and older
+    filers — none of which the head contains. A head-sampled coverage figure
+    therefore cannot support the >=80% gate in either direction: it is not evidence
+    the universe clears the floor, and a failure would not be evidence it does not.
+    ``stride`` spreads the pick across the file's ordering, which is both cheaper
+    and the only form that answers the question the gate asks.
+    """
+    if symbols:
+        wanted = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+        unknown = [s for s in wanted if s not in set(universe)]
+        if unknown:
+            raise ValueError(
+                f"not in the research universe: {', '.join(sorted(unknown))}"
+            )
+        return wanted
+    if stride < 1:
+        raise ValueError(f"--stride must be >= 1, got {stride}")
+    picked = universe[::stride]
+    return picked[:limit] if limit is not None else picked
+
+
+def sample_filings(filings: list[Form4Filing], cap: int | None) -> list[Form4Filing]:
+    """Evenly spaced subset of one symbol's filings, for a coverage sample.
+
+    ⚠ **Taking the first ``cap`` would BIAS THE OBSERVABLE OPTIMISTICALLY.**
+    ``collect_filings`` returns newest-first, and recent Form 4s are the most
+    uniform — modern XML from current filing agents. Parse failures concentrate in
+    older documents, so a head-capped sample measures the easy end of the range and
+    reports a parse-coverage figure that is too high. The >=80% floor exists to
+    catch exactly the documents such a cap would exclude, which makes the naive
+    version worse than no cap at all.
+
+    Spreading across the list keeps the sampled window the same width as the full
+    one. This is the same head-vs-spread defect as :func:`select_symbols`, one level
+    down: there it was sectors, here it is filing vintage.
+    """
+    if cap is None or cap >= len(filings) or not filings:
+        return filings
+    if cap < 1:
+        raise ValueError(f"--max-filings-per-symbol must be >= 1, got {cap}")
+    step = len(filings) / cap
+    return [filings[int(i * step)] for i in range(cap)]
+
+
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()  # EDGAR_CONTACT_EMAIL may live only in .env
     parser = argparse.ArgumentParser(description=__doc__)
@@ -105,13 +167,42 @@ def main(argv: list[str] | None = None) -> int:
         help="earliest filing date (default buys 3y of classification history)",
     )
     parser.add_argument(
-        "--limit", type=int, default=None, help="cap number of symbols (debug)"
+        "--limit",
+        type=int,
+        default=None,
+        help="cap number of symbols; applied AFTER --stride. Alone it takes the "
+        "head of a sector-grouped file — pair it with --stride for a sample",
+    )
+    parser.add_argument(
+        "--stride",
+        type=int,
+        default=1,
+        help="take every Nth universe member, spreading the pick across sectors",
+    )
+    parser.add_argument(
+        "--symbols",
+        default=None,
+        help="explicit comma-separated symbols; overrides --stride/--limit",
+    )
+    parser.add_argument(
+        "--max-filings-per-symbol",
+        type=int,
+        default=None,
+        help="sample at most N filings per symbol, spread evenly across the "
+        "window. For a coverage estimate, filer diversity beats depth",
     )
     args = parser.parse_args(argv)
 
-    symbols = load_research_universe().stocks()
-    if args.limit:
-        symbols = symbols[: args.limit]
+    try:
+        symbols = select_symbols(
+            load_research_universe().stocks(),
+            symbols=args.symbols,
+            stride=args.stride,
+            limit=args.limit,
+        )
+    except ValueError as exc:
+        print(f"❌ {exc}")
+        return 2
 
     print(f"📥 H-024 Form 4 backfill: {len(symbols)} symbols since {args.since}")
     try:
@@ -136,6 +227,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  ⚠ {sym} (CIK {cik}) index: {type(exc).__name__}: {exc}")
             n_errors += 1
             continue
+
+        filings = sample_filings(filings, args.max_filings_per_symbol)
 
         rows: list[dict[str, Any]] = []
         for f in filings:

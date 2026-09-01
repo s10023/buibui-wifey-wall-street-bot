@@ -118,3 +118,42 @@ rules from `docs/audits/2026-08-13-vacuous-causality-guards.md` apply).
 Phase 3 must not start until phases 1–2 are merged and observable (b) has passed — the
 pre-registration freezes at this document, and the first look at a return happens inside the
 gated report, nowhere else.
+
+## Amendment 1 (2026-09-01) — how observable (b) is SAMPLED
+
+**Additive. It changes no frozen line, not the ≥80% floor, not the trial count, and not any
+cell.** The frozen text says *"fewer than 80% of fetched Form 4 filings for universe members
+parse cleanly"* — it never said which filings get fetched for the measurement, and the first
+pilot's default answered that question badly enough to be worth pinning here.
+
+**What went wrong.** `--limit 15` takes the HEAD of `config/universe.json`, which is grouped by
+sector. Measured 2026-09-01, that is fifteen Information Technology mega-caps carrying **18,549**
+Form 4 documents, CRM (4,175) and ACN (2,922) alone being ~38%. A coverage figure from that slice
+supports the gate in neither direction: parse failures concentrate among small and older filers,
+none of which the head contains, so a PASS is not evidence the universe clears the floor and a
+FAIL is not evidence it does not. It is also the slowest slice in the universe — at the measured
+**2.1 documents/second** (round-trip bound against `www.sec.gov/Archives`, not the 0.12s
+throttle), the head-15 run needed ~147 minutes to produce an uninformative number. Stopped at 6
+symbols; 12,019 rows across AAPL/ACN/ADBE/AMAT/AMD/AVGO are retained and valid.
+
+**How it is sampled instead.** Observable (b) is measured on a **strided, per-symbol-capped**
+draw: `--stride N` spreads symbols across the sector-grouped file, and
+`--max-filings-per-symbol N` takes an evenly spaced subset of each symbol's filings. Both spread
+rather than truncate, for the same reason at two levels — sectors for symbols, filing vintage for
+documents. ⚠ **A head cap on filings would bias the observable OPTIMISTICALLY**: `collect_filings`
+returns newest-first and recent filings are the most uniform, so taking the first N measures the
+easy end of the range. That is worse than no cap, since the floor exists to catch precisely the
+documents it would drop. Pinned by `tests/test_insider_backfill.py::TestSampleFilings`.
+
+**Why this is the better estimator, not merely the cheaper one.** (b) is a proportion, so its
+precision comes from the document count (~1,000 pins it to about ±2.5% at 95%) while its
+*validity* comes from filer diversity. Depth per company buys neither. Hence
+`--stride 10 --limit 50 --max-filings-per-symbol 40` ≈ 2,000 documents across 50 companies in
+every sector (~16 min), against 10,183 documents from 15 companies (~81 min) for a strided run
+with no cap.
+
+**Full-universe cost, measured rather than assumed.** The Data pipeline section's "estimated
+50–150k documents across 505 CIKs × 11 years" is the right order but low at the top end: the 15
+heaviest names alone are 18,549. At 2.1 docs/sec a 150k run is ~20 hours and 300k is ~40 — a
+deliberate overnight job, and SEC's rate limit is a floor no parallelism moves. Phase 3's full
+backfill should be scheduled on that basis.

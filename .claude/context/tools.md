@@ -1048,7 +1048,30 @@ A footnote-only price counts as a FAILURE (not a drop), while a derivative-only 
 clean-but-empty — conflating those two is how a parser reports 100% coverage by construction.
 
 **Run:** `make wifey-insider-backfill` (or
-`tools/insider_backfill.py [--since ISO] [--limit N] [--db PATH]`)
+`tools/insider_backfill.py [--since ISO] [--stride N] [--limit N] [--symbols A,B]
+[--max-filings-per-symbol N] [--db PATH]`)
+
+⚠ **`--limit` ALONE TAKES THE HEAD, and `config/universe.json` is grouped by SECTOR** — so
+`--limit 15` is fifteen Information Technology mega-caps, not a sample. Measured 2026-09-01 they
+carry **18,549** Form 4 documents (CRM 4,175 + ACN 2,922 ≈ 38%), making the head simultaneously
+the slowest slice in the universe and the least informative: parse failures concentrate among
+small and older filers it contains none of, so a head-sampled coverage figure cannot support the
+≥80% phase-1 floor in either direction. Pair it with `--stride`, which spreads the pick across
+the file (measured: 7 sectors vs 1).
+
+⚠ **`--max-filings-per-symbol` spreads across each symbol's range and MUST NOT become a head
+cap.** `collect_filings` returns newest-first and recent filings are the most uniform, so taking
+the first N measures the easy end and biases coverage **optimistically** — worse than no cap,
+since the floor exists to catch exactly the documents it would drop. Same defect as the sector
+one, one level down: sectors for symbols, filing vintage for documents. Both pinned by
+`tests/test_insider_backfill.py`; the sampling rationale is spec Amendment 1.
+
+⚠ **Runtime is round-trip bound, not throttle bound: ~2.1 documents/second measured** against
+`www.sec.gov/Archives` (the 0.12s `_MIN_INTERVAL` is not the binding constraint). So the full
+501-stock backfill is **20–40 hours**, an overnight job — the spec's "50–150k documents" estimate
+is the right order but low at the top end. A coverage pilot wants breadth, not depth:
+`--stride 10 --limit 50 --max-filings-per-symbol 40` ≈ 2,000 documents across 50 companies in
+every sector, ~16 min.
 
 ## edgar_client.py — the SEC User-Agent contract
 
