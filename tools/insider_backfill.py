@@ -26,6 +26,7 @@ import argparse
 from typing import Any
 
 import duckdb
+from dotenv import load_dotenv
 
 from analytics.insider.form4 import (
     Form4Filing,
@@ -95,6 +96,7 @@ def collect_filings(submissions: dict[str, Any], since: str) -> list[Form4Filing
 
 
 def main(argv: list[str] | None = None) -> int:
+    load_dotenv()  # EDGAR_CONTACT_EMAIL may live only in .env
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", default=str(DEFAULT_DB_PATH), help="DuckDB path")
     parser.add_argument(

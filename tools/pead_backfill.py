@@ -22,6 +22,7 @@ from datetime import date
 from typing import Any
 
 import duckdb
+from dotenv import load_dotenv
 
 from analytics.store import DEFAULT_DB_PATH
 from analytics.store.earnings import upsert_earnings_facts
@@ -76,6 +77,7 @@ def build_rows(
 
 
 def main(argv: list[str] | None = None) -> int:
+    load_dotenv()  # EDGAR_CONTACT_EMAIL may live only in .env
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", default=str(DEFAULT_DB_PATH), help="DuckDB path")
     parser.add_argument(

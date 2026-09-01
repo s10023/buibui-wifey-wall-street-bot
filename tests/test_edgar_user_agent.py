@@ -16,6 +16,9 @@ the loud failure that replaced it.
 
 from __future__ import annotations
 
+import importlib
+from typing import Any
+
 import pytest
 
 from utils.edgar_client import EdgarContactMissing, _user_agent
@@ -52,3 +55,35 @@ def test_non_email_contact_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     with pytest.raises(EdgarContactMissing):
         _user_agent()
+
+
+@pytest.mark.parametrize("module", ["tools.insider_backfill", "tools.pead_backfill"])
+def test_backfill_entry_point_reads_dotenv_before_anything_else(
+    monkeypatch: pytest.MonkeyPatch, module: str
+) -> None:
+    """Both EDGAR backfills must load ``.env`` as their first act.
+
+    Neither did until 2026-09-01, so a box with ``EDGAR_CONTACT_EMAIL`` set in
+    ``.env`` — the only place the error message and ``.env.example`` tell you to
+    put it — still died on ``EdgarContactMissing``. The advice named a file the
+    entry point never read, which reads as a config mistake rather than a defect.
+
+    Raising from the patched loader pins the ORDERING as well as the call: if
+    ``load_dotenv()`` were to move below the argparse or fetch lines, one of
+    those would raise first and the sentinel would never escape.
+    """
+    mod = importlib.import_module(module)
+
+    class _Sentinel(Exception):
+        pass
+
+    called: list[bool] = []
+
+    def _fake_load_dotenv(*args: Any, **kwargs: Any) -> None:
+        called.append(True)
+        raise _Sentinel
+
+    monkeypatch.setattr(mod, "load_dotenv", _fake_load_dotenv)
+    with pytest.raises(_Sentinel):
+        mod.main([])
+    assert called == [True]

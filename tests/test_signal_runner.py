@@ -112,6 +112,12 @@ def daemon_mocks() -> Any:
             name: stack.enter_context(patch.object(signal_runner, name))
             for name in (
                 "duckdb",
+                # The open site production actually uses. Patching `duckdb`
+                # and `init_schema` alone left `run_signal_watch` opening the
+                # REAL analytics.db and WRITING to it (init_schema +
+                # prune_backtest_cache), so a concurrent writer failed this
+                # file on a lock the tests had no business taking.
+                "connect_with_retry",
                 "init_schema",
                 "prune_backtest_cache",
                 "get_combo_lookup",
