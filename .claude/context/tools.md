@@ -1062,6 +1062,15 @@ with parens 403/403 · URL without parens 403/403**. `_user_agent()` now raises
 `EdgarContactMissing` when the contact is absent or has no `@`, so an unconfigured box fails
 loud at the call site instead of three frames away.
 
+⚠ **The contact reaches that check only because the entry points load `.env` — which neither did
+until 2026-09-01.** `edgar_client` reads `os.environ`, and `tools/insider_backfill.py` and
+`tools/pead_backfill.py` never called `load_dotenv()`, so a box with `EDGAR_CONTACT_EMAIL` set
+exactly where `.env.example`, the README and the error message all say to put it still died on
+`EdgarContactMissing` — advice naming a file the tool never read, which reads as operator error
+rather than as a defect. Both now load it as their first statement, pinned by
+`tests/test_edgar_user_agent.py` (the loader is patched to RAISE, so the test fixes the ordering
+as well as the call).
+
 ## pead_audit.py — edge-hunt #4 audit for the PEAD-lite sleeve
 
 Read-only **edge-hunt #4** audit (PR #104) for the `analytics/pead/` PEAD-lite sleeve: runs the
