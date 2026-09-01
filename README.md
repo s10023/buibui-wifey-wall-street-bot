@@ -255,10 +255,12 @@ TELEGRAM_WIFE_DRY_RUN=1   # 1 = log instead of send (rollout safety)
 # Optional — only for /ingest-video on caption-less video
 GROQ_API_KEY=
 
-# Optional — SEC EDGAR contact for the PEAD sleeve's User-Agent (fair-access
-# policy asks automated clients to identify themselves with a reachable address).
-# Keep it here, never in source. Unset still works, identifying the client by
-# repo URL, but SEC may throttle an address-less User-Agent more aggressively.
+# REQUIRED for the PEAD and insider sleeves — SEC EDGAR contact for the
+# User-Agent (fair-access policy asks automated clients to identify themselves
+# with a reachable address). Keep it here, never in source.
+# Unset is a hard failure rather than a slowdown: a User-Agent carrying a URL, or
+# no contact at all, is 403'd by BOTH SEC hosts, so the fetchers raise
+# EdgarContactMissing instead of degrading.
 EDGAR_CONTACT_EMAIL=
 ```
 

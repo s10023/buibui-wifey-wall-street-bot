@@ -729,6 +729,14 @@ pytest plus `unittest.mock`. Tests must not make real network calls: lib functio
 parameter and tests pass a `MagicMock` directly. Analytics tests use `duckdb.connect(":memory:")`
 for full DB isolation and never touch the real `analytics.db`.
 
+⚠ **Mocking `duckdb` and `init_schema` does NOT isolate the DB.** Production opens through
+`connect_with_retry`, so `run_signal_watch` reached the real `analytics.db` and WROTE to it
+(`init_schema` + `prune_backtest_cache`) for as long as the sentence above stood — the fixture
+patched the names the runner used to call, not the one it calls now, and its docstring claimed
+"without touching DuckDB" throughout. **Mock the open site, not its neighbours**, and note that
+the failure is invisible on a quiet box: it surfaces only when something else holds the write
+lock, as a timeout or a lock error in a test that never mentions a database.
+
 `make test-regression` compares backtest pipeline output to golden JSON in `tests/fixtures/`, and
 skips if the fixture parquets are absent. Regenerate with `make regression-update` after an
 intentional change.
