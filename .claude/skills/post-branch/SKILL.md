@@ -380,6 +380,17 @@ other. Re-derive it from the code before writing it down.
   have sent a session's Current State update into the parent repo.
   `.claude/` is covered by `make lint-md`, so a skill edit lints like any other
   file — keep it that way.
+  ⚠ **A changed rule usually has SIBLINGS, and finding them depends on whether it has
+  an enforcement LOCUS.** A rule enforced in code gives you a string only a
+  rule-carrying skill would cite, so `grep -rl "<that symbol>" .claude/skills/*/SKILL.md`
+  decides the set. **A PROMPT-SIDE rule has no such locus, and that is the common case,
+  not the edge one** — every candidate spelling is either prose a sibling would phrase
+  differently or a field name it mentions anyway. There the grep can only NARROW the
+  candidates; you then have to READ each hit for the rule's *substance*. Ported from
+  parent #738. ⚠ **Port the method, not its finding**: upstream measured `/ingest-x`
+  missing two Stream C rules `/ingest-video` had, and that divergence does **not**
+  reproduce here — both skills carry the "unless it reclaims" trap rule (checked
+  2026-09-02).
 - **The handoff** is the surface with no other check: gitignored, so no reviewer
   ever sees its drift, and its group A is headed *"Settled — do not
   re-litigate"*, which means a stale line there **instructs** rather than merely
@@ -478,7 +489,7 @@ and caught only because that comment was audited off-list. A wrong number beside
 a frozen set is durable: it is the justification the next session inherits for
 not re-checking the set.
 
-Five shapes to hunt:
+Six shapes to hunt:
 
 1. **A claim about a MECHANISM supported only by a COUNT.** A count is consistent
    with many mechanisms. Demand the query that rules the *others* out.
@@ -494,6 +505,16 @@ Five shapes to hunt:
    zero cases*, *the only* — a sentence quantified over a set can only be
    established by scanning the whole column. The tell is grammatical rather than
    numerical, so it is cheap to spot once you look for it.
+6. **A claim about a SERIES, checked only against the repo.** ⚠ **Grep the MEMORY
+   TREE too.** A branch appending to a running measurement — costs, counts, timings —
+   and saying "the first ever to go DOWN" is making a claim about the series'
+   **COMPLETENESS**, not its values, and a series that merely looks monotone is
+   evidence of what somebody remembered to write down. **No mechanical leg can catch
+   this**: `queue-items` and `handoff-symbols` read the handoff, every other leg is
+   repo-scoped, and `stale-anchors` is the one leg reaching memory but it checks
+   anchors rather than data. So ask what else measured the SAME QUANTITY and never
+   reached the series. Ported from parent #733, where the falsifying datapoint sat in
+   an account-level memory file, filed as a defect instead of appended.
 
 ---
 
@@ -510,6 +531,18 @@ git push -u origin <branch>
 ```bash
 make preflight            # background it; it runs the whole suite in a fresh clone
 ```
+
+⚠ **Scope it with a positive CHECK, never a judgement — and the default stays RUN.**
+Two greps decide: does the diff contain Python, and does any test read a changed path
+(`grep -rl <changed-path> tests/`)? If both answer no, the clone re-runs the whole suite
+only to reproduce `main`'s own result — say in the PR body which gate you ran instead,
+naming the two greps. ⛔ **"This looks harmless" is not the discriminator**; a gate with
+no stated scope makes the correct call look like a deviation, which is how it gets
+dropped later on a diff that DID need it. ⚠ **Re-derive the COST here rather than
+porting the parent's**: upstream cites 4,762 tests it could not affect, while wifey's
+preflight is ~4 min over ~3,450 tests — smaller, and still the whole reason this scope
+line exists, since a session burned exactly that on 2026-09-02 by running `make test`
+AND preflight on one branch. Ported from parent #733.
 
 A gitignored path that exists on this box and nowhere else is invisible to every
 local run — `config/stocks.json`, `.claude/sensitive-terms.txt`, `docs/plans/`

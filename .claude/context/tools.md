@@ -1698,6 +1698,25 @@ Two layers with different machinery:
 never drops a row. CLI `check | mark | unmark | pairs | seed`; `mark` runs strictly *after* the
 sink write (marking at check time is the #68 watermark-on-send defect class).
 
+⚠ **`--sink` is gated on `KNOWN_SINKS`, and the reason is the KEY, not tidiness.** `is_routed`
+keys on `(source_id, item_ts, sink)` via `_key`, so a sink outside those three full paths is
+**dedup-blind** — it writes a ledger row no later round can ever match, while `find_similar`
+stays lenient on an unrecognised sink because scoping genuinely cannot apply there. That
+leniency is why bad rows were writable at all, so the membership check sits at the CLI boundary
+and nowhere else. ⚠ **Ported from parent #706 as PREVENTION, not a repair**: wifey's ledger held
+**0 bad rows of 54** when it landed, against upstream's 30 writable — do not quote that count as
+this repo's.
+
+⚠ **A bare `python3 tools/route_dedup.py` now works**, and it did not before: that invocation
+puts `tools/` on `sys.path` rather than the repo root, so the `tools.x_route` import died with
+`ModuleNotFoundError` and only `make` or an explicit `PYTHONPATH=.` ran. A `sys.path` bootstrap
+fixes it, scoped to tools that actually import from the repo — in one that does not it is dead
+code masking the breakage the moment the first import appears. ⚠ **The guarantee is
+`test_bare_invocation_works`, never the comment beside that line**; the test runs the module with
+`PYTHONPATH` stripped from the environment, which is the exact condition that failed, and it was
+mutation-checked. The parent hits the same class on `analytics.*` — the rule ports, the failing
+module name does not.
+
 ### Seven divergences from the parent
 
 Ported from parent #518/#521 with **seven divergences**, every one found by running the ported

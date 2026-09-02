@@ -52,6 +52,14 @@ has also done its job.
 3. **Gate** — the main thread applies G1 → G4 in order, cheapest rejection
    first, running `tools/distil_power.py` for every G3 (drag-shaped mechanics
    rows excepted — see G3).
+   ⚠ **Before accepting an ABSTRACT-ONLY source, hunt the full text.** A paywalled
+   paper is often free as a dissertation chapter, an EconStor/SSRN working copy or a
+   repository deposit — the FRL 2025 paper's full text sat in the first author's
+   Wuppertal thesis, two searches away, and it came back **stronger** than its
+   abstract (a capacity constraint the abstract understated). An abstract states a
+   headline; a pre-registration needs the panel, the horizon and the leg the effect
+   actually lives in. File abstract-only **ONLY after that hunt fails**, and record
+   the failed hunt in the row so the next session does not repeat it.
 4. **Review** — present **ONE** consolidated digest for the whole batch:
    survivors *and* rejections, each with its citation. Write nothing before the
    operator approves.
