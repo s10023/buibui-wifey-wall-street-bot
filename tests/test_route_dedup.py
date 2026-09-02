@@ -10,12 +10,14 @@ read first if any of this is ever re-ported.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from tools.route_dedup import (
+    KNOWN_SINKS,
     MECHANICS_SINK,
     PUNDIT_SINK,
     THESIS_SINK,
@@ -883,3 +885,90 @@ def test_check_with_a_missing_sink_file_reports_no_candidates(
     )
     assert rc == 0
     assert json.loads(capsys.readouterr().out)["candidates"] == []
+
+
+class TestSinkAllowlistAndBareInvocation:
+    """Parent #706, ported 2026-09-02 — two guards with different standing here.
+
+    ⚠ **The `--sink` allowlist is PREVENTION, not a repair.** Upstream measured 30
+    writable bad rows; wifey's ledger carried **0 of 54** when this landed, and that
+    difference must not be collapsed — a ported rationale is a claim about THIS repo.
+    The bare-invocation guard is the opposite: it was a live breakage here.
+    """
+
+    def test_bare_invocation_works(self) -> None:
+        """The guarantee the `sys.path` bootstrap exists for.
+
+        The comment beside that line is not the guarantee — this is. It runs the
+        module the way a human does, with **no** `PYTHONPATH`, which is the exact
+        condition that failed: only `make` and an explicit `PYTHONPATH=.` worked.
+        """
+        import subprocess
+        import sys as _sys
+
+        repo = Path(__file__).resolve().parent.parent
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+        proc = subprocess.run(  # noqa: S603 - fixed argv, shell=False
+            [_sys.executable, str(repo / "tools" / "route_dedup.py"), "--help"],
+            capture_output=True,
+            text=True,
+            cwd=str(repo),
+            env=env,
+            check=False,
+        )
+        assert proc.returncode == 0, proc.stderr
+
+    def test_known_sinks_are_exactly_the_routing_targets(self) -> None:
+        """Drift guard: the allowlist cannot outlive the targets it allows.
+
+        Keyed on `route_target`'s own outputs rather than on the three constants, so
+        a sink renamed in `x_route` fails here instead of silently narrowing the CLI.
+        """
+        assert set(KNOWN_SINKS) == {
+            route_target("setup", ""),
+            route_target("mechanic", ""),
+            route_target("claim", "NOVEL"),
+        }
+
+    @pytest.mark.parametrize("sink", list(KNOWN_SINKS))
+    def test_every_known_sink_is_accepted(self, sink: str, tmp_path: Path) -> None:
+        """Positive control — without it the allowlist could reject everything."""
+        ledger = tmp_path / "led.json"
+        rc = main(
+            [
+                "mark",
+                "--source-id",
+                "src",
+                "--item-ts",
+                "0",
+                "--sink",
+                sink,
+                "--ledger",
+                str(ledger),
+            ]
+        )
+        assert rc == 0
+        assert is_routed(load_ledger(ledger), "src", 0.0, sink)
+
+    def test_a_bare_filename_is_rejected(self, tmp_path: Path) -> None:
+        """The defect's shape: a sink that can never match the row it writes.
+
+        `is_routed` keys on `(source_id, item_ts, sink)`, so a bare filename is
+        dedup-BLIND rather than merely untidy — it writes a row no later round can
+        find. argparse exits 2 on an invalid choice.
+        """
+        with pytest.raises(SystemExit) as exc:
+            main(
+                [
+                    "mark",
+                    "--source-id",
+                    "src",
+                    "--item-ts",
+                    "0",
+                    "--sink",
+                    "pundit-calls.jsonl",
+                    "--ledger",
+                    str(tmp_path / "led.json"),
+                ]
+            )
+        assert exc.value.code == 2

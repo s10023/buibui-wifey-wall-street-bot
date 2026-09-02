@@ -155,7 +155,11 @@ unowned for seven weeks in a test-enforced index.
 
 `make preflight` runs the suite against a **fresh clone of HEAD** and **REPLACES** that branch's
 `make test` rather than adding to it — it mirrors that recipe's argv, pinned by a test so the
-claim has an external referent. Run it in `/post-branch` **phase 5**, after the doc commits and
+claim has an external referent. ⚠ **The correct loop is therefore `targeted pytest <files>` →
+commit → `make preflight`, and running BOTH is ~4 min wasted.** The trap is structural rather
+than forgetful: preflight **REFUSES on a dirty tree**, so it can never be the inner loop, which
+makes reaching for `make test` feel obligatory. Sessions have paid this twice; it lives here
+because the handoff note that named it did not prevent it. Run it in `/post-branch` **phase 5**, after the doc commits and
 before `gh pr create`. It catches what no local run can: a gitignored path that exists on this box
 and nowhere else (`config/stocks.json`, `.claude/sensitive-terms.txt`, `docs/plans/`,
 `analytics.db`). ⚠ **CI already IS this gate** — it closes **timing, not detection**, and the

@@ -100,18 +100,38 @@ import argparse
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from tools.x_route import MONTH_YEAR_RE, PCT_RE, VERDICTS
+# A bare `python3 tools/route_dedup.py` puts `tools/` on sys.path rather than the repo
+# root, so the `tools.x_route` import below dies with ModuleNotFoundError; only the Make
+# target and an explicit `PYTHONPATH=.` worked. ⚠ The parent's copy hits the same class
+# on `analytics.*` — the RULE ports, the failing module name does not, because wifey's
+# copy imports from `tools.`. The guarantee is `test_bare_invocation_works`, never this
+# line, and the bootstrap is scoped to tools that actually import from the repo: in one
+# that does not it is dead code, masking the breakage the moment the first import lands.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from tools.x_route import MONTH_YEAR_RE, PCT_RE, VERDICTS  # noqa: E402
 
 # The three routing targets, byte-identical to what `tools/x_route.route_target`
 # returns — a drift guard in the test suite pins them together.
 THESIS_SINK = "docs/plans/thesis-inbox.md"
 MECHANICS_SINK = "docs/plans/mechanics-backlog.md"
 PUNDIT_SINK = "docs/plans/pundit-calls.jsonl"
+
+# The CLI's allowlist. `--sink` names a routing IDENTITY and `is_routed` keys on
+# `(source_id, item_ts, sink)` via `_key`, so a value outside this tuple is dedup-BLIND
+# rather than merely odd — it can never match the row a later round looks for.
+# `find_similar` stays lenient on an unrecognised sink (unscopeable, not an error)
+# because scoping genuinely cannot apply there, so the membership check belongs at the
+# CLI boundary and nowhere else. ⚠ Ported from parent #706 as PREVENTION, not a repair:
+# wifey's ledger carried 0 bad rows of 54 when this landed, where upstream had 30
+# writable — do not quote that count as this repo's.
+KNOWN_SINKS = (THESIS_SINK, MECHANICS_SINK, PUNDIT_SINK)
 
 # Sinks where a near-duplicate is a defect between ANY two entries. Stream C is absent
 # on purpose — there it is a defect only within one source. See `find_similar`.
@@ -795,7 +815,15 @@ def main(argv: list[str] | None = None) -> int:
             required=True,
             help="offset within the video; 0 for a whole X post",
         )
-        p.add_argument("--sink", required=True, help="routing target from x_route")
+        p.add_argument(
+            "--sink",
+            required=True,
+            choices=KNOWN_SINKS,
+            metavar="SINK",
+            help="routing target from x_route — one of the three FULL paths in "
+            f"KNOWN_SINKS ({', '.join(KNOWN_SINKS)}); a bare filename is rejected "
+            "because it would key a ledger row nothing can match",
+        )
         p.add_argument("--ledger", default=str(DEFAULT_LEDGER))
         if name == "check":
             p.add_argument("--text", required=True, help="the claim being routed")

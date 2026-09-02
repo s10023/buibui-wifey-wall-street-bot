@@ -92,6 +92,13 @@ The sweep proves lists agree. It cannot read intent.
   `signal_runner.py`? Is `upsert_signals` in `data_store.py` called from
   `signal_lib.py:run_scan_cycle()`? Are `upsert_backtest_run` /
   `upsert_backtest_trades` called from `backtest_runner.py` when `SAVE=1`?
+  ⚠ **Two of those paths resolve only through a star-import shim, so a literal
+  `grep` returns a FALSE NEGATIVE and the checker looks broken.**
+  `analytics/signal_lib.py` is `from analytics.signal import *`, and
+  `run_scan_cycle` actually lives in `analytics/signal/scanner.py`. **Verify a shim
+  with `hasattr` on the imported module, not with grep** — and do NOT "fix" this by
+  renaming the paths above: the shim is the public surface and the sentence is true
+  through it.
 - **Thin wrapper / pure lib boundary**: `*_runner.py` holds no business logic —
   create client, open DB, call lib, close. `*_lib.py` makes no network call and
   opens no DB connection at module level; `utils/yfinance_client.py` and
