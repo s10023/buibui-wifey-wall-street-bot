@@ -16,9 +16,10 @@ plainly: eight sleeves have come back non-positive and each of those is a findin
 **Definition of done.** A Python change is done when `make lint-py`, `make typecheck` and
 `make test` are green.
 
-⚠ **`make test-regression` is a separate gate, and a green `make test` says nothing about it** —
-the suite runs with `--ignore=tests/test_regression.py`. It is **required** when the diff touches
-any path CI's own regression filter fires on, quoted here **verbatim** from
+⚠ **`make test-regression` is a separate gate, and neither `make test` nor `make preflight` says
+anything about it** — both run the suite with `--ignore=tests/test_regression.py`, so the
+clean-clone gate does not cover the regression gate either. It is **required** when the diff
+touches any path CI's own regression filter fires on, quoted here **verbatim** from
 `.github/workflows/lint.yaml`: `analytics/**/*.py`, `pyproject.toml`, `poetry.lock`,
 `config/*.toml`, `tests/test_regression.py`, `tests/fixtures/**.parquet`,
 `tests/fixtures/golden_*.json`, `scripts/extract_regression_fixture.py`,

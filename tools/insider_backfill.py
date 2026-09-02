@@ -17,7 +17,8 @@ that parsed cleanly — and that number is the deliverable, not a return.
 
 Run via ``make wifey-insider-backfill`` or
 ``PYTHONPATH=. poetry run python tools/insider_backfill.py
-[--stride N] [--limit N] [--symbols A,B] [--db PATH]``.
+[--stride N] [--limit N] [--max-filings-per-symbol N] [--symbols A,B]
+[--db PATH]``.
 Requires ``EDGAR_CONTACT_EMAIL`` (SEC 403s any other User-Agent shape).
 """
 

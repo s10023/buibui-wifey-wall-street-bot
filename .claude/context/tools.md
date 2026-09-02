@@ -133,6 +133,14 @@ its commit **messages**, because a flip republishes the whole history and no fil
 reaches a message. An absent `.claude/sensitive-terms.txt` is a FINDING reading
 `NOT CONFIGURED`, never a SKIP, and terms are masked in the output).
 
+⚠ **The three handoff-dependent legs — `queue-items`, `handoff-symbols`, `handoff-size` —
+report `SKIPPED: no handoff file` rather than clean when the handoff is absent**, which it is
+on a worktree or a fresh clone, the file being gitignored. `handoff-size` was built as a plain
+result while its two siblings already skipped, so it read **green** there: the parent's #699
+defect mirrored, and in the worse direction, since upstream returns a finding. One
+`_handoff_leg` now carries the decision for all three — "no finding" and "no handoff" are
+different states and only one of them is green.
+
 `--text <file>` (`make post-branch-text FILE=<path>`) is a **fourth** surface for that gate
 and runs alone, without any git surface: a PR title or body is neither the tree nor a commit,
 so the three legs above report `clean` on one naming every term — correctly, and uselessly.

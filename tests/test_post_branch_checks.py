@@ -19,8 +19,10 @@ from tools.post_branch_checks import (
     NEGATIVE_CLAIM_PATHS,
     NEGATIVE_CLAIM_RE,
     UNCOVERED_STEPS,
+    Finding,
     Runner,
     _check_handoff_size,
+    _handoff_leg,
     _run,
     added_paths,
     bad_atx_lines,
@@ -633,7 +635,13 @@ class TestHandoffSize:
         handoff = "\n".join(f"line {i}" for i in range(HANDOFF_MAX_LINES))
         assert _check_handoff_size(handoff) == []
 
-    def test_absent_handoff_is_silent(self) -> None:
+    def test_absent_handoff_yields_no_finding_here(self) -> None:
+        """The size unit has nothing to say; the SKIP is `_handoff_leg`'s call.
+
+        Asserting `[]` here would be the whole defect if this were the last
+        word — see :class:`TestHandoffLeg`, which pins that the sweep reports
+        SKIPPED rather than green.
+        """
         assert _check_handoff_size("") == []
 
     def test_no_stamp_is_required_to_make_it_fire(self) -> None:
@@ -647,6 +655,43 @@ class TestHandoffSize:
         )
         assert "Line count:" not in handoff
         assert _check_handoff_size(handoff) != []
+
+
+class TestHandoffLeg:
+    """An absent handoff must read SKIPPED, never clean.
+
+    `handoff-size` used to be built as a plain `CheckResult(...)` while its two
+    siblings already skipped on the same input, so on a worktree — where the
+    handoff is gitignored and therefore absent — the sweep reported the leg
+    green. That is the parent's #699 defect mirrored: upstream fails hard-red
+    there, wifey failed silent-green, which is the worse direction.
+    """
+
+    def test_absent_handoff_skips(self) -> None:
+        result = _handoff_leg("handoff-size", "", list)
+        assert result.skipped == "no handoff file"
+        assert result.findings == []
+
+    def test_absent_handoff_never_runs_the_check(self) -> None:
+        """The positive control: the skip precedes measurement.
+
+        A leg that ran its check and happened to find nothing would satisfy the
+        test above while still measuring an empty string.
+        """
+        calls: list[int] = []
+
+        def _never() -> list[Finding]:
+            calls.append(1)
+            return []
+
+        _handoff_leg("handoff-size", "", _never)
+        assert calls == []
+
+    def test_present_handoff_passes_findings_through(self) -> None:
+        finding = Finding("handoff-size", "too long")
+        result = _handoff_leg("handoff-size", "some text", lambda: [finding])
+        assert result.skipped is None
+        assert result.findings == [finding]
 
 
 class TestSensitiveTerms:

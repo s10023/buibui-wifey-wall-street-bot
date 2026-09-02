@@ -78,7 +78,7 @@ it cannot feel like passing the walk. Suppressed for `--text` and for a single `
 | `doc-indexes` | Is a generated `INDEX.md` stale? (a red suite, not a lint nit) |
 | `md-atx` | Did a wrapped `#123` land in column 1 and become an MD018 heading? |
 | `memory-cap` | Is MEMORY.md over 6 Current State bullets or ~17KB? **Phase 6 reading** |
-| `handoff-size` | Is the handoff past `HANDOFF_MAX_LINES` (240)? **Phase 6 reading** |
+| `handoff-size` | Is the handoff past `HANDOFF_MAX_LINES` (240)? **SKIPPED when the handoff is absent — never clean.** **Phase 6 reading** |
 | `stale-anchors` | Does a doc cite a numbered section (`Step 3`, `§4a`) its target no longer has? |
 | `sensitive-terms` | Would a visibility flip publish a work identifier? Tracked tree · this branch's commit **content** · this branch's commit **messages**. The PR title/body is a **fourth** surface none of these reach — `--text`, below |
 

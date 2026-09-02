@@ -157,3 +157,42 @@ with no cap.
 heaviest names alone are 18,549. At 2.1 docs/sec a 150k run is ~20 hours and 300k is ~40 — a
 deliberate overnight job, and SEC's rate limit is a floor no parallelism moves. Phase 3's full
 backfill should be scheduled on that basis.
+
+## Amendment 2 (2026-09-02) — observable (b), MEASURED: 95.2% PASS
+
+Additive like Amendment 1, and outside the frozen block. Phase 1's acceptance observable is
+answered, so **phase 2 is unblocked**.
+
+```bash
+make wifey-insider-backfill ARGS="--stride 10 --limit 50 --max-filings-per-symbol 40"
+```
+
+**`parse coverage 95.2% of fetched filings (338 carried no non-derivative transactions) —
+phase-1 floor is 80%: PASS`**, from 1,960 filings fetched across 50 companies, yielding 3,525
+transaction rows, 1 missing CIK and 0 errors. ⚠ **Record the command with the number** — a
+different sample gives a different, non-comparable figure, which is the whole reason #278
+existed.
+
+**What the 4.8% shortfall is.** 94 of the 1,960 filings carried at least one parse failure, and
+**every failure reason the run printed was `missing price`**. ⚠ That bounds the residual rather
+than enumerating it: the printer emits `outcome.failures[:2]`, so a third reason of some other
+kind on a heavily-failing filing would not appear. A `missing price` transaction is usually a
+gift or an award, which carries no price by construction — so the shortfall is concentrated in
+exactly the transaction types the routine/opportunistic split does not trade on. Worth
+confirming against `transaction_code` in phase 2 rather than assuming it here.
+
+**A filing that parses cleanly but is EMPTY still counts as covered**, by design: 338 of the
+1,866 clean filings carried no non-derivative transactions at all. That is the correct reading
+of "parsed cleanly" — a Form 4 reporting only derivative activity is not a parse failure — but
+it means the observable is a *parser-health* figure and never a *data-yield* one. The yield
+number is the 3,525 rows.
+
+**Sample shape.** 50 companies at `--stride 10` over the sector-grouped universe, so every
+sector is represented; this is the coverage sample the head-15 pilot could not be. It does not
+supersede the banked head-15 data (12,019 rows, 6 symbols), which stays valid and stays
+sector-concentrated. After both, the table holds **15,487 rows / 54 symbols / 1,060 insiders** —
+the two draws overlap on 2 names.
+
+**Runtime was not instrumented**, so the spec's 2.1 docs/sec and the 20–40h full-universe
+estimate above are **unrevised**. The run finished inside Amendment 1's ~16 min prediction;
+that is an observation, not a new throughput measurement.
