@@ -1,7 +1,10 @@
 venv/
 __pycache__/
 *.pyc
-.env
+# Every .env variant, not just the exact name: a .env.bak from an edit is
+# untracked but fully committable under a bare `.env`.
+.env*
+!.env.example
 .coverage
 
 # Ignore config/stocks.json (Phase A personal watchlist — ship .example instead)

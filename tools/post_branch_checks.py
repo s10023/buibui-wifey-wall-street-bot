@@ -918,6 +918,23 @@ def _negative_claims_result(runner: Runner, diff: str, diff_names: str) -> Check
     return CheckResult("negative-claims", findings, note="; ".join(parts) or None)
 
 
+def _handoff_leg(
+    name: str, handoff: str, findings: Callable[[], list[Finding]]
+) -> CheckResult:
+    """A leg that can only speak when the handoff exists.
+
+    ⚠ **An absent handoff is a SKIP, never a clean green.** The file is
+    gitignored, so a worktree or a fresh clone has none, and a leg reporting
+    green there asserts the one thing it never measured — the same
+    vacuously-green shape ``handoff-size``'s old `Line count:` stamp had.
+    ``handoff-size`` reported exactly that until this helper collected all
+    three handoff-dependent legs behind one decision.
+    """
+    if not handoff:
+        return CheckResult(name, skipped="no handoff file")
+    return CheckResult(name, findings())
+
+
 def gather(runner: Runner = _run) -> list[CheckResult]:
     """Run every check against the working tree. Order matches the skill."""
     diff = runner(["git", "diff", "main", "--"])
@@ -937,12 +954,14 @@ def gather(runner: Runner = _run) -> list[CheckResult]:
     context_blob = _read_all(CONTEXT_DOCS)
 
     results = [
-        CheckResult("queue-items", check_queue_items(handoff, diff, diff_names))
-        if handoff
-        else CheckResult("queue-items", skipped="no handoff file"),
-        CheckResult("handoff-symbols", check_handoff_symbols(handoff, diff, diff_names))
-        if handoff
-        else CheckResult("handoff-symbols", skipped="no handoff file"),
+        _handoff_leg(
+            "queue-items", handoff, lambda: check_queue_items(handoff, diff, diff_names)
+        ),
+        _handoff_leg(
+            "handoff-symbols",
+            handoff,
+            lambda: check_handoff_symbols(handoff, diff, diff_names),
+        ),
         CheckResult("new-files", check_new_files(added, doc_blob)),
         CheckResult("new-modules", check_new_modules(added, context_blob)),
         CheckResult("new-targets", check_new_targets(makefile_diff, doc_blob)),
@@ -950,7 +969,7 @@ def gather(runner: Runner = _run) -> list[CheckResult]:
         CheckResult("doc-indexes", _check_doc_indexes()),
         CheckResult("md-atx", _check_md_atx(changed_md)),
         CheckResult("memory-cap", _check_memory_cap()),
-        CheckResult("handoff-size", _check_handoff_size(handoff)),
+        _handoff_leg("handoff-size", handoff, lambda: _check_handoff_size(handoff)),
         CheckResult("stale-anchors", _check_stale_anchors()),
         sensitive_terms_result(runner),
     ]
@@ -1237,6 +1256,10 @@ def _check_handoff_size(handoff: str) -> list[Finding]:
     have turned the leg red; it would have gone **vacuously green forever**. A
     check that can never fire is dismissal with extra steps. The measurement now
     has an external referent, which is the only kind that can be wrong.
+
+    An **absent** handoff is not this function's call: :func:`_handoff_leg`
+    turns it into a SKIP before reaching here, because "no finding" and "no
+    handoff" are different states and only one of them is green.
     """
     if not handoff:
         return []
