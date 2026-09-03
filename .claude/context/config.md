@@ -58,8 +58,11 @@ artifact, intentionally distinct from the gitignored `stocks.json` live-alert wa
   (`ResearchUniverse` / `UniverseMember`; `validate_research_universe` — `sector` is a free string,
   `kind` ∈ `{stock, etf}`).
 
-**Lifecycle seam.** `delisted` exists so survivorship bias is *visible*: all current members are
-survivors, and PIT membership is deliberately not scraped — selection bias is bounded, not
+**Lifecycle seam.** `delisted` exists so survivorship bias is *visible*, and it is now **used**
+rather than merely present: **3 of 505 members are flagged** (`EA`, `EQR`, `SATS`, 2026-09-02).
+A flagged member is **retained, never deleted** — removing it is the survivorship edit the seam
+exists to expose — so `symbols()` stays 505 while `active_symbols()` / `stocks()` / `n_active`
+return 502. PIT membership is still deliberately not scraped, so selection bias is bounded, not
 eliminated.
 
 **History seam.** All **26** post-floor listings carry an optional `listed` first-trading date

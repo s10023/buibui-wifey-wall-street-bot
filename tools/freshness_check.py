@@ -138,7 +138,11 @@ class Cadence:
 
     Two exist. The WATCHLIST cadence is `wifey-signal-watch.timer` refreshing
     `config/stocks.json` on the timeframes the live scan reads; the UNIVERSE
-    cadence is `wifey-universe-sync.timer` refreshing all 505 research members.
+    cadence is `wifey-universe-sync.timer` refreshing the ACTIVE research members
+    (502 of 505 as of 2026-09-02). Not all 505: the sync resolves `--universe`
+    through `active_symbols()`, so a delisted member is refreshed by nothing --
+    which is why `read_universe_symbols` excludes it rather than grading it
+    against a cadence that does not cover it.
 
     ⚠ A cadence is a claim that something RUNS, so it must be derived from
     observed state rather than asserted here. `resolve_cadences` takes the
@@ -365,8 +369,9 @@ def evaluate_ohlcv(
 
     A series is scheduled when some declared cadence covers it — see
     `resolve_cadence`. Two do: the watchlist the daily signal timer syncs on the
-    timeframes the live scan reads, and the 505 research members the weekly
-    universe timer syncs on 4h/1d/1wk.
+    timeframes the live scan reads, and the ACTIVE research members the weekly
+    universe timer syncs on 4h/1d/1wk (502 of 505; a delisted member is synced by
+    nothing and so is not graded).
 
     ⚠ ``universe_symbols`` DEFAULTS TO EMPTY, and that default is the safe one.
     The universe timer is opt-in and nothing in the repo installs it, so a caller
@@ -488,11 +493,22 @@ def read_scheduled_symbols(path: Path = DEFAULT_STOCKS) -> frozenset[str]:
 
 
 def read_universe_symbols(path: Path = DEFAULT_UNIVERSE) -> frozenset[str]:
-    """The research breadth universe's members; empty when absent or unreadable.
+    """The research breadth universe's ACTIVE members; empty when unreadable.
 
     Reads the file directly rather than through `load_research_universe`, for
     `read_scheduled_symbols`' reason: this is a probe, and it must report an
     absent universe rather than crash on one.
+
+    ⚠ DELISTED MEMBERS ARE EXCLUDED, and that is a cadence claim rather than a
+    tidying one. `analytics_runner` resolves `--universe` through
+    `active_symbols()`, so the weekly sync refreshes the active set and nothing
+    refreshes a delisted one — by design, since its tape has stopped. Grading it
+    anyway would report a permanent STALE for a decision that was made on
+    purpose, and a leg that can never be green stops being read.
+
+    A member whose value is not a dict is KEPT, not dropped: an unreadable
+    member degrades to being graded, never to being silently excused, which is
+    the same direction every other unreadable state takes here.
     """
     try:
         raw = json.loads(path.read_text())
@@ -503,7 +519,11 @@ def read_universe_symbols(path: Path = DEFAULT_UNIVERSE) -> frozenset[str]:
     members = raw.get("members")
     if not isinstance(members, dict):
         return frozenset()
-    return frozenset(str(k) for k in members)
+    return frozenset(
+        str(k)
+        for k, v in members.items()
+        if not (isinstance(v, dict) and v.get("delisted"))
+    )
 
 
 def universe_timer_enabled(timer: str = UNIVERSE_TIMER) -> bool:

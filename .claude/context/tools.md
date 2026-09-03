@@ -590,7 +590,7 @@ touches it, so the tight bar is both achievable and the only one that would noti
 stopping.
 
 ⚠ **Whether the universe tier exists at all is read from the BOX, not asserted here.**
-`universe_timer_enabled` shells out to `systemctl --user is-enabled`, and `main` passes the 505
+`universe_timer_enabled` shells out to `systemctl --user is-enabled`, and `main` passes the ACTIVE
 members to `evaluate_ohlcv` **only** when that returns enabled. The units are opt-in and nothing in
 the repo installs them, so "the universe has a cadence" is true on one machine and false on the
 next; hardcoding either answer is wrong on half of them. Every failure — no systemd, a timeout, a
@@ -604,6 +604,14 @@ Measured 2026-08-26, both worlds on the same tree: **timer off → 26 graded, 11
 delisted, `EA` wound down post-acquisition), which is the point — grading unconditionally on a box
 with no timer would have printed ~1,100, and a leg that is never green stops being read, the same
 argument that bounds `negative-claims`' triage load.
+
+⚠ **Those four findings are no longer REACHABLE, and that is the fix rather than a regression.**
+`EA`, `EQR` and `SATS` were flagged `delisted` on 2026-09-02, and `read_universe_symbols` now
+excludes delisted members — because `analytics_runner` resolves `--universe` through
+`active_symbols()`, so nothing refreshes a delisted name **by design**. Grading it anyway prints a
+permanent STALE for a decision, which is the same never-green failure this tier's timer probe
+already guards against, one level down. The counts above therefore describe the pre-flag tree; the
+graded population is now the 502 active members.
 
 ⚠ **A weekly bar cannot be graded on the daily footing.** A `1wk` bar stamps on the week's Monday
 open and closes Friday, so a perfectly refreshed weekly series trails a daily one by four sessions

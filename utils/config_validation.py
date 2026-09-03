@@ -82,9 +82,12 @@ _UNIVERSE_MEMBER_OPTIONAL_FIELDS = frozenset({"listed"})
 class UniverseMember:
     """One member of the research breadth universe (N3).
 
-    delisted is a lifecycle seam: all current members are survivors (False); the
-    field exists so the coverage report can flag lifecycle bias and a future PIT
-    ingest has somewhere to write.
+    delisted is a lifecycle seam, and it is now USED rather than merely present:
+    3 of 505 members are flagged (EA, EQR, SATS, 2026-09-02). A flagged member is
+    RETAINED, never deleted -- removing it is the survivorship edit this seam
+    exists to expose -- so ``symbols()`` stays 505 while ``active_symbols()`` /
+    ``stocks()`` / ``n_active`` return 502. PIT membership is still deliberately
+    not scraped, so selection bias is bounded rather than eliminated.
 
     listed is the member's first available 1d bar date (``YYYY-MM-DD``, ≈ the
     first-trading / when-issued date), or ``None`` for a full-history survivor

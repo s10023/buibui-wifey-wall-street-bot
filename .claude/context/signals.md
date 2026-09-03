@@ -150,8 +150,10 @@ Config schema validation and the two universe loaders.
   `stocks()` (active single-names only) / `n_active` / `describe()` / `with_min_history(days)`)
   frozen dataclasses, plus `validate_research_universe` and
   `load_research_universe(path=Path("config/universe.json"), *, min_history_days=None)`.
-  **Distinct from the live-alert watchlist.** `delisted` is a lifecycle seam — all current members
-  are survivors (PIT membership deliberately not scraped per gap-map decision #6).
+  **Distinct from the live-alert watchlist.** `delisted` is a lifecycle seam, and it is **used**:
+  **3 of 505 are flagged** (`EA`, `EQR`, `SATS`, 2026-09-02) and a flagged member is retained
+  rather than deleted, so `symbols()` stays 505 while the active accessors return 502 (PIT
+  membership deliberately not scraped per gap-map decision #6).
 - The optional `listed` per-member date (first available 1d bar; `None` ⇒ full-history survivor
   listed on/before the backfill start) is the **history seam**: `with_min_history(days)` — also
   surfaced as the `load_research_universe(min_history_days=…)` kwarg — drops members with fewer than

@@ -130,9 +130,12 @@ list so no company takes two slots in a cross-section. Each is tagged with
 `sector`, `kind` (`stock`|`etf`), a `delisted` lifecycle flag
 and an optional `listed` first-trading date (on names that list after the
 backfill start), under its own `universe_policy` + a `membership_as_of` snapshot
-date. Membership is **point-in-time-bounded, not scraped**: for mega-caps
-in-sample delisting is ≈ 0, so the universe declares the selection bias rather
-than chasing paywalled delisted-price history. For pooled cross-sectional studies
+date. Membership is **point-in-time-bounded, not scraped**: in-sample delisting
+was assumed ≈ 0 for mega-caps, and 3 of 501 (`EA`, `EQR`, `SATS`) were flagged
+within the universe's first year — so the universe *declares* the selection bias
+rather than eliminating it, and it is bounded rather than absent. A flagged
+member is retained, never deleted, so the history stays addressable while the
+active accessors drop it. For pooled cross-sectional studies
 that need a uniform lookback, `load_research_universe(min_history_days=…)`
 excludes short-history names via that `listed` seam — carried by all **26**
 members that list after the backfill floor (first NYSE session at/after

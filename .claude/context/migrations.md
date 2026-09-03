@@ -1,6 +1,6 @@
 # `migrations/` — hand-run one-shot DB migrations
 
-Five scripts, all already applied. **Routine schema changes do NOT go here** — they belong in
+Six scripts. **Routine schema changes do NOT go here** — they belong in
 `analytics/store/schema.py`'s migration list, which runs automatically on connect. This directory
 is only for changes that list cannot express: a column's *type* changing, or existing row *values*
 being rewritten.
@@ -9,10 +9,10 @@ being rewritten.
 CI. Each is invoked by hand, once, and is not idempotent in the sense of being safe to re-reason
 about — read the docstring before touching either.
 
-## The one invariant ALL FIVE scripts enforce
+## The one invariant ALL SIX scripts enforce
 
 **A `.bak` must exist alongside the DB or the script refuses to start**
-(`001:45-49`, `002:63-65`, `003:73-75`, `004:119-121`). Note what this is and is not: `analytics.db.bak` is an
+(`001:45-49`, `002:63-65`, `003:73-75`, `004:119-121`, `006:95-97`). Note what this is and is not: `analytics.db.bak` is an
 *undated, unverified byte copy*, not a backup. `make backup` is the real snapshot. Create the
 `.bak` anyway — the guard is what stands between a bad migration and an unrecoverable DB.
 
@@ -162,6 +162,38 @@ skipped, a count small enough to read as data rather than as a query bug.
 **Run:** `python migrations/005_symmetric_gap_fill.py [--db PATH] [--apply]` — dry-run by
 default; prints the replica check, the loss/win split of changed rows, and before/after
 pooled `avg_r`.
+
+## 006_purge_frozen_tail_bars.py — the provider kept quoting a stopped tape
+
+The first migration to target `ohlcv`, and the first to DELETE rather than rewrite. When a
+name stops trading the provider forward-fills its final print at zero volume for as long as
+the series is still carried; `EA` and `EQR` each ended with a huge-volume session followed by
+four such bars. They are not observations, and in a pooled cross-section they read as
+consecutive exact-zero returns with no variance.
+
+⚠ **POSITION IS THE DISCRIMINATOR; THE ROW SHAPE ALONE IS NOT — and this nearly shipped the
+other way.** The defect was first described as "zero volume AND an unchanging close", which
+is how it presents. Measured over the whole DB that predicate matches **1,368 rows**, of which
+only **9** are the dead tails — the other **1,359** sit mid-history in live names (808 `SW`,
+231 `AMCR`, 188 `^GSPC`, 36 `^TNX`). Requiring the run to **terminate the series** leaves
+exactly those 9, across 3 (symbol, timeframe) series; the nearest surviving frozen row is 81
+bars from its series end (`^TYX 1d`, full-column scan). The two populations do not overlap, so
+the rule has margin — the naive one would have deleted 188 S&P 500 index bars.
+
+⚠ **Zero volume alone is not even a hint.** `DX-Y.NYB`, `^TNX` and `^TYX` are permanently
+zero-volume and healthy. 12,507 zero-volume rows are stored and this rule removes **9**; the other
+12,498 are *left alone* rather than certified correct — the measurement supports the first claim
+and not the second. Every figure reproduces by swapping the run predicate in the script's
+`_FROZEN_TAIL_SQL`.
+
+Deletion rather than a flag: `ohlcv` has no quarantine column, and the ingest path expresses
+the same decision by never storing the row (`data_quality.frozen_tail_idx`). A deleted bar is
+recoverable by refetch and would simply be re-quarantined, so no unique observation is lost.
+Idempotent by value — the rule is recomputed each run, so a second run reports zero.
+
+**Run:** `python migrations/006_purge_frozen_tail_bars.py [--db PATH] [--apply]` — dry-run by
+default; prints the table total, the zero-volume count it is NOT touching, and the per-series
+purge list.
 
 ## The transferable rule
 
