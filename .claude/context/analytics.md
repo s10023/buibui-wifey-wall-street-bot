@@ -273,14 +273,23 @@ a second reader (a ported Brief board) imports the same definition rather than r
 
 ## pead/ — post-earnings-announcement-drift sleeve (edge-hunt #4; PR #104)
 
-- `insider/` — **H-024 routine-vs-opportunistic insider sleeve, phase 1 only** (the first
+- `insider/` — **H-024 routine-vs-opportunistic insider sleeve, phases 1-2** (the first
   non-price sleeve; design and frozen pre-registration:
-  `docs/superpowers/specs/2026-08-29-h024-insider-routine-opportunistic-design.md`). Ships
-  ingestion ONLY — `form4.py` is pure Form 4 parsing (`parse_form4`, `iter_form4_filings`,
-  `raw_document_name`), writing `insider_transactions` via `analytics/store/insider.py`.
-  **No book, no return, no verdict yet**: phases 2 (classification) and 3 (book/report/audit)
-  are unbuilt, and phase 3 must not start until the parse-coverage observable passes its 80%
-  floor. `ParseOutcome` returns failures rather than dropping them precisely because that
+  `docs/superpowers/specs/2026-08-29-h024-insider-routine-opportunistic-design.md`).
+  `form4.py` is pure Form 4 parsing (`parse_form4`, `iter_form4_filings`, `raw_document_name`),
+  writing `insider_transactions` via `analytics/store/insider.py`; `classify.py` is the pure CMP
+  labeller (`classify_owner_year`, `classify_insiders`, `label_transactions`, `cohort_shape`).
+  **No book, no return, no verdict yet**: phase 3 (book/report/audit) is unbuilt, and it must not
+  start until the parse-coverage observable passes its 80% floor — it did, 95.2%, Amendment 2.
+  ⚠ **`CLASSIFY_LOOKBACK_YEARS` and `ROUTINE_MIN_STREAK_YEARS` are the pre-registration, not
+  tuning knobs**; they are parameters only so tests can drive the general rule. A trade carries
+  its **trade** year's label, never its filing year's — keying on the filing year is
+  self-referential, since a December trade filed in January is part of the history that
+  classifies that January's year. ⚠ **Phase 2 found the phase-1 SAMPLE unusable for phase 2**:
+  `--max-filings-per-symbol` thins every insider's calendar, so the capped draw classifies 3.5%
+  of rows and **0 routine** against the uncapped draw's 46.0% — a directional bias, since a
+  thinned calendar cannot show a same-month streak. The full backfill must run uncapped
+  (spec Amendment 3). `ParseOutcome` returns failures rather than dropping them precisely because that
   coverage number is the phase gate — a parser that skips what it cannot read reports 100% by
   construction. The pre-registered study population is transaction codes P/S, and the filter
   lives in `get_insider_transactions` (default `codes=("P","S")`) rather than in ingestion, so

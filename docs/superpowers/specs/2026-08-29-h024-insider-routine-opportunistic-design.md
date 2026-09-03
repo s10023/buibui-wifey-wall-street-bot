@@ -196,3 +196,60 @@ the two draws overlap on 2 names.
 **Runtime was not instrumented**, so the spec's 2.1 docs/sec and the 20–40h full-universe
 estimate above are **unrevised**. The run finished inside Amendment 1's ~16 min prediction;
 that is an observation, not a new throughput measurement.
+
+## Amendment 3 (2026-09-03) — phase 2 BUILT; the cohort shape is NOT YET MEASURABLE
+
+Additive, outside the frozen block: it changes no trial, no gate and no cell. Phase 2's code
+deliverable is done — `analytics/insider/classify.py` (the CMP rule), 24 tests, and
+`make wifey-insider-cohort`. Its *reporting* deliverable is answered in the negative, and that is
+the finding.
+
+**The phase-1 sample cannot support phase 2, and the reason generalises.** Amendment 1 chose
+`--max-filings-per-symbol 40` because observable (b) is a proportion whose validity comes from
+filer diversity and whose precision comes from document count — depth per company buys neither.
+That was right for (b) and is **exactly wrong here**: the classifier needs ≥1 trade in each of
+three consecutive years *per insider*, so thinning a company's filings thins every one of its
+insiders' calendars. Measured on the stored table:
+
+| Draw | Symbols | P/S rows | Classified | Routine | Median trade-days per insider |
+| --- | --- | --- | --- | --- | --- |
+| Uncapped (head-15 pilot) | 6 | 4,769 | **46.0%** | 1,622 | 6 |
+| Capped (`--max-filings-per-symbol 40`) | 47 | 1,455 | **3.5%** | **0** | 1 |
+
+**97.7% of every classified row in the table comes from 6 of the 53 symbols.** ⚠ **The cap is not
+merely lossy, it is DIRECTIONALLY BIASED**: a thinned calendar cannot exhibit a same-month streak,
+so every insider the capped draw does manage to classify falls to *opportunistic* — 0 routine
+across 47 companies. A pooled split over both draws is therefore a statistic about the 6 uncapped
+names wearing a 53-name label.
+
+⚠ **The transferable rule, and it is Amendment 1's own lesson recurring one phase later: a sample
+designed for one observable is not a sample for another.** Both were defensible draws; neither is
+reusable without re-deriving the sampling from the new statistic's unit. The unit changed from
+*document* to *insider-year*, and nothing in the stored data announces that.
+
+**The number that does exist, and what it is not.** On the 6 uncapped mega-caps, routine is
+**74.0% of classified rows** against the WP's ~55%. Under the spec's smell test that is a wide gap,
+but it is **not evidence of a parser fault**, and it is not evidence of the absence of one either.
+The leading candidate is the era: 10b5-1 scheduled sell plans dominate large-cap insider *selling*
+in this window and are routine by construction, **95.8% of stored P/S rows are sales**, and CMP's
+1986–2007 panel predates their ubiquity. ⚠ **That is a hypothesis, not a measurement** — nothing
+here tested it, and Form 4's 10b5-1 marker was not read. Do not quote 74% as a panel figure; it is
+six technology mega-caps.
+
+**Observability divergence — SETTLED, no amendment owed.** The frozen rule classifies from trade
+dates at the start of the year, which can consult a December filing that was not public on
+1 January. Re-running the identical rule against only filings public by that date moves **1 of
+6,981 (insider, year) labels (0.0%)**. The frozen trade-date reading stands on measurement rather
+than on convenience; `require_filed_by_year_start` stays in the classifier as the probe that
+produced this, not as a live alternative.
+
+**The 4.8% shortfall is now attributable, but not yet attributed.** `parse_form4`'s failure string
+records the transaction code (`txn N [code G]: missing price`), so the next backfill run can settle
+whether the shortfall is gifts and awards as Amendment 2 supposed. ⚠ **It is not settled now** — a
+rejected row is never stored, so no query against `insider_transactions` can reach it, and the
+existing run's strings predate the change. The claim stays bounded and unconfirmed.
+
+**Consequence for phase 3.** The full uncapped backfill is a **hard prerequisite, not a scale-up**:
+at 3.5% classified the current table cannot form a single monthly cross-section on the 505-name
+universe. The 20–40h overnight estimate is unchanged (still unrevised by instrumentation), and it
+must run **without** `--max-filings-per-symbol`.
