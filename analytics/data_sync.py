@@ -42,8 +42,12 @@ def backfill(
             return total
         page_rows = len(df)
         last_open_time = int(df["open_time"].max())
-        total += _store_page(conn, symbol, timeframe, df)
-        if page_rows < BARS_MAX_LIMIT:
+        # A short page is the end of the tape; a full one is a paging boundary.
+        is_final_page = page_rows < BARS_MAX_LIMIT
+        total += _store_page(
+            conn, symbol, timeframe, df, series_ends_here=is_final_page
+        )
+        if is_final_page:
             return total
         # Strictly increasing: fetch_bars only returns bars at or after cursor.
         cursor = last_open_time + 1
@@ -54,9 +58,16 @@ def _store_page(
     symbol: str,
     timeframe: str,
     df: pd.DataFrame,
+    *,
+    series_ends_here: bool = False,
 ) -> int:
-    """Quality-check, quarantine and store one page. Returns rows upserted."""
-    report = check_ohlcv(df)
+    """Quality-check, quarantine and store one page. Returns rows upserted.
+
+    ``series_ends_here`` must be True only for the page that terminates the
+    paging loop — it is what lets ``check_ohlcv`` judge a frozen tail, and a
+    full page's last row is a paging boundary rather than a stopped tape.
+    """
+    report = check_ohlcv(df, series_ends_here=series_ends_here)
     if not report.is_clean:
         logging.warning("data-quality %s %s: %s", symbol, timeframe, report.summary())
     clean, dropped = quarantine(df, report)

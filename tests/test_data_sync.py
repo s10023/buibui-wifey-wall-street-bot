@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 from analytics.data_fetcher import BARS_MAX_LIMIT, OHLCV_COLUMNS
-from analytics.data_quality import SessionGapReport
+from analytics.data_quality import SessionGapReport, check_ohlcv
 from analytics.data_store import (
     get_latest_open_time,
     init_schema,
@@ -150,6 +150,64 @@ class TestBackfillPaging:
 
         assert calls == [0]
         assert total == 2
+
+
+class TestFrozenTailIsPageScoped:
+    """Only the page that ENDS the paging loop may have its tail quarantined.
+
+    ``check_ohlcv`` judges a frozen tail from the frame's last row, but
+    ``backfill`` hands it up to ``BARS_MAX_LIMIT`` bars at a time — so an
+    intermediate page's last row is a paging boundary, not a tape that stopped.
+    Passing the flag unconditionally would re-admit through that boundary the
+    mid-history false positives the rule exists to exclude (measured DB-wide:
+    1,368 rows matching the row shape against 9 matching the run).
+    """
+
+    def test_only_the_final_page_asserts_the_series_end(self, monkeypatch: Any) -> None:
+        monkeypatch.setattr("analytics.data_sync.BARS_MAX_LIMIT", 3)
+        conn = _make_conn()
+        pages = [
+            _make_df([1_000, 2_000, 3_000], timeframe="1d"),  # full -> boundary
+            _make_df([4_000, 5_000], timeframe="1d"),  # short -> series end
+        ]
+        seen: list[bool] = []
+        real = check_ohlcv
+
+        def spy(df: pd.DataFrame, **kw: Any) -> Any:
+            seen.append(bool(kw.get("series_ends_here", False)))
+            return real(df, **kw)
+
+        calls: list[int] = []
+
+        def fake_fetch(sym: str, tf: str, start: int, *args: Any) -> pd.DataFrame:
+            calls.append(start)
+            return pages[len(calls) - 1] if len(calls) <= len(pages) else _EMPTY
+
+        with (
+            patch("analytics.data_sync.fetch_bars", side_effect=fake_fetch),
+            patch("analytics.data_sync.check_ohlcv", side_effect=spy),
+        ):
+            backfill(conn, "AAPL", "1d", 0)
+
+        assert seen == [False, True], (
+            "the full page is a paging boundary; only the short page ends the tape"
+        )
+
+    def test_a_frozen_tail_reaching_the_end_is_not_stored(self) -> None:
+        """End to end: the dead-tape bars never reach the table."""
+        conn = _make_conn()
+        df = _make_df([1_000, 2_000, 3_000], timeframe="1d")
+        # bars 2 and 3 forward-fill bar 1's close at zero volume
+        for i in (1, 2):
+            for col in ("open", "high", "low", "close"):
+                df.loc[i, col] = 101.0
+            df.loc[i, "volume"] = 0.0
+
+        with patch("analytics.data_sync.fetch_bars", side_effect=[df, _EMPTY]):
+            total = backfill(conn, "AAPL", "1d", 0)
+
+        assert total == 1, "only the last traded bar survives"
+        assert get_latest_open_time(conn, "AAPL", "1d") == 1_000
 
 
 class TestSync:

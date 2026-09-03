@@ -10,6 +10,10 @@ unambiguous timestamp anomalies (duplicates, non-monotonic order). Calendar-awar
 ``SessionGapReport`` below, fed an NYSE trading-date list by
 ``analytics.trading_calendar`` (the only module importing ``exchange_calendars``).
 Missing sessions are warn-only — absent data, never quarantined.
+
+A FROZEN TAIL (``series_ends_here=True``) is the one quarantine set that is a
+property of the *series* rather than of a row, so it is opt-in per call: see
+``check_ohlcv``.
 """
 
 from collections.abc import Sequence
@@ -31,8 +35,13 @@ class DataQualityReport:
     """Per-frame integrity findings, as positional row indices.
 
     Quarantine sets (dropped before storage): nan, non-positive price, broken
-    bar geometry, later-duplicate timestamps. Warn-only sets (logged, kept):
-    zero volume, return outliers, suspected splits, non-monotonic timestamps.
+    bar geometry, later-duplicate timestamps, frozen tail. Warn-only sets
+    (logged, kept): zero volume, return outliers, suspected splits,
+    non-monotonic timestamps.
+
+    ``frozen_tail_idx`` is empty unless the caller passed
+    ``series_ends_here=True`` — it is the only set that cannot be judged from a
+    row alone.
     """
 
     n_rows: int
@@ -44,6 +53,7 @@ class DataQualityReport:
     return_outlier_idx: tuple[int, ...]
     suspected_split_idx: tuple[int, ...]
     nonmonotonic_idx: tuple[int, ...]
+    frozen_tail_idx: tuple[int, ...] = ()
 
     @property
     def quarantine_idx(self) -> tuple[int, ...]:
@@ -52,6 +62,7 @@ class DataQualityReport:
             | set(self.nonpositive_price_idx)
             | set(self.bad_bar_idx)
             | set(self.duplicate_time_idx)
+            | set(self.frozen_tail_idx)
         )
         return tuple(sorted(s))
 
@@ -75,6 +86,7 @@ class DataQualityReport:
             ("non-positive price", self.nonpositive_price_idx),
             ("bad geometry", self.bad_bar_idx),
             ("duplicate ts", self.duplicate_time_idx),
+            ("frozen tail", self.frozen_tail_idx),
             ("zero volume", self.zero_volume_idx),
             ("return outlier", self.return_outlier_idx),
             ("suspected split", self.suspected_split_idx),
@@ -90,6 +102,35 @@ def _idx_tuple(mask: "pd.Series[bool]") -> tuple[int, ...]:
     return tuple(int(i) for i in mask.index[mask.to_numpy()])
 
 
+def _trailing_frozen_idx(df: pd.DataFrame, valid: "pd.Series[bool]") -> tuple[int, ...]:
+    """Positional indices of the maximal FROZEN run that ENDS at the last row.
+
+    Frozen = non-positive volume AND a close identical to the previous bar's.
+    A provider that keeps quoting a name after its last trade forward-fills the
+    final print at zero volume, so the run is the dead tape; the run must reach
+    the end of the frame, because the same row shape occurs harmlessly deep in
+    history.
+
+    ⚠ **Position is the whole discriminator, and the row shape alone is not.**
+    Measured 2026-09-02 over the full DB: "zero volume AND unchanged close"
+    matches 1,368 rows, only 9 of which are dead tails — the other 1,359 sit
+    mid-history in live names (808 ``SW``, 231 ``AMCR``, 188 ``^GSPC``).
+    Requiring the run to terminate the series leaves exactly those 9. The
+    nearest surviving frozen row is 81 bars from its series end, so the two
+    populations do not overlap.
+
+    Row 0 can never start a run (no previous close inside the frame), which
+    fails in the safe direction: a wholly-frozen frame keeps its first row.
+    """
+    frozen = valid & (df["volume"] <= 0) & (df["close"] == df["close"].shift(1))
+    out: list[int] = []
+    for i in range(len(df) - 1, -1, -1):
+        if not bool(frozen.iat[i]):
+            break
+        out.append(i)
+    return tuple(sorted(out))
+
+
 def _is_split_like(ratio: float) -> bool:
     if pd.isna(ratio):
         return False
@@ -100,17 +141,26 @@ def check_ohlcv(
     df: pd.DataFrame,
     *,
     return_outlier_pct: float = 0.5,
+    series_ends_here: bool = False,
 ) -> DataQualityReport:
     """Inspect an OHLCV frame; return a DataQualityReport of positional indices.
 
     Pure: never mutates the input, never logs, never raises on dirty data.
+
+    ``series_ends_here`` is the caller asserting that ``df``'s last row is the
+    newest bar of the whole series, which is what makes ``frozen_tail_idx``
+    meaningful. It defaults to **False** because the only production caller
+    pages: ``data_sync.backfill`` hands over up to ``BARS_MAX_LIMIT`` bars at a
+    time, so an intermediate page's last row is a paging boundary and not a tape
+    that stopped. Defaulting to True would re-admit through that boundary
+    exactly the mid-history false positives the run rule exists to exclude.
     """
     df = df.reset_index(drop=True)
     n = len(df)
     empty: tuple[int, ...] = ()
     if n == 0:
         return DataQualityReport(
-            0, empty, empty, empty, empty, empty, empty, empty, empty
+            0, empty, empty, empty, empty, empty, empty, empty, empty, empty
         )
 
     nan_mask = df[_OHLCV_NUMERIC].isna().any(axis=1)
@@ -129,6 +179,8 @@ def check_ohlcv(
     outlier_mask = valid & (ret.abs() > return_outlier_pct)
     split_mask = valid & ratio.apply(_is_split_like)
 
+    frozen_tail = _trailing_frozen_idx(df, valid) if series_ends_here else empty
+
     return DataQualityReport(
         n_rows=n,
         nan_idx=_idx_tuple(nan_mask),
@@ -139,6 +191,7 @@ def check_ohlcv(
         return_outlier_idx=_idx_tuple(outlier_mask),
         suspected_split_idx=_idx_tuple(split_mask),
         nonmonotonic_idx=_idx_tuple(nonmono_mask),
+        frozen_tail_idx=frozen_tail,
     )
 
 

@@ -148,6 +148,114 @@ def _ot(d: date, hour_utc: int = 12) -> int:
     return int(ts.value // 1_000_000)
 
 
+def _frozen(close: float) -> dict:
+    """A forward-filled dead-tape bar: flat OHLC at ``close``, zero volume."""
+    return {"open": close, "high": close, "low": close, "close": close, "volume": 0.0}
+
+
+def _traded(close: float, volume: float = 9_000_000.0) -> dict:
+    """A normal bar closing at ``close`` — geometry consistent, real volume."""
+    return {
+        "open": close,
+        "high": close + 1.0,
+        "low": close - 1.0,
+        "close": close,
+        "volume": volume,
+    }
+
+
+class TestFrozenTail:
+    """A stopped tape is quarantined; the same row shape mid-history is not.
+
+    Position is the whole discriminator. Measured 2026-09-02 over the full DB,
+    "zero volume AND unchanged close" matches 1,368 rows — 808 ``SW``, 231
+    ``AMCR``, 188 ``^GSPC``, all alive and all mid-history — while requiring the
+    run to terminate the series leaves 9, every one a name whose tape had
+    stopped. Both directions are asserted below, because a quarantine test that
+    only shows the drop cannot tell a correct rule from one that drops
+    everything.
+    """
+
+    def test_trailing_frozen_run_is_quarantined(self) -> None:
+        df = _frame(
+            [
+                _traded(49.0),
+                _traded(50.0, 48_700_000.0),
+                _frozen(50.0),
+                _frozen(50.0),
+            ]
+        )
+        rep = check_ohlcv(df, series_ends_here=True)
+        assert rep.frozen_tail_idx == (2, 3)
+        assert set(rep.quarantine_idx) >= {2, 3}
+        clean, dropped = quarantine(df, rep)
+        assert len(clean) == 2
+        assert len(dropped) == 2
+
+    def test_interior_frozen_run_is_kept(self) -> None:
+        """The ^GSPC / SW / AMCR shape: frozen bars that trading resumes after."""
+        df = _frame(
+            [
+                _traded(50.0),
+                _frozen(50.0),
+                _frozen(50.0),
+                _traded(53.0),
+            ]
+        )
+        rep = check_ohlcv(df, series_ends_here=True)
+        assert rep.frozen_tail_idx == ()
+        assert rep.quarantine_idx == ()
+
+    def test_series_ends_here_defaults_to_no_quarantine(self) -> None:
+        """The paging default: an intermediate page must never drop its tail.
+
+        ``data_sync.backfill`` pages 5000 bars at a time, so without the flag a
+        full page's last row is a paging boundary. This is the control that the
+        opt-in actually gates something — it is the same frame as the first
+        test, and it must come back clean.
+        """
+        df = _frame(
+            [
+                _traded(49.0),
+                _traded(50.0, 48_700_000.0),
+                _frozen(50.0),
+                _frozen(50.0),
+            ]
+        )
+        rep = check_ohlcv(df)
+        assert rep.frozen_tail_idx == ()
+        assert rep.quarantine_idx == ()
+
+    def test_moving_close_at_zero_volume_is_kept(self) -> None:
+        """``^TNX`` / ``DX-Y.NYB`` are permanently zero-volume and healthy.
+
+        Keying on zero volume alone would quarantine their whole history, so the
+        unchanged close is load-bearing rather than a refinement.
+        """
+        df = _frame(
+            [
+                {**_traded(4.10), "volume": 0.0},
+                {**_traded(4.18), "volume": 0.0},
+                {**_traded(4.05), "volume": 0.0},
+            ]
+        )
+        rep = check_ohlcv(df, series_ends_here=True)
+        assert rep.frozen_tail_idx == ()
+        assert rep.zero_volume_idx == (0, 1, 2)  # still warned about, never dropped
+
+    def test_wholly_frozen_frame_keeps_its_first_row(self) -> None:
+        """Row 0 has no previous close in-frame, so it cannot start a run.
+
+        Failing in the keep direction is deliberate: dropping every row of a
+        page would make ``_store_page`` store nothing at all.
+        """
+        df = _frame([_frozen(50.0), _frozen(50.0), _frozen(50.0)])
+        rep = check_ohlcv(df, series_ends_here=True)
+        assert rep.frozen_tail_idx == (1, 2)
+        clean, _ = quarantine(df, rep)
+        assert len(clean) == 1
+
+
 class TestDetectSessionGaps:
     def test_no_gap_daily(self) -> None:
         days = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4)]

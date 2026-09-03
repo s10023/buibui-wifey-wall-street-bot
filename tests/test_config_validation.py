@@ -719,8 +719,12 @@ class TestShippedUniverseFile:
         assert etfs, f"note must state the index-ETF count; got: {note[:120]}"
         stated_etfs = int(etfs.group(1))
 
+        # MEMBERSHIP counts, so they are taken over every member by kind rather
+        # than through stocks(), which returns ACTIVE stocks. Conflating the two
+        # would make the note go stale the moment any member is flagged delisted
+        # — i.e. exactly when the lifecycle seam is doing its job.
         actual_total = len(uni.symbols())
-        actual_stocks = len(uni.stocks())
+        actual_stocks = sum(1 for m in uni.members if m.kind == "stock")
         assert stated_total == actual_total, (
             f"note says {stated_total} members, file has {actual_total}"
         )
@@ -731,8 +735,27 @@ class TestShippedUniverseFile:
             f"note says {stated_etfs} ETFs, file has {actual_total - actual_stocks}"
         )
         assert stated_stocks + stated_etfs == stated_total, "note is self-inconsistent"
-        assert stated_total == uni.n_active, (
-            "every member should be active (delisted=False)"
+
+        # The lifecycle split needs its own external referent. Dropping the old
+        # "stated_total == n_active" line and replacing it with nothing would
+        # leave delisted membership undeclared and unchecked — the same
+        # provenance fiction this test exists to prevent, one field over.
+        lifecycle = re.search(r"(\d+) members? flagged delisted", note)
+        assert lifecycle, f"note must state the delisted count; got: {note[:120]}"
+        stated_delisted = int(lifecycle.group(1))
+        active = re.search(r"leaving (\d+) active", note)
+        assert active, f"note must state the active count; got: {note[:120]}"
+        stated_active = int(active.group(1))
+
+        actual_delisted = sum(1 for m in uni.members if m.delisted)
+        assert stated_delisted == actual_delisted, (
+            f"note says {stated_delisted} delisted, file has {actual_delisted}"
+        )
+        assert stated_active == uni.n_active, (
+            f"note says {stated_active} active, file has {uni.n_active}"
+        )
+        assert stated_delisted + stated_active == stated_total, (
+            "note is self-inconsistent: delisted + active must equal members"
         )
 
     def test_one_issuer_per_member_no_dual_share_classes(self) -> None:

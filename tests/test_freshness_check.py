@@ -16,6 +16,7 @@ cannot be:
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -373,6 +374,44 @@ class TestUniverseReaders:
         # `universe_policy` and `membership_as_of` are config, not symbols.
         assert "universe_policy" not in symbols
         assert "membership_as_of" not in symbols
+
+    def test_delisted_members_are_not_graded(self) -> None:
+        """Nothing refreshes a delisted member, so grading it is a false STALE.
+
+        `analytics_runner` resolves `--universe` through `active_symbols()`, so
+        the weekly sync and this probe must agree on the roster or the probe
+        reports a fault for a decision. Both directions are asserted: the live
+        name stays graded, the delisted one drops out.
+        """
+        raw = json.loads(Path("config/universe.json").read_text())
+        delisted = {s for s, m in raw["members"].items() if m.get("delisted")}
+        assert delisted, (
+            "fixture assumption: the committed universe has delisted members"
+        )
+        symbols = read_universe_symbols(Path("config/universe.json"))
+        assert not (symbols & delisted), (
+            f"delisted members graded: {symbols & delisted}"
+        )
+        assert "AAPL" in symbols, "active members must still be graded"
+        assert len(symbols) == len(raw["members"]) - len(delisted)
+
+    def test_a_malformed_member_is_kept_rather_than_excused(
+        self, tmp_path: Path
+    ) -> None:
+        """An unreadable member degrades to being graded, never to being hidden."""
+        p = tmp_path / "u.json"
+        p.write_text(
+            json.dumps(
+                {
+                    "members": {
+                        "AAA": {"sector": "X", "kind": "stock", "delisted": False},
+                        "BBB": {"sector": "X", "kind": "stock", "delisted": True},
+                        "CCC": "not-a-dict",
+                    }
+                }
+            )
+        )
+        assert read_universe_symbols(p) == {"AAA", "CCC"}
 
     def test_an_absent_universe_reads_empty_rather_than_raising(self) -> None:
         """A probe must report an absent universe, never crash on one."""
