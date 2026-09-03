@@ -1095,8 +1095,9 @@ Reads `insider_transactions`, applies `analytics/insider/classify.py` and prints
 **It computes no return and has no access to a price** — the pre-registration puts the first look
 at one inside phase 3's gated report.
 
-**Run:** `make wifey-insider-cohort` (or `tools/insider_cohort.py [--db PATH] [--symbols A,B]
-[--since YEAR]`). Read-only; no network, no `EDGAR_CONTACT_EMAIL`.
+**Run:** `make wifey-insider-cohort`, wrapping `tools/insider_cohort.py`
+(`[--db PATH] [--symbols A,B] [--since YEAR]`). Read-only; no network, no
+`EDGAR_CONTACT_EMAIL`.
 
 Prints the split in **three units that disagree by design** — rows, trade-days and insiders. A
 tranched sale is one trade-day and several rows, so a split quoted without its unit compares to

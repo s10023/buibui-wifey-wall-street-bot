@@ -222,6 +222,18 @@ so every insider the capped draw does manage to classify falls to *opportunistic
 across 47 companies. A pooled split over both draws is therefore a statistic about the 6 uncapped
 names wearing a 53-name label.
 
+**Reproducing the table** — recorded with the numbers, for Amendment 2's reason: a different draw
+gives a different, non-comparable figure.
+
+```bash
+make wifey-insider-cohort                                                  # pooled, 53 symbols
+make wifey-insider-cohort ARGS="--symbols AAPL,ACN,ADBE,AMAT,AMD,AVGO"     # the uncapped draw
+```
+
+The capped row is the complement of those six names over the stored symbols; `--symbols` takes an
+explicit list, so it is one more invocation rather than a new flag. Both rows read
+`Classified rows` over the printed population, and `routine` off the same block.
+
 ⚠ **The transferable rule, and it is Amendment 1's own lesson recurring one phase later: a sample
 designed for one observable is not a sample for another.** Both were defensible draws; neither is
 reusable without re-deriving the sampling from the new statistic's unit. The unit changed from
