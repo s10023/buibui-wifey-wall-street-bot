@@ -157,3 +157,54 @@ def test_json_fixture_dir_is_reachable() -> None:
     # fixture-driven assertion above vacuous.
     assert _FIX.is_dir()
     assert json.loads('{"ok": true}')["ok"] is True
+
+
+def _txn_xml(code: str, *, price: bool) -> bytes:
+    """One non-derivative transaction, with the price present or footnote-only."""
+    price_block = b"<value>10.00</value>" if price else b'<footnoteId id="F1"/>'
+    return (
+        b"<ownershipDocument><reportingOwner><reportingOwnerId>"
+        b"<rptOwnerCik>0000000901</rptOwnerCik>"
+        b"<rptOwnerName>Example Insider A</rptOwnerName>"
+        b"</reportingOwnerId></reportingOwner>"
+        b"<nonDerivativeTable><nonDerivativeTransaction>"
+        b"<transactionDate><value>2018-03-02</value></transactionDate>"
+        b"<transactionCoding><transactionCode>" + code.encode() + b"</transactionCode>"
+        b"</transactionCoding><transactionAmounts>"
+        b"<transactionShares><value>100</value></transactionShares>"
+        b"<transactionPricePerShare>" + price_block + b"</transactionPricePerShare>"
+        b"<transactionAcquiredDisposedCode><value>A</value>"
+        b"</transactionAcquiredDisposedCode>"
+        b"</transactionAmounts></nonDerivativeTransaction>"
+        b"</nonDerivativeTable></ownershipDocument>"
+    )
+
+
+class TestFailureReasonCarriesTheCode:
+    """A rejected transaction's reason must name its transaction code.
+
+    Phase 1's 4.8% shortfall was attributed to gifts and awards on the strength
+    of the reason string alone, which recorded no code — so the claim was
+    uncheckable rather than merely unchecked (spec Amendment 2). Without the
+    code in the string a rejected row leaves no evidence of what it was.
+    """
+
+    def test_the_committed_footnote_price_fixture_names_its_code(self) -> None:
+        outcome = parse_form4(_xml("form4_footnote_price.xml"))
+        assert "[code S]" in outcome.failures[0]
+
+    def test_control_a_gift_reports_a_different_code(self) -> None:
+        """The control that moves: same shape, code G, so the string must differ."""
+        sale = parse_form4(_txn_xml("S", price=False))
+        gift = parse_form4(_txn_xml("G", price=False))
+        assert "[code S]" in sale.failures[0]
+        assert "[code G]" in gift.failures[0]
+        assert sale.failures[0] != gift.failures[0]
+
+    def test_a_priced_transaction_of_the_same_shape_does_not_fail(self) -> None:
+        """Vacuity control: the fixture builder can produce a PASSING filing, so
+        the two failures above are caused by the missing price and not by the
+        builder emitting something unparseable."""
+        outcome = parse_form4(_txn_xml("G", price=True))
+        assert outcome.failures == []
+        assert len(outcome.transactions) == 1

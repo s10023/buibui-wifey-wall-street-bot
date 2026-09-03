@@ -1089,6 +1089,41 @@ is the right order but low at the top end. A coverage pilot wants breadth, not d
 `--stride 10 --limit 50 --max-filings-per-symbol 40` ≈ 2,000 documents across 50 companies in
 every sector, ~16 min.
 
+## insider_cohort.py — H-024 phase 2, routine/opportunistic cohort shape
+
+Reads `insider_transactions`, applies `analytics/insider/classify.py` and prints the split.
+**It computes no return and has no access to a price** — the pre-registration puts the first look
+at one inside phase 3's gated report.
+
+**Run:** `make wifey-insider-cohort`, wrapping `tools/insider_cohort.py`
+(`[--db PATH] [--symbols A,B] [--since YEAR]`). Read-only; no network, no
+`EDGAR_CONTACT_EMAIL`.
+
+Prints the split in **three units that disagree by design** — rows, trade-days and insiders. A
+tranched sale is one trade-day and several rows, so a split quoted without its unit compares to
+nothing; the WP's ~55% is a *trade* share, which makes `routine share of classified rows` the only
+comparable line. The share is over **classified** rows: folding unclassifiable insiders into
+"opportunistic" would inflate that arm with insiders the rule never examined.
+
+⚠ **The phase-1 sample cannot answer this question, and that is the tool's main finding to date.**
+`--max-filings-per-symbol 40` was right for observable (b) — a proportion whose validity comes
+from filer diversity — and is wrong here, because the classifier needs a per-INSIDER calendar and
+thinning a company's filings thins every one of its insiders'. Measured 2026-09-03: the capped
+draw classifies **3.5%** of rows with **0 routine** across 47 companies, against **46.0%** on the
+6 uncapped names, which supply **97.7%** of every classified row in the table. ⚠ **The cap
+biases the LABEL, not just the count** — a thinned calendar cannot exhibit a same-month streak, so
+everything it does classify falls to opportunistic. **The transferable rule: a sample designed for
+one observable is not a sample for another**, and nothing in the stored data announces that the
+unit changed from *document* to *insider-year*.
+
+⚠ **Do not quote the 74.0% routine share as a panel figure** — it is six technology mega-caps, and
+the 10b5-1-era explanation for its gap to the WP's 55% is a hypothesis nothing here tested.
+
+The observability-divergence block (printed unconditionally, no flag) is a **probe, not an
+alternative rule**: it re-runs the frozen classifier against only filings public on 1 January and
+measured **1 of 6,981 (insider, year) labels (0.0%)**, which is what licences the frozen
+trade-date reading rather than merely assuming it. Spec Amendment 3.
+
 ## edgar_client.py — the SEC User-Agent contract
 
 ⚠ **MEASURED 2026-08-29: a User-Agent carrying a URL is refused (HTTP 403) by both SEC hosts**,

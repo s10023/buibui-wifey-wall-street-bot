@@ -211,14 +211,24 @@ def parse_form4(xml_bytes: bytes) -> ParseOutcome:
             )
             if got is None
         ]
+        # ⚠ The failure string CARRIES THE TRANSACTION CODE, and that is the
+        # point of it. Phase 1 measured a 4.8% shortfall whose every printed
+        # reason was `missing price`, and inferred — without evidence — that it
+        # was gifts and awards, i.e. codes the pre-registration does not trade
+        # on. The reason string was the only record of a rejected row and it
+        # dropped the one field that could settle that, so the inference could
+        # not be checked at any sample size. Spec Amendment 2 asked for the
+        # confirmation; this is what makes it possible on the next run.
         if missing:
-            failures.append(f"txn {seq}: missing {'/'.join(missing)}")
+            failures.append(
+                f"txn {seq} [code {code or '?'}]: missing {'/'.join(missing)}"
+            )
             continue
         try:
             shares_f = float(str(shares).replace(",", ""))
             price_f = float(str(price).replace(",", ""))
         except ValueError:
-            failures.append(f"txn {seq}: non-numeric shares/price")
+            failures.append(f"txn {seq} [code {code or '?'}]: non-numeric shares/price")
             continue
 
         for cik, name, is_off, is_dir in owners:

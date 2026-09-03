@@ -12,9 +12,20 @@ about — read the docstring before touching either.
 ## The one invariant ALL SIX scripts enforce
 
 **A `.bak` must exist alongside the DB or the script refuses to start**
-(`001:45-49`, `002:63-65`, `003:73-75`, `004:119-121`, `006:95-97`). Note what this is and is not: `analytics.db.bak` is an
+(`001:46-48`, `002:63-65`, `003:76-78`, `004:119-121`, `005:78-80`, `006:99-101` — `001`
+unconditionally, the rest under `--apply`). Note what this is and is not: `analytics.db.bak` is an
 *undated, unverified byte copy*, not a backup. `make backup` is the real snapshot. Create the
 `.bak` anyway — the guard is what stands between a bad migration and an unrecoverable DB.
+
+⚠ **The guard tests EXISTENCE, never FRESHNESS, so a stale `.bak` satisfies it silently.** All
+six call `os.path.exists` and nothing reads an mtime or a row count, which means the restore point
+you actually hold can predate the DB by any amount. Measured 2026-09-03 before applying `006`: the
+`.bak` in the tree was **14 days old and 94 MB smaller** than `analytics.db`, and the guard would
+have passed on it. **Cut a fresh `.bak` from the current DB immediately before every `--apply`**,
+and take a `make backup` first — the `.bak` is the migration's undo, the snapshot is the real one.
+⚠ **Do not assume an existing `.bak` is redundant with a dated sibling**: that same copy differed
+from `analytics.db.bak.2026-08-19` byte-for-byte despite an identical size *and* mtime, so it was
+preserved as `analytics.db.bak.2026-08-20` rather than overwritten.
 
 ## `run_id` rewriting is a property of the TABLE, not of migrations
 
