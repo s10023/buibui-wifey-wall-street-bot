@@ -332,6 +332,13 @@ Options:
 - `--symbols` / `--timeframes` / `--universe` / `--pundit` — same as backfill
 - Requires backfill to have been run first for each symbol/timeframe
 
+`sync` also re-syncs a whole series by itself when the provider restates it. It re-fetches the
+newest stored bar anyway, so a stock split — which moves every historical bar onto a new basis —
+shows up as that one bar's close changing. Above 1% it refetches the series from the start,
+which is what stops a split leaving a permanent fake return in stored history. Look for
+`adjustment basis changed <symbol> <timeframe>` in the log. Repairing a seam already stored
+needs a full `analytics backfill` of that symbol instead.
+
 **Three universes, and syncing one never refreshes another.** `config/stocks.json` is the
 13-symbol live watchlist, `config/universe.json` the 505-member research breadth universe,
 and the pundit ledger a third set that overlaps neither by construction: it records the

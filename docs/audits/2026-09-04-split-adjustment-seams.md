@@ -37,9 +37,15 @@ fetches wrote bars on both bases and the series alternates rather than stepping 
 Everything below ~45% is a real event — FISV −44%, CNC −40%, TTD −38.6%, SNPS −35.8%, WST −38.2%,
 ALGN −36.6% — and none was touched.
 
-⚠ **The count grows on its own.** Every seam here post-dates the mid-2026 universe backfill: a
-split before that date came back inside one internally-consistent call. Left alone, the weekly
-`wifey-universe-sync` adds a new seam for every split in the 505-member universe, forever.
+⚠ **The count grows on its own.** A series carries a seam exactly when a split lands *after* its
+last full-history fetch — an earlier split comes back inside one internally-consistent call and
+leaves nothing behind. So the population is not fixed: left alone, the weekly
+`wifey-universe-sync` adds a new seam for every future split in the 505-member universe.
+
+⚠ **The date of any series' last full fetch is NOT recoverable** — `ohlcv` stores no ingest
+timestamp, only `open_time`. That every seam found here falls in 2026-06 → 2026-08 is consistent
+with a mid-2026 universe backfill but does not establish one, and nothing in this audit rests on
+it.
 
 ## Finding 2 — the fix, and why 1% is safe
 
