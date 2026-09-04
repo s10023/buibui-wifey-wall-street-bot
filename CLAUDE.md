@@ -431,7 +431,7 @@ entries that have no audit of their own.
 | `scripts/` | Three maintenance one-shots, distinct from `tools/`: they act on the DB or the test fixtures rather than producing research output. `db_prune_backtests.py` (`make db-prune-backtests`), `extract_regression_fixture.py` (called by `make regression-update`, not run directly), `profile_suite.py` (no target; suite profiling, see memory `project_suite_runtime_profile.md`) | — |
 | `trade/` | Empty placeholder — both files are 0 bytes. The parent's Binance Futures opener was dropped at fork time and nothing replaced it; `make wifey-open-trades` now fails loudly. An order layer would land in Phase B | — |
 | `tests/` | pytest suite; tests import from lib modules and pass mock dependencies directly | — |
-| `migrations/` | **Six** one-shot migration scripts, run by hand. All six refuse to start without a `.bak`; only **001/002** rewrite `run_id` and cascade to `backtest_trades` — 003/004/005 target `signal_alert_outcomes`, whose key carries no measured value, so an in-place `UPDATE` is correct there, and **006 is the first to target `ohlcv` and the first to DELETE rather than rewrite**. Check what the target table's key is made of rather than following the precedent. Routine schema changes go through `analytics/store/schema.py`'s migration list | `context/migrations.md` |
+| `migrations/` | **Seven** one-shot migration scripts, run by hand. All seven refuse to start without a `.bak`; only **001/002** rewrite `run_id` and cascade to `backtest_trades` — 003/004/005 target `signal_alert_outcomes`, whose key carries no measured value, so an in-place `UPDATE` is correct there, and **006/007 target `ohlcv` and DELETE rather than rewrite**. ⚠ **007 is the first whose rows cannot be recovered by refetch** — 006's deleted bars would simply be re-quarantined, while 007 removes a wrong instrument the provider still serves under the right ticker. Check what the target table's key is made of rather than following the precedent. Routine schema changes go through `analytics/store/schema.py`'s migration list | `context/migrations.md` |
 | `.claude/hooks/` | Three `PreToolUse` hooks on `Bash`: a destructive-command guard, a foreground-run advisory, and an inline `gh pr create` reminder. **Two are files here, the third is inline in `.claude/settings.json`**, which registers all three. Tracked since the 2026-08-20 denylist inversion, so they survive a reclone and ruff + mypy cover them | `context/hooks.md` |
 | `config/` | `stocks.json` (gitignored 13-symbol live watchlist), `universe.json` (committed 505-member research universe), `strategy_params.toml` (shared base inherited via `extends`), `youtube_channels.toml` (gitignored; `.example` committed) | `context/config.md` |
 | `deploy/` | `backup-analytics.sh` (local leg), `backup-offsite.sh` (rclone leg), `notify-failure.sh`, and opt-in `wifey-*` systemd user units — backup ×2, the templated alert, **signal-watch** and **universe-sync**. Nothing installs them; every one is `Type=oneshot`, so there is still no wifey daemon | `deploy/README.md` |
@@ -609,6 +609,28 @@ zero), so no sleeve verdict moved and none is reachable from it. Ledger restated
 and same outcomes, only R values.
 Audits: `docs/audits/2026-08-19-gap-through-stop-measurement.md` (the adverse tail),
 `docs/audits/2026-08-20-symmetric-gap-fill.md` (the mirror, and the fix).
+
+**`sync` appends the tail, so a SPLIT used to leave a permanent fake return in the stored
+series.** The provider restates every historical bar onto the post-split basis while the bars
+already stored keep the old one, and no later sync repairs it — the seam is *created* by the
+refresh, not by a missing one. `analytics/data_sync.py::sync` now compares the re-fetched
+**overlap bar** (it re-fetches `latest`, not `latest + 1`) against its stored close and re-syncs
+the whole series when it moves by more than `ADJUSTMENT_BASIS_TOL` (1%). ⚠ **That tolerance is
+only safe because `utils/yfinance_client.py` fetches with `auto_adjust=False`** — Yahoo applies
+splits to raw OHLC retroactively but leaves dividends out, so a stored close is stable across
+syncs; under `auto_adjust=True` every ex-dividend date would trip it. ⚠ **The guard prevents a
+NEW seam and cannot repair a stored one**, because the overlap bar has long since settled onto
+the new basis — repairing means a full re-backfill of that series. Measured 2026-09-04 over the
+whole DB: four contaminated names carrying **−74.9%** (CRWD, 4:1), **+198.5%** (DD, 1:3 reverse)
+and **±50/+95% seven times** (MNST, 2:1, its split landing inside the active sync window), all
+repaired by re-backfill. ⚠ **A big move is not evidence of this defect** — MRNA's **+177.0%**
+survived a full re-backfill on **199M shares against a normal 5M** and is a real event; check
+whether the provider still serves the jump before treating one as a seam. ⚠ **And a wrong
+INSTRUMENT is a different failure that a re-backfill cannot fix**: `AVB` was served a $63–71
+tape under a ticker trading at $184, and `history(start=2018)` returns **27 rows — the bogus
+window only** — so `migrations/007_purge_avb_wrong_instrument_tail.py` deletes them and the series reads
+honestly STALE instead.
+Audit: `docs/audits/2026-09-04-split-adjustment-seams.md`.
 
 **A bar count is not a calendar span on an RTH tape.** Check any expression converting bars to time
 or time to bars against `4h` RTH = 2 bars/day. Fetch forward windows to `get_latest_open_time`

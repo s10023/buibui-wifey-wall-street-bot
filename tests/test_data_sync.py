@@ -10,13 +10,18 @@ import pandas as pd
 import pytest
 
 from analytics.data_fetcher import BARS_MAX_LIMIT, OHLCV_COLUMNS
-from analytics.data_quality import SessionGapReport, check_ohlcv
+from analytics.data_quality import _SPLIT_FACTORS, SessionGapReport, check_ohlcv
 from analytics.data_store import (
     get_latest_open_time,
     init_schema,
     upsert_ohlcv,
 )
-from analytics.data_sync import backfill, sync
+from analytics.data_sync import (
+    ADJUSTMENT_BASIS_TOL,
+    backfill,
+    basis_changed,
+    sync,
+)
 
 _EMPTY = pd.DataFrame(columns=OHLCV_COLUMNS)
 
@@ -284,3 +289,176 @@ class TestBackfillSessionGapWarning:
         ):
             backfill(conn, "AAPL", "1d", 0)
         assert not any("session gap" in r.message.lower() for r in caplog.records)
+
+
+def _bars_at(
+    open_times: list[int],
+    level: float,
+    symbol: str = "AAPL",
+    timeframe: str = "1d",
+) -> pd.DataFrame:
+    """Coherent OHLCV bars whose whole geometry sits at ``level``.
+
+    Scaling open/high/low/close together matters: a frame with a close outside
+    its own high is quarantined as bad geometry, which would make a split test
+    pass for the wrong reason.
+    """
+    return pd.DataFrame(
+        [
+            {
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "open_time": t,
+                "open": level,
+                "high": level * 1.01,
+                "low": level * 0.99,
+                "close": level,
+                "volume": 1_000_000.0,
+            }
+            for t in open_times
+        ],
+        columns=OHLCV_COLUMNS,
+    )
+
+
+def _stored_closes(
+    conn: duckdb.DuckDBPyConnection, symbol: str = "AAPL"
+) -> list[float]:
+    return [
+        float(r[0])
+        for r in conn.execute(
+            "SELECT close FROM ohlcv WHERE symbol = ? ORDER BY open_time", [symbol]
+        ).fetchall()
+    ]
+
+
+class TestBasisChangedPredicate:
+    """The pure half of the guard, at its boundary."""
+
+    def test_a_split_sized_restatement_is_a_change(self) -> None:
+        assert basis_changed(400.0, 100.0) is True  # 4:1
+        assert basis_changed(48.0, 144.0) is True  # 1:3 reverse
+
+    def test_noise_below_the_tolerance_is_not(self) -> None:
+        assert basis_changed(400.0, 402.0) is False  # 0.5%
+        assert basis_changed(400.0, 400.0) is False
+
+    def test_the_tolerance_separates_noise_from_every_split(self) -> None:
+        """What matters is the MARGIN, not the boundary.
+
+        The exact boundary is not representable in binary floating point
+        (``100.0 * 1.01 / 100.0 - 1.0`` is 1.0000000000000009e-2), so a test
+        pinning behaviour AT the tolerance would pin a rounding artifact. No
+        real decision sits there: the smallest canonical split factor is 25%
+        away from parity and a settled candle moves by well under 1%.
+        """
+        assert ADJUSTMENT_BASIS_TOL < 0.05, "must not swallow a small split"
+        for factor in _SPLIT_FACTORS:
+            assert basis_changed(100.0, 100.0 * factor) is (factor != 1.0), (
+                f"factor {factor} must be classified by the same rule"
+            )
+        assert basis_changed(100.0, 100.0 * (1.0 + ADJUSTMENT_BASIS_TOL * 2)) is True
+
+    def test_an_unmeasurable_basis_answers_false(self) -> None:
+        """Keep-on-doubt: absent or non-positive reads as 'append', never 'restated'."""
+        assert basis_changed(None, 100.0) is False
+        assert basis_changed(100.0, None) is False
+        assert basis_changed(0.0, 100.0) is False
+
+
+class TestAdjustmentBasisGuard:
+    """A split restates history; the overlap bar is where that is observable.
+
+    ``sync`` re-fetches the newest stored bar, so a provider that moved the
+    whole series onto a post-split basis hands back a different close for a bar
+    that cannot legitimately have changed. Each "does not re-sync" assertion
+    below is paired with the first test, which asserts the same channel MOVES —
+    otherwise a guard wired to nothing would pass every one of them.
+    """
+
+    def test_a_split_restates_the_whole_stored_series(self) -> None:
+        conn = _make_conn()
+        upsert_ohlcv(conn, _bars_at([1_000, 2_000, 3_000], 400.0))
+        starts: list[int] = []
+
+        def fake_fetch(sym: str, tf: str, start: int, *args: Any) -> pd.DataFrame:
+            starts.append(start)
+            if start == 3_000:  # the tail, already on the post-split basis
+                return _bars_at([3_000, 4_000], 100.0)
+            return _bars_at([1_000, 2_000, 3_000, 4_000], 100.0)
+
+        with patch("analytics.data_sync.fetch_bars", side_effect=fake_fetch):
+            sync(conn, "AAPL", "1d")
+
+        assert starts == [3_000, 1_000], (
+            "a restatement must re-sync from the earliest bar"
+        )
+        assert _stored_closes(conn) == [100.0, 100.0, 100.0, 100.0], (
+            "every bar must end on ONE basis — a surviving 400.0 is the seam"
+        )
+
+    def test_an_unchanged_overlap_bar_appends_only(self) -> None:
+        conn = _make_conn()
+        upsert_ohlcv(conn, _bars_at([1_000, 2_000, 3_000], 400.0))
+        starts: list[int] = []
+
+        def fake_fetch(sym: str, tf: str, start: int, *args: Any) -> pd.DataFrame:
+            starts.append(start)
+            return _bars_at([3_000, 4_000], 400.0)
+
+        with patch("analytics.data_sync.fetch_bars", side_effect=fake_fetch):
+            sync(conn, "AAPL", "1d")
+
+        assert starts == [3_000], "no restatement means no re-sync"
+        assert _stored_closes(conn) == [400.0, 400.0, 400.0, 400.0]
+
+    def test_a_forming_bar_finalising_does_not_re_sync(self) -> None:
+        """The overlap bar moves on every sync by design — only a SPLIT-sized move counts."""
+        conn = _make_conn()
+        upsert_ohlcv(conn, _bars_at([1_000, 2_000, 3_000], 400.0))
+        starts: list[int] = []
+
+        def fake_fetch(sym: str, tf: str, start: int, *args: Any) -> pd.DataFrame:
+            starts.append(start)
+            return _bars_at([3_000], 402.0)  # +0.5%, a candle that closed
+
+        with patch("analytics.data_sync.fetch_bars", side_effect=fake_fetch):
+            sync(conn, "AAPL", "1d")
+
+        assert starts == [3_000], (
+            "finalising a forming candle must not re-fetch history"
+        )
+
+    def test_a_single_bar_series_cannot_re_sync_itself(self) -> None:
+        """earliest == latest, so the re-sync would re-fetch the same page forever."""
+        conn = _make_conn()
+        upsert_ohlcv(conn, _bars_at([1_000], 400.0))
+        starts: list[int] = []
+
+        def fake_fetch(sym: str, tf: str, start: int, *args: Any) -> pd.DataFrame:
+            starts.append(start)
+            return _bars_at([1_000], 100.0)
+
+        with patch("analytics.data_sync.fetch_bars", side_effect=fake_fetch):
+            sync(conn, "AAPL", "1d")
+
+        assert starts == [1_000], "nothing behind the overlap bar to repair"
+
+    def test_the_warning_names_the_symbol_and_the_ratio(self, caplog: Any) -> None:
+        conn = _make_conn()
+        upsert_ohlcv(conn, _bars_at([1_000, 2_000], 400.0))
+
+        def fake_fetch(sym: str, tf: str, start: int, *args: Any) -> pd.DataFrame:
+            return (
+                _bars_at([2_000], 100.0)
+                if start == 2_000
+                else _bars_at([1_000, 2_000], 100.0)
+            )
+
+        with (
+            caplog.at_level("WARNING"),
+            patch("analytics.data_sync.fetch_bars", side_effect=fake_fetch),
+        ):
+            sync(conn, "AAPL", "1d")
+
+        assert "adjustment basis changed AAPL 1d" in caplog.text
