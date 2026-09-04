@@ -1,6 +1,6 @@
 # `migrations/` — hand-run one-shot DB migrations
 
-Six scripts. **Routine schema changes do NOT go here** — they belong in
+Seven scripts. **Routine schema changes do NOT go here** — they belong in
 `analytics/store/schema.py`'s migration list, which runs automatically on connect. This directory
 is only for changes that list cannot express: a column's *type* changing, or existing row *values*
 being rewritten.
@@ -9,16 +9,17 @@ being rewritten.
 CI. Each is invoked by hand, once, and is not idempotent in the sense of being safe to re-reason
 about — read the docstring before touching either.
 
-## The one invariant ALL SIX scripts enforce
+## The one invariant ALL SEVEN scripts enforce
 
 **A `.bak` must exist alongside the DB or the script refuses to start**
-(`001:46-48`, `002:63-65`, `003:76-78`, `004:119-121`, `005:78-80`, `006:99-101` — `001`
+(`001:46-48`, `002:63-65`, `003:76-78`, `004:119-121`, `005:78-80`, `006:99-101`,
+`007:91-93` — `001`
 unconditionally, the rest under `--apply`). Note what this is and is not: `analytics.db.bak` is an
 *undated, unverified byte copy*, not a backup. `make backup` is the real snapshot. Create the
 `.bak` anyway — the guard is what stands between a bad migration and an unrecoverable DB.
 
 ⚠ **The guard tests EXISTENCE, never FRESHNESS, so a stale `.bak` satisfies it silently.** All
-six call `os.path.exists` and nothing reads an mtime or a row count, which means the restore point
+seven call `os.path.exists` and nothing reads an mtime or a row count, which means the restore point
 you actually hold can predate the DB by any amount. Measured 2026-09-03 before applying `006`: the
 `.bak` in the tree was **14 days old and 94 MB smaller** than `analytics.db`, and the guard would
 have passed on it. **Cut a fresh `.bak` from the current DB immediately before every `--apply`**,
@@ -205,6 +206,42 @@ Idempotent by value — the rule is recomputed each run, so a second run reports
 **Run:** `python migrations/006_purge_frozen_tail_bars.py [--db PATH] [--apply]` — dry-run by
 default; prints the table total, the zero-volume count it is NOT touching, and the per-series
 purge list.
+
+## 007_purge_avb_wrong_instrument_tail.py — a wrong instrument under the right ticker
+
+Between 2026-07-17 and 2026-08-24 the provider's history endpoint served a $63–71 tape under
+`AVB`, a ticker trading at **$184.06**, then stopped updating it. Those bars are not observations
+of AvalonBay, and they put a fabricated **−61.1%** session (177.32 → 68.93) into every pooled
+cross-section reading the research universe.
+
+⚠ **This is NOT the split seam `data_sync.ADJUSTMENT_BASIS_TOL` guards, and conflating the two
+picks the wrong repair.** A split restates a series *consistently* and is fixed by re-syncing it.
+Here the provider serves the wrong security, so a re-backfill **cannot** help:
+`yf.Ticker("AVB").history(start="2018-01-01")` returns **27 rows** — the bogus window only — so a
+refetch would overwrite the 27 bad bars with the same 27 bad bars and reach none of the 2,127 good
+ones. ⚠ **That also makes 007 the first migration whose deleted rows are NOT recoverable by
+refetch**, where 006's would simply be re-quarantined.
+
+**Two predicates, and they must agree.** Rows are selected by value (`close < 100`) *and* date
+(`open_time >= 2026-07-01`), because either alone is a claim about a boundary rather than about a
+population. The script **refuses to run** if any `AVB` row matches one and not the other. The
+margin: the good bars' minimum **low** is 118.17 — the low, not the close, being the value that
+could dip across a close-based threshold — against the bogus band's maximum **high** of 70.61, a
+1.67× gap with nothing inside it, and no row of any timeframe between the last good bar
+(1781755200000) and the first bogus one (1783915200000). The seam constant sits *inside* that
+empty gap rather than on either edge.
+
+⚠ **Not a delisting, so `config/universe.json` is deliberately untouched.** `EA`/`EQR`/`SATS` were
+flagged `delisted: true` in #281 because they had stopped trading; AVB is alive and quoted.
+Flagging it would state something false and drop a live constituent from the breadth universe.
+What it becomes is a **stale** series — which `make freshness-check` reports, and which repairs
+itself when the provider fixes the ticker.
+
+Applied 2026-09-04: 27 `1d` + 7 `1wk` = **34 rows**, `AVB` 2603 → 2569, second run reports 0.
+Idempotent by value, like 006.
+
+**Run:** `python migrations/007_purge_avb_wrong_instrument_tail.py [--db PATH] [--apply]` —
+dry-run by default. Audit: `docs/audits/2026-09-04-split-adjustment-seams.md`.
 
 ## The transferable rule
 

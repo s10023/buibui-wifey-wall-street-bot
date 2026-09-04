@@ -42,6 +42,8 @@ from analytics.store.insider import (
     upsert_insider_transactions,
 )
 from analytics.store.market_data import (
+    get_close_at,
+    get_earliest_open_time,
     get_latest_open_time,
     get_ohlcv,
     upsert_ohlcv,
@@ -70,6 +72,8 @@ __all__ = [
     "get_confidence_ratings",
     "get_cross_tf_combo_lookup",
     "get_directional_confidence_ratings",
+    "get_close_at",
+    "get_earliest_open_time",
     "get_earnings_facts",
     "get_insider_transactions",
     "get_latest_open_time",

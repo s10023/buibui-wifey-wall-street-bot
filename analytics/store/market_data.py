@@ -53,3 +53,40 @@ def get_latest_open_time(
     if result is None:
         return None
     return int(result[0])
+
+
+def get_earliest_open_time(
+    conn: duckdb.DuckDBPyConnection,
+    symbol: str,
+    timeframe: str,
+) -> int | None:
+    """Return the minimum open_time stored for (symbol, timeframe), or None if no rows.
+
+    Mirrors ``get_latest_open_time``'s ORDER BY ... LIMIT 1 shape for the same
+    reason: MAX()/MIN() after multiple inserts can trip a DuckDB statistics
+    optimizer bug.
+    """
+    result = conn.execute(
+        "SELECT open_time FROM ohlcv WHERE symbol = ? AND timeframe = ?"
+        " ORDER BY open_time ASC LIMIT 1",
+        [symbol, timeframe],
+    ).fetchone()
+    if result is None:
+        return None
+    return int(result[0])
+
+
+def get_close_at(
+    conn: duckdb.DuckDBPyConnection,
+    symbol: str,
+    timeframe: str,
+    open_time: int,
+) -> float | None:
+    """Return the stored close for one bar, or None if that bar is absent."""
+    result = conn.execute(
+        "SELECT close FROM ohlcv WHERE symbol = ? AND timeframe = ? AND open_time = ?",
+        [symbol, timeframe, open_time],
+    ).fetchone()
+    if result is None:
+        return None
+    return float(result[0])

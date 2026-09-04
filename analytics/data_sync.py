@@ -7,6 +7,17 @@ cannot be served in one call: asking for ``1d`` bars since 1927 would store
 1927–1947 and silently leave every later bar missing, which reads exactly like
 a symbol with no recent history. ``backfill`` pages instead, advancing past the
 last bar it stored until a short page proves the history is exhausted.
+
+``sync`` appends the tail, which is why a SPLIT used to leave a permanent fake
+return in the stored series: the provider restates every historical bar onto the
+post-split basis, while the bars already stored keep the old one, so the seam
+survives every later sync. ``ADJUSTMENT_BASIS_TOL`` closes that — the overlap
+bar is re-fetched anyway, so the restatement is observable at exactly one point
+and the whole series is re-synced when it moves.
+
+⚠ The guard prevents a NEW seam; it cannot repair one already stored, because
+the overlap bar has long since settled onto the new basis by the time the seam
+is noticed. Repairing an existing seam is a full re-backfill of that series.
 """
 
 import logging
@@ -17,10 +28,27 @@ import pandas as pd
 from analytics.data_fetcher import BARS_MAX_LIMIT, fetch_bars
 from analytics.data_quality import check_ohlcv, quarantine
 from analytics.data_store import (
+    get_close_at,
+    get_earliest_open_time,
     get_latest_open_time,
     upsert_ohlcv,
 )
 from analytics.trading_calendar import check_session_gaps
+
+#: Relative move in the re-fetched OVERLAP bar's close that means the provider
+#: restated the series rather than merely finalising a forming candle.
+#:
+#: ⚠ This threshold is only safe because ``utils/yfinance_client`` fetches with
+#: ``auto_adjust=False``. Yahoo applies SPLITS to the raw OHLC series
+#: retroactively but leaves DIVIDENDS out of it, so a stored bar's close is
+#: stable across syncs except when a split lands — with ``auto_adjust=True``
+#: every ex-dividend date would shift history a little and trip this on names
+#: that did nothing. Re-derive the tolerance if that flag ever changes.
+#:
+#: 1% sits far above float/rounding noise and far below any split: the canonical
+#: factor nearest parity in ``data_quality._SPLIT_FACTORS`` is 0.5, i.e. 50x this
+#: tolerance away, so the two populations do not come close to meeting.
+ADJUSTMENT_BASIS_TOL: float = 0.01
 
 
 def backfill(
@@ -95,6 +123,19 @@ def _store_page(
     return len(clean)
 
 
+def basis_changed(before: float | None, after: float | None) -> bool:
+    """Did the provider restate the OVERLAP bar beyond rounding noise?
+
+    ``before`` is the close stored for that bar before the sync, ``after`` the
+    close the same bar came back with. A missing or non-positive ``before``
+    answers False — an unmeasurable basis and an unchanged one must not both
+    read as "restated", and the keep-on-doubt direction here is to append.
+    """
+    if before is None or after is None or before <= 0:
+        return False
+    return abs(after / before - 1.0) > ADJUSTMENT_BASIS_TOL
+
+
 def sync(
     conn: duckdb.DuckDBPyConnection,
     symbol: str,
@@ -107,10 +148,37 @@ def sync(
     once the bar closes — otherwise a candle stored mid-formation would keep
     its stale close forever.
 
+    That overlap bar is also the ONLY point at which a change of the provider's
+    split-adjustment basis is observable, and this re-syncs the whole series
+    when it moves — see ``ADJUSTMENT_BASIS_TOL``.
+
     Raises ``ValueError`` if no data exists for (symbol, timeframe) — run
     backfill first. Returns total rows upserted.
     """
     latest = get_latest_open_time(conn, symbol, timeframe)
     if latest is None:
         raise ValueError(f"No data found for {symbol}/{timeframe}. Run backfill first.")
-    return backfill(conn, symbol, timeframe, latest)
+
+    before = get_close_at(conn, symbol, timeframe, latest)
+    rows = backfill(conn, symbol, timeframe, latest)
+    after = get_close_at(conn, symbol, timeframe, latest)
+    # The None legs are re-stated here rather than left to `basis_changed`
+    # alone so mypy narrows both operands for the ratio in the log line below.
+    if before is None or after is None or not basis_changed(before, after):
+        return rows
+
+    earliest = get_earliest_open_time(conn, symbol, timeframe)
+    logging.warning(
+        "adjustment basis changed %s %s: overlap bar %d restated %.4f -> %.4f "
+        "(x%.4f) — re-syncing the series from %s",
+        symbol,
+        timeframe,
+        latest,
+        before,
+        after,
+        after / before,
+        earliest,
+    )
+    if earliest is None or earliest >= latest:
+        return rows
+    return rows + backfill(conn, symbol, timeframe, earliest)
