@@ -85,8 +85,20 @@ value produces nothing.**
 The sweep proves lists agree. It cannot read intent.
 
 - **Config fields**: does `backtest_config.py:BacktestSweepConfig` include every
-  flag `wifey.py` exposes? Does `signal_config.py:SignalWatchConfig` include every
-  field read from `config/signal_watch.toml`'s `[backtest]` section?
+  flag the backtest parser exposes? ⚠ **The flags live in `cli/backtest.py` AND
+  `cli/_common.py`** — a shared helper adds several (`--min-sl-pct` among them), so a
+  grep scoped to `cli/backtest.py` under-reports the real set and its misses look like
+  skill drift. And does `BacktestSweepConfig` cover every key in
+  **`config/strategy_params.toml`**'s `[backtest]` section?
+  ⚠ **NOT `config/signal_watch.toml` and NOT `SignalWatchConfig`** — this bullet named
+  both until 2026-09-06, and **neither `signal_watch*.toml` has a `[backtest]` section
+  at all** (they carry `extends` / `timeframes` / `day_filter` / `strategies` plus two
+  tables), so the check scanned an empty set and reported clean. It is the shared base,
+  reached via `extends`, that holds the section, and `backtest_config.py` that reads it.
+  **Same class as the dead `indicators_lib.py` grep below: matching nothing reads
+  exactly like no problems found.** Two keys resolve indirectly and a literal field
+  comparison will mis-flag them — `min_trades_<tf>` by prefix-strip
+  (`backtest_config.py:343`) and `live_parity` as a sub-table (`:475`).
 - **Pydantic models**: is every model in `web/api/models/` used by a router?
 - **Data pipeline**: is `data_sync.py` wired into `analytics_runner.py` and
   `signal_runner.py`? Is `upsert_signals` in `data_store.py` called from
@@ -111,15 +123,15 @@ can exist and mean something else.
 
 | Skill | What to verify |
 | --- | --- |
-| `atr-sweep` | `--atr-sl-values` flag in `wifey.py`; `format_atr_sl_sweep_table` in `backtest_lib.py` |
+| `atr-sweep` | `--atr-sl-values` in `cli/backtest.py`; `format_atr_sl_sweep_table` reachable as `analytics.backtest_lib.format_atr_sl_sweep_table`. ⚠ **`backtest_lib.py` is a star-import shim — a grep there returns a FALSE NEGATIVE**; real home `analytics/backtest/formatters.py`. Use `hasattr`, per phase 3 |
 | `volume-sweep` | `volume_suppress` and `effective_volume_suppress(strategy)` on `BacktestSweepConfig` |
-| `backtest-findings` | Min-trades thresholds still match `recalibrate_lib.py` defaults |
+| `backtest-findings` | Min-trades thresholds match **`config/strategy_params.toml`** — top-level `min_trades_*` for the sweep column, `[backtest].min_trades_*` for the daemon column. ⚠ **Not `recalibrate_lib.py`**, which this row named until 2026-09-06: its `min_trades` defaults (10 pooled / 5 directional) are a *different* gate and the skill body declares the TOML as its referent |
 | `recalibrate` | `wifey recalibrate` wired; `--config` + `--apply` present; `confidence_ratings` exists |
-| `new-strategy` | The 4-file checklist; `_REGISTRY_EXCLUDED` still names the real opt-outs |
-| `signal-watch` | TOML field names match `signal_config.py`; `min_avg_r`, not `filter_threshold` |
+| `new-strategy` | The 4-file checklist; `_REGISTRY_EXCLUDED` still names the real opt-outs. ⚠ **It lives in `tests/test_signal_registry.py`, not in `analytics/strategies/`** — currently `{"seasonality"}`, consistent with 17 `KNOWN_STRATEGIES` and 16 in `DETECTOR_REGISTRY` |
+| `signal-watch` | TOML field names match `signal_config.py`; `min_avg_r`, not `filter_threshold`. ⚠ **`filter_threshold` DOES appear in `signal_config.py` and that is not drift** — the loader *raises* on it as a dead key, so presence is the guard, not the defect |
 | `pr-summary` | Template sections match the skill body |
 | `backtest-run` | Flags listed match `wifey backtest --help` |
-| `stats-dashboard` | **Inventory**, never the count: does every card rendered in `Stats.svelte` appear in the tables, and does every listed row correspond to a real card? Plus the live vs cached split |
+| `stats-dashboard` | **Inventory**, never the count: does every card rendered in `Stats.svelte` appear in the tables, and does every listed row correspond to a real card? Plus the live vs cached split. ⚠ **Not every row is a `card-title`** — `Weekly Current State` renders as a live banner (`web/ui/src/pages/Stats.svelte`, keyed on `stats.weekly_current_state`), so extracting card titles alone counts 11 against the table's 12 and manufactures a finding |
 | `investigate-strategy` | `make wifey-signal-test` exists; `--at` UTC interpretation |
 
 ⚠ **A COUNT IS NOT AN INVENTORY — route the claim by asking what a wrong restatement
