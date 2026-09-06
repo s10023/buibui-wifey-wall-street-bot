@@ -65,7 +65,7 @@ copy by hand — *a hand walk is not the walk*, and the same defects recurred
 because prose cannot enforce.
 
 **The sweep now closes by naming the phases below that it does NOT reach**, so passing
-it cannot feel like passing the walk. Suppressed for `--text` and for a single `--check`.
+it cannot feel like passing the walk. Suppressed for `--text` and for any `--check` (which is repeatable).
 
 | Check | Asks |
 | --- | --- |
@@ -560,12 +560,20 @@ spots are stated in `tools/clone_preflight.py`: an absolute `$HOME` default
 (`EXTERNAL_ROOTS`' shape), and a CLI branch no test reaches.
 
 ⚠ **Then decide the visibility flip, before `gh pr create`** — this phase covered
-only the exit until now. Phase 2 has already read the diff: if it touches
-`**/*.py` or `web/ui/**`, the PR needs the repo **public**, or its three
-path-filtered checks create zero steps and settle at `steps=0`, which renders
-exactly like a real failure. **Confirm the flip with the user on every
-occasion** — CLAUDE.md makes the mechanics standing authorisation and the timing
-not, because the window republishes the parent's pre-fork commits.
+only the exit until now. **The flip is about the ACCOUNT'S ALLOWANCE, never about
+your diff's paths.** While the monthly allowance holds a PRIVATE repo runs the whole
+matrix for free — #281 and #285 each merged green private on 48/53 real steps — so
+the question this phase asks is **"did the last run on this repo execute real
+steps?"**, and a yes means open the PR private. **Confirm the flip with the user on
+every occasion** — CLAUDE.md makes the mechanics standing authorisation and the
+timing not, because the window republishes the parent's pre-fork commits.
+
+⚠ **The inverted reading cost an exposure window on 2026-09-06, so it is named here.**
+This line used to say a `**/*.py` or `web/ui/**` diff "needs the repo public, or its
+three path-filtered checks create zero steps". **That is backwards**: the paths filter
+fires **for** Python, so a Python diff **runs** those jobs; a **docs-only** diff is what
+skips them. Paths tell you what a private PR *loses* once the allowance is gone — never
+whether to flip.
 
 ⚠ **"A docs-only diff skips it" is CONDITIONAL — the diff's paths are not sufficient.**
 That reasoning is about *your diff*; the Actions allowance is about *the account*.

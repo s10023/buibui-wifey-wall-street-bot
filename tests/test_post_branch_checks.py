@@ -1179,3 +1179,49 @@ class TestCorpusQueryReachesEveryLine:
         )
         assert findings == [] and soft == []
         assert suppressed == 1
+
+
+class TestCheckIsRepeatable:
+    """`--check` runs EVERY name it is given, and refuses one it does not know.
+
+    It was declared without ``action="append"`` until 2026-09-06 while the
+    ``--text`` flag on the next line had it, so ``--check memory-cap --check
+    handoff-size`` ran ``handoff-size`` alone and printed a complete-looking
+    clean sweep. That is emptiness reading as coverage on exactly the two legs
+    `/post-branch` phase 1 tells you to re-read after phase 6.
+
+    A positive control is what makes this falsifiable rather than a re-statement
+    of the implementation: the single-name run must NOT print the second leg, or
+    the two-name assertion would pass against a tool that ignores the flag
+    entirely and runs the whole sweep.
+    """
+
+    def test_two_names_run_both_legs(self, capsys: pytest.CaptureFixture[str]) -> None:
+        main(["--check", "md-atx", "--check", "doc-indexes", "--exit-zero"])
+        out = capsys.readouterr().out
+        assert "md-atx" in out
+        assert "doc-indexes" in out
+
+    def test_one_name_runs_only_that_leg(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The positive control: the filter really is doing the narrowing."""
+        main(["--check", "md-atx", "--exit-zero"])
+        out = capsys.readouterr().out
+        assert "md-atx" in out
+        assert "doc-indexes" not in out
+
+    def test_an_unknown_name_aborts_rather_than_shortening_the_run(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A typo among several must not run the survivors and report clean."""
+        assert main(["--check", "md-atx", "--check", "no-such-leg"]) == 2
+        assert "no such check: no-such-leg" in capsys.readouterr().err
+
+    def test_text_still_refuses_a_repeated_check(self, tmp_path: Path) -> None:
+        body = tmp_path / "body.md"
+        body.write_text("an ordinary PR body\n", encoding="utf-8")
+        assert (
+            main(["--text", str(body), "--check", "md-atx", "--check", "doc-indexes"])
+            == 2
+        )

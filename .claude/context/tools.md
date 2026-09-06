@@ -302,11 +302,19 @@ porting the upstream rule verbatim would have swapped a live reference for a vag
 
 The notice is suppressed for `--text` (which screens one composed PR body seconds before a
 visibility flip, and wants no step list at the moment the operator is triaging under time
-pressure) and for a single `--check` run, which is a deliberate one-leg invocation.
+pressure) and for any `--check` run, which is a deliberate partial invocation.
 
 **Run:** `make post-branch-checks` (passes `--exit-zero`), or
-`PYTHONPATH=. poetry run python tools/post_branch_checks.py [--check NAME] [--exit-zero]`
-to let it exit 1 on findings.
+`PYTHONPATH=. poetry run python tools/post_branch_checks.py [--check NAME ...] [--exit-zero]`
+to let it exit 1 on findings. ⚠ **`--check` is repeatable, and it was NOT until 2026-09-06** —
+it was declared without `action="append"` while the `--text` flag on the next line had it, so
+`--check memory-cap --check handoff-size` ran **`handoff-size` alone** and printed a
+complete-looking clean sweep. That is exactly the two legs `/post-branch` phase 1 tells you to
+re-read after phase 6, i.e. emptiness reading as coverage on the pair most able to hide a
+finding. ⚠ **An unknown name now aborts the whole run** rather than silently shortening it: a
+typo among several would otherwise run the survivors and report clean.
+⚠ **The `PYTHONPATH=.` is load-bearing** — direct invocation without it dies
+`ModuleNotFoundError: No module named 'tools'`.
 
 ## wait_ci.py — did CI settle, and did it actually RUN?
 
