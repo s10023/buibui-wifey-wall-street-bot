@@ -92,25 +92,72 @@ wifey backtest --symbol AAPL --strategy ote_entry --interval 4h --since 2025-09-
 
 ## All CLI flags
 
+⚠ **Generated from `cli/backtest.py` + `cli/_common.py` on 2026-09-06 — 25 flags.** The block
+listed 14 and invented 1 until then. Re-derive rather than hand-edit:
+`grep -n 'add_argument' cli/backtest.py cli/_common.py`.
+
 ```text
 wifey backtest
-  --config FILE            TOML config file; CLI flags override TOML values
-  --symbol SYMBOL          Single symbol (e.g. AAPL)
-  --strategy STRATEGY      Single strategy name
-  --interval TF            Timeframe: 4h | 1d | 1wk (default 4h; 1h bars exist for the
-                           watchlist but live scans run 4h/1d only)
-  --days N                 Lookback in days (default: 200; floating window)
-  --since YYYY-MM-DD       Anchor start date — use for saved/comparable runs (e.g. 2025-09-12)
-  --tp-r FLOAT             Take-profit ratio (e.g. 2.0)
-  --sl-pct FLOAT           Stop-loss % (e.g. 0.02)
-  --min-sl-pct FLOAT       Minimum SL % to prevent fee-drag explosion
-  --atr-sl-multiplier N    ATR-based SL: N × ATR14
-  --atr-sl-values N...     Multi-value ATR sweep (space-separated)
-  --atr-sl-floor           Widen structural SLs by max(structural, N × ATR14) — required for ATR sweep to bite on structural strategies
-  --day-filter MODE        off | weekdays | tue_thu
-  --save                   Persist results to DB (same as SAVE=1)
-  --min-trades N           Hide combos below N trades
+  # target selection
+  --config FILE            TOML config file for sweep mode
+  --symbol SYMBOL          Primary symbol for single-combo mode (e.g. AAPL)
+  --strategy STRATEGY      Strategy for single-combo mode
+  --interval TF            Candle timeframe for single-combo mode (default: 4h)
+  --symbols S [S ...]      Symbols to sweep (overrides --config)
+  --strategies S [S ...]   Strategies to sweep (overrides --config)
+  --timeframes TF [TF ...] Timeframes to sweep (overrides --config)
+
+  # window
+  --days N                 Lookback period in days (default: 90)
+  --since YYYY-MM-DD       Anchor start date for stable runs. Overrides --days when set
+
+  # risk / cost
+  --sl-pct FLOAT           Stop loss as a decimal fraction (default: 0.02 = 2%)
+  --tp-r FLOAT             Take profit in R multiples (default: 2.0)
+  --fee-pct FLOAT          Taker fee, decimal, charged on entry+exit (default: 0.0)
+  --atr-sl-multiplier N    ATR-based SL: N × ATR14 (overrides --sl-pct when set)
+  --atr-sl-values N [N...] ATR SL multiplier sweep: comparison table across values
+  --atr-sl-floor           F9: use atr_sl_multiplier × ATR14 as a floor on structural sl_price
+
+  # filtering / output
+  --day-filter             ⚠ store_true — suppresses Mon+Fri. Takes NO value (see below)
+  --min-trades N           Hide combos below this trade count in the sweep table (default: 20)
+  --save                   Persist aggregate results to backtest_runs (same as SAVE=1)
+
+  # confluence modes — see /confluence-backtest
+  --combo                  Co-firing confluence backtests across all strategy pairs
+  --window N               Co-firing window: ±N candles for pair detection (default: 5)
+  --workers N              Parallel workers for combo backtest (default: min(4, cpu_count-1))
+  --cross-tf               Cross-TF co-firing backtests (HTF context + LTF entry)
+  --htf-ltf P [P ...]      HTF:LTF pairs, e.g. '1d:4h 4h:1h 1wk:1d'
+  --window-hours N         Cross-TF lookback: hours back to search for an HTF signal
+
+  # live-parity gates
+  --live-parity            Master switch: enable every live-only gate
+  --with-<gate>            Force one gate True    (generated per gate)
+  --without-<gate>         Force one gate False   (cancels the master switch for that gate)
 ```
+
+⚠ **`--day-filter` on `backtest` is a BARE SWITCH, not a mode** — `cli/backtest.py:244` is
+`action="store_true"`. `wifey backtest --day-filter tue_thu` fails with
+`error: unrecognized arguments: tue_thu` (verified 2026-09-06). This block documented it as
+`--day-filter MODE  off | weekdays | tue_thu` until then, which is **`param-sweep` /
+`param-audit`'s** signature (`cli/param.py:250`, `:372` — `choices=["off","weekdays","tue_thu"]`)
+and `recalibrate`'s free-form string (`cli/recalibrate.py:43`). **The same flag name carries three
+different signatures across subcommands** — check the subcommand you are invoking, not the name.
+
+⚠ **`--min-sl-pct` is NOT a `backtest` flag** and this block listed one until 2026-09-06.
+`wifey backtest --min-sl-pct 0.01` fails with `error: unrecognized arguments`. It exists only on
+`wifey signal` (`cli/signal.py:190`, `:281`). ⚠ **`cli/backtest.py:149` nevertheless READS it**
+through a `hasattr(args, "min_sl_pct")` guard that the backtest parser can never satisfy, so
+`min_sl_pct` is **always 0.0** on this path — a defensive read that looks like it honours a flag
+which cannot arrive. **Not fixed here** (this was a docs branch); the fix is either to add the flag
+or drop the dead read.
+
+⚠ **`--live-parity`'s per-gate flags are GENERATED** from the gate set at `cli/backtest.py:358`,
+so `--without-<gate>` names track the code and are not listed individually here. Whatever gate set
+executed is hashed into `run_id` via `cfg.live_parity.identity()` — see CLAUDE.md's footgun block,
+where an ad-hoc override on this axis once replaced the routine sweep's row in place.
 
 ## Config files
 
