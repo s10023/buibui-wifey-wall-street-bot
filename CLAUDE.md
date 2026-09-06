@@ -1010,8 +1010,14 @@ The hook is tracked and survives a reclone.
 
 ### CI quota
 
-**Flip the repo public before opening a PR, and back to private once it merges.** Public repos get
-unlimited free standard-runner Actions minutes, which is the only way to get real CI here.
+**The flip is about the ACCOUNT'S ALLOWANCE, never about your diff's paths.** While the monthly
+allowance holds — it resets on the 1st — a **PRIVATE** repo runs the whole matrix for free:
+PRs #281 and #285 each merged green private on 48/53 real steps. **Flip only when the allowance is
+exhausted**, and back to private once it merges: public repos get unlimited free standard-runner
+Actions minutes, which is the only way to get real CI once the allowance is gone. ⚠ **The inverted
+reading — that a `**/*.py` diff needs the flip — cost an exposure window on 2026-09-06.** The paths
+filter fires **for** Python, so a Python diff **runs** those jobs; a docs-only diff is what skips
+them.
 
 **Pushing a branch costs no CI**, since `push:` triggers only on `main` and `pull_request:` fires
 only on a PR. Commit and push freely; the meter starts at `gh pr create`.
@@ -1044,9 +1050,10 @@ rollup, which can otherwise report the previous run.
 **A merge-run failure at ~3s with `steps=0` and `visibility=PRIVATE` is billing.** Verify duration,
 visibility and step count, then merge. Never debug it.
 
-**A docs-only PR skips the flip ONLY while the Actions allowance holds.** Three of the five checks
-sit behind `dorny/paths-filter` on `**/*.py` and `web/ui/**`, so a `.md`-only diff executes zero
-steps in `lint-typecheck-test`, `Regression tests` and `frontend-check`; `make lint-md` reproduces
+**Paths tell you what a private PR LOSES once the allowance is gone — never whether to flip.**
+Three of the five checks sit behind `dorny/paths-filter` on `**/*.py` and `web/ui/**`, so a
+`.md`-only diff executes zero steps in `lint-typecheck-test`, `Regression tests` and
+`frontend-check`; `make lint-md` reproduces
 CI's `markdownlint` exactly, so the only check forgone is Trivy's secret scan. ⚠ **That reasoning
 is about your DIFF and says nothing about the ACCOUNT.** `markdownlint` and `Trivy` have **no** path
 filter, so an exhausted allowance zeroes them too — #238 opened docs-only with **all five** checks

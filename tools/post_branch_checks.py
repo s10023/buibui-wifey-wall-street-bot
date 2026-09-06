@@ -1382,7 +1382,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         prog="post_branch_checks",
         description="Every mechanical /post-branch check, in one run.",
     )
-    parser.add_argument("--check", help="run only this named check")
+    parser.add_argument(
+        "--check",
+        action="append",
+        metavar="NAME",
+        help="run only this named check; repeatable. An unknown name is an "
+        "error rather than a quietly shorter run",
+    )
     parser.add_argument(
         "--text",
         action="append",
@@ -1419,10 +1425,19 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     results = gather()
     if args.check:
-        results = [r for r in results if r.name == args.check]
-        if not results:
-            print(f"post_branch_checks: no such check: {args.check}", file=sys.stderr)
+        # Validate every name before filtering. A typo among several would
+        # otherwise run the survivors and print a clean-looking sweep -- the
+        # emptiness-reads-as-coverage class this tool exists to catch.
+        known = {r.name for r in results}
+        unknown = [name for name in args.check if name not in known]
+        if unknown:
+            print(
+                f"post_branch_checks: no such check: {', '.join(unknown)}",
+                file=sys.stderr,
+            )
             return 2
+        wanted = set(args.check)
+        results = [r for r in results if r.name in wanted]
     # `--check` runs one leg on purpose; the notice belongs on the full sweep,
     # which is the run a session can mistake for the walk.
     lines, total = render(results, show_uncovered=not args.check)
