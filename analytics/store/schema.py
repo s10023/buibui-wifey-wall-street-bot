@@ -396,6 +396,25 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
             PRIMARY KEY (accession, owner_cik, seq)
         )
     """)
+    # Resume ledger for the Form 4 backfill. A row is written ONLY after a symbol
+    # completes with zero errors, so an interrupted or partially-failed symbol
+    # carries no marker and is retried in full on the next --resume run.
+    #
+    # ⚠ The key carries `since` on purpose. A marker records the window it
+    # actually covered, so re-running with an EARLIER --since must not be
+    # satisfied by a completion that never reached that far back. Keyed on
+    # symbol alone, a widened window would silently skip every symbol already
+    # done under the narrower one — an absence reading as coverage.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS insider_backfill_progress (
+            symbol       TEXT      NOT NULL,
+            since        TEXT      NOT NULL,
+            completed_at TIMESTAMP NOT NULL,
+            n_filings    INTEGER   NOT NULL,
+            n_rows       INTEGER   NOT NULL,
+            PRIMARY KEY (symbol, since)
+        )
+    """)
     # Backfill existing runs from trades table where split columns are still NULL.
     # Runs after backtest_trades is created so the table always exists.
     conn.execute("""

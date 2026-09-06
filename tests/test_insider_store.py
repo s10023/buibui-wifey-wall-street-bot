@@ -12,7 +12,9 @@ import pytest
 
 from analytics.insider.form4 import Form4Filing, Form4Transaction, ParseOutcome
 from analytics.store.insider import (
+    completed_symbols,
     get_insider_transactions,
+    mark_symbol_complete,
     upsert_insider_transactions,
 )
 from analytics.store.schema import init_schema
@@ -221,3 +223,42 @@ def test_collect_filings_walks_a_shard_that_reaches_the_window(
     monkeypatch.setattr("tools.insider_backfill.fetch_submissions_shard", _shard)
     filings = collect_filings(_subs_with_shard("2017-01-01"), "2015-01-01")
     assert sorted(f.accession for f in filings) == ["0000000000-26-000001", "SHARD-1"]
+
+
+class TestBackfillResumeLedger:
+    """``insider_backfill_progress`` — what a completion marker does and does not claim."""
+
+    def test_a_marked_symbol_reads_back_as_complete(
+        self, conn: duckdb.DuckDBPyConnection
+    ) -> None:
+        mark_symbol_complete(conn, "AAPL", "2015-01-01", 805, 805)
+        assert completed_symbols(conn, "2015-01-01") == {"AAPL"}
+
+    def test_an_unmarked_symbol_is_absent(
+        self, conn: duckdb.DuckDBPyConnection
+    ) -> None:
+        """Positive control for the test above: the set is not unconditionally full."""
+        mark_symbol_complete(conn, "AAPL", "2015-01-01", 805, 805)
+        assert "MSFT" not in completed_symbols(conn, "2015-01-01")
+
+    def test_a_marker_does_not_satisfy_a_WIDER_window(
+        self, conn: duckdb.DuckDBPyConnection
+    ) -> None:
+        """The reason ``since`` is in the key.
+
+        A marker attests to the range it covered. Keyed on symbol alone, widening
+        ``--since`` would silently skip every symbol already done under the
+        narrower window — an absence reading as coverage.
+        """
+        mark_symbol_complete(conn, "AAPL", "2015-01-01", 805, 805)
+        assert completed_symbols(conn, "2010-01-01") == set()
+
+    def test_remarking_replaces_rather_than_duplicates(
+        self, conn: duckdb.DuckDBPyConnection
+    ) -> None:
+        mark_symbol_complete(conn, "AAPL", "2015-01-01", 805, 805)
+        mark_symbol_complete(conn, "AAPL", "2015-01-01", 900, 900)
+        rows = conn.execute(
+            "SELECT n_filings FROM insider_backfill_progress WHERE symbol = 'AAPL'"
+        ).fetchall()
+        assert rows == [(900,)]

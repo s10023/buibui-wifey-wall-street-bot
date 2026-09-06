@@ -11,10 +11,17 @@ malformed filings concentrate among small and older filers the head excludes.
 
 from __future__ import annotations
 
+import urllib.error
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import duckdb
 import pytest
 
-from analytics.insider.form4 import Form4Filing
-from tools.insider_backfill import sample_filings, select_symbols
+from analytics.insider.form4 import Form4Filing, ParseOutcome
+from analytics.store.insider import completed_symbols
+from tools.insider_backfill import main, sample_filings, select_symbols
 
 UNIVERSE = [f"S{i:03d}" for i in range(100)]
 
@@ -128,3 +135,141 @@ class TestSampleFilings:
     def test_a_non_positive_cap_refuses(self) -> None:
         with pytest.raises(ValueError, match="max-filings-per-symbol"):
             sample_filings(_filings(10), 0)
+
+
+class TestResumeAndMarkers:
+    """What a run records about itself, and what a resume therefore skips.
+
+    Drives ``main`` with the network stubbed at the ``tools.insider_backfill``
+    namespace, because the marker decision lives in the run loop rather than in
+    any extractable pure unit.
+    """
+
+    SINCE = "2015-01-01"
+
+    @staticmethod
+    def _filing(acc: str) -> Form4Filing:
+        return Form4Filing(
+            accession=acc,
+            primary_document="doc.xml",
+            filing_date="2020-01-02",
+            acceptance="2020-01-02T18:00:00",
+        )
+
+    def _wire(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        universe: list[str],
+        *,
+        failing: set[str] = frozenset(),  # type: ignore[assignment]
+    ) -> None:
+        """Two filings per symbol; every fetch for a symbol in ``failing`` errors."""
+        import tools.insider_backfill as ib
+
+        monkeypatch.setattr(
+            ib,
+            "load_research_universe",
+            lambda: SimpleNamespace(stocks=lambda: universe),
+        )
+        monkeypatch.setattr(ib, "fetch_company_tickers", dict)
+        monkeypatch.setattr(ib, "ticker_to_cik", lambda _t, sym: f"CIK{sym}")
+        monkeypatch.setattr(ib, "fetch_submissions", lambda _cik: {})
+        monkeypatch.setattr(
+            ib,
+            "collect_filings",
+            lambda _subs, _since: [self._filing("a1"), self._filing("a2")],
+        )
+        monkeypatch.setattr(ib, "raw_document_name", lambda d: d)
+
+        def fetch(cik: str, _acc: str, _doc: str) -> bytes:
+            if cik.removeprefix("CIK") in failing:
+                raise urllib.error.URLError("offline")
+            return b"<xml/>"
+
+        monkeypatch.setattr(ib, "fetch_archive_document", fetch)
+        monkeypatch.setattr(
+            ib,
+            "parse_form4",
+            lambda _xml: ParseOutcome(transactions=[], failures=[]),
+        )
+
+    def _run(self, db: str, *extra: str) -> int:
+        return main(["--db", db, "--since", self.SINCE, *extra])
+
+    def test_a_clean_symbol_is_marked_complete(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        db = str(tmp_path / "t.db")
+        self._wire(monkeypatch, ["AAA", "BBB"])
+        assert self._run(db) == 0
+        c = duckdb.connect(db)
+        assert completed_symbols(c, self.SINCE) == {"AAA", "BBB"}
+
+    def test_a_symbol_whose_fetches_FAILED_is_NOT_marked(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """The whole point. An interrupted symbol must be retried, not assumed
+        done — the failure this guards is silent incompleteness, not a crash."""
+        db = str(tmp_path / "t.db")
+        self._wire(monkeypatch, ["AAA", "BBB"], failing={"BBB"})
+        self._run(db)
+        c = duckdb.connect(db)
+        assert completed_symbols(c, self.SINCE) == {"AAA"}
+
+    def test_resume_skips_only_the_marked_symbol(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: Any
+    ) -> None:
+        db = str(tmp_path / "t.db")
+        self._wire(monkeypatch, ["AAA", "BBB"], failing={"BBB"})
+        self._run(db)
+        # second pass, now with the network healthy
+        self._wire(monkeypatch, ["AAA", "BBB"])
+        capsys.readouterr()
+        assert self._run(db, "--resume") == 0
+        out = capsys.readouterr().out
+        assert "1 symbol(s) already complete, 1 to go" in out
+        c = duckdb.connect(db)
+        assert completed_symbols(c, self.SINCE) == {"AAA", "BBB"}
+
+    def test_parse_failures_do_NOT_deny_a_marker(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A code-M option exercise carries no price and reports a failure on
+        every run. Counting those as errors would deny the symbol a marker
+        forever and re-fetch it on each resume — resume that never resumes."""
+        import tools.insider_backfill as ib
+
+        db = str(tmp_path / "t.db")
+        self._wire(monkeypatch, ["AAA"])
+        monkeypatch.setattr(
+            ib,
+            "parse_form4",
+            lambda _xml: ParseOutcome(
+                transactions=[], failures=["txn 0 [code M]: missing price"]
+            ),
+        )
+        self._run(db)
+        c = duckdb.connect(db)
+        assert completed_symbols(c, self.SINCE) == {"AAA"}
+
+    def test_a_sustained_outage_ABORTS_rather_than_grinding(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: Any
+    ) -> None:
+        """Without this the run walks the whole universe recording empty results
+        and still prints a coverage figure."""
+        db = str(tmp_path / "t.db")
+        universe = [f"S{i:02d}" for i in range(20)]
+        self._wire(monkeypatch, universe, failing=set(universe))
+        assert self._run(db, "--max-consecutive-failures", "3") == 1
+        assert "ABORTED" in capsys.readouterr().out
+        c = duckdb.connect(db)
+        assert completed_symbols(c, self.SINCE) == set()
+
+    def test_a_healthy_run_does_not_abort(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Positive control for the breaker: it is not tripping on everything."""
+        db = str(tmp_path / "t.db")
+        universe = [f"S{i:02d}" for i in range(20)]
+        self._wire(monkeypatch, universe)
+        assert self._run(db, "--max-consecutive-failures", "3") == 0

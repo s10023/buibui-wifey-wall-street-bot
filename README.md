@@ -1090,7 +1090,7 @@ make wifey-analytics-sync                  # Incremental sync
 make wifey-universe-backfill               # Backfill the research breadth universe
 make wifey-xasset-backfill                 # Backfill the cross-asset TSMOM ETF basket (1d, 2007+)
 make wifey-pead-backfill                    # Ingest EDGAR earnings facts (edge-hunt #4, one-shot)
-make wifey-insider-backfill                 # Ingest EDGAR Form 4 insider transactions (H-024, one-shot)
+make wifey-insider-backfill ARGS=--resume  # Ingest EDGAR Form 4 insider transactions (H-024, one-shot; --resume for a long run)
 make wifey-insider-cohort                   # H-024 phase 2 — routine/opportunistic cohort shape (no returns)
 make universe-coverage                     # OHLCV coverage report over the universe
 make wifey-forecast-audit                  # G2 audit — EWMAC trend sleeve (read-only)
