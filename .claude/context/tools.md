@@ -1065,7 +1065,27 @@ clean-but-empty — conflating those two is how a parser reports 100% coverage b
 
 **Run:** `make wifey-insider-backfill` (or
 `tools/insider_backfill.py [--since ISO] [--stride N] [--limit N] [--symbols A,B]
-[--max-filings-per-symbol N] [--db PATH]`)
+[--max-filings-per-symbol N] [--db PATH] [--resume]
+[--max-consecutive-failures N]`)
+
+⚠ **A LONG RUN IS ONLY INTERRUPT-SAFE UNDER `--resume`, and the failure it prevents is
+SILENT.** The per-filing and per-symbol handlers here both `warn → continue`, so a dropped
+connection never crashed a run — it permanently skipped those filings and still printed `✅ done`
+and a coverage figure. A plausible result with holes in it and no signal. `--resume` skips only
+symbols carrying a completion marker in `insider_backfill_progress`, written **after** the upsert
+and only when the symbol had **zero fetch errors**, so an interrupted or partially-failed symbol
+is retried in full. Without the flag a restart re-walks from symbol 1 (safe via the upsert, just
+wasteful).
+
+⚠ **The marker key carries `since`, and PARSE failures deliberately do not deny one.** A marker
+attests to the window it covered, so widening `--since` correctly re-runs everything rather than
+reading the old completion as coverage. And a code-M option exercise carries no price and reports
+a parse failure on *every* run — counting those as errors would deny the symbol a marker forever
+and re-fetch it on each pass, i.e. resume that never resumes. Only **fetch** errors block a
+marker.
+
+⚠ **A sustained outage ABORTS** after `--max-consecutive-failures` symbols (default 5) rather
+than walking the universe recording empty results. Nothing is lost: re-run with `--resume`.
 
 ⚠ **`--limit` ALONE TAKES THE HEAD, and `config/universe.json` is grouped by SECTOR** — so
 `--limit 15` is fifteen Information Technology mega-caps, not a sample. Measured 2026-09-01 they
@@ -1144,6 +1164,15 @@ exactly where `.env.example`, the README and the error message all say to put it
 rather than as a defect. Both now load it as their first statement, pinned by
 `tests/test_edgar_user_agent.py` (the loader is patched to RAISE, so the test fixes the ordering
 as well as the call).
+
+⚠ **Bounded retry, on TRANSIENT shapes only.** `_open_with_retry` is the single place `_last_call`
+advances, so both `_get_json` and `_get_bytes` share one throttle clock and a retry storm cannot
+breach the SEC's 10 req/s ceiling. It retries **429 and 5xx, `URLError` and `TimeoutError`** —
+4 attempts, 1.5s doubling — and raises everything else on the **first** attempt. **403 and 404 are
+excluded deliberately**: a 403 is the User-Agent contract above and a 404 is a document that does
+not exist, so retrying either burns the budget three times over and buries a configuration error
+under what looks like flakiness. Before this, one dropped packet cost a filing permanently in
+every caller that swallows per-item exceptions — which both backfills do.
 
 ## pead_audit.py — edge-hunt #4 audit for the PEAD-lite sleeve
 

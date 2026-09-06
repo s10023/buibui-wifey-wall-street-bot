@@ -7,6 +7,7 @@ convention.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 import duckdb
@@ -70,3 +71,41 @@ def get_insider_transactions(
         sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY symbol, acceptance_ts, owner_cik, seq"
     return conn.execute(sql, params).df()
+
+
+def mark_symbol_complete(
+    conn: duckdb.DuckDBPyConnection,
+    symbol: str,
+    since: str,
+    n_filings: int,
+    n_rows: int,
+) -> None:
+    """Record that ``symbol`` finished its ``since`` window with zero errors.
+
+    Call this **after** the transaction upsert, never before. The gap between
+    the two is the only window an interrupt can land in, and on that side it
+    costs a harmless re-fetch next run; on the other side it would record a
+    symbol as done whose rows were never written.
+    """
+    # completed_at is passed rather than written as SQL now(): the column and
+    # placeholder counts then match, which is what test_schema_insert_arity
+    # checks, and the stamp is unambiguously UTC rather than whatever the
+    # connection's local zone happens to be.
+    conn.execute(
+        "INSERT OR REPLACE INTO insider_backfill_progress "
+        "(symbol, since, completed_at, n_filings, n_rows) "
+        "VALUES (?, ?, ?, ?, ?)",
+        [symbol, since, datetime.now(UTC), n_filings, n_rows],
+    )
+
+
+def completed_symbols(conn: duckdb.DuckDBPyConnection, since: str) -> set[str]:
+    """Symbols already completed for exactly this ``since`` window.
+
+    Matched on the window too, so widening ``--since`` correctly re-runs every
+    symbol: a marker attests to the range it covered, not to the symbol.
+    """
+    rows = conn.execute(
+        "SELECT symbol FROM insider_backfill_progress WHERE since = ?", [since]
+    ).fetchall()
+    return {r[0] for r in rows}

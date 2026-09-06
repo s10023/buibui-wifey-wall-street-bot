@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -40,6 +41,58 @@ from typing import Any
 # instead of buying a 403 three frames away.
 _MIN_INTERVAL = 0.12  # ~8 req/s, comfortably under the SEC's 10 req/s ceiling
 _last_call = 0.0
+
+# Bounded retry for TRANSIENT failures only.
+#
+# ⚠ Without this, one dropped packet costs a filing PERMANENTLY: the backfill's
+# callers catch per-filing exceptions and continue, so a network blip does not
+# crash a run, it silently removes rows from it and still reports success. That
+# is the repo's silent-surface class, and a long run on a laptop that changes
+# networks meets it constantly.
+#
+# ⚠ Only transient shapes are retried. A 403 is the User-Agent contract and a
+# 404 is a document that does not exist; retrying either burns the backoff
+# budget three times over and buries a configuration error under what looks
+# like flakiness. 429 and 5xx are the server asking to be asked again.
+_RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
+_MAX_ATTEMPTS = 4
+_BACKOFF_BASE = 1.5  # seconds; 1.5 / 3.0 / 6.0 between the four attempts
+
+
+def _is_transient(exc: Exception) -> bool:
+    """True when retrying ``exc`` could plausibly succeed."""
+    if isinstance(exc, urllib.error.HTTPError):
+        return exc.code in _RETRY_STATUS
+    # URLError covers DNS failure and connection reset; TimeoutError covers the
+    # urlopen timeout. HTTPError subclasses URLError, so it is checked first.
+    return isinstance(exc, urllib.error.URLError | TimeoutError)
+
+
+def _open_with_retry(req: urllib.request.Request) -> bytes:
+    """Fetch ``req`` with backoff on transient failures, honouring the throttle.
+
+    The throttle clock is advanced before every attempt, retries included, so a
+    retry storm can never breach the SEC's fair-access ceiling.
+    """
+    global _last_call
+    last: Exception | None = None
+    for attempt in range(_MAX_ATTEMPTS):
+        wait = _MIN_INTERVAL - (time.monotonic() - _last_call)
+        if wait > 0:
+            time.sleep(wait)
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:  # noqa: S310
+                data: bytes = r.read()
+            _last_call = time.monotonic()
+            return data
+        except Exception as exc:  # noqa: BLE001 — re-raised below unless transient
+            _last_call = time.monotonic()
+            if not _is_transient(exc) or attempt == _MAX_ATTEMPTS - 1:
+                raise
+            last = exc
+            time.sleep(_BACKOFF_BASE * (2**attempt))
+    raise AssertionError(f"unreachable: {last}")  # pragma: no cover
+
 
 _FP_ORDER = {"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4, "FY": 5}
 
@@ -92,14 +145,8 @@ def _user_agent() -> str:
 
 # ---- network shims (integration-only; never unit-tested) -----------------
 def _get_json(url: str) -> dict[str, Any]:
-    global _last_call
-    wait = _MIN_INTERVAL - (time.monotonic() - _last_call)
-    if wait > 0:
-        time.sleep(wait)
     req = urllib.request.Request(url, headers={"User-Agent": _user_agent()})
-    with urllib.request.urlopen(req, timeout=30) as r:  # noqa: S310 (trusted SEC host)
-        data: dict[str, Any] = json.load(r)
-    _last_call = time.monotonic()
+    data: dict[str, Any] = json.loads(_open_with_retry(req))
     return data
 
 
@@ -108,17 +155,11 @@ def _get_bytes(url: str) -> bytes:
 
     Form 4 primary documents are XML, not JSON, so they cannot go through
     ``_get_json``; they must still respect the same ≤10 req/s budget, which is
-    why the module-level ``_last_call`` is shared rather than duplicated.
+    why both siblings go through :func:`_open_with_retry` — the one place the
+    module-level ``_last_call`` is advanced — rather than duplicating a clock.
     """
-    global _last_call
-    wait = _MIN_INTERVAL - (time.monotonic() - _last_call)
-    if wait > 0:
-        time.sleep(wait)
     req = urllib.request.Request(url, headers={"User-Agent": _user_agent()})
-    with urllib.request.urlopen(req, timeout=30) as r:  # noqa: S310 (trusted SEC host)
-        data: bytes = r.read()
-    _last_call = time.monotonic()
-    return data
+    return _open_with_retry(req)
 
 
 def fetch_company_tickers() -> dict[str, Any]:

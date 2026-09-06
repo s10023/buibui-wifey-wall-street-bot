@@ -11,6 +11,15 @@ covering only the study window would leave every insider unclassifiable. The
 default ``--since 2015-01-01`` buys classification from 2018, which is the
 universe's price-data floor.
 
+⚠ **A long run is interrupt-safe only under ``--resume``.** A marker row is
+written to ``insider_backfill_progress`` once a symbol finishes with zero
+errors, and ``--resume`` skips exactly those, so an interrupted or
+partially-failed symbol is retried in full rather than assumed done. Without it
+a restart re-walks from symbol 1 (safe, via the upsert, but wasteful). The
+measured cost of getting this wrong is not a crash: the per-filing handlers below
+swallow network errors and continue, so an outage silently removes rows from a
+run that still reports success.
+
 ``build_rows`` is the pure, fixture-testable unit; the network lives in ``main``.
 The run reports the phase-1 acceptance observable — the share of fetched filings
 that parsed cleanly — and that number is the deliverable, not a return.
@@ -18,7 +27,7 @@ that parsed cleanly — and that number is the deliverable, not a return.
 Run via ``make wifey-insider-backfill`` or
 ``PYTHONPATH=. poetry run python tools/insider_backfill.py
 [--stride N] [--limit N] [--max-filings-per-symbol N] [--symbols A,B]
-[--db PATH]``.
+[--db PATH] [--resume] [--max-consecutive-failures N]``.
 Requires ``EDGAR_CONTACT_EMAIL`` (SEC 403s any other User-Agent shape).
 """
 
@@ -38,7 +47,11 @@ from analytics.insider.form4 import (
     raw_document_name,
 )
 from analytics.store import DEFAULT_DB_PATH
-from analytics.store.insider import upsert_insider_transactions
+from analytics.store.insider import (
+    completed_symbols,
+    mark_symbol_complete,
+    upsert_insider_transactions,
+)
 from analytics.store.schema import init_schema
 from utils.config_validation import load_research_universe
 from utils.edgar_client import (
@@ -186,6 +199,20 @@ def main(argv: list[str] | None = None) -> int:
         help="explicit comma-separated symbols; overrides --stride/--limit",
     )
     parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="skip symbols already completed with zero errors for this --since; "
+        "an interrupted or partially-failed symbol is retried in full",
+    )
+    parser.add_argument(
+        "--max-consecutive-failures",
+        type=int,
+        default=5,
+        help="abort after this many symbols fail end-to-end in a row — a "
+        "sustained outage should stop the run loudly, not grind through the "
+        "universe recording empty results",
+    )
+    parser.add_argument(
         "--max-filings-per-symbol",
         type=int,
         default=None,
@@ -215,8 +242,24 @@ def main(argv: list[str] | None = None) -> int:
     conn = duckdb.connect(args.db)
     init_schema(conn)
 
+    n_skipped = 0
+    if args.resume:
+        done = completed_symbols(conn, args.since)
+        before = len(symbols)
+        symbols = [s for s in symbols if s not in done]
+        n_skipped = before - len(symbols)
+        print(
+            f"⏭  resume: {n_skipped} symbol(s) already complete, {len(symbols)} to go"
+        )
+        if not symbols:
+            conn.close()
+            print("✅ nothing to do — every selected symbol is already complete")
+            return 0
+
     n_missing_cik = n_errors = n_rows = 0
     n_filings = n_parsed_clean = n_empty = 0
+    n_consecutive_failures = 0
+    aborted = False
     for i, sym in enumerate(symbols, 1):
         cik = ticker_to_cik(tickers, sym)
         if cik is None:
@@ -227,10 +270,19 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:  # noqa: BLE001 — warn-only, never abort the run
             print(f"  ⚠ {sym} (CIK {cik}) index: {type(exc).__name__}: {exc}")
             n_errors += 1
+            n_consecutive_failures += 1
+            if n_consecutive_failures >= args.max_consecutive_failures:
+                aborted = True
+                break
             continue
 
         filings = sample_filings(filings, args.max_filings_per_symbol)
 
+        # Per-symbol FETCH errors only. Parse failures are deliberately excluded:
+        # a code-M option exercise carries no price and reports a failure on
+        # every run, so counting those here would deny the symbol a marker
+        # forever and re-fetch it on each resume — resume that never resumes.
+        sym_fetch_errors = 0
         rows: list[dict[str, Any]] = []
         for f in filings:
             n_filings += 1
@@ -241,6 +293,7 @@ def main(argv: list[str] | None = None) -> int:
             except Exception as exc:  # noqa: BLE001
                 print(f"  ⚠ {sym} {f.accession}: {type(exc).__name__}: {exc}")
                 n_errors += 1
+                sym_fetch_errors += 1
                 continue
             outcome = parse_form4(xml)
             if outcome.failures:
@@ -256,14 +309,34 @@ def main(argv: list[str] | None = None) -> int:
         if rows:
             upsert_insider_transactions(conn, rows)
             n_rows += len(rows)
+        # Marker AFTER the upsert, and only on a clean symbol. An interrupt in
+        # the gap costs a harmless re-fetch; the reverse order would record a
+        # symbol as done whose rows were never written.
+        if sym_fetch_errors == 0:
+            mark_symbol_complete(conn, sym, args.since, len(filings), len(rows))
+            n_consecutive_failures = 0
+        elif sym_fetch_errors == len(filings) and filings:
+            n_consecutive_failures += 1
+            if n_consecutive_failures >= args.max_consecutive_failures:
+                aborted = True
+                break
+        else:
+            n_consecutive_failures = 0
         if i % 25 == 0:
             print(f"  …{i}/{len(symbols)} · {n_rows} rows · {n_filings} filings")
 
     conn.close()
+    if aborted:
+        print(
+            f"⛔ ABORTED after {n_consecutive_failures} consecutive symbol "
+            f"failures — this is what a sustained outage looks like. Nothing "
+            f"is lost: re-run with --resume once the network is back."
+        )
+        return 1
     coverage = n_parsed_clean / n_filings if n_filings else 0.0
     print(
         f"✅ done: {n_rows} transaction rows from {n_filings} filings, "
-        f"{n_missing_cik} missing CIK, {n_errors} errors"
+        f"{n_missing_cik} missing CIK, {n_errors} errors, {n_skipped} skipped"
     )
     # The phase-1 acceptance observable. Printed as its own line, with the floor
     # named, so the run reports whether it passed rather than leaving a reader to
