@@ -114,6 +114,7 @@ wifey backtest
   # risk / cost
   --sl-pct FLOAT           Stop loss as a decimal fraction (default: 0.02 = 2%)
   --tp-r FLOAT             Take profit in R multiples (default: 2.0)
+  --min-sl-pct FLOAT       Minimum SL distance as a fraction of price (default: unset = TOML/0.0)
   --fee-pct FLOAT          Taker fee, decimal, charged on entry+exit (default: 0.0)
   --atr-sl-multiplier N    ATR-based SL: N × ATR14 (overrides --sl-pct when set)
   --atr-sl-values N [N...] ATR SL multiplier sweep: comparison table across values
@@ -146,13 +147,15 @@ wifey backtest
 and `recalibrate`'s free-form string (`cli/recalibrate.py:43`). **The same flag name carries three
 different signatures across subcommands** — check the subcommand you are invoking, not the name.
 
-⚠ **`--min-sl-pct` is NOT a `backtest` flag** and this block listed one until 2026-09-06.
-`wifey backtest --min-sl-pct 0.01` fails with `error: unrecognized arguments`. It exists only on
-`wifey signal` (`cli/signal.py:190`, `:281`). ⚠ **`cli/backtest.py:149` nevertheless READS it**
-through a `hasattr(args, "min_sl_pct")` guard that the backtest parser can never satisfy, so
-`min_sl_pct` is **always 0.0** on this path — a defensive read that looks like it honours a flag
-which cannot arrive. **Not fixed here** (this was a docs branch); the fix is either to add the flag
-or drop the dead read.
+⚠ **`--min-sl-pct` IS a `backtest` flag as of 2026-09-07, and was not before.** The call site at
+`cli/backtest.py` read it behind a `hasattr(args, "min_sl_pct")` guard the backtest parser could
+never satisfy, so `min_sl_pct` was pinned at **0.0** on that path however the operator invoked it —
+a defensive read that looked like it honoured a flag which could not arrive. Adding the flag
+(rather than dropping the read) was the right half because `--atr-sl-multiplier` is already a flag
+here, and the floor is what stops an ATR-derived SL landing on top of entry. It reaches **both**
+modes: single-combo directly, sweep as a `None`-sentinel override of the TOML value, mirroring
+`--atr-sl-multiplier`. Pinned by `tests/test_cli.py::TestBacktestMinSlPctFlag`, whose two default
+cases are the positive control — they fail if the flag starts overriding a value nobody set.
 
 ⚠ **`--live-parity`'s per-gate flags are GENERATED** from the gate set at `cli/backtest.py:358`,
 so `--without-<gate>` names track the code and are not listed individually here. Whatever gate set
