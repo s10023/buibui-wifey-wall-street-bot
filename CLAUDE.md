@@ -158,8 +158,10 @@ unowned for seven weeks in a test-enforced index.
 claim has an external referent. ⚠ **The correct loop is therefore `targeted pytest <files>` →
 commit → `make preflight`, and running BOTH is ~4 min wasted.** The trap is structural rather
 than forgetful: preflight **REFUSES on a dirty tree**, so it can never be the inner loop, which
-makes reaching for `make test` feel obligatory. Sessions have paid this twice; it lives here
-because the handoff note that named it did not prevent it. Run it in `/post-branch` **phase 5**, after the doc commits and
+makes reaching for `make test` feel obligatory. Sessions have paid this three times (latest #289),
+because neither the handoff note that named it nor this line prevented it. ⚠ **The tell is the
+trigger: reaching for `make test` at all is the moment to ask whether a PR is coming.** Run it in
+`/post-branch` **phase 5**, after the doc commits and
 before `gh pr create`. It catches what no local run can: a gitignored path that exists on this box
 and nowhere else (`config/stocks.json`, `.claude/sensitive-terms.txt`, `docs/plans/`,
 `analytics.db`). ⚠ **CI already IS this gate** — it closes **timing, not detection**, and the
@@ -423,7 +425,7 @@ entries that have no audit of their own.
 | Package | What it is | Deep reference |
 | --- | --- | --- |
 | `wifey.py` · `cli/` | Entry shim delegating to `cli.main:main`; argparse subcommand package with `_common.py` helpers | — |
-| `analytics/` | DuckDB analytics layer: `store/`, `strategies/` (18 modules, **16** registered for dispatch), `backtest/`, `signal/`, `stats/`, `research_guards/`, `sweep_guard.py`, `audit_guard.py`, `db_retry.py`, plus data ingest, quality and calendar | `context/analytics.md` |
+| `analytics/` | DuckDB analytics layer: `store/`, `strategies/` (**16** of them registered for dispatch), `backtest/`, `signal/`, `stats/`, `research_guards/`, `sweep_guard.py`, `audit_guard.py`, `db_retry.py`, plus data ingest, quality and calendar | `context/analytics.md` |
 | `analytics/{forecast,xsmom,lowvol,xasset,pead,gapfill,velocity,exits}/` | P2/P3 research sleeves and the exit diagnostic (verdicts below) | `context/analytics.md` |
 | `signals/` · `utils/` | Alerting and dedup daemon (detection lives in `analytics/`); shared Telegram, yfinance and EDGAR clients; the two config-universe loaders | `context/signals.md` |
 | `web/` | FastAPI backend plus Svelte 5 / Vite UI | `context/web.md` |
