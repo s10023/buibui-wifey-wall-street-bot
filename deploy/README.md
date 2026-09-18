@@ -81,6 +81,7 @@ repo's `daily/<date>/` overwrite the other's.
     docs/plans/...        the research tree, copied whole
     memory/...            the memory tree, copied whole from OUTSIDE the repo
     config/stocks.json
+    signal_state.json     the candle watermark — repo ROOT, so no glob reaches it
     .claude/settings.json
     .claude/sensitive-terms.txt
   weekly/2026-08-12/
@@ -111,6 +112,19 @@ repo's `daily/<date>/` overwrite the other's.
 listed individually — `config/stocks.json`, `.claude/settings*.json` and the gitignored
 `.claude/sensitive-terms.txt`, whose absence would leave the pre-flip gate's own config
 with no copy at all.
+
+⚠ **`signal_state.json` is the member that was missed, and the miss is structural.** It is the
+per-`(symbol, timeframe, strategy)` candle watermark and it sits at the repo **root**, so the
+`docs/plans/` tree that covers every other watermark-shaped file — `yt-feed-state.json`,
+`routed-ledger.json`, `processed.json`, `task-marks/` — cannot reach it. A denylist defaults to
+covered only *within the tree it is applied to*, which is the same blind spot `EXTERNAL_ROOTS`
+closed one level up.
+
+⚠ **Its loss is silent in BOTH directions** — no error, and no burst of stale alerts either. The
+crypto parent restored without it: every key came back cold, the cold-start guard then keeps
+only the latest closed candle for an unwatermarked key, `--catch-up` replayed nothing, and
+**three days of fires were lost permanently**. The OHLCV bars and the outcome resolutions both
+recovered; only the fires depend on this file. Parent fix: #771.
 
 This diverges from the crypto parent, which runs an allowlist of individual
 paths. The parent's own script records that list being found short **twice**:

@@ -114,6 +114,18 @@ make typecheck      # mypy strict
 make test           # full pytest suite (make test-cov for coverage)
 ```
 
+⚠ **The Makefile exports `PYTHONUTF8=1` to EVERY recipe, and on Windows that is load-bearing.**
+Windows defaults a redirected stdout and every implicit text read to the ANSI codepage (cp1252),
+and this tree's source, configs and fixtures carry em-dashes and ⚠ throughout. Measured
+2026-09-18: the suite is **0 failed** with it and **41 failed** without — 40 `UnicodeDecodeError`,
+38 `UnicodeEncodeError`, all `'charmap' codec`, concentrated in `test_video_fetch` (17) and
+`test_systemd_units` (10). Nothing set it before, so `make test` was red for reasons unrelated to
+any diff, and a session exporting it by hand got a green **its own shell was producing**.
+⚠ **It covers `make`, and `make` only** — a bare `poetry run pytest` or a directly-run tool still
+starts in cp1252, because **56** `read_text()` sites carry no explicit `encoding=`
+(`grep -rn "read_text()" --include=*.py tools/ tests/ analytics/ cli/ signals/ utils/ web/
+scripts/ | wc -l`). Linux CI is unaffected either way.
+
 `make status` prints every repo-shape number: tests, files, CLAUDE.md size, handoff lines,
 MEMORY.md size and bullet count, audits, skills, tools. **Print these rather than writing any of
 them into a doc** — each has a history of being quoted stale.
@@ -291,6 +303,24 @@ pipeline's output with no prompt, and `analytics.db.bak` is an undated unverifie
 than a backup. Coverage is a denylist over a wholesale copy, deliberately not the parent's
 allowlist, because an allowlist over a single-copy tree defaults to uncovered. Rationale, restore
 procedure and the opt-in timer live in `deploy/README.md`.
+
+⚠ **`signal_state.json` is covered as of 2026-09-18, and it was the one watermark that was not.**
+It sits at the repo **root**, outside the `docs/plans/` tree the denylist walks, so no glob
+reached it. Losing it is silent in **both** directions — no error, and no burst of stale alerts
+either: every key comes back cold, the cold-start guard then keeps only the latest closed candle,
+and `CATCH_UP=1` replays nothing. The parent lost **three days of fires** that way; bars and
+outcome resolutions both recovered, only the fires depend on it. ⚠ **It lands in `BACKUP_FILES`,
+not in a `LEDGERS` array** — wifey has no such array, so the parent's instruction (#771) does not
+port verbatim.
+
+⚠ **`MANIFEST.json` is SERIALISED, never `printf`'d.** It was a block of format strings, which is
+correct only for values containing nothing JSON must escape — and `source` is an absolute path,
+so on Windows `C:\Users\…` made `\U` an illegal escape and **every manifest this host wrote was
+unparseable**. `backup_check.py` catches `JSONDecodeError` and degrades, so the symptom was
+`make backup-check` reading STALE forever: a check that can only be red, which this file
+elsewhere names as worse than no check. `external_roots` was already safe because it alone went
+through `json.dumps`; routing every field that way is what stops the next added field from
+reintroducing it.
 
 ⚠ **A denylist defaults to covered only within the tree it is applied to.** `BACKUP_DIRS` and
 `BACKUP_FILES` both resolve against `$REPO`, so the memory tree — which holds the SoT to-do — sat

@@ -11,7 +11,7 @@
 # own shell was producing.
 #
 # ⚠ **This covers `make`, and `make` only.** A bare `poetry run pytest`, or any
-# tool run directly, still starts in cp1252 — there are ~57 `read_text()` sites
+# tool run directly, still starts in cp1252 — there are 56 `read_text()` sites
 # with no explicit `encoding=`, which is the deeper fix and is NOT done here.
 # Linux CI is unaffected either way: UTF-8 is already its default.
 export PYTHONUTF8 := 1
