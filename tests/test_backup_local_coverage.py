@@ -34,6 +34,8 @@ from pathlib import Path
 import duckdb
 import pytest
 
+from tools.claude_home import memory_dir
+
 SCRIPT = Path(__file__).resolve().parents[1] / "deploy" / "backup-analytics.sh"
 
 
@@ -171,7 +173,7 @@ def test_research_files_still_counts_repo_trees_only(
 
 
 def test_default_memory_path_is_derived_from_the_repo(
-    fake_repo: Path, tmp_path: Path
+    fake_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Exercise the DEFAULT, which every other test here steers past.
 
@@ -185,21 +187,30 @@ def test_default_memory_path_is_derived_from_the_repo(
     rather than merely asserting the script reported a plausible-looking path.
     """
     home = tmp_path / "home"
-    derived = (
-        home
-        / ".claude-personal"
-        / "projects"
-        / str(fake_repo).replace("/", "-")
-        / "memory"
-    )
+    # ⚠ `Path.home()` reads USERPROFILE on Windows and HOME on POSIX, so an
+    # isolation setting only one of them leaks the REAL home on the other host
+    # — and it leaks silently, because the derived tree merely fails to exist
+    # and the run warns rather than failing. Set both.
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+
+    # Built where the SHARED derivation says, not where a second copy of the
+    # rule says. That coupling is the thing under test: the shell script and
+    # `tools/` each had their own derivation and drifted apart on Windows, so
+    # asserting they agree is the assertion that would have caught it. The rule
+    # itself is pinned separately, platform-independently, in
+    # `test_claude_home.py`.
+    derived = memory_dir(fake_repo)
     derived.mkdir(parents=True)
-    (derived / "project_todo_master.md").write_text("# SoT\n")
+    (derived / "project_todo_master.md").write_text("# SoT\n", encoding="utf-8")
 
     backup_root = tmp_path / "backups"
     env = dict(os.environ)
     env.update(
         {
             "HOME": str(home),
+            "USERPROFILE": str(home),
             "WIFEY_REPO_ROOT": str(fake_repo),
             "WIFEY_BACKUP_ROOT": str(backup_root),
             "WIFEY_PYTHON": sys.executable,
