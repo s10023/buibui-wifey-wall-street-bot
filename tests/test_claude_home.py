@@ -73,44 +73,84 @@ class TestSlugifyPath:
         assert slugify_path("repo/x") == "repo-x"
 
 
-class TestClaudeHome:
-    """Config-root discovery: explicit override, then existence, then default."""
+REPO = Path("/srv/demo")
+
+
+def _make_tree(home: Path, profile: str, repo: Path = REPO) -> Path:
+    """Create `<home>/<profile>/projects/<slug>` and return it."""
+    tree = home / profile / "projects" / slugify_path(str(repo.resolve()))
+    tree.mkdir(parents=True)
+    return tree
+
+
+class TestConfigRootSelection:
+    """Which config root wins, and on what evidence.
+
+    ⚠ **The discriminator is `projects/<slug>`, never the root's existence.**
+    The first version of this module probed the root, and that shipped broken
+    within the hour — `.claude-personal` appeared on the dev box while both
+    profiles were in use, the probe took it, and every consumer went back to
+    reading ABSENT against a tree that was present under `.claude` all along.
+    """
 
     def test_env_override_wins(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "elsewhere"))
-        assert claude_home() == tmp_path / "elsewhere"
+        assert claude_home(REPO) == tmp_path / "elsewhere"
 
-    def test_env_override_wins_even_when_a_candidate_exists(
+    def test_env_override_wins_even_when_a_candidate_holds_the_tree(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Ordering control: existence must not outrank an explicit setting."""
-        (tmp_path / ".claude").mkdir()
+        """Ordering control: evidence must not outrank an explicit setting."""
         _set_home(tmp_path, monkeypatch)
+        _make_tree(tmp_path, ".claude")
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "elsewhere"))
-        assert claude_home() == tmp_path / "elsewhere"
+        assert claude_home(REPO) == tmp_path / "elsewhere"
 
-    def test_personal_profile_wins_when_present(
+    def test_the_root_holding_the_tree_wins(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """`.claude-personal` is the work-machine profile and is more specific,
-        so a box carrying both resolves to it."""
+        _set_home(tmp_path, monkeypatch)
+        monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+        _make_tree(tmp_path, ".claude-personal")
+        assert claude_home(REPO) == tmp_path / ".claude-personal"
+
+    def test_REGRESSION_an_empty_personal_root_does_not_win(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The exact state that broke it: BOTH roots exist, only one has the tree.
+
+        `.claude-personal` is more specific and sorts first, so an
+        existence-of-root probe takes it and resolves to a directory holding
+        nothing. Root existence is a PROXY; the project directory is the thing
+        actually wanted.
+        """
         (tmp_path / ".claude-personal").mkdir()
-        (tmp_path / ".claude").mkdir()
         _set_home(tmp_path, monkeypatch)
         monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
-        assert claude_home() == tmp_path / ".claude-personal"
+        tree = _make_tree(tmp_path, ".claude")
 
-    def test_plain_claude_when_it_is_the_only_one(
+        assert claude_home(REPO) == tmp_path / ".claude"
+        assert project_dir(REPO) == tree
+        assert project_dir(REPO).is_dir()
+
+    def test_personal_still_wins_when_BOTH_hold_a_tree(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        (tmp_path / ".claude").mkdir()
+        """Order is the tie-break, and only the tie-break.
+
+        With evidence on both sides the more specific profile wins, which is
+        the original intent — narrowed to the case where it is actually a
+        choice rather than a guess.
+        """
         _set_home(tmp_path, monkeypatch)
         monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
-        assert claude_home() == tmp_path / ".claude"
+        _make_tree(tmp_path, ".claude-personal")
+        _make_tree(tmp_path, ".claude")
+        assert claude_home(REPO) == tmp_path / ".claude-personal"
 
-    def test_absent_roots_fall_back_rather_than_raise(
+    def test_no_tree_anywhere_falls_back_rather_than_raising(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Deliberate: every consumer degrades to a printed note on an absent
@@ -118,7 +158,7 @@ class TestClaudeHome:
         one — and would break the backup rather than the report."""
         _set_home(tmp_path, monkeypatch)
         monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
-        assert claude_home() == tmp_path / ".claude"
+        assert claude_home(REPO) == tmp_path / ".claude"
 
     def test_a_candidate_that_is_a_FILE_does_not_win(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -126,10 +166,10 @@ class TestClaudeHome:
         """`~/.claude.json` sits beside `~/.claude` on a real box, so the probe
         has to test for a directory rather than for existence."""
         (tmp_path / ".claude-personal").write_text("not a dir\n", encoding="utf-8")
-        (tmp_path / ".claude").mkdir()
         _set_home(tmp_path, monkeypatch)
         monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
-        assert claude_home() == tmp_path / ".claude"
+        _make_tree(tmp_path, ".claude")
+        assert claude_home(REPO) == tmp_path / ".claude"
 
 
 class TestDerivedPaths:
@@ -145,6 +185,20 @@ class TestDerivedPaths:
         assert memory_dir(repo) == project_dir(repo) / "memory"
         assert project_dir(repo).parent == tmp_path / ".claude" / "projects"
         assert project_dir(repo).name == project_slug(repo)
+
+    def test_claude_home_never_disagrees_with_project_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """They are one decision, so derive one from the other.
+
+        Computing the root separately is how the two would drift — which is the
+        whole shape of the defect this module exists to remove.
+        """
+        (tmp_path / ".claude-personal").mkdir()
+        _set_home(tmp_path, monkeypatch)
+        monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+        _make_tree(tmp_path, ".claude")
+        assert project_dir(REPO).parent.parent == claude_home(REPO)
 
     def test_project_slug_resolves_before_folding(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

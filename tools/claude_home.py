@@ -32,10 +32,13 @@ _SEPARATORS = re.compile(r"[/\\:]")
 
 #: Config-root candidates, most specific first. ``.claude-personal`` is a
 #: second profile the operator used on a shared work machine to keep personal
-#: projects out of the work account's config; a personal box has only
+#: projects out of the work account's config; a personal box normally has only
 #: ``.claude``. Probing rather than hardcoding is what lets one tracked literal
 #: serve both, and ``CLAUDE_CONFIG_DIR`` overrides both because that is the
 #: variable Claude Code itself honours.
+#:
+#: ⚠ **BOTH can exist at once, which is why order alone cannot decide.** See
+#: `project_dir`: selection is on ``projects/<slug>``, never on the root.
 _CONFIG_DIR_NAMES = (".claude-personal", ".claude")
 
 
@@ -59,28 +62,54 @@ def project_slug(repo_root: Path) -> str:
     return slugify_path(str(repo_root.resolve()))
 
 
-def claude_home() -> Path:
-    """The config root holding ``projects/``.
+def _config_root_candidates() -> tuple[Path, ...]:
+    """Config roots to try, most specific first.
 
-    ``CLAUDE_CONFIG_DIR`` wins when set. Otherwise the first candidate that
-    exists wins, and ``.claude`` is the fallback when none does -- never an
-    error, because every consumer here already treats an absent tree as a
-    printed note rather than a failure, and raising would convert an advisory
-    check into one that blocks.
+    ``CLAUDE_CONFIG_DIR`` collapses this to one entry, because an explicit
+    setting must not be second-guessed by a probe.
     """
     env = os.environ.get("CLAUDE_CONFIG_DIR")
     if env:
-        return Path(env)
+        return (Path(env),)
     home = Path.home()
-    for name in _CONFIG_DIR_NAMES:
-        if (home / name).is_dir():
-            return home / name
-    return home / _CONFIG_DIR_NAMES[-1]
+    return tuple(home / name for name in _CONFIG_DIR_NAMES)
 
 
 def project_dir(repo_root: Path) -> Path:
-    """This checkout's Claude Code project directory."""
-    return claude_home() / "projects" / project_slug(repo_root)
+    """This checkout's Claude Code project directory.
+
+    ⚠ **Selection is on ``projects/<slug>``, never on the config ROOT.** The
+    first version of this probed whether ``~/.claude-personal`` existed and
+    took it if so -- and that shipped broken within the hour: the directory
+    appeared on this box while both profiles were in use, so the probe chose a
+    root that had never held this project and every consumer went back to
+    reading ABSENT. Both roots can exist; only one holds the tree.
+
+    This is the repo's own recurring lesson landing on the fix for it — **a
+    check is only true about the scope it looked at**. Root existence is a
+    proxy; the project directory is the thing actually wanted, so it is what
+    gets tested.
+
+    Falls back to the last candidate when none holds the tree, so a fresh host
+    still names a sensible destination rather than raising. Every consumer
+    degrades to a printed note on an absent tree, and raising here would break
+    the backup rather than the report.
+    """
+    slug = project_slug(repo_root)
+    candidates = _config_root_candidates()
+    for root in candidates:
+        if (root / "projects" / slug).is_dir():
+            return root / "projects" / slug
+    return candidates[-1] / "projects" / slug
+
+
+def claude_home(repo_root: Path) -> Path:
+    """The config root that this checkout's project directory lives under.
+
+    Derived from `project_dir` rather than computed alongside it, so the two
+    can never disagree about which root won.
+    """
+    return project_dir(repo_root).parent.parent
 
 
 def memory_dir(repo_root: Path) -> Path:

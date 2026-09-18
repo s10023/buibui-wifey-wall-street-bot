@@ -453,11 +453,20 @@ resolves against the running host, which makes exactly one of the two assertions
 and the one you cannot write is the one that breaks. Both separators and the drive colon fold,
 so `C:\Users\User\repo\x` → `C--Users-User-repo-x` and `/home/kng/repo/x` → `-home-kng-repo-x`.
 
-`claude_home()` honours `CLAUDE_CONFIG_DIR` first, then probes `.claude-personal` before
-`.claude` — testing for a **directory**, never for mere existence, because `~/.claude.json` sits
-beside `~/.claude` on a real box. An absent root falls back rather than raising: every consumer
-already degrades to a printed note, and raising here would cost the backup rather than the
-report.
+⚠ **Root selection tests `projects/<slug>`, never the config ROOT's existence — and the first
+version got this wrong.** It probed whether `~/.claude-personal` existed and took it if so, which
+shipped broken within the hour: that directory appeared on the dev box while both profiles were
+in use, the probe chose a root that had never held this project, and every consumer went straight
+back to reading ABSENT against a tree that was present under `~/.claude` all along. **Both roots
+can exist; only one holds the tree.** This is the repo's own recurring lesson landing on the fix
+for it — *a check is only true about the scope it looked at*. Root existence is a proxy; the
+project directory is the thing wanted, so it is what gets tested. Order is the tie-break and only
+the tie-break: with a tree under both, the more specific `.claude-personal` still wins.
+`CLAUDE_CONFIG_DIR` collapses the candidate list to one, because an explicit setting must not be
+second-guessed by a probe. `claude_home()` is *derived from* `project_dir()` rather than computed
+beside it, so the two cannot disagree about which root won. No tree anywhere falls back rather
+than raising: every consumer already degrades to a printed note, and raising would cost the
+backup rather than the report.
 
 **Run:** nothing — it is a library. `tests/test_claude_home.py` pins both platform rules, the
 probe order and the fallback; `tests/test_backup_local_coverage.py` pins that the shell script

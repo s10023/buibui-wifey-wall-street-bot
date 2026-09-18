@@ -78,14 +78,24 @@ guard, while a file is invisible to it.
 A fork of `s10023/buibui-moon-trader-bot`, frozen at parent commit `635ed5a` and repurposed from a
 Binance crypto bot into a yfinance-backed US-equities signal bot.
 
+⚠ **Memory-tree paths here are DERIVED, never literal.** They used to be spelled out as
+`~/.claude-personal/projects/-home-kng-repo-…`, i.e. one machine's home directory in an
+always-loaded file, and after the 2026-09-18 host move all three pointed at nothing. Resolve them
+with `tools/claude_home.py`, which selects the config root by testing `projects/<slug>` rather
+than the root's existence:
+
+```bash
+PYTHONPATH=. poetry run python -c 'import sys; from pathlib import Path; from tools.claude_home import memory_dir; print(memory_dir(Path(sys.argv[1])))' .
+```
+
 **Sister memory** holds the parent's accumulated wisdom (strategy edges, regime classifier history,
-F8/F9/T2 work, sweep findings, gate architecture) at
-`~/.claude-personal/projects/-home-kng-repo-buibui-moon-trader-bot/memory/MEMORY.md`. Read it when
-a feature exists in both repos. Skip the parent's Current State and its crypto-specific findings
+F8/F9/T2 work, sweep findings, gate architecture) in **`MEMORY.md` inside the parent checkout's
+memory tree** — `memory_dir(<the buibui-moon-trader-bot checkout>)`, which sits beside this one.
+Read it when a feature exists in both repos. Skip the parent's Current State and its crypto-specific findings
 (`smt_pairs`, `funding_reversion`, BTC/ETH/SOL cells, CME gap).
 
-**Active work is driven by the master to-do** at
-`~/.claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot/memory/project_todo_master.md`,
+**Active work is driven by the master to-do**, `project_todo_master.md` in **this** checkout's
+memory tree (`memory_dir(<this repo>)`; `make cadence-check` prints the resolved path),
 which carries the north star and acceptance gates G1–G4 and is the single source of truth. Current
 scope is correctness plus universe groundwork; XS-momentum forecasts and paper sizing wait for the
 parent to pass G1, and Phase B (order layer, broker pick) is gated G3→G4.
@@ -952,7 +962,7 @@ file with a one-line pointer.
 ### Session memory protocol
 
 At the end of every session where anything changed, update the **Current State** section in
-`~/.claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot/memory/MEMORY.md` without
+`MEMORY.md` inside this checkout's memory tree (see Fork lineage for how to resolve it) without
 being asked. Keep a one-line summary of what changed, and the open questions or "none".
 
 The index is read into context every session, so its size is a per-conversation tax. Capping it
