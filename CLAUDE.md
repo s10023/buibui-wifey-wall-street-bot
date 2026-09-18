@@ -136,6 +136,15 @@ starts in cp1252, because **56** `read_text()` sites carry no explicit `encoding
 (`grep -rn "read_text()" --include=*.py tools/ tests/ analytics/ cli/ signals/ utils/ web/
 scripts/ | wc -l`). Linux CI is unaffected either way.
 
+⚠ **The second half of that class reads as a NULL, not as an encoding error, and it costs an hour
+cold.** `subprocess.run(…, text=True)` with no `encoding=` decodes via cp1252 and raises inside the
+reader **thread**, so `stdout` comes back `None` and the failure surfaces far away as
+`'NoneType' object has no attribute 'splitlines'`. **20 sites across 7 `tools/` files** are still
+like this, so the documented direct invocation
+(`PYTHONPATH=. poetry run python tools/post_branch_checks.py …`) fails this way on Windows unless
+`PYTHONUTF8=1` is in the environment — prefix it, or go through `make`. Pre-existing, not a
+regression; the parent fixed its own copy of this in #769.
+
 `make status` prints every repo-shape number: tests, files, CLAUDE.md size, handoff lines,
 MEMORY.md size and bullet count, audits, skills, tools. **Print these rather than writing any of
 them into a doc** — each has a history of being quoted stale.
