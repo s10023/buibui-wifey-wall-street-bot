@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import cast
 
 import duckdb
 import pandas as pd
@@ -145,6 +146,18 @@ def sweep(
     return pd.DataFrame(rows)
 
 
+def _argmax_label(frame: pd.DataFrame, column: str) -> int:
+    """Index label of `frame`'s largest `column`, narrowed to `int`.
+
+    `sweep` builds its frame with `pd.DataFrame(rows)` from a list of dicts, so
+    the index is a RangeIndex and every label — including one carried through a
+    boolean mask — is an `int`. `Series.idxmax` is typed `-> Hashable`, which
+    `.loc[]` has no overload for, so the cast states that invariant. Keep
+    `idxmax` rather than `numpy.argmax`: it skips NaN, and `argmax` does not.
+    """
+    return cast(int, frame[column].idxmax())
+
+
 def render(df: pd.DataFrame) -> str:
     lines: list[str] = []
     lines.append("Regime classifier slope-threshold sweep")
@@ -171,7 +184,7 @@ def render(df: pd.DataFrame) -> str:
     lines.append("")
     lines.append("Verdict:")
     if qualifying.empty:
-        best = df.loc[df["lift"].idxmax()]
+        best = df.loc[_argmax_label(df, "lift")]
         lines.append(
             "  NO THRESHOLD QUALIFIES — every value leaves suppressed_avg_r > 0."
         )
@@ -186,7 +199,7 @@ def render(df: pd.DataFrame) -> str:
             "  → Next step: option 3.a (INVERT) or 3.c (re-derive from SignalCandidate)."
         )
     else:
-        best = qualifying.loc[qualifying["lift"].idxmax()]
+        best = qualifying.loc[_argmax_label(qualifying, "lift")]
         lines.append(
             f"  WINNER threshold={best['threshold']:.4f} — "
             f"sup_avg_r={best['suppressed_avg_r']:+.4f} ≤ 0, "
