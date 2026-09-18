@@ -639,14 +639,36 @@ touches it, so the tight bar is both achievable and the only one that would noti
 stopping.
 
 ⚠ **Whether the universe tier exists at all is read from the BOX, not asserted here.**
-`universe_timer_enabled` shells out to `systemctl --user is-enabled`, and `main` passes the ACTIVE
-members to `evaluate_ohlcv` **only** when that returns enabled. The units are opt-in and nothing in
-the repo installs them, so "the universe has a cadence" is true on one machine and false on the
-next; hardcoding either answer is wrong on half of them. Every failure — no systemd, a timeout, a
-non-Linux box — degrades to **not enabled**, the direction that cannot invent faults. This is the
-tool's one piece of non-DB observed state, and it exists because the file previously asserted
-"nothing refreshes the 505-member research universe" as a **constant**, which stopped being true the
-day a timer was written.
+`universe_timer_enabled` asks the host's own scheduler, and `main` passes the ACTIVE members to
+`evaluate_ohlcv` **only** when that returns enabled. The units are opt-in and nothing in the repo
+installs them, so "the universe has a cadence" is true on one machine and false on the next;
+hardcoding either answer is wrong on half of them. This is the tool's one piece of non-DB observed
+state, and it exists because the file previously asserted "nothing refreshes the 505-member research
+universe" as a **constant**, which stopped being true the day a timer was written.
+
+⚠ **It DISPATCHES per host, and a non-Linux box is no longer one of the failure branches.**
+`host_platform.is_windows()` picks the reader: Linux shells out to `systemctl --user is-enabled`
+and accepts `enabled`/`enabled-runtime`; Windows runs `Get-ScheduledTask -TaskPath '\wifey\'`
+and accepts `Ready`/`Running`. `task_name_for_unit` is the one transform between the two naming
+schemes (`wifey-universe-sync.timer` → `wifey-universe-sync`), shared with
+`deploy/windows/install-tasks.ps1` and pinned by a test, because a probe looking in the wrong
+folder returns "not enabled" rather than an error and so is indistinguishable from a box that
+installed nothing.
+
+⚠ **On Windows the field is `State`, never existence.** `install-tasks.ps1` registers
+`wifey-backup-offsite` and then **disables it on purpose** — `rclone sync` mirrors deletions, and
+until this host has its own remote a scheduled run could mirror an empty local tree over the
+snapshots. So "the task is there" and "the task will fire" are genuinely different answers, and
+only the second licenses grading a cadence.
+
+⚠ **Why the non-Linux branch had to stop degrading to False.** It used to be correct:
+`systemctl` is absent on Windows, the `OSError` branch returned False, and the leg reported the
+absence — right up until the host moved and the job was registered with Task Scheduler instead.
+From that moment the same False would have meant "no cadence" about a job running every Saturday,
+and the leg would have stayed **silent forever on the one host it was newly wrong about**.
+*Degrading to the safe answer is only safe while the safe answer is also the true one.* Genuine
+failures — no `systemctl`, no PowerShell, a timeout, an unregistered task, a permission error —
+still degrade to **not enabled**, the direction that cannot invent faults.
 
 Measured 2026-08-26, both worlds on the same tree: **timer off → 26 graded, 1131 unscheduled**;
 **timer on → 1115 graded, 42 unscheduled, 4 findings**. All four were true positives (`SATS`
@@ -694,6 +716,20 @@ constructs a stale scheduled series at wifey's real 2026-06-18 freeze date and a
 caught, plus the other half — that a fresh one is not — because a check that has never been red is
 indistinguishable from one that cannot be. `--exit-nonzero` opts in for a shell condition, and the
 unscheduled tier deliberately cannot make it fire.
+
+## host_platform.py — which scheduler this box actually has
+
+`tools/host_platform.py` is one predicate, `is_windows()`, wrapping `sys.platform`. It exists so
+the host test has a single name rather than a `sys.platform` comparison re-spelled at each call
+site, and so a test can monkeypatch one symbol instead of the interpreter's own attribute.
+
+Its consumer today is `freshness_check.universe_timer_enabled`, which reads systemd on Linux and
+Task Scheduler on Windows (see that section). ⚠ **The transferable rule is in why it was added,
+not in what it does**: the probe used to treat "not Linux" as a failure and degrade to *not
+enabled*, which was true while no non-Linux box could run the job at all, and became silently
+wrong the moment `deploy/windows/install-tasks.ps1` could register one. A platform test only
+belongs behind a named predicate once the platforms genuinely differ in answer rather than in
+availability.
 
 ## clone_preflight.py — does the suite pass on a machine that is not this one?
 

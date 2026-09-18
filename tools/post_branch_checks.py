@@ -524,10 +524,21 @@ def probe_names(path: str) -> list[str]:
     that case the identity lives in the directory, so probe that instead.
 
     Generalises to any file named for its role rather than its content.
+
+    ⚠ **A LEADING-DOT name also probes its dotless form, because a word boundary
+    cannot match in front of the dot.** The caller anchors each probe with one, and
+    a boundary needs a word character on one side: in ``a `.gitattributes` file`` the
+    characters either side of the dot are both non-word, so the assertion fails and
+    the file reads UNDOCUMENTED no matter how well documented it is. Measured on the
+    Windows-scheduling branch: `.gitattributes` appeared in CLAUDE.md and the probe
+    returned **0 hits**. That makes the finding unclearable rather than merely wrong,
+    and a leg that can never be clean trains dismissal of the legs that can.
     """
     p = Path(path)
     if p.name in SHARED_CONSTANT_BASENAMES and p.parent.name:
         return [p.parent.name]
+    if p.name.startswith(".") and len(p.name) > 1:
+        return [p.name, p.name[1:]]
     stem = p.stem
     return [p.name] if stem == p.name else [p.name, stem]
 

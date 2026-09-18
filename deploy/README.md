@@ -326,6 +326,79 @@ in <module>`, Telegram's HTML parser reads the bare `<` as an unclosed tag and
 answers 400, and the alert failed on precisely the crashes it exists to report.
 `utils/telegram.py` now drops `parse_mode` and retries as plain text on a 400.
 
+## Windows: Task Scheduler instead of systemd
+
+The units above describe four jobs a Windows host cannot run. `deploy/windows/` is
+their other half, and `install-tasks.ps1` registers the same four on **wifey's own
+schedules** — once a day pre-open, never the crypto parent's every-15-minutes.
+Nothing installs these either; registration needs an **elevated** shell.
+
+| Task | Trigger (UTC) | systemd equivalent |
+| --- | --- | --- |
+| `wifey-signal-watch` | Mon–Fri 08:30 | `wifey-signal-watch.timer` |
+| `wifey-backup` | 08:10 and 13:10 | `wifey-backup.timer` |
+| `wifey-backup-offsite` | 13:55, **registered Disabled** | `wifey-backup-offsite.timer` |
+| `wifey-universe-sync` | Sat 10:00 | `wifey-universe-sync.timer` |
+
+Names carry no type suffix — `freshness_check.task_name_for_unit` is the one
+transform (`wifey-universe-sync.timer` → `wifey-universe-sync`), shared with the
+installer and pinned by a test so the probe and the registrar cannot drift.
+
+⚠ **Offsite is registered DISABLED on purpose.** `rclone sync` mirrors deletions,
+so until this host has its own remote a scheduled run could mirror an empty local
+tree over the snapshots. Enabling it is an operator decision, after the remote exists.
+
+⚠ **Four Task Scheduler defaults will kill the bot silently**, so the installer sets
+all four explicitly: `DisallowStartIfOnBatteries` (stops the moment the charger is
+out), `StopIfGoingOnBatteries` (**kills a running scan mid-flight**), `StopOnIdleEnd`
+(stops when you touch the laptop) and a 72-hour `ExecutionTimeLimit` (one hung run
+blocks its successor for three days). `StartWhenAvailable` is the `Persistent=true`
+equivalent; `LogonType S4U` stands in for `loginctl enable-linger`.
+
+⚠ **Triggers are LOCAL time; the units are UTC.** The installer converts the UTC
+instant through `.ToLocalTime()` at registration, and the resulting `StartBoundary`
+round-trips to `...Z`, so the anchor really is UTC. Whether a daily *recurrence*
+stays UTC-aligned across a DST transition is **untested** — irrelevant on MYT
+(UTC+8, no DST), so verify before trusting it elsewhere.
+
+⚠ **No job here takes a repetition element**, because none repeats sub-daily. That
+sidesteps the parent's worst registration bug outright, and it is recorded in the
+installer so it is not rediscovered: a `RepetitionDuration` of `[TimeSpan]::Zero` is
+**rejected** by `Register-ScheduledTask`, `MaxValue` likewise, and a literal `P1D`
+registers *cleanly* and then silently stops repeating after a day. Indefinite
+repetition is an **empty** `<Duration>`. ⚠ The in-memory trigger object accepts
+`PT0S` and prints it back happily — only `Register-ScheduledTask` validates the XML,
+and `-WhatIf` skips exactly that call, so inspecting the object proves nothing.
+**Read the registered XML back and assert.**
+
+`job.sh` is the unit file's imperative half — one numbered section per declaration it
+replaces: `WorkingDirectory`, `EnvironmentFile`, `Environment=PATH` (`Scripts/`, not
+`bin/`), `PYTHONUTF8=1`, the journal's stand-in, and `OnFailure`. ⚠ **It deliberately
+does NOT mirror the parent's `job.sh` and must not be re-synced from it**: that one is
+a thin shim over `deploy/run-job.sh`, which wifey does not have, so the shim would
+delegate to nothing.
+
+`load-env.sh` is `EnvironmentFile=` hand-rolled, and it **parses** rather than
+sources — `. ./.env` would assign only the first word of an unquoted value containing
+a space and then try to run the rest. It strips CR itself because `.env` is gitignored
+and `.gitattributes` cannot reach it. ⚠ **Without a strip, `TELEGRAM_BOT_TOKEN=123:abc`
+loads as 8 characters rather than 7**: the token prints correctly, Telegram rejects it,
+and the symptom is "the bot stopped alerting" over a config that looks perfect. wifey
+has two bot tokens, so that failure has two chances to fire and the second is the
+channel with a human audience. `python-dotenv` strips CR independently — **do not
+remove either strip.**
+
+There is no journal here. Each run tees a capped log to `logs/<job>.log` and preserves
+the job's exit code. ⚠ **`LastTaskResult` carries `SCHED_S_*` status, not exit codes**:
+**267011** = never run, **267009** = running. Both report a populated, recent
+`LastRunTime`, and a never-run task reports `11/30/1999` — a sentinel, not a real time —
+so a stamp-only check reads a job that has never fired as fresh.
+
+`make freshness-check` reads this scheduler directly: on Windows `universe_timer_enabled`
+runs `Get-ScheduledTask -TaskPath '\wifey'` and grades the universe tier only on
+`Ready` or `Running`. **`State`, not existence** — the offsite task is registered and
+disabled, so "present" and "will fire" are different answers.
+
 ## Scheduled signal run
 
 `wifey-signal-watch.{service,timer}` fire **one** `make go-live CATCH_UP=1` cycle
