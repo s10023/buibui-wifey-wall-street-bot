@@ -1,0 +1,37 @@
+# Shell scripts MUST check out with LF, on every platform.
+#
+# This repo's deploy layer is bash end to end -- `deploy/backup-analytics.sh`,
+# `backup-offsite.sh`, `notify-failure.sh` and the Windows job wrapper -- and a Windows
+# clone under the default `core.autocrlf=true` rewrites them to CRLF. Git Bash happens to
+# tolerate CRLF in a script, so that alone is survivable; what is not survivable is the
+# ASYMMETRY. Bash strips CR from script SOURCE and not from data a script READS, so the
+# scripts keep running while the values they parse quietly grow a trailing CR. Measured on
+# the parent 2026-09-18: a `TELEGRAM_BOT_TOKEN=123:abc` line in a CRLF file loads as 8
+# characters, not 7, and Telegram rejects it while every print-out of the token looks
+# correct.
+#
+# ⚠ Measured HERE 2026-09-18, before this file existed: all three `deploy/*.sh` were
+# already CRLF in the working tree. Nothing had broken yet because nothing had read data
+# through them on this host -- the hazard was latent, not absent.
+#
+# Pinning `eol=lf` is a no-op on Linux and on CI; it exists entirely so a Windows checkout
+# of a Linux-shaped repo is not silently different from the repo.
+#
+# ⚠ It cannot cover `.env`, `config/stocks.json`, `.claude/sensitive-terms.txt` or
+# anything else gitignored -- git never sees those files. That is why
+# `deploy/windows/load-env.sh` strips CR itself rather than relying on this, and why the
+# strip is the tested behaviour rather than an implementation detail.
+*.sh text eol=lf
+*.bash text eol=lf
+
+# PowerShell reads either ending; CRLF is the platform-native choice for a file only
+# Windows runs.
+*.ps1 text eol=crlf
+
+# Keep diffs and hashing sane on binaries the analytics stack ships. The parquet entry is
+# load-bearing rather than cosmetic: `tests/fixtures/*.parquet` feed `make test-regression`,
+# and any EOL translation of those bytes would corrupt the fixtures the golden comparison
+# is built on.
+*.parquet binary
+*.duckdb binary
+*.db binary

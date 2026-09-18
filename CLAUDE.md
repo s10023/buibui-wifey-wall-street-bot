@@ -145,6 +145,18 @@ like this, so the documented direct invocation
 `PYTHONUTF8=1` is in the environment — prefix it, or go through `make`. Pre-existing, not a
 regression; the parent fixed its own copy of this in #769.
 
+⚠ **`.gitattributes` pins `*.sh eol=lf`, and the hazard it closes is LATENT rather than loud.**
+Measured on this host *before* the file existed: all three `deploy/*.sh` were already CRLF in the
+working tree and nothing had broken, because nothing had yet read **data** through them. Bash
+strips CR from a script's **source** but not from data a script **reads**, so the scripts keep
+running while the values they parse grow a trailing CR. ⚠ **It cannot reach `.env`**, which is
+gitignored — git never sees the file — which is why `deploy/windows/load-env.sh` strips CR itself
+and `python-dotenv` strips it again independently. **Do not remove either strip**: without one,
+`TELEGRAM_BOT_TOKEN=123:abc` loads as 8 characters rather than 7, the token prints correctly,
+Telegram rejects it, and the symptom is "the bot stopped alerting" over a config that looks
+perfect. wifey has two bot tokens, so that failure has two chances to fire and the second is the
+channel with a human audience.
+
 `make status` prints every repo-shape number: tests, files, CLAUDE.md size, handoff lines,
 MEMORY.md size and bullet count, audits, skills, tools. **Print these rather than writing any of
 them into a doc** — each has a history of being quoted stale.
@@ -420,9 +432,11 @@ have a declared cadence. The only finding this leg makes is **no watermarks at a
 ⚠ **The 505-member research universe now HAS a refresher, and whether it is graded depends on the
 BOX.** `make wifey-universe-sync` is the incremental target (4h/1d/1wk) and
 `wifey-universe-sync.timer` runs it **Sat 10:00 UTC** — opt-in like every unit here, so **nothing
-installs it**. The probe reads `systemctl --user is-enabled` and grades the 505 members on a weekly
-tolerance only where the timer is enabled; everywhere else it reports the absence and names the
-timer. Grading unconditionally would print ~1,100 findings on a box that installed nothing, and a
+installs it**. The probe reads whichever scheduler the host has — `systemctl --user is-enabled` on
+Linux, `Get-ScheduledTask` under `\wifey\` on Windows, where the field is `State` rather than
+existence because the offsite task is registered **and deliberately disabled** — and grades the 505
+members on a weekly tolerance only where the job is enabled; everywhere else it reports the absence
+and names the timer. Grading unconditionally would print ~1,100 findings on a box that installed nothing, and a
 leg that is never green stops being read. ⚠ **`sync` is not `backfill`** — the backfill re-fetches
 from 2018 and stays hand-run for a NEW constituent, which arrives with no bars and which `sync`
 skips by design; that is also why **400 of 505 `4h` series stay absent** (yfinance's intraday
@@ -485,7 +499,7 @@ entries that have no audit of their own.
 | `migrations/` | **Seven** one-shot migration scripts, run by hand. All seven refuse to start without a `.bak`; only **001/002** rewrite `run_id` and cascade to `backtest_trades` — 003/004/005 target `signal_alert_outcomes`, whose key carries no measured value, so an in-place `UPDATE` is correct there, and **006/007 target `ohlcv` and DELETE rather than rewrite**. ⚠ **007 is the first whose rows cannot be recovered by refetch** — 006's deleted bars would simply be re-quarantined, while 007 removes a wrong instrument the provider still serves under the right ticker. Check what the target table's key is made of rather than following the precedent. Routine schema changes go through `analytics/store/schema.py`'s migration list | `context/migrations.md` |
 | `.claude/hooks/` | Three `PreToolUse` hooks on `Bash`: a destructive-command guard, a foreground-run advisory, and an inline `gh pr create` reminder. **Two are files here, the third is inline in `.claude/settings.json`**, which registers all three. Tracked since the 2026-08-20 denylist inversion, so they survive a reclone and ruff + mypy cover them | `context/hooks.md` |
 | `config/` | `stocks.json` (gitignored 13-symbol live watchlist), `universe.json` (committed 505-member research universe), `strategy_params.toml` (shared base inherited via `extends`), `youtube_channels.toml` (gitignored; `.example` committed) | `context/config.md` |
-| `deploy/` | `backup-analytics.sh` (local leg), `backup-offsite.sh` (rclone leg), `notify-failure.sh`, and opt-in `wifey-*` systemd user units — backup ×2, the templated alert, **signal-watch** and **universe-sync**. Nothing installs them; every one is `Type=oneshot`, so there is still no wifey daemon | `deploy/README.md` |
+| `deploy/` | `backup-analytics.sh` (local leg), `backup-offsite.sh` (rclone leg), `notify-failure.sh`, and opt-in `wifey-*` systemd user units — backup ×2, the templated alert, **signal-watch** and **universe-sync**. `deploy/windows/` is the same four jobs' Windows half: `job.sh` (the unit file's imperative side), `load-env.sh` (`EnvironmentFile=`, hand-rolled, strips CR) and `install-tasks.ps1`. ⚠ **Do NOT re-sync `job.sh` from the parent's** — that one shims `deploy/run-job.sh`, which wifey does not have. Nothing installs either half; every one is `Type=oneshot` or a one-shot task, so there is still no wifey daemon | `deploy/README.md` |
 
 ### Sleeve verdicts
 

@@ -8,6 +8,7 @@ it was never run against something that should fail.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -79,6 +80,32 @@ class TestProbeNames:
 
     def test_bare_name_without_directory_does_not_probe_empty_string(self) -> None:
         assert "" not in probe_names("SKILL.md")
+
+    def test_leading_dot_name_also_probes_its_dotless_form(self) -> None:
+        assert probe_names(".gitattributes") == [".gitattributes", "gitattributes"]
+
+    def test_the_dotless_probe_is_what_MAKES_a_dotfile_findable(self) -> None:
+        """The positive control: the dotted probe cannot match, the dotless one can.
+
+        `check_new_files` anchors every probe with a regex word boundary, and a
+        boundary needs a word character on one side. Both characters either side of
+        the dot in ``a `.gitattributes` file`` are non-word, so the dotted probe
+        asserts a boundary that is not there. Without the dotless form the finding
+        is UNCLEARABLE rather than merely wrong — no amount of documentation can
+        satisfy it. Asserting only `probe_names`'s return value would pass whether
+        or not that were true, so this observes the channel the fix protects.
+        """
+        boundary = "\\b"
+        doc = "The repo root carries a `.gitattributes` pinning `*.sh eol=lf`."
+        dotted, dotless = probe_names(".gitattributes")
+        assert not re.search(f"{boundary}{re.escape(dotted)}{boundary}", doc)
+        assert re.search(f"{boundary}{re.escape(dotless)}{boundary}", doc)
+        assert check_new_files([".gitattributes"], doc) == []
+
+    def test_a_dotfile_no_doc_mentions_is_still_reported(self) -> None:
+        """The other direction: the fix must not make every dotfile read covered."""
+        found = check_new_files([".zzzfakerc"], "no doc says anything about this")
+        assert [f.detail for f in found] == ["UNDOCUMENTED FILE: .zzzfakerc"]
 
 
 class TestCheckNewFiles:
