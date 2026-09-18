@@ -37,6 +37,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from tools.claude_home import memory_dir
 from tools.stale_anchors import default_resolver, describe, scan
 
 Runner = Callable[[Sequence[str]], str]
@@ -49,11 +50,12 @@ HANDOFF = Path("docs/plans/next-conversation-prompt.md")
 #: the hooks did before `.claude/` was inverted to a denylist, which is why an
 #: absent list is a FINDING rather than a SKIP.
 SENSITIVE_TERMS = Path(".claude/sensitive-terms.txt")
-MEMORY = Path.home() / (
-    ".claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot"
-    "/memory/MEMORY.md"
-)
-MEMORY_DIR = MEMORY.parent
+#: Derived, never a literal. This was the old Linux box's absolute path spelled
+#: out in a tracked file, so it resolved to nothing after the Windows migration
+#: and `memory-cap` reported against a file it had never found -- silently, in
+#: the direction of "nothing to do".
+MEMORY_DIR = memory_dir(Path(__file__).resolve().parent.parent)
+MEMORY = MEMORY_DIR / "MEMORY.md"
 
 #: Current-state doc surfaces swept for dead anchor citations. Deliberately the
 #: same shape as `sanity_checks.SURFACE_ROOTS` — the dated trees are excluded by

@@ -26,6 +26,7 @@ from tools.cadence_check import (
     sot_path,
     stamp,
 )
+from tools.claude_home import memory_dir, project_slug
 
 NOW = datetime(2026, 8, 20, 12, 0, 0, tzinfo=UTC)
 WEEKLY = Task("/demo", "demo", 7.0, "the named consequence")
@@ -221,12 +222,14 @@ class TestVerdictJoin:
         assert res.total == 0 and res.blind == 0 and res.unowned == ()
 
     def test_sot_path_encodes_the_repo_root(self) -> None:
-        p = sot_path(Path("/srv/demo"))
-        assert p == (
-            Path.home()
-            / ".claude-personal"
-            / "projects"
-            / "-srv-demo"
-            / "memory"
-            / "project_todo_master.md"
-        )
+        """Pinned against the shared derivation, not against a literal.
+
+        The literal it replaced hardcoded `.claude-personal` and a POSIX-only
+        slug, so on Windows it asserted a path no host has and the check it
+        guards silently found nothing. The RULE itself is pinned
+        platform-independently in `test_claude_home.py`; what matters here is
+        that `sot_path` routes through it rather than growing a sixth copy.
+        """
+        repo = Path("/srv/demo")
+        assert sot_path(repo) == memory_dir(repo) / "project_todo_master.md"
+        assert sot_path(repo).parent.parent.name == project_slug(repo)
