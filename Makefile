@@ -1,3 +1,21 @@
+# Exported to EVERY recipe, not just `test`. Windows defaults a redirected
+# stdout and every implicit text read to the ANSI codepage (cp1252 here), and
+# this tree's source, docs, configs and fixtures are full of em-dashes and ⚠.
+#
+# ⚠ **Measured, not reasoned**: the suite is `0 failed` with this set and
+# `41 failed` without it — 40 UnicodeDecodeError, 38 UnicodeEncodeError, all
+# `'charmap' codec`, concentrated in `test_video_fetch` (17) and
+# `test_systemd_units` (10). Nothing in the repo set it before, so a Windows
+# session's `make test` was red for reasons that had nothing to do with its
+# diff, and a session that exported the variable by hand got a green that its
+# own shell was producing.
+#
+# ⚠ **This covers `make`, and `make` only.** A bare `poetry run pytest`, or any
+# tool run directly, still starts in cp1252 — there are ~57 `read_text()` sites
+# with no explicit `encoding=`, which is the deeper fix and is NOT done here.
+# Linux CI is unaffected either way: UTF-8 is already its default.
+export PYTHONUTF8 := 1
+
 SORT ?= default
 SYMBOL ?= SPY
 STRATEGY ?= fvg
@@ -10,7 +28,11 @@ DEV_PORT ?= 5173
 
 PYTHON_FILES = $(shell find . -name "*.py" -not -path "./venv/*" -not -path "./.venv/*")
 DOCKER_IMAGE = wifey-bot
-MEMORY = $(HOME)/.claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot/memory/MEMORY.md
+# MEMORY.md's path is NOT a variable here. It was `$(HOME)/.claude-personal/
+# projects/-home-kng-repo-…`, i.e. the old Linux box's home spelled out in a
+# tracked file, which resolved to nothing after the Windows migration and made
+# `make status` print `?` for a file that was present all along. It now comes
+# from `tools/claude_home.py` via `post_branch_checks`, the one derivation.
 
 .PHONY: status wait-ci wait-ci-main lint lint-md lint-md-fix docs-index docs-index-check lint-py-check lint-py typecheck test test-cov test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-pundit-sync wifey-pundit-backfill wifey-universe-backfill wifey-universe-sync universe-coverage universe-stamp-listed wifey-forecast-audit wifey-xsmom-audit wifey-xsmom-residual-audit wifey-lowvol-audit wifey-xasset-audit wifey-xasset-backfill wifey-pead-audit wifey-pead-backfill wifey-insider-backfill wifey-insider-cohort wifey-velocity-audit wifey-exit-audit wifey-exit-replay wifey-warning-value-audit wifey-n-eff wifey-pundit-score wifey-check-levels wifey-route-dedup-seed wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep backup backup-check freshness-check backup-dry-run backup-offsite backup-offsite-dry-run wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent check-dead-surfaces check-orphan-tests post-branch-checks post-branch-text sanity-checks preflight cadence-check cadence-stamp wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
 
@@ -385,7 +407,7 @@ status:
 	@printf '  python files      %s\n' "$$(git ls-files '*.py' | wc -l)"
 	@printf '  markdown files    %s\n' "$$(npx markdownlint-cli2 2>&1 | grep -oE 'Linting: [0-9]+' | grep -oE '[0-9]+' || echo '?')"
 	@printf '  CLAUDE.md         %s KB\n' "$$(wc -c < CLAUDE.md | awk '{printf "%.1f", $$1/1024}')"
-	@printf '  handoff           %s lines\n' "$$(wc -l < docs/plans/next-conversation-prompt.md)"
+	@printf '  handoff           %s\n' "$$(H=docs/plans/next-conversation-prompt.md; if [ -f $$H ]; then wc -l < $$H | awk '{print $$1" lines"}'; else printf 'ABSENT'; fi)"
 ## The bullet count CALLS the gate's own implementation rather than re-deriving it.
 ## The awk range form (`/^## Current State/,0`) ran to EOF, so it counted every
 ## bullet in every following section -- correct here only by accident, because
@@ -394,7 +416,7 @@ status:
 ## never in the gate, and both over-measured, i.e. toward needless rolling that
 ## the gate never demanded. When a gate and a report compute one quantity, the
 ## report must call the gate.
-	@printf '  MEMORY.md         %s KB, %s Current State bullets\n' "$$(wc -c < $(MEMORY) | awk '{printf "%.1f", $$1/1024}')" "$$(PYTHONPATH=. poetry run python -c 'import pathlib,sys; from tools.post_branch_checks import current_state_bullets; print(current_state_bullets(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")))' $(MEMORY) 2>/dev/null || echo '?')"
+	@PYTHONPATH=. poetry run python -c 'from tools.post_branch_checks import MEMORY, current_state_bullets; kb = "%.1f KB" % (MEMORY.stat().st_size / 1024) if MEMORY.is_file() else "ABSENT"; n = current_state_bullets(MEMORY.read_text(encoding="utf-8")) if MEMORY.is_file() else "?"; print("  MEMORY.md         %s, %s Current State bullets" % (kb, n))' 2>/dev/null || printf '  MEMORY.md         ?\n'
 	@printf '  audits            %s\n' "$$(ls docs/audits/*.md | grep -vc INDEX)"
 	@printf '  skills            %s\n' "$$(ls -d .claude/skills/*/ | wc -l)"
 	@printf '  context docs      %s\n' "$$(ls .claude/context/*.md | wc -l)"

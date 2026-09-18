@@ -32,29 +32,23 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
+from tools.claude_home import memory_dir
+
 # --------------------------------------------------------------------------- #
 # Constants
 # --------------------------------------------------------------------------- #
 
-PARENT_REPO_PATH = Path("/home/kng/repo/buibui-moon-trader-bot")
 WIFEY_REPO_PATH = Path(__file__).resolve().parent.parent
+
+#: The parent checkout, as a SIBLING of this one rather than an absolute
+#: literal. True on both boxes (`~/repo/` on Linux, `C:\Users\User\repo\` on
+#: Windows) and it survives the next move; the literal it replaced pinned the
+#: old work machine's home directory into a tracked file.
+PARENT_REPO_PATH = WIFEY_REPO_PATH.parent / "buibui-moon-trader-bot"
 FORK_COMMIT = "635ed5a"
 
-WIFEY_MEMORY_DIR = (
-    Path.home()
-    / ".claude-personal"
-    / "projects"
-    / "-home-kng-repo-buibui-wifey-wall-street-bot"
-    / "memory"
-)
-PARENT_MEMORY_PATH = (
-    Path.home()
-    / ".claude-personal"
-    / "projects"
-    / "-home-kng-repo-buibui-moon-trader-bot"
-    / "memory"
-    / "MEMORY.md"
-)
+WIFEY_MEMORY_DIR = memory_dir(WIFEY_REPO_PATH)
+PARENT_MEMORY_PATH = memory_dir(PARENT_REPO_PATH) / "MEMORY.md"
 STATE_FILE_PATH = WIFEY_MEMORY_DIR / "project_parent_sync_state.md"
 
 # Parent path -> wifey path. None means "removed in fork (SKIP)".
