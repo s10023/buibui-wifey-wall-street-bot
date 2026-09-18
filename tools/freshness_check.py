@@ -77,6 +77,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from analytics.backtest.cost_model import BARS_PER_DAY
+from tools import host_platform
 
 # --- Declared cadence -------------------------------------------------------
 #
@@ -101,6 +102,12 @@ DEFAULT_UNIVERSE = Path("config/universe.json")
 
 # The timer whose presence turns the universe from an absence into a graded tier.
 UNIVERSE_TIMER = "wifey-universe-sync.timer"
+
+#: Where `deploy/windows/install-tasks.ps1` registers this repo's tasks. Its default for
+#: `-TaskPath` is the same string; `tests/test_windows_jobs.py` pins that they agree,
+#: because a probe looking in the wrong folder returns "not enabled" rather than an
+#: error and is therefore indistinguishable from a box that installed nothing.
+WINDOWS_TASK_PATH = "\\wifey\\"
 
 # The floor every graded series keeps, in SESSIONS. Two sessions absorbs the
 # in-progress bar plus the pre-open lag: the 08:30 UTC scan runs before the bell,
@@ -538,15 +545,28 @@ def universe_timer_enabled(timer: str = UNIVERSE_TIMER) -> bool:
     refreshes the 505-member research universe" as a constant.
 
     Every failure degrades to False — no systemd, no `systemctl`, a timeout, a
-    non-Linux box, a permission error. False means "report the absence", which is
+    permission error. False means "report the absence", which is
     the direction that cannot invent faults; True on a box with no timer would
     grade ~1,100 series against a schedule that never runs.
+
+    ⚠ **A non-Linux box is NOT one of those failures any more.** It used to be:
+    `systemctl` is absent on Windows, the `OSError` branch returned False, and the
+    leg reported the absence — correctly, right up until the host moved and the job
+    was registered with Task Scheduler instead. From that moment the same False
+    would have meant "no cadence" about a job running every Saturday, and the leg
+    would have stayed silent forever on the one host it was now wrong about.
+    Degrading to the safe answer is only safe while the safe answer is also the
+    true one.
     """
+    if host_platform.is_windows():
+        return _scheduled_task_enabled(task_name_for_unit(timer))
     try:
         proc = subprocess.run(
             ["systemctl", "--user", "is-enabled", timer],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=10,
             check=False,
         )
@@ -555,7 +575,51 @@ def universe_timer_enabled(timer: str = UNIVERSE_TIMER) -> bool:
     # `is-enabled` prints the state and uses the exit code for it; "enabled" and
     # "enabled-runtime" both mean the timer will fire. "static", "disabled",
     # "masked" and "not-found" do not.
-    return proc.stdout.strip() in {"enabled", "enabled-runtime"}
+    return (proc.stdout or "").strip() in {"enabled", "enabled-runtime"}
+
+
+def task_name_for_unit(unit: str) -> str:
+    """`wifey-universe-sync.timer` -> `wifey-universe-sync`.
+
+    A Task Scheduler name carries no type suffix, and `.timer` in one would read as a
+    file extension. It is a function rather than a convention so
+    `deploy/windows/install-tasks.ps1` and this probe cannot drift — the installer
+    registers under exactly this transform and a test pins that both ends agree.
+    """
+    return unit.removesuffix(".service").removesuffix(".timer")
+
+
+def _scheduled_task_enabled(name: str, task_path: str = WINDOWS_TASK_PATH) -> bool:
+    """Whether a Windows scheduled task exists and is enabled.
+
+    ⚠ **`State` is the field, not existence.** `install-tasks.ps1` registers
+    `wifey-backup-offsite` and then DISABLES it on purpose, so "the task is there" and
+    "the task will fire" are genuinely different answers here, and only the second one
+    licenses grading a cadence.
+
+    Degrades to False exactly as the systemd branch does: no PowerShell, a timeout, a
+    task that is not registered. `-ErrorAction SilentlyContinue` keeps an absent task
+    from being an error rather than an answer.
+    """
+    script = (
+        f"$t = Get-ScheduledTask -TaskPath '{task_path}' -TaskName '{name}' "
+        "-ErrorAction SilentlyContinue; if ($t) { $t.State }"
+    )
+    try:
+        proc = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=20,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    # `Ready` = registered and will fire on its trigger. `Running` = firing right now.
+    # `Disabled` must read False — that is the offsite job's deliberate state.
+    return (proc.stdout or "").strip() in {"Ready", "Running"}
 
 
 def read_series(db_path: Path) -> list[Series] | None:
