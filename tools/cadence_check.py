@@ -83,6 +83,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from tools.claude_home import memory_dir
+
 MARKS = Path("docs/plans/task-marks")
 AUDIT_INDEX = Path("docs/audits/INDEX.md")
 
@@ -198,16 +200,13 @@ def sot_path(repo_root: Path) -> Path:
     Derived rather than hardcoded so no tracked file carries a machine-specific
     literal; a moved repo or another machine resolves to an absent path, which
     degrades to a printed note rather than a wrong answer.
+
+    The derivation lives in `claude_home` because five call sites had it and
+    all five were wrong on Windows -- this one folded `/` alone, which leaves a
+    `C:\\Users\\...` path entirely unfolded and yields a slug that is itself a
+    drive-absolute path.
     """
-    slug = str(repo_root.resolve()).replace("/", "-")
-    return (
-        Path.home()
-        / ".claude-personal"
-        / "projects"
-        / slug
-        / "memory"
-        / "project_todo_master.md"
-    )
+    return memory_dir(repo_root) / "project_todo_master.md"
 
 
 def parse_mark(text: str) -> datetime | None:

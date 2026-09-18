@@ -78,14 +78,24 @@ guard, while a file is invisible to it.
 A fork of `s10023/buibui-moon-trader-bot`, frozen at parent commit `635ed5a` and repurposed from a
 Binance crypto bot into a yfinance-backed US-equities signal bot.
 
+⚠ **Memory-tree paths here are DERIVED, never literal.** They used to be spelled out as
+`~/.claude-personal/projects/-home-kng-repo-…`, i.e. one machine's home directory in an
+always-loaded file, and after the 2026-09-18 host move all three pointed at nothing. Resolve them
+with `tools/claude_home.py`, which selects the config root by testing `projects/<slug>` rather
+than the root's existence:
+
+```bash
+PYTHONPATH=. poetry run python -c 'import sys; from pathlib import Path; from tools.claude_home import memory_dir; print(memory_dir(Path(sys.argv[1])))' .
+```
+
 **Sister memory** holds the parent's accumulated wisdom (strategy edges, regime classifier history,
-F8/F9/T2 work, sweep findings, gate architecture) at
-`~/.claude-personal/projects/-home-kng-repo-buibui-moon-trader-bot/memory/MEMORY.md`. Read it when
-a feature exists in both repos. Skip the parent's Current State and its crypto-specific findings
+F8/F9/T2 work, sweep findings, gate architecture) in **`MEMORY.md` inside the parent checkout's
+memory tree** — `memory_dir(<the buibui-moon-trader-bot checkout>)`, which sits beside this one.
+Read it when a feature exists in both repos. Skip the parent's Current State and its crypto-specific findings
 (`smt_pairs`, `funding_reversion`, BTC/ETH/SOL cells, CME gap).
 
-**Active work is driven by the master to-do** at
-`~/.claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot/memory/project_todo_master.md`,
+**Active work is driven by the master to-do**, `project_todo_master.md` in **this** checkout's
+memory tree (`memory_dir(<this repo>)`; `make cadence-check` prints the resolved path),
 which carries the north star and acceptance gates G1–G4 and is the single source of truth. Current
 scope is correctness plus universe groundwork; XS-momentum forecasts and paper sizing wait for the
 parent to pass G1, and Phase B (order layer, broker pick) is gated G3→G4.
@@ -113,6 +123,27 @@ make lint-py        # ruff format + lint (mutates); lint-py-check to verify with
 make typecheck      # mypy strict
 make test           # full pytest suite (make test-cov for coverage)
 ```
+
+⚠ **The Makefile exports `PYTHONUTF8=1` to EVERY recipe, and on Windows that is load-bearing.**
+Windows defaults a redirected stdout and every implicit text read to the ANSI codepage (cp1252),
+and this tree's source, configs and fixtures carry em-dashes and ⚠ throughout. Measured
+2026-09-18: the suite is **0 failed** with it and **41 failed** without — 40 `UnicodeDecodeError`,
+38 `UnicodeEncodeError`, all `'charmap' codec`, concentrated in `test_video_fetch` (17) and
+`test_systemd_units` (10). Nothing set it before, so `make test` was red for reasons unrelated to
+any diff, and a session exporting it by hand got a green **its own shell was producing**.
+⚠ **It covers `make`, and `make` only** — a bare `poetry run pytest` or a directly-run tool still
+starts in cp1252, because **56** `read_text()` sites carry no explicit `encoding=`
+(`grep -rn "read_text()" --include=*.py tools/ tests/ analytics/ cli/ signals/ utils/ web/
+scripts/ | wc -l`). Linux CI is unaffected either way.
+
+⚠ **The second half of that class reads as a NULL, not as an encoding error, and it costs an hour
+cold.** `subprocess.run(…, text=True)` with no `encoding=` decodes via cp1252 and raises inside the
+reader **thread**, so `stdout` comes back `None` and the failure surfaces far away as
+`'NoneType' object has no attribute 'splitlines'`. **20 sites across 7 `tools/` files** are still
+like this, so the documented direct invocation
+(`PYTHONPATH=. poetry run python tools/post_branch_checks.py …`) fails this way on Windows unless
+`PYTHONUTF8=1` is in the environment — prefix it, or go through `make`. Pre-existing, not a
+regression; the parent fixed its own copy of this in #769.
 
 `make status` prints every repo-shape number: tests, files, CLAUDE.md size, handoff lines,
 MEMORY.md size and bullet count, audits, skills, tools. **Print these rather than writing any of
@@ -291,6 +322,24 @@ pipeline's output with no prompt, and `analytics.db.bak` is an undated unverifie
 than a backup. Coverage is a denylist over a wholesale copy, deliberately not the parent's
 allowlist, because an allowlist over a single-copy tree defaults to uncovered. Rationale, restore
 procedure and the opt-in timer live in `deploy/README.md`.
+
+⚠ **`signal_state.json` is covered as of 2026-09-18, and it was the one watermark that was not.**
+It sits at the repo **root**, outside the `docs/plans/` tree the denylist walks, so no glob
+reached it. Losing it is silent in **both** directions — no error, and no burst of stale alerts
+either: every key comes back cold, the cold-start guard then keeps only the latest closed candle,
+and `CATCH_UP=1` replays nothing. The parent lost **three days of fires** that way; bars and
+outcome resolutions both recovered, only the fires depend on it. ⚠ **It lands in `BACKUP_FILES`,
+not in a `LEDGERS` array** — wifey has no such array, so the parent's instruction (#771) does not
+port verbatim.
+
+⚠ **`MANIFEST.json` is SERIALISED, never `printf`'d.** It was a block of format strings, which is
+correct only for values containing nothing JSON must escape — and `source` is an absolute path,
+so on Windows `C:\Users\…` made `\U` an illegal escape and **every manifest this host wrote was
+unparseable**. `backup_check.py` catches `JSONDecodeError` and degrades, so the symptom was
+`make backup-check` reading STALE forever: a check that can only be red, which this file
+elsewhere names as worse than no check. `external_roots` was already safe because it alone went
+through `json.dumps`; routing every field that way is what stops the next added field from
+reintroducing it.
 
 ⚠ **A denylist defaults to covered only within the tree it is applied to.** `BACKUP_DIRS` and
 `BACKUP_FILES` both resolve against `$REPO`, so the memory tree — which holds the SoT to-do — sat
@@ -922,7 +971,7 @@ file with a one-line pointer.
 ### Session memory protocol
 
 At the end of every session where anything changed, update the **Current State** section in
-`~/.claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot/memory/MEMORY.md` without
+`MEMORY.md` inside this checkout's memory tree (see Fork lineage for how to resolve it) without
 being asked. Keep a one-line summary of what changed, and the open questions or "none".
 
 The index is read into context every session, so its size is a per-conversation tax. Capping it

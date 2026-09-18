@@ -14,6 +14,7 @@ test asserts on the absence of the clone rather than only on the exit code.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -24,6 +25,7 @@ from tools.clone_preflight import (
     clone_argv,
     dirty_paths,
     main,
+    subprocess_env,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -124,6 +126,41 @@ class TestCleanTreeProceeds:
         clone_dir = tmp_path / "clone"
         assert main(["--repo", str(repo), "--dest", str(clone_dir), "--dry-run"]) == 0
         assert not (clone_dir / "operator_only.json").exists()
+
+
+class TestSubprocessEnv:
+    """The clone's venv must land inside the clone.
+
+    On Windows this decides whether the gate runs at all: under the Microsoft
+    Store Python, Poetry's shared cache path plus numpy's deepest test fixture
+    exceeds MAX_PATH, the install dies, and preflight returns INFRA without
+    ever reaching the suite. Measured on this repo 2026-09-18.
+    """
+
+    def test_in_project_virtualenv_is_forced(self) -> None:
+        assert subprocess_env()["POETRY_VIRTUALENVS_IN_PROJECT"] == "1"
+
+    def test_the_ambient_environment_is_preserved(self) -> None:
+        """It must ADD to os.environ, never replace it.
+
+        A bare dict would drop PATH, and the failure would look like "poetry is
+        not installed" rather than like a preflight bug.
+        """
+        assert set(os.environ) <= set(subprocess_env())
+
+    def test_both_subprocesses_receive_it(self) -> None:
+        """Negative control on the half that is easy to miss.
+
+        Forcing the layout for the INSTALL and not for the run leaves
+        `poetry run` resolving a different venv than the one just populated —
+        which fails as a missing dependency, i.e. as a suite FAILURE rather
+        than as INFRA, and so reads as a real finding.
+        """
+        src = (REPO_ROOT / "tools/clone_preflight.py").read_text(encoding="utf-8")
+        runs = re.findall(r"subprocess\.run\((\w+_argv)\(\), cwd=dest([^)]*)\)", src)
+        assert {name for name, _ in runs} == {"install_argv", "pytest_argv"}
+        for name, rest in runs:
+            assert "env=env" in rest, name
 
 
 class TestWiredIntoTheWorkflow:

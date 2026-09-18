@@ -431,6 +431,47 @@ its target is invisible.
 **Run:** via `make post-branch-checks`, or
 `PYTHONPATH=. poetry run python tools/post_branch_checks.py --check stale-anchors`.
 
+## claude_home.py — the one derivation of this checkout's memory tree
+
+Five call sites derived the Claude project directory independently — `cadence_check`,
+`post_branch_checks`, `sync_parent`, `deploy/backup-analytics.sh` and the Makefile — and every
+one of them was wrong after the move to the Windows host. Two carried the old Linux box's
+absolute home as a tracked literal, so no environment variable could rescue them; the other
+three folded `/` alone, which leaves a `C:\Users\…` path untouched and yields a "slug" that is
+itself drive-absolute.
+
+⚠ **The class never raises, and it fails toward ABSENCE.** An unresolvable memory tree reads as
+absent to every consumer: the backup script warns and records `files: 0`, `cadence_check` prints
+a note, `post_branch_checks` measures the MEMORY.md cap against a file it never found, and
+`make status` printed `?`. So it reads as *nothing to do* on a host where the tree is present
+and merely unlocated — which is how it survived a migration whose brief already listed the slug
+remapping as a restore step.
+
+⚠ **`slugify_path` takes TEXT rather than a `Path`, and that is the testability decision.**
+Linux CI can then assert the Windows rule and a Windows box the POSIX one. A `Path` argument
+resolves against the running host, which makes exactly one of the two assertions unwritable —
+and the one you cannot write is the one that breaks. Both separators and the drive colon fold,
+so `C:\Users\User\repo\x` → `C--Users-User-repo-x` and `/home/kng/repo/x` → `-home-kng-repo-x`.
+
+⚠ **Root selection tests `projects/<slug>`, never the config ROOT's existence — and the first
+version got this wrong.** It probed whether `~/.claude-personal` existed and took it if so, which
+shipped broken within the hour: that directory appeared on the dev box while both profiles were
+in use, the probe chose a root that had never held this project, and every consumer went straight
+back to reading ABSENT against a tree that was present under `~/.claude` all along. **Both roots
+can exist; only one holds the tree.** This is the repo's own recurring lesson landing on the fix
+for it — *a check is only true about the scope it looked at*. Root existence is a proxy; the
+project directory is the thing wanted, so it is what gets tested. Order is the tie-break and only
+the tie-break: with a tree under both, the more specific `.claude-personal` still wins.
+`CLAUDE_CONFIG_DIR` collapses the candidate list to one, because an explicit setting must not be
+second-guessed by a probe. `claude_home()` is *derived from* `project_dir()` rather than computed
+beside it, so the two cannot disagree about which root won. No tree anywhere falls back rather
+than raising: every consumer already degrades to a printed note, and raising would cost the
+backup rather than the report.
+
+**Run:** nothing — it is a library. `tests/test_claude_home.py` pins both platform rules, the
+probe order and the fallback; `tests/test_backup_local_coverage.py` pins that the shell script
+and the Python consumers resolve to the *same* place, which is the coupling that drifted.
+
 ## cadence_check.py — which recurring tasks are overdue
 
 `make cadence-check` reads `docs/plans/task-marks/` — one file per task holding an ISO-8601 UTC

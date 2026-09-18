@@ -137,8 +137,12 @@ def _collect_inserts() -> tuple[list[InsertStmt], list[str]]:
     found: list[InsertStmt] = []
     dynamic: list[str] = []
     for path in _python_files():
-        rel = str(path.relative_to(REPO_ROOT))
-        tree = ast.parse(path.read_text())
+        # `.as_posix()`, never `str()`: EXEMPT_TABLES is keyed on forward-slash
+        # paths, so on Windows `str()` yields `analytics\store\schema.py`, no
+        # exemption ever matches, and the gate fails on a statement it was told
+        # to allow. A separator is presentation; the key is identity.
+        rel = path.relative_to(REPO_ROOT).as_posix()
+        tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.JoinedStr) and any(
                 isinstance(v, ast.Constant)

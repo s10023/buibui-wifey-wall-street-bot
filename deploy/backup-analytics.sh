@@ -103,6 +103,27 @@ LOCK_SLEEP="${WIFEY_LOCK_SLEEP:-30}"
 
 DB="$REPO/analytics.db"
 
+# The venv interpreter is named directly rather than via `poetry run` -- one less
+# moving part on the minimal PATH a systemd user unit gets.
+# Resolved against $SCRIPT_REPO, never $REPO: the interpreter is a property of
+# the INSTALLATION, not of the tree being copied.
+#
+# ⚠ Two layouts, because a venv is `bin/` on POSIX and `Scripts/` on Windows.
+# Only the POSIX one was named, and the fallback is `python3` -- which EXISTS on
+# a Git Bash host, so the script did not fail, it silently verified snapshots
+# under whatever interpreter happened to be on PATH rather than the one holding
+# the pinned duckdb. Wrong-answer-shaped, not error-shaped.
+#
+# Defined here, above MEMORY_DIR, because that default now derives itself
+# through this interpreter.
+PY="${WIFEY_PYTHON:-}"
+if [ -z "$PY" ]; then
+    for candidate in "$SCRIPT_REPO/.venv/bin/python" "$SCRIPT_REPO/.venv/Scripts/python.exe"; do
+        [ -x "$candidate" ] && PY="$candidate" && break
+    done
+fi
+[ -n "$PY" ] && [ -x "$PY" ] || PY="python3"
+
 # COVERAGE IS A DENYLIST OVER A WHOLESALE COPY, NOT AN ALLOWLIST.
 #
 # The parent runs an allowlist of individual paths, and its own script records
@@ -136,8 +157,21 @@ BACKUP_DIRS=(
 #                           and `post_branch_checks.py::sensitive_terms_result`
 #                           then reports NOT CONFIGURED, which is loud rather
 #                           than silent. Covered so the gate survives a reclone.
+#   signal_state.json       the per-(symbol, timeframe, strategy) candle
+#                           watermark. It sits at the repo ROOT, outside the
+#                           `docs/plans` tree BACKUP_DIRS covers, so it was the
+#                           one member of the watermark class with no coverage.
+#                           ⚠ Its loss is silent in BOTH directions: no error,
+#                           and no burst of stale alerts either. The parent
+#                           restored without it, every key came back cold, the
+#                           cold-start guard then keeps only the latest closed
+#                           candle, `--catch-up` replayed nothing, and three
+#                           days of fires were lost permanently. The OHLCV bars
+#                           and the outcome resolutions both recovered -- only
+#                           the fires depend on this file. Parent fix: #771.
 BACKUP_FILES=(
     "config/stocks.json"
+    "signal_state.json"
     ".claude/settings.json"
     ".claude/settings.local.json"
     ".claude/sensitive-terms.txt"
@@ -164,7 +198,35 @@ BACKUP_FILES=(
 # The default is DERIVED from $REPO rather than hardcoded so a clone at another
 # path still resolves its own memory tree, and is overridable for a layout the
 # derivation does not predict.
-MEMORY_DIR="${WIFEY_MEMORY_DIR:-$HOME/.claude-personal/projects/$(printf '%s' "$REPO" | tr '/' '-')/memory}"
+#
+# The derivation itself lives in `tools/claude_home.py`, shared with the three
+# `tools/` consumers that each had their own copy of it. The version here folded
+# `/` alone and hardcoded `.claude-personal`, so on Windows it produced a slug
+# that was still a drive-absolute path under a config root that does not exist
+# -- and an absent external root only WARNS and records `files: 0`, so the SoT
+# to-do sat uncovered while the run reported success.
+#
+# argv[1] is $SCRIPT_REPO -- where `tools/` lives, which is the INSTALLATION --
+# and argv[2] is $REPO, the tree being resolved. They differ whenever the script
+# backs up a checkout other than its own, which is exactly what the tests do.
+if [ -n "${WIFEY_MEMORY_DIR:-}" ]; then
+    MEMORY_DIR="$WIFEY_MEMORY_DIR"
+else
+    MEMORY_DIR="$("$PY" -c 'import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from tools.claude_home import memory_dir
+print(memory_dir(Path(sys.argv[2])))' "$SCRIPT_REPO" "$REPO" 2>/dev/null)"
+    # Never leave this empty. An unresolvable root reads as ABSENT and is
+    # skipped with a warning, which is the silent-coverage-loss this change
+    # exists to remove -- so an import failure falls back to the derivation
+    # that shipped before it, and is no worse than the status quo anywhere.
+    if [ -z "$MEMORY_DIR" ]; then
+        MEMORY_DIR="$HOME/.claude/projects/$(printf '%s' "$REPO" | tr '/\\:' '-')/memory"
+        printf 'warn: could not import tools.claude_home; memory dir fell back to %s\n' \
+            "$MEMORY_DIR" >&2
+    fi
+fi
 
 EXTERNAL_ROOTS=(
     "memory|$MEMORY_DIR"
@@ -198,12 +260,6 @@ PRUNE_GLOBS=(
 # carried into every snapshot from then on. 50MB is ~50x today's size.
 BACKUP_DIRS_WARN_MB=50
 
-# The venv interpreter is named directly rather than via `poetry run` -- one less
-# moving part on the minimal PATH a systemd user unit gets.
-# Resolved against $SCRIPT_REPO, never $REPO: the interpreter is a property of
-# the INSTALLATION, not of the tree being copied.
-PY="${WIFEY_PYTHON:-$SCRIPT_REPO/.venv/bin/python}"
-[ -x "$PY" ] || PY="python3"
 
 want_weekly=0
 weekly_if_due=0
@@ -489,20 +545,52 @@ for line in sys.stdin:
     d[label] = {"path": path, "files": int(n)}
 print(json.dumps(d, sort_keys=True))
 ')"
-{
-    printf '{\n'
-    printf '  "captured_at_utc": "%s",\n' "$now"
-    printf '  "method": "%s",\n' "$method"
-    printf '  "source": "%s",\n' "$DB"
-    printf '  "source_bytes": %s,\n' "$(stat -c %s "$DB")"
-    printf '  "snapshot_bytes": %s,\n' "$(stat -c %s "$daily_dir/analytics.db")"
-    printf '  "research_files": %s,\n' "$tree_files"
-    printf '  "external_roots": %s,\n' "$external_json"
-    printf '  "git_commit": "%s",\n' "$(git -C "$SCRIPT_REPO" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-    printf '  "duckdb": "%s",\n' "$("$PY" -c 'import duckdb; print(duckdb.__version__)' 2>/dev/null || echo unknown)"
-    printf '  "row_counts": %s\n' "$verify_json"
-    printf '}\n'
-} > "$daily_dir/MANIFEST.json"
+# The manifest is SERIALISED, never printf'd. It used to be a block of format
+# strings, which is correct only for values that happen to contain no character
+# JSON escapes -- and `source` is an absolute path. On Windows that path opens
+# `C:\Users\...`, whose `\U` is an illegal JSON escape, so every manifest this
+# host wrote was unparseable. `backup_check.py` catches JSONDecodeError and
+# degrades, so the visible symptom was `backup-check` reporting STALE forever:
+# a check that can only ever be red, which this repo's own docs name as worse
+# than no check at all. `external_roots` was already safe because it went
+# through `json.dumps`; routing every field the same way is what stops the next
+# added field from reintroducing this.
+#
+# Scalars travel as argv, so nothing is quoted into a string the shell has to
+# escape. The two pre-built blobs are re-parsed rather than interpolated, which
+# also validates them before they are committed to the snapshot.
+manifest_commit="$(git -C "$SCRIPT_REPO" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+manifest_duckdb="$("$PY" -c 'import duckdb; print(duckdb.__version__)' 2>/dev/null || echo unknown)"
+manifest_src_bytes="$(stat -c %s "$DB")"
+manifest_snap_bytes="$(stat -c %s "$daily_dir/analytics.db")"
+
+"$PY" - "$now" "$method" "$DB" "$manifest_src_bytes" "$manifest_snap_bytes" "$tree_files" "$external_json" "$manifest_commit" "$manifest_duckdb" "$verify_json" > "$daily_dir/MANIFEST.json" <<'PYEOF'
+import json, sys
+
+now, method, source, src_bytes, snap_bytes, tree_files, external, commit, ddb, counts = (
+    sys.argv[1:11]
+)
+# Key order is the original block's, preserved by dict insertion order: the
+# manifest is read by key everywhere, but a stable order keeps snapshot diffs
+# reviewable by eye.
+json.dump(
+    {
+        "captured_at_utc": now,
+        "method": method,
+        "source": source,
+        "source_bytes": int(src_bytes),
+        "snapshot_bytes": int(snap_bytes),
+        "research_files": int(tree_files),
+        "external_roots": json.loads(external),
+        "git_commit": commit,
+        "duckdb": ddb,
+        "row_counts": json.loads(counts),
+    },
+    sys.stdout,
+    indent=2,
+)
+sys.stdout.write("\n")
+PYEOF
 
 # --- publish atomically -------------------------------------------------------
 # Only now, with the snapshot verified and manifested, does it take the name a

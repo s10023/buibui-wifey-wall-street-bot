@@ -51,6 +51,7 @@ before `gh pr create`, and not in phase 1's sweep, which runs before them.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess  # noqa: S404 - git/poetry plumbing, fixed argv, no shell
 import sys
@@ -94,6 +95,31 @@ def install_argv() -> list[str]:
     undeclared in `poetry.lock`.
     """
     return ["poetry", "install", "--no-root"]
+
+
+def subprocess_env() -> dict[str, str]:
+    r"""The clone's venv goes INSIDE the clone, never in Poetry's shared cache.
+
+    ⚠ **On Windows this is the difference between the gate running and not
+    running at all.** Poetry's cache path is derived from the interpreter that
+    installed Poetry, and under the Microsoft Store Python that is
+    ``…\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\
+    Local\pypoetry\Cache\virtualenvs\<project>-<hash>-py3.13\…``. Add numpy's
+    deepest test fixture to that and the result exceeds the 260-character
+    MAX_PATH limit, so the install dies on a FileNotFoundError naming a
+    Fortran file nobody asked for. Measured here 2026-09-18: preflight returned
+    INFRA and never reached the suite.
+
+    Putting the venv at ``<clone>/.venv`` removes ~110 characters of prefix and
+    is the layout the rest of the repo already assumes
+    (``deploy/backup-analytics.sh`` looks for ``$REPO/.venv``).
+
+    It is also strictly more hermetic on every platform, which is why this is
+    not guarded by a host check: the venv is created and destroyed with the
+    clone rather than persisting in a cache shared with the dev box, so a stale
+    cached venv can no longer answer for a lock file it does not match.
+    """
+    return {**os.environ, "POETRY_VIRTUALENVS_IN_PROJECT": "1"}
 
 
 def pytest_argv() -> list[str]:
@@ -186,14 +212,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"     {' '.join(pytest_argv())}")
             return OK
 
-        if subprocess.run(install_argv(), cwd=dest).returncode != 0:  # noqa: S603
+        env = subprocess_env()
+        if subprocess.run(install_argv(), cwd=dest, env=env).returncode != 0:  # noqa: S603
             print(
                 "⚠ dependency install failed — infrastructure, not a finding.",
                 flush=True,
             )
             return INFRA
 
-        if subprocess.run(pytest_argv(), cwd=dest).returncode != 0:  # noqa: S603
+        if subprocess.run(pytest_argv(), cwd=dest, env=env).returncode != 0:  # noqa: S603
             print("⛔ the suite FAILED against a clean clone.", flush=True)
             print("   This is what CI would have told you after a metered cycle.")
             return FAILED
