@@ -490,6 +490,7 @@ entries that have no audit of their own.
 | `wifey.py` · `cli/` | Entry shim delegating to `cli.main:main`; argparse subcommand package with `_common.py` helpers | — |
 | `analytics/` | DuckDB analytics layer: `store/`, `strategies/` (**16** of them registered for dispatch), `backtest/`, `signal/`, `stats/`, `research_guards/`, `sweep_guard.py`, `audit_guard.py`, `db_retry.py`, plus data ingest, quality and calendar | `context/analytics.md` |
 | `analytics/{forecast,xsmom,lowvol,xasset,pead,gapfill,velocity,exits}/` | P2/P3 research sleeves and the exit diagnostic (verdicts below) | `context/analytics.md` |
+| `analytics/insider/` | H-024, the first NON-PRICE sleeve, so the TA freeze does not bind it. Phases 1–3 are built (`form4` · `classify` · `book`/`replay`/`report`, `make wifey-insider-audit`) and **no return has been read yet**, so it carries no verdict below. The pre-registration is frozen at four trials with routine-arm placebos as controls; Amendment 4 records what phase 3 had to operationalise | `context/analytics.md` |
 | `signals/` · `utils/` | Alerting and dedup daemon (detection lives in `analytics/`); shared Telegram, yfinance and EDGAR clients; the two config-universe loaders | `context/signals.md` |
 | `web/` | FastAPI backend plus Svelte 5 / Vite UI | `context/web.md` |
 | `tools/` | One-shot analysis, audit and research-ingest scripts; outside the daemon and CLI surface | `context/tools.md` |
