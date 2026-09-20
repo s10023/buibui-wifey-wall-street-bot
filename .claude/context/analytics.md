@@ -273,14 +273,27 @@ a second reader (a ported Brief board) imports the same definition rather than r
 
 ## pead/ — post-earnings-announcement-drift sleeve (edge-hunt #4; PR #104)
 
-- `insider/` — **H-024 routine-vs-opportunistic insider sleeve, phases 1-2** (the first
+- `insider/` — **H-024 routine-vs-opportunistic insider sleeve, phases 1-3** (the first
   non-price sleeve; design and frozen pre-registration:
   `docs/superpowers/specs/2026-08-29-h024-insider-routine-opportunistic-design.md`).
   `form4.py` is pure Form 4 parsing (`parse_form4`, `iter_form4_filings`, `raw_document_name`),
   writing `insider_transactions` via `analytics/store/insider.py`; `classify.py` is the pure CMP
   labeller (`classify_owner_year`, `classify_insiders`, `label_transactions`, `cohort_shape`).
-  **No book, no return, no verdict yet**: phase 3 (book/report/audit) is unbuilt, and it must not
-  start until the parse-coverage observable passes its 80% floor — it did, 95.2%, Amendment 2.
+  Phase 3 is `book.py` (calendar-time monthly formation, `TRIALS` and their routine-arm
+  `PLACEBOS`), `replay.py` (read-only; ⚠ **raises** on an absent or disabled
+  `[backtest.cost_model]` rather than booking gross and labelling it net) and `report.py`
+  (`evaluate_insider_trials`, `PairedDifference`), audited by `tools/insider_audit.py`
+  (`make wifey-insider-audit`). It was gated on the parse-coverage observable clearing its 80%
+  floor — it did, 95.2%, Amendment 2. **Verdict = EXCLUDED as a deployable sleeve** (primary
+  cell T1 Sharpe −0.468 net and −0.402 gross, DSR 0.001, boot_lo −1.054; β −0.167, near-neutral,
+  so unlike `velocity/` this cell is evidence about the premise rather than the construction)
+  ⚠ **but the premise itself is NOT refuted, and the two must not be collapsed**:
+  `PairedDifference.indistinguishable` is `measurable AND CI-contains-zero`, **not** an
+  `audit_guard` powered null, and the paired CIs run ~±150 bps/mo against the paper's 82 bps/mo,
+  so the panel separates neither the arms nor the effect from zero. ⚠ **`measurable` is a third
+  state on purpose** — two never-funded books give an all-zero difference and a `[0,0]` CI that
+  satisfies "indistinguishable" while establishing nothing.
+  `docs/audits/2026-09-20-h024-insider-phase3.md`.
   ⚠ **`CLASSIFY_LOOKBACK_YEARS` and `ROUTINE_MIN_STREAK_YEARS` are the pre-registration, not
   tuning knobs**; they are parameters only so tests can drive the general rule. A trade carries
   its **trade** year's label, never its filing year's — keying on the filing year is

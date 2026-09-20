@@ -193,10 +193,12 @@ remains an untested hypothesis rather than a finding.
 **Classification reaches 39.1% of the population** (133,319 of 340,802
 purchase/sale rows). Unclassifiable insiders are excluded by the paper's own
 rule — a trader needs ≥1 open-market trade in each of the three preceding years
-to be classifiable at all — so this is expected rather than a parser defect, and
-the 96.8% parse coverage measured at backfill is the separate quantity that
-cleared reversal observable (b). It does bound what the split can claim: the
-verdict above rests on the 39% of rows that carry a label.
+to be classifiable at all — so this is expected rather than a parser defect. The
+separate quantity that cleared reversal observable (b) is **parse coverage at
+95.2%** (Amendment 2, panel-wide) against an 80% floor — not the 96.8% figure
+from the two-symbol `WTW`/`ITW` re-run, which is a different population.
+Classification share does bound what the split can claim: the verdict above
+rests on the 39% of rows that carry a label.
 
 ## Caveats
 
@@ -229,8 +231,9 @@ underpowered leg concerns the paper's premise, not this sleeve's viability, and
 only the premise would benefit.
 
 Second, breadth does not buy power on this panel. The universe carries `n_eff` ≈
-2.96 independent series at `1d`, and `n_eff → 1/rho` as names are added, so
-adding constituents does not widen the effective cross-section. The lever that
+2.96 independent series at `1d` (`make wifey-n-eff`), and `n_eff → 1/rho` as
+names are added, so adding constituents does not widen the effective
+cross-section. The lever that
 would work is **more history**, not more names, and the panel already starts at
 the earliest date the three-year classification lookback permits given a 2015
 Form 4 fetch.
