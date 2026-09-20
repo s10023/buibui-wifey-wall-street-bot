@@ -1229,6 +1229,53 @@ alternative rule**: it re-runs the frozen classifier against only filings public
 measured **1 of 6,981 (insider, year) labels (0.0%)**, which is what licences the frozen
 trade-date reading rather than merely assuming it. Spec Amendment 3.
 
+## insider_audit.py — H-024 phase 3, the gated trial family
+
+Runs the four frozen trials and their four routine-arm placebos over the research universe (`1d`)
+and prints the cohort split, each cell's headline with DSR / PBO / boot-CI, the realized equity-β
+to SPY, the paired trial-minus-placebo reversal test, and PASS/FAIL on the pre-committed `T1`.
+Read-only; no writes, no network, no `EDGAR_CONTACT_EMAIL`.
+
+**Run:** `make wifey-insider-audit`, wrapping `tools/insider_audit.py`
+(`[--db PATH] [--symbols A,B]`).
+
+⚠ **This is the row's FIRST look at a return.** Ingestion, the coverage observable, the classifier
+and the cohort shape were all built and reported without one, which is what makes this output a
+test rather than a search. Everything it prints is therefore reportable as-is, including a null.
+
+**Books are priced GROSS and NET side by side**, because the two verdicts read differently: a
+sleeve that is negative before costs is a *signal* failure, and one that is positive gross and
+negative net is a *cost* failure. The gross column is the live cost model with every charge zeroed
+rather than a second model, so nothing but the prices differs between the two runs.
+
+⚠ **The DSR family is the four TRIALS, never the eight books.** Placebos are controls; deflating
+against eight would silently raise the bar the sleeve was pre-registered to clear. Pinned by
+`tests/test_insider_report.py::TestDsrFamilyIsTheFourTrials`, whose control drops a real trial and
+asserts the DSR *does* move — a family-size test that only asserted invariance would pass on a
+report that ignored the family entirely.
+
+⚠ **The reversal observable prints THREE states.** A pair reads `measurable` from the BOOKS, not
+from their difference: two never-funded books produce an all-zero difference and a CI of `[0, 0]`,
+which satisfies "indistinguishable" while establishing nothing — `audit_guard`'s lesson that
+`INSUFFICIENT` and a powered null are different verdicts and collapsing them prints the confident
+one. An all-zero difference between two *funded* books is a real null and is reported as one.
+
+⚠ **Weights are trailing dollar ADV, not market cap** — there is no market-cap series in this repo,
+so spec Amendment 4 rules the substitute in. It is a **liquidity** weight, so the book tilts to
+high-turnover names, and any comparison to the WP's 82 bps/mo carries that tilt. The same number
+buckets the spread each name pays, so weight and cost are read off one quantity.
+
+⚠ **Do not run it on a symbol subset to get "a result".** `--symbols` exists for reproducing a
+recorded draw, not for sampling: a non-pre-registered draw is the error Amendments 1 and 3 were
+written about, and it spends the first look at a return on a panel that cannot be the registered
+one.
+
+⚠ **It needs the FULL uncapped backfill** (`insider_backfill_progress` certifies 497 symbols over
+779,914 rows as of 2026-09-19). It also needs real memory: the panel is ~2,190 sessions × 498
+names and the run died on a box whose kernel paged pool had leaked to 42.8 GiB of a 15.4 GiB
+machine. ⚠ **A gate run under memory pressure is uninterpretable** — an OOM and a real failure
+look identical.
+
 ## edgar_client.py — the SEC User-Agent contract
 
 ⚠ **MEASURED 2026-08-29: a User-Agent carrying a URL is refused (HTTP 403) by both SEC hosts**,

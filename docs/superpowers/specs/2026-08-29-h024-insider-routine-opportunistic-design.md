@@ -265,3 +265,83 @@ existing run's strings predate the change. The claim stays bounded and unconfirm
 at 3.5% classified the current table cannot form a single monthly cross-section on the 505-name
 universe. The 20–40h overnight estimate is unchanged (still unrevised by instrumentation), and it
 must run **without** `--max-filings-per-symbol`.
+
+## Amendment 4 (2026-09-19) — what phase 3 had to OPERATIONALISE, declared before any return
+
+Additive like Amendments 1–3 and outside the frozen block: it changes no trial, no gate, no cell
+and no observable. It records three places where the frozen text names a quantity this repo does
+not have, and what the build substituted — each decided and written down **before** the first book
+was run, which is the only thing that separates an operationalisation from a result-fitted choice.
+
+**Prerequisite, now closed.** Amendment 3 made the full uncapped backfill a hard prerequisite. It
+is done: `insider_transactions` holds **779,914 rows across 496 symbols** with **497** completion
+markers in `insider_backfill_progress`. `WTW` and `ITW` had rows but no marker (fetch errors
+mid-symbol in the original run) and were re-run on 2026-09-19 — 2,410 filings, 2,373 rows,
+**0 errors**, parse coverage 96.8%. ⚠ **The re-run moved the data almost not at all** (ITW
+914 → 915 rows, WTW unchanged), which is the point worth keeping: the marker certifies
+*provenance*, not volume, and a symbol carrying the right rows for the wrong reason is
+indistinguishable from one carrying them for the right reason until something records which.
+
+### 1. "Value-weighted by market cap" is booked on trailing dollar ADV
+
+**There is no market-cap series in this repo.** Checked before substituting: no `market_cap` /
+`marketCap` / `shares_outstanding` reference anywhere in `analytics/`, `tools/`, `utils/` or
+`cli/`, and `config/universe.json`'s members carry `sector`, `kind` and `delisted` only. A literal
+reading of the frozen line is therefore unimplementable without adding a provider.
+
+The substitute is **trailing 20-day dollar ADV computed from our own bars** — point-in-time by
+construction, and the same number the cost model already buckets, so a name's weight and the
+spread it pays are read off one quantity rather than two that can disagree.
+
+⚠ **It is a liquidity weight, not a size weight.** ADV / market cap is turnover, which varies
+several-fold cross-sectionally, so the book tilts toward high-turnover names — typically
+higher-beta and more retail-driven. That tilt is a real difference from the WP's VW book and any
+comparison to its 82 bps/mo must carry it.
+
+**Why not the alternatives.** Equal weighting is *refused in advance* by the pre-registration.
+A yfinance shares-outstanding series (`get_shares_full`) would be closer to the literal line but
+needs a new fetcher, table and tests before any return is computed, has unknown coverage back to
+2018 across 505 names, and introduces a quiet lookahead channel whenever Yahoo restates a share
+count. ⚠ **The stated REASON the pre-registration chose VW over EW was capacity** — the EW book
+concentrates in the thin tail FRL-2025 deletes and the cost model's widest bucket prices — and an
+ADV weight serves that reason directly. That is the argument for it; it is not an argument that it
+equals market cap. Operator ruling, 2026-09-19, taken with the three options and this text in hand.
+
+### 2. The cost model is applied in RETURN space, not in R
+
+`CostModel.cost_breakdown` is trade-shaped: it needs an entry price and a stop to form
+`notional_to_r`, and a weight book has neither. The book therefore uses the shared base's
+**parameters** directly — half-spread by ADV bucket and sqrt-law impact charged on `|dw|`, borrow
+accrued daily on short weights at `borrow_rate_annual / 252`. Same constants, same buckets, same
+`[backtest.cost_model]` block read from `config/strategy_params.toml` at run time; different
+denominator.
+
+⚠ **An absent or disabled block raises rather than falling back.** Booking a sleeve gross while
+labelling the output net is the failure mode this refuses to make quietly, and a default
+`CostModel()` would have forked silently the first time the shared base moved.
+
+Commission is `0.0` in the shared base (US retail), and the short-leg borrow gap the frozen text
+declared is unchanged: 1%/yr constant, modelled, never realised.
+
+### 3. Formation reads `filing_date`, falling back to `acceptance_ts`
+
+The frozen line says "trades **filed** during that month". `insider_transactions` carries both
+`filing_date` and `acceptance_ts`; formation reads the former and falls back to the latter, and a
+row carrying neither is **dropped**. Dating such a row from its transaction date would date a
+filing by information the market did not have, which is the exact lookahead the filing clock was
+chosen to avoid.
+
+### What phase 3 added that the spec did not name
+
+**A third state on the reversal observable.** The frozen text says the row closes when the arms are
+"statistically indistinguishable … CI containing 0". Two never-funded books produce an all-zero
+difference and a CI of `[0, 0]`, which satisfies that sentence while establishing nothing — the
+`audit_guard` lesson that `INSUFFICIENT` and a powered null are different states and collapsing
+them prints the confident one. `PairedDifference.measurable` reads the **books**, not their
+difference: an all-zero difference between two *funded* books is a real null and is reported as
+one. This narrows what can be claimed; it cannot promote a cell.
+
+**Why no cluster key is passed.** The frozen text says "session-day cluster keys". A calendar-time
+book emits exactly one observation per session day, so the deflator is 1.0 by construction and the
+clustering machinery would be a no-op; the residual serial dependence is absorbed by the stationary
+block bootstrap instead. Recorded because an absent cluster key otherwise reads as an omission.
