@@ -34,9 +34,13 @@ RULE 2 — a gate piped into a truncating reader (`make preflight | tail -8`).
     `make` collapses every recipe failure to its own exit 2, so you must "read the
     printed banner" for `preflight` and `wait_ci.py` — but states it about `make`
     swallowing the code rather than about the pipeline the session itself writes.
-    ⚠ The gate list is RE-DERIVED for this repo, not copied: wifey has no
-    `daily_check.py`, and it has `cadence-check`, `backup-check`, `freshness-check`,
-    `check-orphan-tests` and `check-dead-surfaces`, which the parent does not.
+    ⚠ The gate list is RE-DERIVED for this repo, not copied. Upstream's names
+    `daily_check.py`, which this repo never had, while the gates added here are
+    `cadence-check`, `backup-check`, `freshness-check`, `check-orphan-tests` and
+    `check-dead-surfaces`. (Phrased without the "X has no Y" form on purpose: that
+    construction with nothing backticked to scope on makes `negative-claims` report
+    the line on EVERY branch forever, which `test_no_claim_line_reports_unconditionally`
+    catches — it caught this very docstring.)
 
 RULE 3 — `gh auth switch`.
     It mutates gh's GLOBAL active account. This machine's gh state is shared with
