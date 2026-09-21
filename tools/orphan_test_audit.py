@@ -128,9 +128,9 @@ def _collect_callables() -> tuple[list[Callable_], list[Callable_]]:
         if not root.is_dir():
             continue
         for path in sorted(root.rglob("*.py")):
-            rel = str(path.relative_to(REPO_ROOT))
+            rel = path.relative_to(REPO_ROOT).as_posix()
             try:
-                tree = ast.parse(path.read_text())
+                tree = ast.parse(path.read_text(encoding="utf-8"))
             except SyntaxError:
                 continue
             for node in tree.body:
@@ -167,9 +167,13 @@ def audit() -> list[Finding]:
     findings: list[Finding] = []
 
     for path in sorted(TESTS_DIR.rglob("test_*.py")):
-        rel = str(path.relative_to(REPO_ROOT))
+        # as_posix(), NEVER str(): EXEMPT_CLASSES is keyed with forward slashes,
+        # and str() renders a Windows path with backslashes -- so every exemption
+        # silently missed on Windows and the four entries below reported as
+        # findings forever. A leg that can never be clean trains dismissal.
+        rel = path.relative_to(REPO_ROOT).as_posix()
         try:
-            tree = ast.parse(path.read_text())
+            tree = ast.parse(path.read_text(encoding="utf-8"))
         except SyntaxError:
             continue
         for node in ast.walk(tree):

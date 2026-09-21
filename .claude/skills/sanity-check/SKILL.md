@@ -99,6 +99,13 @@ The sweep proves lists agree. It cannot read intent.
   exactly like no problems found.** Two keys resolve indirectly and a literal field
   comparison will mis-flag them — `min_trades_<tf>` by prefix-strip
   (`backtest_config.py:343`) and `live_parity` as a sub-table (`:475`).
+  ⚠ **`[backtest]` has TWO consumers, and comparing it against `BacktestSweepConfig`
+  alone manufactures three findings.** Measured 2026-09-21: of its 10 keys, **`mode`,
+  `min_avg_r` and `cache_enabled` belong to `BacktestFilterConfig` in `signal_config.py`**
+  — the LIVE EV gate, read at `:658`/`:663` and `scanner.py:687` — not to the sweep. Both
+  read the same section for different purposes, so **diff each key against BOTH before
+  calling one unmapped.** Second correction to this bullet, after the
+  `signal_watch.toml` / `SignalWatchConfig` retarget in #288 (2026-09-06).
 - **Pydantic models**: is every model in `web/api/models/` used by a router?
 - **Data pipeline**: is `data_sync.py` wired into `analytics_runner.py` and
   `signal_runner.py`? Is `upsert_signals` in `data_store.py` called from
@@ -159,9 +166,11 @@ matched nothing, and matching nothing reads exactly like "no problems found".
 
 ## Phase 5 — Judgement: docs currency
 
-- **MEMORY.md** (`~/.claude-personal/projects/-home-kng-repo-buibui-wifey-wall-street-bot/memory/MEMORY.md`
-  — **this** repo's, never the crypto parent's; a ported path sends Current State
-  into the wrong repo, silently). Is Current State current? Are resolved open
+- **MEMORY.md** — **this** repo's, never the crypto parent's; a ported path sends Current
+  State into the wrong repo, silently. ⚠ **RESOLVE the path, never spell it** — the literal
+  that stood here (`~/.claude-personal/projects/-home-kng-repo-…`) pinned one machine's home
+  directory and resolved to nothing after the 2026-09-18 host move. `make cadence-check`
+  prints the resolved path; `tools/claude_home.py::memory_dir` derives it. Is Current State current? Are resolved open
   questions cleared?
 - **CLAUDE.md**: does every Project Structure row's package still exist, and does
   its `Deep reference` pointer resolve? It is a package *index* plus a
