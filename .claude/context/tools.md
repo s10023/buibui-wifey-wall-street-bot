@@ -2261,3 +2261,18 @@ on 2026-08-11 `fix(xsmom)` #572 touched **0** files present here despite wifey o
 **Run:** `make wifey-sync-parent [FROM=<hash>] [FULL=1] [NO_FETCH=1] [BUMP_TO=<hash>]`. Never
 `--bump-to` while the state file doubles as a memory — it rewrites the file to a stub and wipes
 the triage body; hand-edit the frontmatter pointer instead.
+
+⚠ **Until 2026-09-21 the tool ADVERTISED that forbidden command.** `format_report` printed it as
+the report's headline next step and `main()` repeated it on stdout, so a session following the
+printed hint destroyed the very rulings the report exists to hold. Both now name the hand-edit, and
+the flag's own `--help` says `DESTRUCTIVE`. `test_header_and_range` pins it in both directions — the
+report names `last_synced_hash`, and does **not** contain `--bump-to` — because the presence half is
+what keeps the absence assertion from passing vacuously.
+
+⚠ **The import-dependency filter is GITIGNORED, so nothing mechanical proves it RAN.**
+`docs/plans/scripts/missed_ports.py` had been dead since the 2026-09-18 host move — two pre-move
+Linux literals, exiting on the first before scanning anything — and no lint, test or CI leg reaches
+`docs/plans/`. **A shortlist built without it is blind to every greenfield port**, the class that hid
+`/ingest-feed` (#515) through two syncs, because a file-existence check scores a new file ~0 by
+construction. **Confirm it printed `scan range: <from>..origin/main`**: a dead filter and an empty
+result are different states that render identically.

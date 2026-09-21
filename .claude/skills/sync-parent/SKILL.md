@@ -26,8 +26,9 @@ suggested approach. **It never edits wifey code** — a human ports.
 
 ## Prerequisites
 
-- Parent clone present at `/home/kng/repo/buibui-moon-trader-bot` with a readable
-  `origin/main`. **Its checked-out branch does not matter** — every parent read is
+- Parent clone present as a **SIBLING of this checkout** (`../buibui-moon-trader-bot`)
+  with a readable `origin/main`. `tools/sync_parent.py` DERIVES it that way rather
+  than from a literal, so it holds on both boxes and survives the next host move. **Its checked-out branch does not matter** — every parent read is
   ref-based against `origin/main` and nothing touches the parent working tree, so
   the parent can stay parked on a feature branch while you scan.
 - State file `project_parent_sync_state.md` exists in wifey memory, or the skill
@@ -110,9 +111,20 @@ and refused.
      run, some of it the parent porting *wifey's* work back. **A port queue is a
      claim about the fork, not a record of it**, so verify each against an
      artifact in this tree, never against the note that recorded it.
-   - **Import-dependency**: `PYTHONPATH=. .venv/bin/python docs/plans/scripts/missed_ports.py`
+   - **Import-dependency**: `PYTHONPATH=. python docs/plans/scripts/missed_ports.py`,
+     using this repo's venv interpreter (`.venv/Scripts/python.exe` on Windows,
+     `.venv/bin/python` on Linux)
      — does the new module's import set resolve against wifey? Finds greenfield
-     ports; silent on modify-only PRs. It reads the range from
+     ports; silent on modify-only PRs.
+
+     ⚠ **CONFIRM IT PRINTED A SCAN RANGE BEFORE TRUSTING THE SHORTLIST — this filter
+     can fail silently and look like a clean result.** On 2026-09-21 it had been DEAD
+     since the 2026-09-18 host move: it hardcoded two pre-move Linux paths and exited
+     on the first one, scanning nothing. It is gitignored, so no lint, test or CI leg
+     reaches it, and a shortlist built without it is blind to every greenfield port
+     — exactly the class that hid `/ingest-feed` (#515) through two syncs. A run that
+     worked prints `scan range: <from>..origin/main`; anything else is a dead filter,
+     not an empty result. It reads the range from
      `last_synced_hash` in `memory/project_parent_sync_state.md`, so **never edit
      a range into the script** — `--range` is for a deliberate wider scan only.
      **Prune its `PORTED` set from the run's own dead-entry report, never from

@@ -487,7 +487,13 @@ class TestReportFormat:
         )
         assert "# Parent sync report" in out
         assert "635ed5a..abcdef0" in out
-        assert "--bump-to abcdef0" in out
+        # The report must name the HAND-EDIT and must NOT advertise --bump-to as
+        # the way to advance the pointer. That flag rewrites the state file to a
+        # stub and wipes the triage body, so a session following the printed hint
+        # loses every ruling in the round. Asserting the absence is the point:
+        # the old report printed the forbidden command as its headline next step.
+        assert "last_synced_hash: abcdef0" in out
+        assert "tools/sync_parent.py --bump-to" not in out
 
     def test_summary_counts(self) -> None:
         reports = [

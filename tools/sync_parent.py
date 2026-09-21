@@ -819,7 +819,9 @@ def format_report(reports: list[PRReport], from_hash: str, to_hash: str) -> str:
         "",
         f"**Range**: {from_hash}..{to_hash}",
         f"**PRs found**: {len(reports)}",
-        f"**Pointer-bump command**: `poetry run python tools/sync_parent.py --bump-to {to_hash}`",
+        f"**Advancing the pointer**: hand-edit `last_synced_hash: {to_hash}` in "
+        "`project_parent_sync_state.md`. ⚠ **Never `--bump-to`** — it rewrites that "
+        "file to a stub and wipes the triage body.",
         "",
         *CLASSIFIER_CAVEAT,
         "## Summary",
@@ -940,7 +942,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--bump-to",
         dest="bump_to",
         default=None,
-        help="update state pointer only, no scan",
+        help=(
+            "DESTRUCTIVE: rewrites the state file to a stub, wiping the triage "
+            "body. Hand-edit last_synced_hash instead."
+        ),
     )
     p.add_argument(
         "--no-fetch", dest="no_fetch", action="store_true", help="use local refs only"
@@ -1020,8 +1025,10 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Wrote {len(reports)} PR(s) to {path}")
     print(
-        f"When done reviewing: poetry run python tools/sync_parent.py --bump-to {to_hash}"
+        "When every PR in the range is decided: hand-edit last_synced_hash to "
+        f"{to_hash} in project_parent_sync_state.md."
     )
+    print("Never --bump-to: it rewrites that file to a stub and wipes the triage body.")
     return 0
 
 
