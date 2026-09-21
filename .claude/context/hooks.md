@@ -1,8 +1,27 @@
 # `.claude/hooks/` — PreToolUse guards and advisories
 
-Three `PreToolUse` hooks fire on `Bash`. **Two are files here; the third is inline jq in
-`.claude/settings.json`, which is what registers all three** — so the count of files in this
+**Four** `PreToolUse` hooks fire on `Bash`. **Three are files here; the fourth is inline jq in
+`.claude/settings.json`, which is what registers all four** — so the count of files in this
 directory is not the count of hooks.
+
+⚠ **Every one of them was DEAD on the Windows host until 2026-09-21, and nothing said so.**
+Each wrapper ran `exec python3 "$f"`; here `python3` resolves to the Windows Store App
+Execution Alias, a reparse point returning **Permission denied / exit 126**. Only exit 2
+blocks, so `guard-destructive.py` failed open on **every** command — `rm -rf`, `git reset --hard`,
+force-push, DB wipes, none of them guarded. ⚠ **The stub cannot be detected by a test
+operator**: `[ -f ]` and `[ -x ]` both report true and `wc -c` on it is denied. So the wrappers
+now ORDER their candidates — `.venv/Scripts/python.exe`, `.venv/bin/python`, `python3`,
+`python` — preferring the interpreter everything else in this repo already runs on.
+`tests/test_hook_wiring.py` is the gate: it reads the wrapper string out of `settings.json`
+and asserts the guard blocks end to end with exit 2, plus a benign command still passing, plus
+a missing file still failing OPEN.
+
+`guard-shell-hygiene.py` is the newest, ported from parent #743/#744/#753 at parent HEAD.
+**Three of its six upstream rules are deliberately absent**: the `/card` rule has no subject
+here, and the duplicate-waiter and edit-during-suite rules both need `pgrep`, which this host
+does not have. Porting those would have shipped rules that can never fire — the same dead-check
+class as PRs #301 and #302. Its gate list is RE-DERIVED against this repo's Makefile, pinned by
+`tests/test_guard_shell_hygiene.py`.
 
 ⚠ **Tracked since the 2026-08-20 denylist inversion.** Before that `.gitignore` allowlisted over
 `.claude/*`, every artifact class defaulted to ignored, and these died silently on clone —
@@ -44,8 +63,23 @@ Greps the command for `gh pr create` and emits a `/post-branch` reminder. It **h
 
 ## Changing a hook
 
-There is no test target for these beyond `advise-foreground-run.py --selftest`, and no CI step
-reads this directory. `make lint-py` and `make typecheck` do cover them now. **An advisory hook
-that stops firing is silent by construction** — the same shape as the off-site backup's
-failure-only alerting — so after editing one, trigger it deliberately once and confirm the
-banner appears.
+⚠ **This paragraph used to say there was no test target and no CI step. That stopped being
+true on 2026-09-21.** `tests/test_hook_wiring.py` and `tests/test_guard_shell_hygiene.py` live
+in `tests/`, so `make test` and CI's `lint-typecheck-test` job both run them; `make lint-py`
+and `make typecheck` cover the hook sources as before. `advise-foreground-run.py --selftest`
+still exists and is still the odd one out.
+
+**Put a new hook's tests in `tests/`, not beside the hook.** `pyproject.toml` sets
+`testpaths = ["tests"]`, so a test file in this directory — where the parent keeps its copies
+— is collected by NOTHING. It would pass review, run never, and read exactly like coverage.
+A `--selftest` has the same problem one step removed: it only runs when a session remembers,
+and CLAUDE.md already names *a self-check outside CI is not a check*.
+
+**Test the WIRING, not just the module.** The 2026-09-21 defect was entirely in the wrapper
+string in `settings.json`; every hook module was fine. A test that imports the module passes
+either way, so `test_hook_wiring.py` reads the wrapper out of `settings.json` and drives it
+through `sh`.
+
+**An advisory hook that stops firing is silent by construction** — the same shape as the
+off-site backup's failure-only alerting — so after editing one, trigger it deliberately once
+and confirm the banner appears.
