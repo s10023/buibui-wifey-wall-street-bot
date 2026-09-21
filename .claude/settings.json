@@ -6,11 +6,15 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/guard-destructive.py\"; if [ -f \"$f\" ]; then exec python3 \"$f\"; fi"
+            "command": "d=\"${CLAUDE_PROJECT_DIR:-.}\"; f=\"$d/.claude/hooks/guard-destructive.py\"; [ -f \"$f\" ] || exit 0; for p in \"$d/.venv/Scripts/python.exe\" \"$d/.venv/bin/python\" python3 python; do command -v \"$p\" >/dev/null 2>&1 && exec \"$p\" \"$f\"; done; exit 0"
           },
           {
             "type": "command",
-            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/advise-foreground-run.py\"; if [ -f \"$f\" ]; then exec python3 \"$f\"; fi"
+            "command": "d=\"${CLAUDE_PROJECT_DIR:-.}\"; f=\"$d/.claude/hooks/advise-foreground-run.py\"; [ -f \"$f\" ] || exit 0; for p in \"$d/.venv/Scripts/python.exe\" \"$d/.venv/bin/python\" python3 python; do command -v \"$p\" >/dev/null 2>&1 && exec \"$p\" \"$f\"; done; exit 0"
+          },
+          {
+            "type": "command",
+            "command": "d=\"${CLAUDE_PROJECT_DIR:-.}\"; f=\"$d/.claude/hooks/guard-shell-hygiene.py\"; [ -f \"$f\" ] || exit 0; for p in \"$d/.venv/Scripts/python.exe\" \"$d/.venv/bin/python\" python3 python; do command -v \"$p\" >/dev/null 2>&1 && exec \"$p\" \"$f\"; done; exit 0"
           },
           {
             "type": "command",

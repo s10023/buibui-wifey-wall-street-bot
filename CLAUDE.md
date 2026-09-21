@@ -69,7 +69,17 @@ two has to be pipelined by hand in pairs and budgeted for wall-clock.
 `rm -rf`, `git reset --hard`, force-push, DB wipes. If it blocks you, surface it rather than working
 around it silently. It is **tracked and survives a reclone** (`.claude/` is a denylist). The hook
 wrapper still fails **open** on a missing file, because `python3` exits 2 when it
-cannot open a script and 2 is the block code. Write commit and PR bodies to a file and pass `-F` or
+cannot open a script and 2 is the block code.
+⚠ **A BROKEN INTERPRETER fails open the same way, and on this host every hook was dead
+until 2026-09-21.** `python3` in Git Bash resolves to the Windows Store App Execution Alias,
+a reparse point returning **Permission denied / exit 126** — so the destructive guard did not
+guard `rm -rf`, `git reset --hard` or a force-push at all. ⚠ **The stub is UNDETECTABLE by test
+operator** (`[ -f ]` and `[ -x ]` both say true; `wc -c` on it is denied), so the fix is
+candidate ORDERING rather than detection: each wrapper now tries `.venv/Scripts/python.exe`,
+then `.venv/bin/python`, then `python3`. **Do not "simplify" a wrapper back to a bare
+`python3`** — `tests/test_hook_wiring.py` drives the wrapper string read from
+`settings.json` and asserts the guard BLOCKS end to end with exit 2, because testing the hook
+module directly passes either way: the module was never the broken part. Write commit and PR bodies to a file and pass `-F` or
 `--body-file`: a heredoc is the command payload, so quoting a hazard in a commit message trips the
 guard, while a file is invisible to it.
 
@@ -498,7 +508,7 @@ entries that have no audit of their own.
 | `trade/` | Empty placeholder — both files are 0 bytes. The parent's Binance Futures opener was dropped at fork time and nothing replaced it; `make wifey-open-trades` now fails loudly. An order layer would land in Phase B | — |
 | `tests/` | pytest suite; tests import from lib modules and pass mock dependencies directly | — |
 | `migrations/` | **Seven** one-shot migration scripts, run by hand. All seven refuse to start without a `.bak`; only **001/002** rewrite `run_id` and cascade to `backtest_trades` — 003/004/005 target `signal_alert_outcomes`, whose key carries no measured value, so an in-place `UPDATE` is correct there, and **006/007 target `ohlcv` and DELETE rather than rewrite**. ⚠ **007 is the first whose rows cannot be recovered by refetch** — 006's deleted bars would simply be re-quarantined, while 007 removes a wrong instrument the provider still serves under the right ticker. Check what the target table's key is made of rather than following the precedent. Routine schema changes go through `analytics/store/schema.py`'s migration list | `context/migrations.md` |
-| `.claude/hooks/` | Three `PreToolUse` hooks on `Bash`: a destructive-command guard, a foreground-run advisory, and an inline `gh pr create` reminder. **Two are files here, the third is inline in `.claude/settings.json`**, which registers all three. Tracked since the 2026-08-20 denylist inversion, so they survive a reclone and ruff + mypy cover them | `context/hooks.md` |
+| `.claude/hooks/` | **Four** `PreToolUse` hooks on `Bash`: a destructive-command guard, a foreground-run advisory, a **shell-hygiene advisory** (ported from parent #743/#744/#753, 3 of its 6 rules — the rest have no subject here or need a `pgrep` this host lacks), and an inline `gh pr create` reminder. **Three are files here, the fourth is inline in `.claude/settings.json`**, which registers all four. Tracked since the 2026-08-20 denylist inversion, so they survive a reclone and ruff + mypy cover them | `context/hooks.md` |
 | `config/` | `stocks.json` (gitignored 13-symbol live watchlist), `universe.json` (committed 505-member research universe), `strategy_params.toml` (shared base inherited via `extends`), `youtube_channels.toml` (gitignored; `.example` committed) | `context/config.md` |
 | `deploy/` | `backup-analytics.sh` (local leg), `backup-offsite.sh` (rclone leg), `notify-failure.sh`, and opt-in `wifey-*` systemd user units — backup ×2, the templated alert, **signal-watch** and **universe-sync**. `deploy/windows/` is the same four jobs' Windows half: `job.sh` (the unit file's imperative side), `load-env.sh` (`EnvironmentFile=`, hand-rolled, strips CR) and `install-tasks.ps1`. ⚠ **Do NOT re-sync `job.sh` from the parent's** — that one shims `deploy/run-job.sh`, which wifey does not have. Nothing installs either half; every one is `Type=oneshot` or a one-shot task, so there is still no wifey daemon | `deploy/README.md` |
 
