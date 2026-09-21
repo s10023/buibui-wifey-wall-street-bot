@@ -113,6 +113,22 @@ Heuristic, so it is **advisory and not part of `make test`** — unlike
 suite. Exit 0 by default; `--strict` exits 1 on findings. Verified against the pre-#150
 tree, where it isolates `TestEvGate` and names `_passes_ev_gate`; clean on HEAD.
 
+⚠ **Its `EXEMPT_CLASSES` allowlist was a SILENT NO-OP on Windows until 2026-09-21.** The keys
+are written with forward slashes and the lookup built its key with
+`str(path.relative_to(REPO_ROOT))`, which renders backslashes there — so all four exemptions
+missed and the check reported **4 findings it had already ruled on**, permanently. A leg that
+can never be clean trains dismissal, which is the cost this repo keeps naming. Now `as_posix()`,
+pinned by `tests/test_orphan_test_audit.py`. ⚠ **The defect is PLATFORM-DEPENDENT, and the module
+had no tests at all** — on Linux `str()` and `as_posix()` agree, so it could only ever appear on
+the host with nothing running against it. The same two sites also called `read_text()` with no
+`encoding=`, surviving only because `make` exports `PYTHONUTF8=1`.
+
+⚠ **Measured while pinning it: the obvious assertion is VACUOUS.** Asserting that no exempt
+class appears in the findings passes *under the bug too* — with backslash keys the intersection
+is empty whether the lookup works or misses entirely. The control that actually observes the
+channel asserts the emitted keys contain no backslash, plus a liveness check that each exempt
+class still exists in the tree.
+
 **Run:** `make check-orphan-tests` or
 `poetry run python tools/orphan_test_audit.py [--strict]`
 
