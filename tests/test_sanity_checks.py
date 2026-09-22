@@ -13,6 +13,7 @@ suite, and therefore CI, the moment a doc surface drifts.
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 import pytest
@@ -484,3 +485,104 @@ class TestRegressionSurface:
             )
             == []
         )
+
+
+class TestBareInvocationRunsEveryLeg:
+    """The venv bootstrap, end to end — parent #742/#760, ported 2026-09-22.
+
+    ⚠ **The unit tests in `test_venv_bootstrap.py` cannot cover this.** They prove the
+    swap fires; this proves the swap fixes the thing it was added for. Measured before
+    the fix: a bare run exited **0** printing `0 finding(s)` with three of eight legs
+    reading `SKIPPED  (project dependencies are not installed)` — the same words the
+    legs that skip legitimately use, so the wrong interpreter was invisible in a report
+    that looked healthy.
+
+    ⚠ **The negative control is the load-bearing half.** A pass here is satisfied by two
+    worlds — the swap working, or the probe never reaching a degraded run at all — and
+    the second is the shape this repo removed four instances of on 2026-09-21. Setting
+    the sentinel suppresses the swap, so the control must observe the degraded report;
+    if it does not, the discriminator is broken and both cases are meaningless.
+    """
+
+    @staticmethod
+    def _foreign_interpreter(repo: Path) -> str | None:
+        """An interpreter that is NOT this repo's venv, or None if there is none.
+
+        ⚠ **Derived from `sys.base_prefix`, deliberately NOT from `PATH`.** The first
+        draft probed `shutil.which("python3")` and this whole test SKIPPED — under
+        `poetry run` the venv's own `Scripts`/`bin` is first on `PATH`, so every
+        candidate resolved to the venv and the probe concluded there was nothing to
+        swap from. It would have read green-by-skip forever, in CI too: the dead-check
+        shape, reproduced inside the test written to prove a dead check had been fixed.
+        `sys.base_prefix` is the base installation whenever we are inside a venv, which
+        is exactly the interpreter a human types by accident.
+        """
+        import os
+        import subprocess
+
+        venv = (repo / ".venv").resolve()
+        base = Path(sys.base_prefix)
+        version = sys.version_info
+        candidates = (
+            [base / "python.exe"]
+            if os.name == "nt"
+            else [
+                base / "bin" / f"python{version.major}.{version.minor}",
+                base / "bin" / "python3",
+            ]
+        )
+        for candidate in candidates:
+            if not candidate.exists():
+                continue
+            probe = subprocess.run(  # noqa: S603 - fixed argv, shell=False
+                [str(candidate), "-c", "import sys; print(sys.prefix)"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if probe.returncode != 0 or not probe.stdout.strip():
+                continue
+            if Path(probe.stdout.strip()).resolve() != venv:
+                return str(candidate)
+        return None
+
+    @staticmethod
+    def _run_bare(repo: Path, interpreter: str, *, sentinel: str | None) -> str:
+        import os
+        import subprocess
+
+        from tools.venv_bootstrap import SENTINEL
+
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+        env["PYTHONUTF8"] = "1"  # cp1252 would fail this tree on the read, not the swap
+        env.pop(SENTINEL, None)
+        if sentinel is not None:
+            env[SENTINEL] = sentinel
+        proc = subprocess.run(  # noqa: S603 - fixed argv, shell=False
+            [interpreter, str(repo / "tools" / "sanity_checks.py")],
+            capture_output=True,
+            text=True,
+            cwd=str(repo),
+            env=env,
+            check=False,
+        )
+        return proc.stdout
+
+    def test_a_foreign_interpreter_still_runs_the_dependency_legs(self) -> None:
+        from tools.venv_bootstrap import _venv_python
+
+        repo = Path(__file__).resolve().parent.parent
+        if not _venv_python(repo / ".venv").exists():
+            pytest.skip("no in-project .venv on this host; nothing to swap into")
+        interpreter = self._foreign_interpreter(repo)
+        if interpreter is None:
+            pytest.skip("every interpreter on PATH is already this repo's venv")
+
+        degraded = self._run_bare(repo, interpreter, sentinel="1")
+        swapped = self._run_bare(repo, interpreter, sentinel=None)
+
+        assert "dependencies are not installed" in degraded, (
+            "NEGATIVE CONTROL FAILED: the sentinel did not produce a degraded run, so "
+            "this test cannot tell a working swap from one that never fired"
+        )
+        assert "dependencies are not installed" not in swapped

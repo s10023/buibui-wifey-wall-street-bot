@@ -24,9 +24,12 @@ from tools.post_branch_checks import (
     Runner,
     _check_handoff_size,
     _handoff_leg,
+    _read_each,
     _run,
     added_paths,
     bad_atx_lines,
+    changed_line_numbers,
+    check_amended_targets,
     check_handoff_symbols,
     check_negative_claims,
     check_new_files,
@@ -46,6 +49,7 @@ from tools.post_branch_checks import (
     scan_text_for_terms,
     sensitive_terms_result,
     sensitive_text_result,
+    targets_by_line,
     uncovered_notice,
 )
 
@@ -1252,3 +1256,127 @@ class TestCheckIsRepeatable:
             main(["--text", str(body), "--check", "md-atx", "--check", "doc-indexes"])
             == 2
         )
+
+
+#: A Makefile shaped like the real one around a target that takes overrides. Line 1 is
+#: `.PHONY`, line 2 declares the target, lines 3-5 are its recipe, 7-8 a sibling.
+_MAKEFILE = (
+    ".PHONY: wifey-backtest\n"
+    "wifey-backtest:\n"
+    "\t@poetry run python wifey.py backtest\n"
+    "\t\t$(if $(SINCE),--since $(SINCE),)\n"
+    "\t\t$(if $(SAVE),--save,)\n"
+    "\n"
+    "other-target:\n"
+    "\t@echo hi\n"
+)
+
+#: The amendment shape: the recipe gains one override line. No target is ADDED.
+_AMEND_DIFF = (
+    "@@ -2,3 +2,4 @@\n"
+    " wifey-backtest:\n"
+    " \t@poetry run python wifey.py backtest\n"
+    "-\t\t$(if $(SINCE),--since $(SINCE),)\n"
+    "+\t\t$(if $(SINCE),--since $(SINCE),)\n"
+    "+\t\t$(if $(SAVE),--save,)\n"
+)
+
+_DOCS = {
+    "CLAUDE.md": "Wrapped by `make wifey-backtest` (`SINCE=` / `DAY_FILTER=`).",
+    "README.md": "make wifey-backtest SAVE=1\n",
+    "unrelated.md": "nothing to see",
+}
+
+
+class TestChangedLineNumbers:
+    def test_added_lines_are_reported_in_new_file_coordinates(self) -> None:
+        assert changed_line_numbers("@@ -1,1 +1,2 @@\n a\n+b\n") == {2}
+
+    def test_a_deletion_blames_the_position_it_vacated(self) -> None:
+        """A pure deletion has NO new-file line number of its own.
+
+        Skipping it would make a recipe line REMOVED from a target invisible, which is
+        the same amendment this leg exists to catch, arriving as a subtraction instead
+        of an addition.
+        """
+        assert changed_line_numbers("@@ -1,2 +1,1 @@\n a\n-b\n") == {2}
+
+    def test_file_headers_are_not_mistaken_for_added_lines(self) -> None:
+        diff = "--- a/Makefile\n+++ b/Makefile\n@@ -1,1 +1,2 @@\n a\n+b\n"
+        assert changed_line_numbers(diff) == {2}
+
+
+class TestTargetsByLine:
+    def test_recipe_lines_map_to_their_target(self) -> None:
+        mapping = targets_by_line(_MAKEFILE)
+        assert mapping[2] == "wifey-backtest"
+        assert mapping[5] == "wifey-backtest"
+        assert mapping[7] == "other-target"
+
+    def test_phony_is_not_a_target_and_ends_attribution(self) -> None:
+        """`.PHONY:` names targets; it is not one, and it is not a recipe."""
+        assert targets_by_line(_MAKEFILE).get(1) is None
+
+
+class TestCheckAmendedTargets:
+    def test_an_amended_recipe_fires_and_names_every_doc_to_re_read(self) -> None:
+        r"""The regression this leg exists for.
+
+        An override added to an EXISTING target leaves `new-targets` silent — it only
+        matches an added `^\+target:` line — while every doc enumerating that target's
+        overrides goes one short. A presence check cannot see it: the artifact is there.
+        """
+        found = check_amended_targets(_AMEND_DIFF, _MAKEFILE, _DOCS)
+        assert len(found) == 1
+        assert "wifey-backtest" in found[0].detail
+        assert "CLAUDE.md" in found[0].detail
+        assert "README.md" in found[0].detail
+        assert "unrelated.md" not in found[0].detail
+
+    def test_an_added_target_is_left_to_new_targets(self) -> None:
+        """No double-reporting: `new-targets` already owns the added case."""
+        diff = "@@ -6,0 +7,2 @@\n+other-target:\n+\t@echo hi\n"
+        assert check_amended_targets(diff, _MAKEFILE, _DOCS) == []
+
+    def test_a_target_no_doc_names_is_quiet(self) -> None:
+        """Nothing can be stale about a target no doc enumerates."""
+        diff = "@@ -7,2 +7,2 @@\n other-target:\n-\t@echo hi\n+\t@echo bye\n"
+        assert check_amended_targets(diff, _MAKEFILE, _DOCS) == []
+
+    def test_an_empty_diff_is_quiet(self) -> None:
+        assert check_amended_targets("", _MAKEFILE, _DOCS) == []
+
+    def test_a_non_recipe_line_is_not_attributed_to_a_target(self) -> None:
+        """Editing `.PHONY` is not amending the target's behaviour."""
+        diff = "@@ -1,1 +1,1 @@\n-.PHONY: wifey-backtest\n+.PHONY: x\n"
+        assert check_amended_targets(diff, _MAKEFILE, _DOCS) == []
+
+    def test_word_boundary_stops_a_substring_doc_hit(self) -> None:
+        r"""MUTATION: a longer target name must not credit a shorter one's docs.
+
+        `-` is a non-word character, so a plain `\b` anchor matches INSIDE
+        `wifey-backtest-extra`. Upstream's equivalent case failed on first run.
+        """
+        docs = {"CLAUDE.md": "see `make wifey-backtest-extra` instead"}
+        assert check_amended_targets(_AMEND_DIFF, _MAKEFILE, docs) == []
+
+
+class TestReadEachKeysArePosix:
+    def test_a_directory_expands_to_forward_slash_keys(self, tmp_path: Path) -> None:
+        """DIVERGENCE from upstream, and the reason is #302's failure class.
+
+        `rglob` yields backslashes on Windows, so keying on `str()` printed
+        `.claude\\context\tools.md` beside `negative-claims`' POSIX paths in the same
+        report — which is pasted into handoffs and PR bodies. #302 was the sharper
+        version: an allowlist keyed on POSIX paths matched nothing once the separators
+        diverged, and reported clean while scanning nothing.
+        """
+        nested = tmp_path / "context"
+        nested.mkdir()
+        (nested / "tools.md").write_text("make wifey-backtest", encoding="utf-8")
+
+        keys = list(_read_each([str(tmp_path)]))
+
+        assert keys, "the directory expanded to nothing"
+        assert all("\\" not in k for k in keys), keys
+        assert keys[0].endswith("context/tools.md")
