@@ -23,6 +23,22 @@ does not have. Porting those would have shipped rules that can never fire — th
 class as PRs #301 and #302. Its gate list is RE-DERIVED against this repo's Makefile, pinned by
 `tests/test_guard_shell_hygiene.py`.
 
+⚠ **The rule you will actually meet: it fires on a GATE PIPED INTO `tail` or `head`.** The
+pipeline exits with `tail`'s status, so the gate's own failure is masked and a red run reads as
+green — the same class CLAUDE.md documents for `make preflight` and `wait_ci.py`, where `make`
+collapses every failure to its own exit 2 and you must read the banner. **Redirect and then read
+the file** rather than piping:
+
+```bash
+make <gate> > <log> 2>&1; echo "exit=$?"; tail -8 <log>
+```
+
+⚠ **`guard-destructive.py` matches the whole command PAYLOAD**, so a heredoc or a JSON probe
+merely *containing* a hazard string is blocked even though nothing destructive would run — hit
+twice on 2026-09-21. Write commit bodies and scripts to a FILE and pass `-F` or a path; a file is
+invisible to the matcher. CLAUDE.md carries the commit-message half of this; the generalisation
+is that the guard reads text, not intent.
+
 ⚠ **Tracked since the 2026-08-20 denylist inversion.** Before that `.gitignore` allowlisted over
 `.claude/*`, every artifact class defaulted to ignored, and these died silently on clone —
 CLAUDE.md carried "re-add it after a reclone" for all three. They now survive a reclone, and
