@@ -155,6 +155,15 @@ like this, so the documented direct invocation
 `PYTHONUTF8=1` is in the environment — prefix it, or go through `make`. Pre-existing, not a
 regression; the parent fixed its own copy of this in #769.
 
+⚠ **`os.exec*` DOES NOT WORK on this host, and it fails in the silent direction.** Measured
+2026-09-22: `os.execve` with an env dict **segfaults** (exit 139), and `os.execv` with an
+absolute path exits **0** having run nothing the caller can see — the child is orphaned, its
+stdout never reaches the console and its exit code is lost. Identical from `cmd.exe`, so not an
+MSYS artifact. **Use `subprocess.run` plus `sys.exit(rc)` on Windows**, which preserves both
+ordering and the exit status; `tools/venv_bootstrap.py` branches on
+`host_platform.is_windows()` and keeps `os.execve` on POSIX. A verbatim port of an upstream
+`os.exec*` would look correct, pass review and discard the output.
+
 ⚠ **`.gitattributes` pins `*.sh eol=lf`, and the hazard it closes is LATENT rather than loud.**
 Measured on this host *before* the file existed: all three `deploy/*.sh` were already CRLF in the
 working tree and nothing had broken, because nothing had yet read **data** through them. Bash
@@ -879,11 +888,19 @@ prose did not enforce these constraints:
 - `make check-orphan-tests` (advisory, heuristic, not in `make test`) reports `Test*` classes that
   name a unit but never call it. Its `not-importable` verdict means the unit is a closure and no
   test can reach it, so extraction becomes a prerequisite for a fix.
-- `make post-branch-checks` (advisory, not in `make test`) runs the twelve mechanical
+- `make post-branch-checks` (advisory, not in `make test`) runs the thirteen mechanical
   `/post-branch` checks — queue items the branch closed, handoff claims, undocumented new
-  files/modules/targets, negative claims, stale doc indexes, MD018 headings, the MEMORY.md cap,
+  files/modules/targets, **a Make target whose recipe the branch AMENDED** (`amended-targets`),
+  negative claims, stale doc indexes, MD018 headings, the MEMORY.md cap,
   the handoff's size against `HANDOFF_MAX_LINES`, **dead cross-document section anchors**
   (`stale-anchors`), and the **pre-flip `sensitive-terms` gate**.
+  ⚠ **`amended-targets` catches the omission blind spot the other four presence legs cannot.**
+  They all ask whether a doc has NEVER HEARD OF an artifact; this one fires where the doc names
+  the target correctly and its ENUMERATION of that target's overrides is short by one — a
+  presence check passes, because the artifact is present. It deliberately does not parse WHAT
+  changed: scoping to `$(if $(VAR),…)` would scope to the symptom someone happened to notice,
+  while a changed default fails the same silent way. It names the target and the docs to
+  re-read and leaves the judgement to a human. Ported from parent #747.
   ⚠ **`sensitive-terms` asks three questions because they fail differently**: the tracked tree
   (the only one a plain `git grep` covers), this branch's commit **content**, and this branch's
   commit **messages** — the surface **no file edit reaches**, since the flip republishes the whole

@@ -134,7 +134,7 @@ class still exists in the tree.
 
 ## post_branch_checks.py — every mechanical `/post-branch` check, in one run
 
-Twelve checks that used to be **16 shell blocks embedded in `post-branch/SKILL.md`**, which a
+Thirteen checks — twelve of them once **16 shell blocks embedded in `post-branch/SKILL.md`**, which a
 session had to notice and copy by hand. That is the failure CLAUDE.md names as *a hand walk
 is not the walk*, and it is why the same defects kept recurring: the skill's answer to each
 one was more prose, and prose cannot enforce. Extracting them cut the skill from **1,649 to
@@ -142,12 +142,33 @@ one was more prose, and prose cannot enforce. Extracting them cut the skill from
 **positive control**, which the prose versions never had.
 
 Checks: `queue-items` · `handoff-symbols` · `new-files` · `new-modules` · `new-targets` ·
-`negative-claims` · `doc-indexes` · `md-atx` · `memory-cap` · `handoff-size` ·
+`amended-targets` · `negative-claims` · `doc-indexes` · `md-atx` · `memory-cap` · `handoff-size` ·
 `stale-anchors` (engine in `stale_anchors.py`, below) · `sensitive-terms` (the pre-flip
 gate, ported from parent #658; asks the tracked tree, this branch's commit **content** and
 its commit **messages**, because a flip republishes the whole history and no file edit
 reaches a message. An absent `.claude/sensitive-terms.txt` is a FINDING reading
 `NOT CONFIGURED`, never a SKIP, and terms are masked in the output).
+
+⚠ **`amended-targets` is the thirteenth, and it is the only leg that fires on a doc which is
+CORRECT about the artifact.** `new-targets` matches an added `+target:` line, so an existing
+target that gains an override or changes a default leaves every presence check green while the
+doc's enumeration goes one short. Three pure functions: `changed_line_numbers` walks hunk
+headers, and ⚠ **a deletion is blamed on the position it VACATED** — skipping it would make a
+recipe line *removed* from a target invisible, the same amendment arriving as a subtraction;
+`targets_by_line` maps each line to its owning recipe, with `.PHONY:` failing the declaration
+regex and, being un-indented, also clearing the current target; `check_amended_targets`
+intersects them and subtracts targets this branch ADDED, so `new-targets` keeps that case.
+⚠ **`names_token` replaces `\b`, and that is not incidental** — `-` is a non-word character, so
+`\bwifey-backtest\b` matches inside `wifey-backtest-extra`; it is the `-w` trap this file already
+documents for `_`, from the other side, and nearly every target here is hyphenated.
+⚠ **`check_new_targets` keeps the plain `\b` deliberately**, as upstream left it: there a
+substring hit reads as DOCUMENTED, so it fails in the quieter direction, and widening it could
+newly fire on real branches. ⚠ **`_read_each` keys on `as_posix()`, a wifey divergence** — on
+Windows `rglob` yields backslashes, and this report gets pasted into handoffs; #302 was the
+sharper version of that class, an allowlist that matched nothing once separators diverged.
+Verified by a counterfactual rather than an assertion: adding `$(if $(SINCE),…)` to
+`wifey-universe-sync` emits `AMENDED: wifey-universe-sync — re-read .claude/context/tools.md,
+CLAUDE.md, deploy/README.md`. Ported from parent #747.
 
 ⚠ **The three handoff-dependent legs — `queue-items`, `handoff-symbols`, `handoff-size` —
 report `SKIPPED: no handoff file` rather than clean when the handoff is absent**, which it is
@@ -735,17 +756,67 @@ unscheduled tier deliberately cannot make it fire.
 
 ## host_platform.py — which scheduler this box actually has
 
-`tools/host_platform.py` is one predicate, `is_windows()`, wrapping `sys.platform`. It exists so
-the host test has a single name rather than a `sys.platform` comparison re-spelled at each call
-site, and so a test can monkeypatch one symbol instead of the interpreter's own attribute.
+`tools/host_platform.py` is one predicate, `is_windows()`, wrapping `os.name` — ⚠ **`os.name`,
+not `sys.platform`; this paragraph said `sys.platform` until 2026-09-22, a stale VALUE under a
+correct KEY, which is the shape a name-grep cannot catch.** It exists so the host test has a
+single name rather than that comparison re-spelled at each call site, and so a test can
+monkeypatch one symbol instead of the interpreter's own attribute — patching `os.name` also
+repoints `pathlib`, and every `Path(...)` under that patch raises.
 
-Its consumer today is `freshness_check.universe_timer_enabled`, which reads systemd on Linux and
-Task Scheduler on Windows (see that section). ⚠ **The transferable rule is in why it was added,
+Its consumers are `freshness_check.universe_timer_enabled`, which reads systemd on Linux and
+Task Scheduler on Windows (see that section), and `venv_bootstrap`, which picks between
+`.venv/Scripts/python.exe` and `.venv/bin/python` and between two swap mechanisms.
+⚠ **The transferable rule is in why it was added,
 not in what it does**: the probe used to treat "not Linux" as a failure and degrade to *not
 enabled*, which was true while no non-Linux box could run the job at all, and became silently
 wrong the moment `deploy/windows/install-tasks.ps1` could register one. A platform test only
 belongs behind a named predicate once the platforms genuinely differ in answer rather than in
 availability.
+
+## venv_bootstrap.py — a hand-run script that degrades instead of failing
+
+`reexec_into_venv(root)` replaces the current process with the same argv under `root/.venv`.
+It returns normally — never raises, never exits — when the sentinel is already set (so a broken
+venv cannot loop), when the venv is absent (a fresh clone, CI, `make preflight`'s clone) or when
+we are already inside it, which is what makes it safe to call unconditionally.
+
+⚠ **The "already inside it" test is `sys.prefix`, never `sys.executable`.** On POSIX
+`.venv/bin/python` is a symlink to the system interpreter, so comparing resolved executables
+reports the venv and a bare `python3` as the same path and the swap never fires.
+
+⚠ **Scope is narrow, and the discriminator is whether the failure is LOUD.** Measured
+2026-09-22: `python tools/sanity_checks.py` exits **0** printing `0 finding(s)` with three of
+eight legs reading `SKIPPED  (project dependencies are not installed)` — the same words the legs
+that skip legitimately use, so the wrong interpreter is invisible inside a healthy-looking
+report. Against that, `freshness_check.py` dies on an immediate `ModuleNotFoundError` traceback
+and so does NOT earn the bootstrap, while `cadence_check.py`, `backup_check.py`,
+`post_branch_checks.py` and `orphan_test_audit.py` import nothing third-party and cannot
+degrade at all. **Only a script that keeps going and renders something that looks like an answer
+earns this.** Its one call site is scoped to `__main__`, because `tests/test_sanity_checks.py`
+imports that module and a swap at import time would fire mid-collection.
+
+⚠ **Two divergences from parent #742/#760, both MEASURED — a verbatim copy is worse than no
+port here.** (1) The interpreter is `Scripts/python.exe`; upstream probes `bin/python` and
+returns when it is absent, which on this box is a permanent silent no-op, i.e. the
+reads-clean-while-doing-nothing class removed four times on 2026-09-21. (2) **`os.exec*` does
+not work on this host**: `os.execve` with an env dict segfaults (exit 139), and `os.execv` with
+an absolute path exits **0** having run nothing the caller can see — child orphaned, stdout
+never reaching the console, exit code lost — identically from `cmd.exe`, so not an MSYS
+artifact. Windows therefore swaps via `subprocess.run` and raises `SystemExit` carrying the
+child's code; POSIX keeps upstream's `os.execve`.
+
+`_venv_first_path` prepends the venv's script directory to `PATH`, because each fix covers only
+the resolver it names — `sys.path` for repo imports, the interpreter for third-party imports,
+`PATH` for subprocesses. ⚠ **Carried, not measured here**: wifey's one bootstrapped script
+shells out only to `git`, so this half has no current consumer, and it ships because landing the
+interpreter swap alone would re-open a documented defect one level down. Prepended rather than
+appended so a stale system copy cannot shadow a pinned one.
+
+⚠ **The end-to-end test SKIPPED on its first run**, because `shutil.which("python3")` under
+`poetry run` resolves to the venv — green-by-skip, the same defect reproduced inside the test
+written to prove it fixed. It now derives the foreign interpreter from `sys.base_prefix` and
+carries a negative control asserting the degraded run is observable; without that control a pass
+is satisfied by the swap working *or* by never reaching a degraded run.
 
 ## clone_preflight.py — does the suite pass on a machine that is not this one?
 
@@ -810,6 +881,12 @@ that is broken.
 Eight checks: `fork-drift` (invocable artifacts a doc names but the code lacks — make targets,
 timeframes, `--strategy`, `SYMBOL`), `parent-leakage`, `missing-paths`, `context-coverage`,
 `router-wiring`, `config-strategies`, `cli-documented`, `regression-surface`.
+
+⚠ **Three of those degrade to `SKIPPED  (project dependencies are not installed)`, which is why
+`__main__` re-execs into the venv** — see `venv_bootstrap.py` above. The CI-portability that
+makes `_load_code_facts` swallow any import failure is the same property that made a
+wrong-interpreter run indistinguishable from a healthy one: exit 0, `0 finding(s)`, three legs
+quietly not run.
 
 `regression-surface` reads the globs CI's regression paths-filter fires on straight out of
 `.github/workflows/lint.yaml` and asserts CLAUDE.md names each one. ⚠ **It keys on the block
@@ -2103,10 +2180,26 @@ download, never by reading the code.
   extracted opus audio — `split_audio` chunks past the 25MB cap using `duration_s` for
   offset-correct per-chunk timestamps). Returns a `TranscriptResult` carrying the segments, the
   chosen `lang` and a `source` of `manual_captions` / `auto_captions` / `asr_whisper` /
-  `captions_unknown`. ⚠ **`captions_unknown` is NOT folded into `auto`** — "we did not ask" and
+  `captions_unknown` / `asr_whisper_captions_missed`. ⚠ **`captions_unknown` is NOT folded into
+  `auto`** — "we did not ask" and
   "we asked and it was ASR" are different claims, and every pre-port cache entry is the former.
   An ASR transcript is a materially weaker source than an author-written one, and every item,
   `raw_quote` and call-time derives from that text
+- ⚠ **`asr_whisper_captions_missed` is the fifth value, and it is the one to ACT on.** Ported
+  from parent #750. `fetch_transcript` used to run yt-dlp, **discard the result**, and glob for
+  `sub*.vtt` — so a transient `HTTP 429` produced an empty list byte-identical to the one a
+  caption-less video produces, and the ASR fallback downgraded the note permanently and
+  silently, with no record that a track had ever existed. `_download_captions` returns
+  `(vtts, missed)` and retries once (`_CAPTION_ATTEMPTS = 2`, `sleep` injected so the suite
+  stays fast). ⚠ **The discriminator is the METADATA, not the empty glob** — `_sub_langs`
+  always appends a last resort, so a caption-less video legitimately requests a track that
+  cannot land while yt-dlp still exits 0; a miss is *the metadata listed tracks and none
+  arrived*, plus any non-zero exit. Relaxing that to "no vtt landed" passes every other test
+  and mislabels every caption-less video, which is why
+  `test_a_genuinely_caption_less_video_stays_plain_asr` exists. Unlike plain `asr_whisper` this
+  value is **recoverable by re-running that video**, and the no-Groq path says
+  `caption download failed` rather than `no captions available` so the one surface a human
+  reads carries the distinction too
 - ⚠ **`_sub_langs` decides which caption tracks are even REQUESTED, and asking wrong costs the
   whole transcript.** yt-dlp returns `language: null` on a large slice of the follow list, and the
   pre-port expression then asked for `en` ALONE — so a Chinese upload with an author-written

@@ -59,10 +59,10 @@ outside the repo and the handoff is gitignored, so none of them ever costs CI.
 make post-branch-checks
 ```
 
-Twelve checks, one command, in `tools/post_branch_checks.py`. They used to be
-sixteen shell blocks embedded in this file, which a session had to notice and
-copy by hand — *a hand walk is not the walk*, and the same defects recurred
-because prose cannot enforce.
+Thirteen checks, one command, in `tools/post_branch_checks.py`. Twelve of these legs
+used to be sixteen shell blocks embedded in this file, which a session had to notice
+and copy by hand — *a hand walk is not the walk*, and the same defects recurred
+because prose cannot enforce. The thirteenth, `amended-targets`, was never prose here.
 
 **The sweep now closes by naming the phases below that it does NOT reach**, so passing
 it cannot feel like passing the walk. Suppressed for `--text` and for any `--check` (which is repeatable).
@@ -74,6 +74,7 @@ it cannot feel like passing the walk. Suppressed for `--text` and for any `--che
 | `new-files` | Does an added non-Python operator file reach a doc that enumerates by name? |
 | `new-modules` | Does an added module reach `.claude/context/`? |
 | `new-targets` | Does an added Make target reach a doc? |
+| `amended-targets` | Did an EXISTING target's recipe change, leaving a doc's enumeration of it short by one? Names the target and the docs to re-read |
 | `negative-claims` | Does a doc assert the absence of something this branch just added? |
 | `doc-indexes` | Is a generated `INDEX.md` stale? (a red suite, not a lint nit) |
 | `md-atx` | Did a wrapped `#123` land in column 1 and become an MD018 heading? |
