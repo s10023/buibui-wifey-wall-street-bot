@@ -15,6 +15,7 @@ import pytest
 from tools.video_fetch import (
     GROQ_MAX_BYTES,
     SOURCE_ASR,
+    SOURCE_ASR_CAPTIONS_MISSED,
     SOURCE_AUTO,
     SOURCE_CAPTIONS_UNKNOWN,
     SOURCE_MANUAL,
@@ -1489,3 +1490,146 @@ def test_fetch_transcript_refuses_a_track_unrelated_to_a_KNOWN_language(
 
     result = fetch_transcript(_meta_regional_lang(), run=_run, work_dir=tmp_path)
     assert isinstance(result, Unavailable)
+
+
+# ---------------------------------------------------------------------------
+# A caption download that FAILS must not read as a video with no captions.
+# Ported from parent #750, which measured it on a video whose own metadata
+# listed `en` and `en-orig`.
+# ---------------------------------------------------------------------------
+
+
+def _meta_en_us() -> VideoMeta:
+    """The measured shape: a regional `lang` whose base track exists."""
+    return replace(
+        _meta(),
+        lang="en-US",
+        caption_langs_manual=(),
+        caption_langs_auto=("en", "en-orig"),
+    )
+
+
+def _groq_get(
+    url: str,
+    *,
+    headers: dict[str, str],
+    files: dict[str, object],
+    data: dict[str, str],
+) -> FakeHttpResp:
+    return FakeHttpResp(
+        200,
+        json.dumps(
+            {"language": "en", "segments": [{"start": 0.0, "text": "asr text"}]}
+        ),
+    )
+
+
+def test_failed_caption_download_is_not_recorded_as_plain_asr(tmp_path: Path) -> None:
+    """THE defect. `_sub_langs` asks for `en,en-orig` and both tracks exist, but the
+    download lands nothing (measured cause: a transient 429). Before this the caller
+    threw yt-dlp's result away, so the empty glob was indistinguishable from a
+    caption-less video and the note was downgraded to ASR permanently and silently."""
+    calls: list[list[str]] = []
+
+    def _run(cmd: list[str]) -> FakeProc:
+        calls.append(cmd)
+        if "-x" in cmd:  # the audio-extraction yt-dlp call
+            Path(cmd[cmd.index("-o") + 1]).write_bytes(b"x" * 1024)
+            return FakeProc(0, "")
+        return FakeProc(1, "", "HTTP Error 429: Too Many Requests")
+
+    result = fetch_transcript(
+        _meta_en_us(),
+        run=_run,
+        get=_groq_get,
+        groq_key="fake-key",
+        work_dir=tmp_path,
+        sleep=lambda _s: None,
+    )
+    assert isinstance(result, TranscriptResult)
+    assert result.source == SOURCE_ASR_CAPTIONS_MISSED
+    assert result.source != SOURCE_ASR
+    # the request itself was always correct — two earlier fixes blamed selection
+    sub_langs = calls[0][calls[0].index("--sub-langs") + 1]
+    assert sub_langs == "en,en-orig"
+
+
+def test_caption_download_is_retried_once_and_the_retry_is_used(
+    tmp_path: Path,
+) -> None:
+    """The failure is transient, so one retry recovers the author track outright —
+    no ASR, no degraded note."""
+    attempts = 0
+
+    def _run(cmd: list[str]) -> FakeProc:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return FakeProc(1, "", "HTTP Error 429: Too Many Requests")
+        (tmp_path / "sub.en.vtt").write_text(VTT)
+        return FakeProc(0, "")
+
+    result = fetch_transcript(
+        _meta_en_us(), run=_run, work_dir=tmp_path, sleep=lambda _s: None
+    )
+    assert isinstance(result, TranscriptResult)
+    assert attempts == 2
+    assert result.source == SOURCE_AUTO
+    assert result.lang == "en"
+
+
+def test_a_genuinely_caption_less_video_stays_plain_asr(tmp_path: Path) -> None:
+    """SPECIFICITY, and the mutation this block exists to catch: relaxing the
+    discriminator to "no vtt landed implies the download failed" passes every test
+    above and mislabels every caption-less video. `_sub_langs` always appends a last
+    resort, so such a video legitimately requests a track that cannot land and yt-dlp
+    still exits 0 — the metadata, not the empty glob, is what separates the two."""
+
+    def _run(cmd: list[str]) -> FakeProc:
+        if "-x" in cmd:
+            Path(cmd[cmd.index("-o") + 1]).write_bytes(b"x" * 1024)
+        return FakeProc(0, "")
+
+    meta = replace(_meta(), caption_langs_manual=(), caption_langs_auto=())
+    result = fetch_transcript(
+        meta,
+        run=_run,
+        get=_groq_get,
+        groq_key="fake-key",
+        work_dir=tmp_path,
+        sleep=lambda _s: None,
+    )
+    assert isinstance(result, TranscriptResult)
+    assert result.source == SOURCE_ASR
+    assert result.source != SOURCE_ASR_CAPTIONS_MISSED
+
+
+def test_a_successful_caption_download_costs_exactly_one_call(tmp_path: Path) -> None:
+    """The retry must not fire on the happy path — it doubles the quota otherwise."""
+    attempts = 0
+
+    def _run(cmd: list[str]) -> FakeProc:
+        nonlocal attempts
+        attempts += 1
+        (tmp_path / "sub.en.vtt").write_text(VTT)
+        return FakeProc(0, "")
+
+    result = fetch_transcript(
+        _meta_en_us(), run=_run, work_dir=tmp_path, sleep=lambda _s: None
+    )
+    assert isinstance(result, TranscriptResult)
+    assert attempts == 1
+
+
+def test_missed_captions_without_a_groq_key_say_so(tmp_path: Path) -> None:
+    """The Unavailable reason has to carry the distinction too — otherwise the one
+    surface a human reads collapses the two cases back together."""
+
+    def _run(cmd: list[str]) -> FakeProc:
+        return FakeProc(1, "", "HTTP Error 429: Too Many Requests")
+
+    result = fetch_transcript(
+        _meta_en_us(), run=_run, work_dir=tmp_path, sleep=lambda _s: None
+    )
+    assert isinstance(result, Unavailable)
+    assert "caption download failed" in result.reason

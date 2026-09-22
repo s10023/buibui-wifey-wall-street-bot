@@ -14,12 +14,13 @@ not merely fail the case under test, it took pytest's own failure REPORTING down
 than a red. A function is patchable without touching the interpreter's own path
 machinery; `os.name` is not.
 
-⚠ **One consumer today** — `tools/freshness_check.py`, which asks the scheduler whether
-the weekly universe job is enabled. That is fewer than the parent's two, so this module
-is NOT here to deduplicate: it is here because the warning above needs a home and
-because a seam a test can patch is the only way to exercise the branch this host does
-not take. Do not delete it as over-engineering on a consumer count; the count is not the
-reason.
+⚠ **Two consumers** — `tools/freshness_check.py`, which asks the scheduler whether the
+weekly universe job is enabled, and `tools/venv_bootstrap.py`, which picks between
+`.venv/Scripts/python.exe` and `.venv/bin/python` and between two swap mechanisms. This
+module is still NOT here to deduplicate: it is here because the warning above needs a
+home and because a seam a test can patch is the only way to exercise the branch this
+host does not take. Do not delete it as over-engineering on a consumer count; the count
+is not the reason, which is why it stood at one for as long as it did.
 """
 
 from __future__ import annotations

@@ -402,6 +402,12 @@ SOURCE_ASR = "asr_whisper"
 # entry, or a `--dump-json` payload with neither mapping. Deliberately NOT folded into
 # `auto`: "we did not ask" and "we asked and it was ASR" are different claims.
 SOURCE_CAPTIONS_UNKNOWN = "captions_unknown"
+# The metadata listed caption tracks, but the download did not produce them, so the text
+# is ASR standing in for a track that SHOULD have been used. Deliberately NOT folded into
+# SOURCE_ASR, for the same reason `captions_unknown` is not folded into `auto`: "this
+# video has no captions" and "we failed to fetch the captions it has" are different
+# claims, and only the second is recoverable by re-running the fetch.
+SOURCE_ASR_CAPTIONS_MISSED = "asr_whisper_captions_missed"
 
 
 @dataclass(frozen=True)
@@ -480,6 +486,64 @@ def _caption_source(meta: VideoMeta, lang_code: str) -> str:
     return SOURCE_CAPTIONS_UNKNOWN
 
 
+# A caption download is retried once: the observed failure mode is a transient HTTP 429
+# or network drop, which a second attempt clears. More attempts would turn a rate limit
+# into a longer rate limit.
+_CAPTION_ATTEMPTS = 2
+_CAPTION_RETRY_DELAY_S = 5.0
+
+
+def _download_captions(
+    meta: VideoMeta,
+    sub_langs: str,
+    work_dir: Path,
+    *,
+    run: RunProc,
+    sleep: Callable[[float], None],
+) -> tuple[list[Path], bool]:
+    """Download the requested tracks. Returns `(vtts, captions_were_missed)`.
+
+    ⚠ **The second element is the whole point of this function.** Before it existed the
+    caller ran yt-dlp, threw the result away, and globbed for `sub*.vtt` — so a transient
+    429 produced an empty list byte-identical to the empty list a caption-less video
+    produces, and the ASR fallback silently and permanently downgraded a note whose
+    author track was sitting right there. Upstream measured this on a video whose own
+    metadata listed `en` and `en-orig`: nothing in the selection path was ever broken,
+    which is why two earlier caption fixes did not cover it. **Neither was about
+    selection**; this one is a line earlier, about the download.
+
+    The discriminator is the metadata, not the exit code alone: `_sub_langs` always
+    appends `en` as a last resort, so a caption-less video legitimately requests a track
+    that cannot land and yt-dlp still exits 0. A miss is therefore *the metadata listed
+    tracks and none arrived*, plus any non-zero exit.
+    """
+    listed = bool(meta.caption_langs_manual or meta.caption_langs_auto)
+    vtts: list[Path] = []
+    failed = False
+    for attempt in range(_CAPTION_ATTEMPTS):
+        proc = run(
+            [
+                *_YT_DLP,
+                "--skip-download",
+                "--write-subs",
+                "--write-auto-subs",
+                "--sub-format",
+                "vtt",
+                "--sub-langs",
+                sub_langs,
+                "-o",
+                str(work_dir / "sub"),
+                meta.url,
+            ]
+        )
+        vtts = sorted(work_dir.glob("sub*.vtt"))
+        failed = proc.returncode != 0 or (listed and not vtts)
+        if not failed or attempt == _CAPTION_ATTEMPTS - 1:
+            break
+        sleep(_CAPTION_RETRY_DELAY_S)
+    return vtts, failed and not vtts
+
+
 def fetch_transcript(
     meta: VideoMeta,
     *,
@@ -487,6 +551,7 @@ def fetch_transcript(
     get: HttpPost | None = None,
     groq_key: str | None = None,
     work_dir: Path = Path(".cache/video"),
+    sleep: Callable[[float], None] = time.sleep,
 ) -> TranscriptResult | Unavailable:
     """Existing captions in any language first; Groq whisper-large-v3 only when absent.
 
@@ -502,22 +567,7 @@ def fetch_transcript(
     """
     work_dir.mkdir(parents=True, exist_ok=True)
     sub_langs = _sub_langs(meta)
-    run(
-        [
-            *_YT_DLP,
-            "--skip-download",
-            "--write-subs",
-            "--write-auto-subs",
-            "--sub-format",
-            "vtt",
-            "--sub-langs",
-            sub_langs,
-            "-o",
-            str(work_dir / "sub"),
-            meta.url,
-        ]
-    )
-    vtts = sorted(work_dir.glob("sub*.vtt"))
+    vtts, missed = _download_captions(meta, sub_langs, work_dir, run=run, sleep=sleep)
     chosen = _select_caption_track(vtts, meta.lang)
     if chosen is not None:
         match = _SUB_FILENAME_RE.match(chosen.name)
@@ -528,13 +578,17 @@ def fetch_transcript(
             lang=lang_code,
         )
     if groq_key is None or get is None:
-        return Unavailable("no captions available and no GROQ_API_KEY configured")
+        return Unavailable(
+            "caption download failed and no GROQ_API_KEY configured"
+            if missed
+            else "no captions available and no GROQ_API_KEY configured"
+        )
     asr = _transcribe_groq(meta, run=run, get=get, groq_key=groq_key, work_dir=work_dir)
     if isinstance(asr, Unavailable):
         return asr
     return TranscriptResult(
         segments=asr,
-        source=SOURCE_ASR,
+        source=SOURCE_ASR_CAPTIONS_MISSED if missed else SOURCE_ASR,
         lang=asr[0].lang if asr else (meta.lang or ""),
     )
 

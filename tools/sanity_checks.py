@@ -671,4 +671,22 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    # A bare `python tools/sanity_checks.py` puts `tools/` on sys.path rather than the
+    # repo root, so the import below dies with ModuleNotFoundError; only the Make target
+    # and an explicit `PYTHONPATH=.` worked. The house idiom, as in `tools/route_dedup.py`.
+    #
+    # ⚠ **Both lines are scoped to `__main__` deliberately.** This module is imported by
+    # `tests/test_sanity_checks.py`, and a re-exec at import time would fire mid-collection
+    # for anyone running pytest from outside the venv — swapping the interpreter out from
+    # under a test run is a far worse failure than the one being fixed.
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+    from tools.venv_bootstrap import reexec_into_venv
+
+    # Measured 2026-09-22: without this, a bare run exits 0 printing `0 finding(s)` with
+    # three of eight legs reading SKIPPED — indistinguishable from the legs that skip for
+    # legitimate reasons. `_load_code_facts` degrades on ANY import failure, by design for
+    # CI portability, and that same design is what makes the wrong interpreter invisible.
+    reexec_into_venv(Path(__file__).resolve().parent.parent)
+
     raise SystemExit(main())

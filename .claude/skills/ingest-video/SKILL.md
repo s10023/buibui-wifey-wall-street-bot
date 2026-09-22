@@ -93,7 +93,14 @@ otherwise). Per element:
   same `sub.<code>.vtt` name
 - `segments` — `[{ts_s, text, lang}, …]` (empty when there is no transcript)
 - `transcript_source` — `manual_captions` | `auto_captions` | `asr_whisper` |
-  `captions_unknown` | `""`. **Carry it into the note frontmatter (step 9) verbatim.**
+  `captions_unknown` | `asr_whisper_captions_missed` | `""`.
+  ⚠ **`asr_whisper_captions_missed` is the one value to ACT on, not merely record**: the
+  video's own metadata listed caption tracks and the download did not produce them (the
+  measured cause is a transient `HTTP 429`, and the fetcher already retried once). Unlike
+  plain `asr_whisper` it is **recoverable — re-run that video rather than accepting the
+  note.** Do not treat it as equivalent to `asr_whisper`; "this video has no captions" and
+  "we failed to fetch the captions it has" are different claims.
+  **Carry it into the note frontmatter (step 9) verbatim.**
   It is not decoration: every item, `raw_quote` and call-time derives from this text,
   and an `asr_whisper` transcript is a materially weaker source than an author-written
   one — worst on the CN channel, where ASR is weakest and `raw_quote` accuracy is
@@ -115,7 +122,7 @@ transcript at all; without it, `unavailable` reports that explicitly (see shape 
 | Shape | `meta` | `unavailable` | Meaning | Action |
 | --- | --- | --- | --- | --- |
 | 1 | `null` | `"<reason>"` | The video itself is unreachable (bad URL, deleted, private, yt-dlp failure). Nothing else is known. | Tell the user by URL, drop it from the batch, continue with the rest. |
-| 2 | `{...}` | `"<reason>"` | Metadata resolved fine, but no transcript could be produced — either "no captions available and no GROQ_API_KEY configured", or a Groq failure (HTTP error, audio extraction, chunking). | Because `meta` is populated, name the video (`meta.author`, `meta.title`) in the health note, and say **which of the two reasons** it was. Skip it from pass 1 onward — there is no transcript to feed. |
+| 2 | `{...}` | `"<reason>"` | Metadata resolved fine, but no transcript could be produced — "no captions available and no GROQ_API_KEY configured", **"caption download failed and no GROQ_API_KEY configured"**, or a Groq failure (HTTP error, audio extraction, chunking). | Because `meta` is populated, name the video (`meta.author`, `meta.title`) in the health note, and say **which of the three reasons** it was. ⚠ **`caption download failed` is recoverable — re-run that video**; the other two are not. Skip it from pass 1 onward — there is no transcript to feed. |
 | 3 | `{...}` | `null` | Fully usable. | Proceed. |
 
 Only shape-3 videos continue through the rest of this flow.
