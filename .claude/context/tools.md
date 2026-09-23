@@ -386,14 +386,25 @@ characterization test `test_unfiltered_includes_the_dependency_graph_job` keeps 
 so a bare `steps=14` on a docs-only PR reads as "the heavy leg ran" — the opposite of what happened,
 and it contradicts CLAUDE.md's paths-filter claim, which is correct. `step_counts` splits the two by
 counting the steps GitHub reports as `skipped`; `?/N` means only the executed half was unobservable
-and `?` means neither was. ⚠ **The billing discriminator is deliberately UNTOUCHED** — an exhausted
-allowance declares nothing, so `steps=0/0` still settles it, and a test pins that it did not move.
-This closes the hole memory `reference_ci_steps_counts_skipped` names: *a green job with a healthy
-step count can have run nothing.* Ported from parent #673.
+and `?` means neither was. **#673's executed/declared split left the billing discriminator
+untouched** — an exhausted allowance declares nothing, so `steps=0/0` still settled it, and a test
+pinned that it had not moved. This closes the hole memory `reference_ci_steps_counts_skipped` names:
+*a green job with a healthy step count can have run nothing.* Ported from parent #673.
 
-Exit codes: `0` green and observed · `1` genuine failure · `2` timeout · `3` billing (`steps=0`) ·
-`4` settled green but step counts unreadable. ⚠ **`make` collapses all of them to its own `2`**, so
-call the script directly when the code matters.
+⚠ **The discriminator DID move later, and `steps=0` alone is no longer it** (parent #755). A job
+GitHub never created settles **`SKIPPED`** declaring nothing, which is what
+`Regression tests`' `needs: lint-typecheck-test` produces from a single failed test — so `verdict`
+returned billing and told the reader to flip a **private** repo public in order to debug a test
+failure. **Billing now requires a FAILED conclusion at zero declared steps.** ⚠ An exhausted
+allowance leaves chained jobs skipped too, so **the failing row settles the matrix and its skips
+never do** — that is the mutation case, and it is the one this fix could plausibly have blinded.
+CLAUDE.md had stated the SKIPPED-vs-FAILURE tell under **CI quota** all along; the code branched on
+`steps` before ever reading `conclusion`, so the doc and the tool disagreed and only the doc was
+right.
+
+Exit codes: `0` green and observed · `1` genuine failure · `2` timeout · `3` billing (**FAILED** at
+`steps=0`) · `4` settled green but step counts unreadable. ⚠ **`make` collapses all of them to its
+own `2`**, so call the script directly when the code matters.
 
 **Run:** `make wait-ci PR=<n>` · `make wait-ci-main` · or
 `PYTHONPATH=. poetry run python tools/wait_ci.py --branch main --min-jobs 5 [--timeout-min N]`.
