@@ -81,8 +81,12 @@ repo's `daily/<date>/` overwrite the other's.
     docs/plans/...        the research tree, copied whole
     memory/...            the memory tree, copied whole from OUTSIDE the repo
     config/stocks.json
+    config/youtube_channels.toml
+                          the /ingest-feed follow list — under config/, so no glob
+                          reaches it either
     signal_state.json     the candle watermark — repo ROOT, so no glob reaches it
     .claude/settings.json
+    .claude/settings.local.json
     .claude/sensitive-terms.txt
   weekly/2026-08-12/
     parquet/              EXPORT DATABASE output — format-independent archive
@@ -109,9 +113,17 @@ repo's `daily/<date>/` overwrite the other's.
 
 `docs/plans/` is copied **whole**, with build artifacts (`__pycache__`,
 `.pytest_cache`) pruned afterwards. Only files living outside that tree are
-listed individually — `config/stocks.json`, `.claude/settings*.json` and the gitignored
-`.claude/sensitive-terms.txt`, whose absence would leave the pre-flip gate's own config
-with no copy at all.
+listed individually — `config/stocks.json`, `config/youtube_channels.toml`,
+`.claude/settings*.json` and the gitignored `.claude/sensitive-terms.txt`, whose absence
+would leave the pre-flip gate's own config with no copy at all.
+
+⚠ **This enumeration is the thing that goes stale, and it went stale once already.** The array
+is easy to keep right; the prose *listing* of it is what falls one behind, and then every
+presence check still passes because the file it names is present.
+`config/youtube_channels.toml` landed 2026-09-19 and was uncovered until 2026-09-23 for exactly
+that reason — same shape as `post_branch_checks`' `amended-targets` leg, which exists because a
+doc naming a target correctly can still enumerate its overrides one short. **Add to the array and
+to both listings above in one edit**, or the next reader audits the prose and believes it.
 
 ⚠ **`signal_state.json` is the member that was missed, and the miss is structural.** It is the
 per-`(symbol, timeframe, strategy)` candle watermark and it sits at the repo **root**, so the
