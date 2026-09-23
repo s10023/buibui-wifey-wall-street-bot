@@ -48,10 +48,12 @@ wifey backtest --config config/signal_watch.toml --strategy engulfing
 ### Day filter (suppress Mon + Fri signals)
 
 ```bash
-wifey backtest --config config/signal_watch.toml --day-filter tue_thu
-
-# Options: off | weekdays | tue_thu (default from TOML: tue_thu)
+wifey backtest --config config/signal_watch.toml --day-filter
 ```
+
+On `backtest`, `--day-filter` is a bare switch: passing it forces `tue_thu`; omitting it leaves the
+TOML's own `day_filter` in effect. `param-sweep` and `param-audit` take an explicit mode instead —
+see "All CLI flags" below.
 
 ### TP sweep (TOML only — no CLI flag for multi-value sweep)
 
@@ -92,9 +94,8 @@ wifey backtest --symbol AAPL --strategy ote_entry --interval 4h --since 2025-09-
 
 ## All CLI flags
 
-⚠ **Generated from `cli/backtest.py` + `cli/_common.py` on 2026-09-06 — 25 flags.** The block
-listed 14 and invented 1 until then. Re-derive rather than hand-edit:
-`grep -n 'add_argument' cli/backtest.py cli/_common.py`.
+This list is generated from `cli/backtest.py` and `cli/_common.py` (25 flags). Re-derive rather
+than hand-edit: `grep -n 'add_argument' cli/backtest.py cli/_common.py`.
 
 ```text
 wifey backtest
@@ -121,7 +122,7 @@ wifey backtest
   --atr-sl-floor           F9: use atr_sl_multiplier × ATR14 as a floor on structural sl_price
 
   # filtering / output
-  --day-filter             ⚠ store_true — suppresses Mon+Fri. Takes NO value (see below)
+  --day-filter             store_true — suppresses Mon+Fri; takes no value (see note below)
   --min-trades N           Hide combos below this trade count in the sweep table (default: 20)
   --save                   Persist aggregate results to backtest_runs (same as SAVE=1)
 
@@ -139,34 +140,28 @@ wifey backtest
   --without-<gate>         Force one gate False   (cancels the master switch for that gate)
 ```
 
-⚠ **`--day-filter` on `backtest` is a BARE SWITCH, not a mode** — `cli/backtest.py:244` is
+`--day-filter` on `backtest` is a bare switch, not a mode — `cli/backtest.py:251` is
 `action="store_true"`. `wifey backtest --day-filter tue_thu` fails with
-`error: unrecognized arguments: tue_thu` (verified 2026-09-06). This block documented it as
-`--day-filter MODE  off | weekdays | tue_thu` until then, which is **`param-sweep` /
-`param-audit`'s** signature (`cli/param.py:250`, `:372` — `choices=["off","weekdays","tue_thu"]`)
-and `recalibrate`'s free-form string (`cli/recalibrate.py:43`). **The same flag name carries three
-different signatures across subcommands** — check the subcommand you are invoking, not the name.
+`error: unrecognized arguments: tue_thu`. The same flag name carries three different signatures
+across subcommands: `param-sweep` / `param-audit` take a mode (`cli/param.py:250`, `:372` —
+`choices=["off","weekdays","tue_thu"]`), and `recalibrate` takes a free-form string
+(`cli/recalibrate.py:43`). Check the subcommand you are invoking, not the flag name.
 
-⚠ **`--min-sl-pct` IS a `backtest` flag as of 2026-09-07, and was not before.** The call site at
-`cli/backtest.py` read it behind a `hasattr(args, "min_sl_pct")` guard the backtest parser could
-never satisfy, so `min_sl_pct` was pinned at **0.0** on that path however the operator invoked it —
-a defensive read that looked like it honoured a flag which could not arrive. Adding the flag
-(rather than dropping the read) was the right half because `--atr-sl-multiplier` is already a flag
-here, and the floor is what stops an ATR-derived SL landing on top of entry. It reaches **both**
-modes: single-combo directly, sweep as a `None`-sentinel override of the TOML value, mirroring
-`--atr-sl-multiplier`. Pinned by `tests/test_cli.py::TestBacktestMinSlPctFlag`, whose two default
-cases are the positive control — they fail if the flag starts overriding a value nobody set.
+`--min-sl-pct` is a `backtest` flag. It reaches both modes: single-combo directly, sweep as a
+`None`-sentinel override of the TOML value, mirroring `--atr-sl-multiplier`. Pinned by
+`tests/test_cli.py::TestBacktestMinSlPctFlag`, whose two default cases are the positive control —
+they fail if the flag starts overriding a value nobody set.
 
-⚠ **`--live-parity`'s per-gate flags are GENERATED** from the gate set at `cli/backtest.py:358`,
-so `--without-<gate>` names track the code and are not listed individually here. Whatever gate set
-executed is hashed into `run_id` via `cfg.live_parity.identity()` — see CLAUDE.md's footgun block,
-where an ad-hoc override on this axis once replaced the routine sweep's row in place.
+`--live-parity`'s per-gate flags are generated from the gate set at `cli/backtest.py:358`, so
+`--without-<gate>` names track the code and are not listed individually here. Whatever gate set
+executed is hashed into `run_id` via `cfg.live_parity.identity()` — see CLAUDE.md's footgun on
+`upsert_backtest_run` and `live_parity`.
 
 ## Config files
 
 | File | Description |
 | --- | --- |
-| `config/signal_watch.toml` | Default: tue_thu day filter, timeframes 4h/1d (1wk dropped 2026-08-06 — tue_thu discards every weekly bar) |
+| `config/signal_watch.toml` | Default: tue_thu day filter, timeframes 4h/1d — 1wk is absent because tue_thu discards every weekly bar |
 | `config/signal_watch_weekdays.toml` | Weekdays (Mon–Fri); adds 1wk, which only survives because weekdays includes Monday |
 
 ## Viewing saved runs

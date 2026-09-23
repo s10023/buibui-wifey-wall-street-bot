@@ -11,6 +11,9 @@ allowed-tools: Bash, Read, Edit, Write
 
 # ATR SL Multiplier Sweep
 
+Dormant while the TA book is frozen (see CLAUDE.md → Fork lineage); run only for maintenance the
+user asks for.
+
 Run an ATR SL multiplier sweep to find the optimal `atr_sl_multiplier` value per strategy × TF.
 Prints a comparison table (like `tp_r_values`) showing avg R at each multiplier value.
 
@@ -22,12 +25,12 @@ Prints a comparison table (like `tp_r_values`) showing avg R at each multiplier 
 - SL priority per trade: structural SL (e.g. pivot low from `eqh_eql`) → ATR-based → fixed `sl_pct`.
 - Per-strategy `tp_r` overrides from `[strategy_params]` still apply during the sweep.
 
-### Critical: `atr_sl_floor` is required for structural strategies
+### `atr_sl_floor` is required for structural strategies
 
 Every active production strategy emits a structural `sl_price` on every
-signal, which short-circuits the ATR branch. Without the floor, **every
-multiplier column in the sweep is identical** — the ATR sweep is a no-op.
-Always run the sweep with the floor on:
+signal, which short-circuits the ATR branch. Without the floor, every
+multiplier column in the sweep is identical — the ATR sweep is a no-op.
+Run the sweep with the floor on:
 
 ```bash
 wifey backtest --config <toml> --atr-sl-floor --atr-sl-values 0.5 1.0 1.5 2.0 2.5
@@ -46,10 +49,10 @@ wifey param-sweep --strategy <s> --symbol <sym> --timeframe <tf> \
   --atr-sl-floor --atr-sl-multiplier <winning_mult>
 ```
 
-The methodology and the per-tp_r-aggregate decision rule live in the PARENT's
-memory
-(`~/.claude-personal/projects/-home-kng-repo-buibui-moon-trader-bot/memory/project_f9_joint_sweep_findings.md`)
-— its numbers are crypto-cohort, so port the method, never the values.
+The methodology and the per-tp_r-aggregate decision rule live in the parent's
+(`buibui-moon-trader-bot`) memory, in `project_f9_joint_sweep_findings.md` inside its checkout's
+memory tree — resolve the path with `tools/claude_home.py`'s `memory_dir()` rather than hardcoding
+it (CLAUDE.md → Fork lineage). Its numbers are crypto-cohort: port the method, never the values.
 
 Or in TOML:
 

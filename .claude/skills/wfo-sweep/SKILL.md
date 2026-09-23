@@ -13,6 +13,9 @@ allowed-tools: Bash, Read, Edit, Write
 
 # WFO Sweep — Full Automated Parameter Refresh
 
+Dormant while the TA book is frozen (see CLAUDE.md → Fork lineage); run only for maintenance the
+user asks for.
+
 Runs the complete Walk-Forward Optimization chain on a TOML config without any manual pasting or intermediate steps.
 
 ## What it does
@@ -106,9 +109,10 @@ Optional joint `tp_r × atr_sl_multiplier` sweep: append
 with the F9 floor on at multiplier `N`. Useful for follow-up after an
 ATR-sweep winner — e.g. `--atr-sl-multiplier 2.0 --atr-sl-floor` plus
 `--param tp_r=1.0:5.0:0.5` finds the best tp_r at that multiplier. The
-methodology lives in the PARENT's memory
-(`~/.claude-personal/projects/-home-kng-repo-buibui-moon-trader-bot/memory/project_f9_joint_sweep_findings.md`)
-— its numbers are crypto-cohort, so port the method, never the values.
+methodology lives in the parent's (`buibui-moon-trader-bot`) memory, in
+`project_f9_joint_sweep_findings.md` inside its checkout's memory tree — resolve the path with
+`tools/claude_home.py`'s `memory_dir()` rather than hardcoding it (CLAUDE.md → Fork lineage). Its
+numbers are crypto-cohort: port the method, never the values.
 
 Collect results per (strategy, TF, symbol): best tp_r, OOS avg_r, OOS n, flag.
 

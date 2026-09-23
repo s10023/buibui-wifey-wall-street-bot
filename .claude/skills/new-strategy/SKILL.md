@@ -12,13 +12,15 @@ allowed-tools: "*"
 
 # New Strategy Wiring Checklist
 
-⚠ **The TA detector book is FROZEN — no new boolean detectors without an explicit user
-go** (inherited category verdict; CLAUDE.md § Fork lineage). This checklist stays
-maintained for guard work and for any detector the operator explicitly unfreezes.
+The TA detector book is frozen: no new boolean detectors without an explicit user go
+(inherited category verdict; CLAUDE.md → Fork lineage). This checklist stays maintained for guard
+work and for any detector the operator explicitly unfreezes.
 
-Guided workflow for adding a new trading strategy to wifey. All 4 locations must be updated together or the web UI will 500 on the strategy.
+Guided workflow for adding a new trading strategy to wifey. All 4 locations must be updated
+together, or the web UI returns a 500 on the strategy.
 
-After strat-2 (PR #338) the detection layer is one file per detector under `analytics/strategies/`. There is no `analytics/indicators_lib.py` at all any more — it was removed in strat-3, so `analytics/strategies/` is the only import surface.
+The detection layer is one file per detector under `analytics/strategies/`, which is the only
+import surface — there is no `analytics/indicators_lib.py`.
 
 ## The 4 mandatory edits
 
@@ -161,14 +163,16 @@ Detectors that need a second positional arg (funding rates, secondary OHLCV) can
 
 Examples in the current codebase:
 
-- `funding_extreme` — crypto-era leftover: the module still exists at `analytics/strategies/funding_extreme.py` but is **not registered**, and its `get_funding_rates` source was dropped at the fork. Equities have no funding rate; treat it as dead code, not a template
+- `funding_extreme` — the module exists at `analytics/strategies/funding_extreme.py` but is not
+  registered: equities have no funding rate, and its `get_funding_rates` source does not exist in
+  this fork. Treat it as dead code, not a template
 - `seasonality` — returns stats DataFrame, not signals; uses `seasonality_stats` from `analytics/strategies/_seasonality.py`
 
 For these, also update `backtest_runner.detect_signals_for_strategy()` with a new branch, and add
 the name to `_REGISTRY_EXCLUDED` in `tests/test_signal_registry.py`. That set is the deliberate
 opt-out: `test_detector_registry_is_wired_to_the_other_two` set-diffs all three registries in both
 directions and checks that SIGNAL_REGISTRY and DETECTOR_REGISTRY bind the *same* function object,
-so an unlisted omission now fails `make test` rather than silently skipping backtest dispatch.
+so an unlisted omission fails `make test` instead of silently skipping backtest dispatch.
 
 ## After adding the strategy
 
