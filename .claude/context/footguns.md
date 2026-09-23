@@ -175,3 +175,32 @@ sufficient.
 
 No fixture in either test file had put two symbols in one cell, so the entire cross-symbol path was
 untested. Seventeen tests were added, each mutation-checked in both directions.
+
+## A seam that disables a side effect, and the `:-` that re-enables it
+
+`deploy/windows/job.sh`'s notifier seam was `${WIFEY_NOTIFY:-deploy/notify-failure.sh}`. The `:`
+form substitutes the default when the variable is unset **or empty**, so a test setting
+`WIFEY_NOTIFY=""` — the obvious way to disable a notifier — resolved to the **real** one and sent
+**two live Telegram messages** to the operator's personal channel on 2026-09-18. It is now
+`${VAR-default}`, which substitutes only when the name is genuinely unset.
+
+**The transferable rule: a seam that exists to disable a side effect must be tested for the DISABLED
+case.** Testing that the notifier fires proves the wiring; it says nothing about the one input the
+seam was added for. The two forms differ in exactly one character and the wrong one is the one
+people type from memory, so this cannot be caught by review — only by a test that asserts silence.
+
+wifey has two bot tokens, so a notifier misfire has two chances to reach a channel with a human
+audience. Live incident; measurement in memory `project_session_log_2026-09`.
+
+## A gate run under memory pressure is UNINTERPRETABLE, not red
+
+This box has leaked **paged pool to 42.8 GiB on 15.4 GiB of RAM**, and a reboot is the only fix
+(cleared 2026-09-19). Under that pressure an OOM and a real failure are indistinguishable, and the
+tells are absurd enough to send you hunting the wrong defect: `MemoryError` on a **1.58 MiB**
+allocation, and `poetry` itself failing with `WinError 1450`.
+
+**Check paged pool and free physical BEFORE filing any red result as real.** `tests/test_pead_report.py`
+timed out twice under the leak and then passed at 25s against the 30s cap on a rebooted box — so
+that red was pressure, not a latent bug, and an hour went into the wrong question first. The
+residual fragility is separate and real: ~17% headroom on the suite's two slowest tests, confirmed
+structural across two run shapes a day apart.

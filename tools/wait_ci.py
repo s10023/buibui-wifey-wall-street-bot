@@ -206,9 +206,13 @@ def verdict(rows: Sequence[JobRow]) -> tuple[int, list[str]]:
     if failed:
         out.append(f"\n{failed} check(s) genuinely failed.")
         if skipped:
+            # Deliberately does not assert WHICH cause. A failed `needs:` and a
+            # job-level `if:` filter produce an identical row, and this banner
+            # cannot tell them apart -- naming one would be a guess the reader
+            # would then carry. The advice is the same either way.
             out.append(
-                f"{skipped} further check(s) read SKIPPED because a `needs:` "
-                "dependency failed — fix the failure, not the skip."
+                f"{skipped} further check(s) read SKIPPED and declared nothing "
+                "— fix the failure, not the skip."
             )
         return EXIT_FAILED, out
     if unknown:
