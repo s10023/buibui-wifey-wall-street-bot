@@ -14,8 +14,8 @@ allowed-tools: Bash, Read
 # DB Update — Routine Pipeline
 
 `make db-update` is the trusted, chained refresh of analytics state across both
-signal_watch configs (the diagram below is the authority — the Makefile runs
-**2**, not 3; this line said "three" until 2026-08-11). Use it whenever:
+signal_watch configs (the diagram below is the authority — the Makefile runs **2**, not
+3). Use it whenever:
 
 - A detector function changes (entry / SL / TP logic)
 - A strategy is added or removed
@@ -59,17 +59,14 @@ make check-dead-surfaces     # surface report only — EXITS 1 when run directly
 the completion banner**, and it checks the mismatch in both directions.
 
 *Declared but dead* — a cell whose detector never fires costs work every scan cycle and
-returns nothing. `signal_watch.toml` carried `1wk` under `tue_thu` for three months
-behind 338 backtest rows that all had zero closed trades (#139); rows existing is not
-evidence the surface works. `_KNOWN_DEAD_CELLS` holds the accepted ones with reasons and
-should only ever shrink — it is **empty** as of 2026-08-06.
+returns nothing. Rows existing in `backtest_runs` is not evidence the surface works;
+`_KNOWN_DEAD_CELLS` holds the accepted exceptions with reasons and should only ever
+shrink.
 
-*Rated but undeclared* — the inverse, and the reason the banner changed. `recalibrate`
-rebuilt ratings from historical `backtest_runs` with no notion of the current config, so
-a dropped cell kept its stars forever. On 2026-08-06 this chain printed
-`✅ Routine DB update complete` and "no unexpected dead cells" with **nine orphaned cells
-present**, one showing 3★ +0.4688 for a strategy removed in May. Recalibrate now prunes
-them; if any appear again, something re-created them and the warning says so.
+*Rated but undeclared* — the inverse. `recalibrate` rebuilds ratings from historical
+`backtest_runs` with no notion of the current config, so a cell dropped from the TOML
+would otherwise keep its stars forever. Recalibrate prunes orphaned cells; if any
+reappear, something re-created them and the warning names it.
 
 ## After the chain
 
@@ -80,23 +77,16 @@ them; if any appear again, something re-created them and the warning says so.
    live_parity: regime=on direction_filter=on f8_htf_ema=on adr_bias=on conflict_resolver=off cooldown=on
    ```
 
-   Confirm it says **`conflict_resolver=off`** and the other five `on`. That flag
-   is settled (#149) and load-bearing: `conflict_resolver` reads
-   `confidence_ratings`, which this chain *writes*, so switching it on inside the
-   sweep is a fixed-point iteration rather than a gate — three consecutive
-   `backtest + recalibrate` passes went 108 → 66 rows differing, damping but not
-   converged, with cells still oscillating at iteration 3. With five gates the
-   chain is deterministic (0 of 160 rows differ across two passes), which is what
-   makes a real rating change distinguishable from a re-run artifact.
-
-   Until 2026-08-11 nothing printed this. The engine logged it only when at least
-   one gate was **on**, so it was silent for exactly the ~2.5 months the ratings
-   sweep ran with all six off — the state it needed to make visible. A banner
-   that reads `conflict_resolver=on` here means **stop**, not "interesting":
-   the ratings this chain produces would not be reproducible.
-   `tests/test_live_parity_config.py::TestSharedBaseGateState` asserts the
-   committed config, but only the banner tells you what *this run* executed
-   (an ad-hoc `--with-conflict-resolver` would not touch the config).
+   Confirm it says `conflict_resolver=off` and the other five `on`. `conflict_resolver`
+   reads `confidence_ratings`, which this chain writes, so switching it on inside the
+   sweep is a fixed-point iteration rather than a gate — consecutive
+   `backtest + recalibrate` passes damp but do not converge. With five gates on, two
+   consecutive passes differ on 0 of 160 rows, which is what makes a real rating change
+   distinguishable from a re-run artifact. A banner reading `conflict_resolver=on` here
+   means stop: the ratings this chain produces would not be reproducible.
+   `tests/test_live_parity_config.py::TestSharedBaseGateState` asserts the committed
+   config, but only the banner tells you what *this run* executed — an ad-hoc
+   `--with-conflict-resolver` would not touch the config.
 
 2. **Review golden diffs** before committing:
 
@@ -105,103 +95,74 @@ them; if any appear again, something re-created them and the warning says so.
    ```
 
    Large diffs are expected after detector or config changes; small diffs after
-   recalibration-only runs. If a diff is unexpectedly massive, stop and
-   investigate before committing.
+   recalibration-only runs. Stop and investigate an unexpectedly massive diff before
+   committing.
 
-3. **Prove the golden diff belongs to your change.** A diff here is usually
-   **fixture data drift**, not a behaviour change: `regression-update` re-extracts
-   the input parquets from a DB that has moved on since the goldens were written,
-   so the goldens shift even when the code is byte-identical. One command
-   falsifies it:
+3. **Prove the golden diff belongs to your change.** A diff here is usually **fixture
+   data drift**, not a behaviour change: `regression-update` re-extracts the input
+   parquets from a DB that has moved on since the goldens were written, so the goldens
+   shift even when the code is byte-identical. One command falsifies it:
 
    ```bash
    git checkout -- tests/fixtures/ && make test-regression
    ```
 
-   **If that passes, your code is golden-neutral and the goldens should not ship
-   in your PR** — revert them and say so. Confirmed on #148, where a golden diff
-   after `make db-update` looked like a behaviour change and was not.
+   **If that passes, your code is golden-neutral and the goldens should not ship in
+   your PR** — revert them and say so. `make db-update`'s completion banner prints this
+   same falsifier command; if you change it here, change it in the Makefile too. The
+   falsifier clears only the goldens (the AAPL fixtures) — it says nothing about
+   `confidence_ratings`, a wider population (13 symbols, longer window), which needs
+   its own attribution below. An unexplained diff is a lead, not noise — chase it
+   rather than dismissing it.
 
-   **`make db-update`'s completion banner prints this same command**, because the
-   banner is what a *direct* runner reads. On 2026-08-14 the target was run
-   instead of this skill, so this step was skipped and a 137-line golden diff
-   shipped in #192 that the falsifier — run late — proved was pure drift. Keep
-   the two in sync: if you change the command here, change it in the Makefile.
-   **Note what the falsifier does NOT cover**: it clears the *goldens* (the AAPL
-   fixtures) and says nothing about `confidence_ratings`, which is a wider
-   population (13 symbols, longer window). A star move needs its own
-   attribution — see the star-attribution block below.
+   **Attributing a star move needs a second run, not a second look.** The goldens have
+   a one-command falsifier; `confidence_ratings` has none, because `regression-update`
+   and recalibrate both re-derive from a DB that has moved on. First, establish which
+   cells the change can physically reach before reading any diff — a flag scoped to one
+   gate and one strategy can only move the cells that gate and strategy touch; anything
+   outside that reachable set is drift by construction. Second, for a cell that is in
+   reach, re-run the production sweep twice over one fixed window with only the config
+   flipped: anchor `start_ms`/`end_ms` once and pass them to both arms
+   (`run_backtest_sweep` otherwise anchors on now-minus-`days`, so two ordinary runs
+   don't share a window), flip the flag **in memory** rather than editing the TOML, and
+   call `_collect_sweep_results` with `sweep_id=None` so neither arm writes. Worked
+   example: `docs/plans/scripts/eqh_eql_adr_exempt_rating_isolation.py`.
 
-   This cuts both ways: #146's first dry run showed 44 changed rows that the
-   change could not possibly cause, and chasing that discrepancy is what found a
-   larger defect. **An unexplained diff is a lead, not noise.**
+   Flip the flag on every surface the sweep reads — `cfg.strategy_params` drives the
+   legacy pre-filter and what `effective_adr_threshold` records, but when
+   `live_parity.adr_bias` is on (it is, in both shipped configs) the engine applies ADR
+   from `cfg.live_strategy_params` instead, so flipping only one of the two measures the
+   wrong thing and still prints a plausible delta.
 
-   **Attributing a STAR move needs a second run, not a second look.** The
-   goldens have a one-command falsifier; `confidence_ratings` has none, because
-   `regression-update` and the recalibrate both re-derive from a DB that has
-   moved on. Two rules make the attribution cheap:
+4. **No daemon restart is needed — there is no daemon to restart.** The
+   `buibui-signal-watch.service`/`.timer` pair in `systemctl --user` belongs to the
+   crypto parent (`WorkingDirectory=/home/kng/repo/buibui-moon-trader-bot`,
+   `DATA_SOURCE=binance`); a same-shaped `wifey-signal-watch.*` sits beside it, so read
+   `WorkingDirectory`, never the name. Wifey dispatch is the one-shot
+   `CATCH_UP=1 make go-live`, by hand or via the opt-in `wifey-signal-watch.timer` that
+   runs that same target — `Type=oneshot`, so there is no process holding stale
+   ratings. `analytics/signal_runner.py:203` loads `confidence_ratings` once at
+   startup, which for a one-shot process is every run: a ratings change is picked up by
+   the next `make go-live` automatically.
 
-   **First, establish which cells the change can PHYSICALLY reach, before
-   reading any diff.** #192 moved one `adr_exempt` flag whose gate is
-   intraday-only and whose config declares one strategy — reach was **3 cells**,
-   while the refresh moved 13 stars. Anything outside the reachable set is drift
-   by construction and needs no further thought. The tell on 2026-08-14 was that
-   four strategies moved which the change could not touch at all.
+   Ratings do not drive `min_avg_r`. They become `confidence_override` → the
+   per-signal star score, which feeds the `conflict_resolver` gate
+   (`analytics/signal/gates.py::_apply_conflict_resolver` picks the side with higher
+   confidence), the DOW soft-suppress step, the alert's displayed stars, and
+   `confidence_at_fire` in the outcome ledger. `min_avg_r` is an independent threshold
+   from the config's `[backtest]` block; there is no `min_confidence` gate anywhere in
+   the tree.
 
-   **Second, for a cell that IS in reach, re-run the production sweep twice over
-   ONE fixed window with only the config flipped.** Anchor `start_ms`/`end_ms`
-   once and pass them to both arms — `run_backtest_sweep` anchors on now-minus-
-   `days`, so two ordinary runs do not share a window. Flip the flag **in
-   memory** rather than editing the TOML: no tree mutation, nothing to restore.
-   Call `_collect_sweep_results` with `sweep_id=None` so neither arm writes.
-   Worked example, and the reason this step exists:
-   `docs/plans/scripts/eqh_eql_adr_exempt_rating_isolation.py`, which resolved
-   #192's one in-reach cell from "confounded" to a **−0.392R config-only effect**
-   — *larger* than the shipped diff suggested, because drift had masked part of
-   it.
-
-   **Flip the flag on every surface the sweep reads.** `cfg.strategy_params`
-   drives the legacy pre-filter and what `effective_adr_threshold` RECORDS, but
-   when `live_parity.adr_bias` is on — it is, in both shipped configs — the
-   engine applies ADR from `cfg.live_strategy_params` instead. Flipping one of
-   the two measures the wrong thing and still prints a plausible delta.
-
-4. **No daemon restart is needed — and there is no daemon to restart.** This
-   step used to say "restart the live signal-watch daemon"; that was false, and
-   disproving it cost a full verification cycle in #150. The
-   `buibui-signal-watch.service`/`.timer` pair in `systemctl --user` belongs to
-   the **crypto parent** (`WorkingDirectory=/home/kng/repo/buibui-moon-trader-bot`,
-   `DATA_SOURCE=binance`) — and telling the two apart matters more since
-   2026-08-25, because a same-shaped `wifey-signal-watch.*` now sits beside it;
-   read `WorkingDirectory`, never the name. Wifey dispatch is the one-shot
-   `CATCH_UP=1 make go-live`, by hand or via the opt-in `wifey-signal-watch.timer`
-   that runs that same target. ⚠ **The timer does not weaken this step**: it is
-   `Type=oneshot`, so there is still no process holding stale ratings, and
-   `analytics/signal_runner.py:203` loads
-   `confidence_ratings` *"once at startup"* — which, for a one-shot process, is
-   every run. **A ratings change is picked up by the next `make go-live`
-   automatically.**
-
-   Ratings also do **not** drive `min_avg_r`, as this step previously claimed.
-   They become `confidence_override` → the per-signal star score, which feeds
-   the `conflict_resolver` gate (`analytics/signal/gates.py::_apply_conflict_resolver`
-   picks the side with higher confidence), the DOW soft-suppress step, the alert's
-   displayed stars, and `confidence_at_fire` in the outcome ledger. `min_avg_r` is an independent
-   threshold from the config's `[backtest]` block. There is no `min_confidence`
-   gate anywhere in the tree.
-
-5. **Commit** the golden file changes alongside whatever change motivated the
-   update — they belong in the same PR, *unless* step 3 showed they are fixture
-   drift.
+5. **Commit** the golden file changes alongside whatever change motivated the update —
+   they belong in the same PR, unless step 3 showed they are fixture drift.
 
 **A recalibrate can legitimately change ratings with no backtest re-run.**
-`db-update-recalibrate` reads whatever is already in `backtest_runs`, so running
-it alone — or running the full chain twice — can move stars without any detector
-or config change. That is expected, not a bug, and it is why the sweep must stay
-**deterministic**: with `conflict_resolver` off, two consecutive passes differ on
-0 of 160 rows, so a real rating change is distinguishable from a re-run artifact.
-Flipping `conflict_resolver` on inside the sweep destroys that property (it reads
-the table the sweep writes) and is settled — see CLAUDE.md.
+`db-update-recalibrate` reads whatever is already in `backtest_runs`, so running it
+alone — or running the full chain twice — can move stars without any detector or config
+change. That is expected, and it is why the sweep must stay **deterministic**: with
+`conflict_resolver` off, two consecutive passes differ on 0 of 160 rows, so a real
+rating change is distinguishable from a re-run artifact. Flipping `conflict_resolver`
+on inside the sweep destroys that property, which is why it stays off — see CLAUDE.md.
 
 ## When NOT to use
 

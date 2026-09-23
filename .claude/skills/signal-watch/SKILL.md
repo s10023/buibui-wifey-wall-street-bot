@@ -11,7 +11,10 @@ allowed-tools: "*"
 
 # Signal Watch Daemon
 
-Foreground poll loop — scans symbols × strategies × TFs on each new candle close, deduplicates, and sends Telegram alerts. (Production dispatch is the one-shot `CATCH_UP=1 make go-live`, by hand or via the opt-in `wifey-signal-watch.timer` — nothing installs a persistent daemon; see CLAUDE.md.)
+Foreground poll loop — scans symbols × strategies × TFs on each new candle close,
+deduplicates, and sends Telegram alerts. Production dispatch is the one-shot
+`CATCH_UP=1 make go-live`, by hand or via the opt-in `wifey-signal-watch.timer` — nothing
+installs a persistent daemon; see CLAUDE.md.
 
 ## What it does
 
@@ -73,8 +76,8 @@ min_sl_pct = 0.005
 # Day filter: "off" | "weekdays" | "tue_thu"
 # Filters on each bar's OPEN weekday. Weekly bars are stamped Monday, so pairing
 # "tue_thu" or "no_monfi" with "1wk" discards 100% of its signals —
-# load_signal_config now REFUSES that combination (here and in
-# strategy_timeframes) rather than letting it scan and dispatch nothing.
+# load_signal_config refuses that combination (here and in strategy_timeframes)
+# rather than scanning and dispatching nothing.
 day_filter = "tue_thu"
 
 # Active strategies list
@@ -115,14 +118,11 @@ min_avg_r_z = 1.64       # ...and only when the shortfall is significant (0.0 = 
 # volume_spike_boost = false
 ```
 
-**Note**: `min_avg_r` replaced the old win-rate gate `filter_threshold`, and it was a
-REPLACEMENT rather than a rename — the two gate different quantities (directional `avg_r`
-vs win rate). ⚠ **`filter_threshold` is now REFUSED at load** (`ValueError`): until
-2026-08-28 it stayed a parsed field "for TOML back-compat" that nothing read, so a config
-declaring it got a suppression that could never fire. Remove the key; express the intent as
-`min_avg_r` if a gate is wanted.
+`min_avg_r` gates directional `avg_r`; it is not a rename of the old win-rate gate
+`filter_threshold`, which gated a different quantity. **`filter_threshold` is refused at
+load** (`ValueError`) — remove the key and express the intent as `min_avg_r`.
 
-**Both sample-size knobs fail OPEN.** `min_trades` and `min_avg_r_z` each cause the gate to
+**Both sample-size knobs fail open.** `min_trades` and `min_avg_r_z` each cause the gate to
 *abstain* when unmet, so raising either makes the daemon dispatch **more**, not less — at
 `min_trades = 20` the `1wk` gate reaches 100% bypass, i.e. off. Check which way the knob turns
 before tuning it.
@@ -183,13 +183,10 @@ duckdb analytics.db "SELECT * FROM signals ORDER BY ts DESC LIMIT 20"
 
 ## Task: configure or debug signal watch
 
-When the user asks to set up, change, or debug the signal watch daemon:
-
-1. Check which config file is in use: `config/signal_watch.toml` is the default
-2. For strategy changes: edit `strategies` list in TOML
-3. For TF changes: edit `timeframes` and/or `[strategy_timeframes]`
-4. For TP changes: edit `[strategy_params.X].tp_r`
-5. For backtest filter changes: edit `[backtest]` sub-table
-6. Test changes: run a quick backtest first (`wifey backtest --strategy X --interval Y`)
-7. Start daemon: `make wifey-signal-watch CONFIG=config/signal_watch.toml`
-8. Monitor logs for signal detections and filter decisions
+Identify the active config (`config/signal_watch.toml` by default), then edit the field
+that matches the change: `strategies` for strategy changes, `timeframes` /
+`[strategy_timeframes]` for TF changes, `[strategy_params.X].tp_r` for TP changes, or
+`[backtest]` for filter changes. Validate with a quick backtest
+(`wifey backtest --strategy X --interval Y`) before starting the daemon
+(`make wifey-signal-watch CONFIG=config/signal_watch.toml`), then watch the logs for
+detections and filter decisions.

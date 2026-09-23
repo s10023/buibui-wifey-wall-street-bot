@@ -12,30 +12,20 @@ allowed-tools: Bash, Write, Read
 
 # PR Summary
 
-Write a PR title + summary + test plan after finishing a branch. Always write to
-`docs/plans/pr-<branch>.md` with slashes flattened to `-` (see Output location) —
-never return as inline text.
-
-## When to use
-
-After every branch is complete: lint/typecheck/tests pass, commit done. Do not wait to be asked.
+Write a PR title, summary and test plan once a branch is complete (lint/typecheck/tests
+pass, commit done) — do not wait to be asked. Write it to `docs/plans/pr-<branch>.md`
+(slashes flattened to `-`); never return the content inline.
 
 ## Output location
 
-Always write to `docs/plans/pr-<flattened-branch-name>.md` (gitignored via `docs/plans/`,
-but inside the repo and therefore durable). **Not `/tmp`:** the user deletes conversations
-and reboots clear `/tmp`, so a summary parked there evaporates exactly when a fresh session
-would want it. This mirrors the handoff, which moved to `docs/plans/` for the same reason.
-Return only the file path, not the content inline.
+**Not `/tmp`:** the user deletes conversations and reboots clear `/tmp`, so a summary
+parked there would evaporate exactly when a fresh session wants it. `docs/plans/` is
+gitignored but inside the repo, so it survives both.
 
 **Flatten every `/` in the branch name to `-` first.** This repo's branch convention is
 `docs/`, `feat/`, `fix/`, `chore/`, so a raw `docs/plans/pr-<branch>.md` is
 `docs/plans/pr-fix/outcome-resolution-closed-bars.md` — a path under a directory that
-does not exist. The write then fails, or a session silently invents its own flattening
-and the next session cannot find the file. Since this skill's whole contract is "return
-only the file path", a path nobody can predict defeats it.
-
-Derive it exactly this way, so every session picks the same name:
+does not exist. Derive it exactly this way, so every session picks the same name:
 
 ```bash
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
@@ -45,6 +35,10 @@ OUT="docs/plans/pr-$(printf '%s' "$BRANCH" | tr '/' '-').md"
 `fix/outcome-resolution-closed-bars` ⇒ `docs/plans/pr-fix-outcome-resolution-closed-bars.md`.
 
 ## Template
+
+Write PR and Issue bodies without hard line breaks inside a paragraph or bullet: one line
+per paragraph or bullet. GitHub renders a single newline in a PR or Issue body as a line
+break, so hard-wrapped text renders ragged.
 
 ```md
 ## PR Title
@@ -98,27 +92,19 @@ even when the run later goes green.
 
 ## Note on GitHub CLI
 
-`gh` **works** for this project — verified 2026-08-03: `gh api user` resolves as
-`s10023`, and `gh pr list --repo s10023/buibui-wifey-wall-street-bot` returns the
-merged PRs 120 through 124. This repo is the user's own fork, so there is no
-collaborator permission to lack. This section used to claim `gh pr create` fails with a
-collaborator permission error; that was a port artifact from the crypto parent,
-stale in both repos, and it cost PRs a manual paste for no reason. Still write the file
-at the flattened `docs/plans/pr-<branch>.md` (it is the deliverable of this skill, and
-useful as a `--body-file`), but do not tell the user the CLI is unavailable.
-
-Two repo-specific rules apply to every `gh` invocation here:
+`gh` works for this project: this repo is the user's own fork, so there is no
+collaborator permission to lack. Write the file at the flattened
+`docs/plans/pr-<branch>.md` regardless (it is this skill's deliverable, and doubles as a
+`--body-file`).
 
 - **Always pass `--repo s10023/buibui-wifey-wall-street-bot`.** The user's `gh`
-  default repo points at the crypto parent on purpose, so a bare `gh pr create`
-  targets the wrong repo. This is a preference, not a bug — never "fix" it with
-  `gh repo set-default`.
-- **Never run `gh auth switch`** (user, 2026-08-13, reversing the earlier rule). The
-  active account stays on the work account permanently; reach s10023 by prefixing the
-  token instead, which attributes correctly on its own:
+  default repo points at the crypto parent, so a bare `gh pr create` targets the wrong
+  repo. This is a preference, not a bug — never "fix" it with `gh repo set-default`.
+- **Never run `gh auth switch`.** The active account stays on the work account
+  permanently; reach s10023 by prefixing the token instead:
   `GH_TOKEN=$(gh auth token --user s10023) gh <cmd> --repo s10023/buibui-wifey-wall-street-bot`.
   If `gh` fails with "Could not resolve to a Repository", that is the account — add the
-  `GH_TOKEN` prefix rather than switching. Don't debug `gh` config past that.
+  `GH_TOKEN` prefix rather than switching.
 
 ## Conventional commit types for PR titles
 
@@ -132,16 +118,8 @@ Two repo-specific rules apply to every `gh` invocation here:
 
 ## Task: write a PR summary
 
-When the user asks to write a PR summary or after finishing a branch:
-
-1. Get the current branch name: `git branch --show-current`
-2. Get commit list: `git log main..HEAD --oneline`
-3. Get files changed: `git diff main..HEAD --stat`
-4. Draft the PR title (under 70 chars, conventional commit format)
-5. Write background context — why this change exists, not just what it does
-6. Write summary bullets — 3–5 key changes
-7. Write "How it works" — implementation details for reviewers
-8. Fill in Params/Config section if any new TOML keys or CLI flags were added
-9. Fill in test plan — check CI items, list remaining manual verification steps
-10. Write to `docs/plans/pr-<branch-name>.md`, slashes flattened to `-`
-11. Return only the file path
+Gather `git branch --show-current`, `git log main..HEAD --oneline` and
+`git diff main..HEAD --stat`, then fill in the template above: title, background,
+3–5 summary bullets, an implementation walkthrough, params/config if any were added, and
+the test plan with CI items pre-ticked. Write the result to
+`docs/plans/pr-<branch-name>.md` (slashes flattened to `-`) and return only the file path.
