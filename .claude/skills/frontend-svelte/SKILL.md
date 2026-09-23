@@ -144,9 +144,8 @@ missing event types).
 - Use CSS custom properties from `app.css` (theme tokens) — don't hard-code
   colors or spacing.
 - Component-scoped styles via `<style>` block. Avoid global selectors.
-- For new visual designs, **always load `/frontend-design`** before writing
-  CSS — it covers spacing, contrast, motion, and the project's aesthetic
-  direction.
+- New visual designs still follow `/frontend-design`'s spacing, contrast,
+  motion, and aesthetic guidance.
 
 ## Pre-commit checklist (UI changes)
 

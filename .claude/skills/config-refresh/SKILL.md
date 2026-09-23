@@ -16,11 +16,10 @@ End-to-end workflow to bring any `signal_watch_*.toml` up to date on
 `day_filter`, `volume_suppress` flags, and other entries that don't need
 walk-forward validation.
 
-> **Use `/wfo-sweep` for tp_r refresh.** This skill historically also covered
-> tp_r updates via a full-dataset sweep, but full-dataset sweeps have no
-> in-sample / out-of-sample split and produce overfit `tp_r` values. The
-> trusted production path for tp_r is `/wfo-sweep` (param-audit → param-sweep
-> → apply with IS/OOS gating).
+> **Use `/wfo-sweep` for tp_r refresh.** Full-dataset sweeps have no
+> in-sample / out-of-sample split and produce overfit `tp_r` values.
+> `/wfo-sweep` is the trusted production path (param-audit → param-sweep →
+> apply with IS/OOS gating).
 
 ## When to run
 
@@ -86,16 +85,15 @@ Decision threshold (per `/volume-sweep`):
 - Δ < −0.05R → `volume_suppress = false`
 - |Δ| ≤ 0.05R → omit the flag entirely (inherits global default)
 
-**Two preconditions on the `true` branch (2026-08-06) — read `/volume-sweep`'s STOP
-section before setting it:**
+Two preconditions gate the `true` branch — read `/volume-sweep`'s STOP section before
+setting it:
 
 - It requires `adr_exempt = true` on the same strategy, or `load_signal_config`
   raises. The ADR gate and this flag select for opposite bars (range/volume correlate
   ~+0.65), so together they discard ~99% of signals silently.
-- The Δ is untested by itself. Significance-test it — all four shipped flags failed
-  that test on 2026-08-06 and were removed, and **no strategy currently sets one.**
-  So in practice this step should now be confirming flags are *absent*, and any
-  addition needs a measured, tested justification.
+- The Δ is untested by itself and needs a significance test before shipping. No
+  strategy currently sets this flag, so in practice this step confirms the flags stay
+  absent; any addition needs a measured, tested justification.
 
 ## Step 3 — Sync `day_filter` and other top-level fields
 

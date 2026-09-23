@@ -57,10 +57,10 @@ config), `--workers N` (parallel pairs), `--day-filter`, `--min-trades N`,
 # All 5 canonical HTF:LTF pairs
 make wifey-cross-tf-backtest CONFIG=config/signal_watch.toml SAVE=1
 
-# Specific pairs only. All 5 canonical defaults are fetchable here (the dead
-# `15m` pairs the fork inherited are gone — tests/test_cross_tf_cofire.py pins
-# it), but live scans run 4h/1d only, so a pair with a `1h` leg can never
-# co-fire on the live path — prefer the live-reachable ones:
+# Specific pairs only. All 5 canonical pairs are fetchable here
+# (tests/test_cross_tf_cofire.py pins the set), but live scans run 4h/1d
+# only, so a pair with a `1h` leg can never co-fire on the live path —
+# prefer the live-reachable ones:
 make wifey-cross-tf-backtest \
   CONFIG=config/signal_watch.toml \
   HTF_LTF="1wk:1d 1wk:4h 1d:4h" \
@@ -112,8 +112,8 @@ Common interpretations:
 - **n_fresh > 0** for both tables → refresh wrote rows; the `last_run_utc`
   timestamp should match the wall-clock time of the run.
 - **same-TF viable count drops sharply between refreshes** → real regime
-  shift in confluence edge (e.g. the 2026-04-22 → 2026-05-11 drop from 28
-  to 13). Confluence blockquote in Telegram alerts will thin.
+  shift in confluence edge; the confluence blockquote in Telegram alerts
+  will thin.
 - **Viable count = 0** → no surviving combos pass `min_avg_r`. Either the
   gate is too tight or confluence has no edge in the current regime;
   consider relaxing `[combo]` thresholds before assuming a data bug.
@@ -138,12 +138,12 @@ Same-TF combos: edit `[combo]` in `config/signal_watch.toml` (or the variant
 config) — list pair allowlists / suppress rules. The signal daemon refreshes
 the combo lookup every 10 cycles.
 
-Cross-TF: the live wiring HAS landed (D10 step 4) — `signal_runner` loads
-`get_cross_tf_combo_lookup` at startup and refreshes it on the same 10-cycle
-cadence, and `run_scan_cycle` tags co-fires via `_find_cross_tf_cofire`.
-⚠ Both combo tables currently hold **0 rows**, so the whole co-fire layer is
-inert until a `SAVE=1` combo / cross-TF refresh writes them — `combo_health`
-reporting empty means *never refreshed*, not refresh-failed.
+Cross-TF: `signal_runner` loads `get_cross_tf_combo_lookup` at startup and
+refreshes it on the same 10-cycle cadence, and `run_scan_cycle` tags
+co-fires via `_find_cross_tf_cofire` (D10 step 4). The co-fire layer is
+inert until a `SAVE=1` combo / cross-TF refresh writes rows to both
+tables — `combo_health` reporting zero rows means never refreshed, not
+refresh-failed.
 
 After updating the config, `/db-update` (or at minimum
 `make wifey-recalibrate`) so star ratings reflect the new gate.
