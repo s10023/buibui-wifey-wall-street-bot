@@ -171,3 +171,35 @@ class TestEvaluateCommitGate:
         v = evaluate_commit_gate(thin, [thin, other], n_grid=2, n_splits=4)
         assert v.decision == "INSUFFICIENT"
         assert v.n_obs == 6
+
+
+class TestDsrThresholdIsDerivedNotRestated:
+    """The gate's DSR bar is DERIVED from `GATE_DSR` (parent #776).
+
+    ⚠ A bare `DSR_THRESHOLD == GATE_DSR` assertion is VACUOUS: both are 0.95, so
+    it passes whether the constant is derived or restated. The non-vacuous test is
+    on the SOURCE — a restated literal is the defect, and the value agreeing is
+    exactly what made two independent links look correct for as long as they did.
+    """
+
+    def test_the_value_tracks_the_single_definition(self) -> None:
+        from analytics.research_guards import GATE_DSR
+        from analytics.sweep_guard import DSR_THRESHOLD
+
+        assert DSR_THRESHOLD == GATE_DSR
+
+    def test_the_module_restates_no_dsr_literal(self) -> None:
+        """The positive control: this fails if the literal is written back in."""
+        import inspect
+
+        import analytics.sweep_guard as sg
+
+        src = inspect.getsource(sg)
+        assign = [
+            ln
+            for ln in src.splitlines()
+            if ln.startswith("DSR_THRESHOLD") and "=" in ln
+        ]
+        assert assign, "DSR_THRESHOLD assignment not found"
+        assert all("GATE_DSR" in ln for ln in assign), assign
+        assert not any("0.95" in ln for ln in assign), assign

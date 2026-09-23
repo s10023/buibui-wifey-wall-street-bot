@@ -45,9 +45,31 @@ candidates that did resolve. Exit 2 = `YOUTUBE_API_KEY` missing from `.env`.
 ### 2. Present the candidate table
 
 One row per candidate: channel · title · duration · age · `est_tokens` (a ±30%
-ranking-grade estimate — rank by it, don't budget by it). Below the table: each
-channel's exclusion summary (`below_floor` / `ledgered` / `title_filtered` /
+ranking-grade estimate — use it to **size the tranche**, never to order it). Below the
+table: each channel's exclusion summary (`below_floor` / `ledgered` / `title_filtered` /
 `too_short` / `live_or_upcoming` / `unavailable`) and any errors — never hide drops.
+
+**Rank by likely STREAM, not by `est_tokens`.** Order **B (mechanics) > A (hypotheses) >
+C (daily setups)**, recency as the tiebreak. `est_tokens` is a **cost** proxy, so ranking
+on it puts the cheapest rows first regardless of whether their stream has ever converted —
+it inverts the round. ⚠ **Stream is a prior for ORDERING, never a filter**: the exclusion
+rules above stay the only thing licensed to remove a row from the table.
+
+⚠ **The warrant for that order is wifey's own measurement, and it is weaker than the
+parent's — do not quote the parent's.** Upstream ranks B first because B is 2-for-2 into
+production. Here, **Stream A is 24 thesis-inbox rows with ZERO reaching FOUND** and
+**Stream C is 25 pundit rows with none actionable** (Cowen's calls carry no stop and no
+target so they can only read `OPEN`; fenggemeigu resolves at avg R −0.41). **Stream B is 4
+rows and unmeasured.** So B goes first because it is *the only stream not yet measured
+dead*, not because it has converted. Say it that way — the stronger claim is not ours.
+
+**A poll dominated by daily-setup uploads is one small opportunity wearing a big number.**
+Name the Stream-C ratio rather than proposing the top N. ⚠ **And the stream ranked first is
+the one `poll` is worst at finding**: Stream B material mostly sits in curated playlists,
+which an uploads feed structurally cannot see. **wifey has no `playlists` subcommand** —
+`yt_feed.py` ships `poll` / `backfill` / `mark` / `resolve` / `hint` only; that is parent #666,
+still unported and deferred. So a B-first ranking is worth no more than the B rows the poll
+happened to surface, and the honest report says which constraint you are under.
 
 Zero candidates → report that and stop.
 

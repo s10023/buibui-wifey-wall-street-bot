@@ -105,6 +105,66 @@ class TestVerdict:
         assert verdict(rows)[0] == EXIT_UNOBSERVED
 
 
+class TestSkippedIsNotBilling:
+    """`steps=0` is billing only when the job also FAILED (parent #755).
+
+    A job GitHub never created settles SKIPPED declaring nothing. This repo wires
+    that shape directly: `.github/workflows/lint.yaml` gives `Regression tests`
+    `needs: lint-typecheck-test`, so one timed-out test leaves it SKIPPED at zero
+    steps. Reading that as billing told the reader to flip a private repo public
+    in order to debug a test failure.
+
+    CLAUDE.md already named the discriminator ("a path-filtered skip reports
+    SKIPPED, an exhausted allowance reports FAILURE, both at steps=0"); the code
+    branched on steps before ever looking at the conclusion.
+    """
+
+    def test_a_dependency_skip_is_not_billing(self) -> None:
+        """The wired shape: one real failure, one job skipped behind it."""
+        rows = [
+            JobRow("lint-typecheck-test", "FAILURE", 14, 12),
+            JobRow("Regression tests", "SKIPPED", 0, 0),
+        ]
+        code, lines = verdict(rows)
+        text = "\n".join(lines)
+        assert code == EXIT_FAILED
+        assert "BILLING" not in text
+        assert "SKIPPED, which is NOT billing" in text
+        assert "fix the failure, not the skip" in text
+
+    def test_a_skipped_job_among_green_is_green(self) -> None:
+        """A job-level `if:` filter skips the whole job; that is not a failure."""
+        rows = [
+            JobRow("lint-typecheck-test", "SUCCESS", 14, 5),
+            JobRow("Regression tests", "SKIPPED", 0, 0),
+        ]
+        assert verdict(rows)[0] == EXIT_OK
+
+    def test_a_real_billing_matrix_is_still_caught(self) -> None:
+        """The MUTATION case — the one this fix could plausibly have blinded.
+
+        An exhausted allowance ALSO leaves chained jobs SKIPPED, so the fix must
+        not read the whole matrix through its skips: the FAILURE row still
+        declares zero steps, and that is what settles it.
+        """
+        rows = [
+            JobRow("lint-typecheck-test", "FAILURE", 0, 0),
+            JobRow("Regression tests", "SKIPPED", 0, 0),
+        ]
+        code, lines = verdict(rows)
+        assert code == EXIT_BILLING
+        assert "BILLING" in "\n".join(lines)
+
+    def test_a_lowercase_conclusion_is_still_a_skip(self) -> None:
+        """`gh` returns lowercase, the REST API uppercase — both are one skip."""
+        rows = [JobRow("a", "SUCCESS", 9), JobRow("b", "skipped", 0, 0)]
+        assert verdict(rows)[0] == EXIT_OK
+
+    def test_a_skip_never_invents_a_failure(self) -> None:
+        """A skip alone settles nothing — it is neither billing nor a failure."""
+        assert verdict([JobRow("Regression tests", "SKIPPED", 0, 0)])[0] == EXIT_OK
+
+
 class TestExecutedVersusDeclaredSteps:
     """ST50(f): a paths-filtered job DECLARES every step and skips the body.
 

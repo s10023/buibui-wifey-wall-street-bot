@@ -248,10 +248,17 @@ banner: REFUSED and INFRA are **not** suite failures. Narrative: `context/tools.
 
 `make wait-ci PR=<n>` waits for a PR's checks and `make wait-ci-main` is the **flip-back gate**
 (`--branch main --min-jobs 5`); both report whether the checks actually *ran*. `tools/wait_ci.py`
-exits **3** on `steps=0`, the Actions-allowance failure that renders exactly like a real one (flip
-the repo public, never debug it), **1** on a genuine failure, and **4** when it settles green but
-could not read the step counts — that last state used to print "all green, all executed real
-steps", asserting the one thing it had failed to observe. A `gh` failure now **raises**; it is
+exits **3** on a **FAILED** check at `steps=0`, the Actions-allowance failure that renders exactly
+like a real one (flip the repo public, never debug it), **1** on a genuine failure, and **4** when
+it settles green but could not read the step counts — that last state used to print "all green, all
+executed real steps", asserting the one thing it had failed to observe.
+⚠ **`steps=0` ALONE is not the billing test, and the tool branched on it before ever reading the
+conclusion** (parent #755). A `SKIPPED` job was never created and so declares
+nothing — which `Regression tests`' `needs: lint-typecheck-test` produces from one failed test, so
+the banner told the reader to flip a **private** repo public in order to debug a test failure, the
+most expensive available wrong action. An exhausted allowance leaves chained jobs skipped too, so
+**the failing row settles the matrix and its skips never do**; the SKIPPED-vs-FAILURE discriminator
+this file states under **CI quota** is now applied in code rather than only written down. A `gh` failure now **raises**; it is
 never turned into data, which is how a hand-rolled waiter once reported `jobs=0` against a live
 `total_count=2`. ⚠ **Through `make` you see none of these codes** — GNU make collapses any recipe
 failure to its own exit **2**, so branch on the printed banner, or call
@@ -1065,6 +1072,17 @@ the same shape as `make backup`'s coverage. Still check `git check-ignore` befor
 
 - **Always load `/frontend-design` before any Svelte, CSS or UI change.**
 - **Invoke `/post-branch` before `gh pr create`**, while the branch is still local-only.
+- **Does a skill upgrade force a RE-INGEST of the old corpus? Ask what the defect changed.** A
+  defect that changed **coverage** — what got dropped, capped or never fetched — requires one,
+  because the missing rows are unrecoverable from the per-item notes. A defect that changed only
+  **presentation, attribution or routing** of material already captured does not: the evidence is
+  still on disk and a cheaper repair exists. Both sides have a wifey instance. Coverage:
+  `video_marks.py::keep_items`' `ITEM_CAP` truncates silently and "a cap that silently truncates
+  looks identical to an absence" (Footguns), so moving it strands items no note ever held.
+  Routing: #186 restored `route_target`'s `retrospective`/`rejected` drop, and the blast radius was
+  **measured zero** — all 19 ledger rows predated the flags — so nothing was re-ingested. This
+  lives here rather than in the four ingest skills because a rule spelled four ways drifts, which
+  is how the powered-null family reached six sites. Ported from parent #647.
 - `/wfo-sweep` is the trusted production path for `tp_r`; `/config-refresh` covers the other config
   dimensions.
 - `/sanity-check` runs weekly or after a large refactor, and its mechanical half is

@@ -26,12 +26,20 @@ import numpy as np
 import numpy.typing as npt
 
 from analytics.research_guards import (
+    GATE_DSR,
     cscv_pbo,
     deflated_sharpe_ratio,
     min_track_record_length,
 )
 
-DSR_THRESHOLD = 0.95
+# DERIVED, never restated. This held its own ``0.95`` literal beside
+# ``research_guards.gate.GATE_DSR``'s, two links agreeing by coincidence with
+# nothing calling the other -- the defect class CLAUDE.md names as "a gate is
+# identified by its full leg set rather than by the constant that carries the
+# name". Ported from parent #776, whose own fix closed a THIRD site;
+# ⚠ wifey has TWO, because ``recalibrate_lib`` carries no such literal here --
+# do not quote the parent's count. The value is unchanged, so no verdict moves.
+DSR_THRESHOLD = GATE_DSR
 PBO_THRESHOLD = 0.5
 MINTRL_CONFIDENCE = 0.95
 DEFAULT_N_SPLITS = 14

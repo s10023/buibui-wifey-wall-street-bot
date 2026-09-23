@@ -26,6 +26,17 @@ Every guard here is a recorded scar, so none of them is decoration:
 * **`steps == 0` is a BILLING failure, never a code one.** When the Actions
   allowance is exhausted every job fails in 2-4s having executed nothing, which
   renders exactly like a real test failure. Flip the repo public; never debug it.
+* ⚠ **But `steps == 0` alone does NOT settle it — the CONCLUSION does.** A job
+  GitHub never created settles ``SKIPPED`` with no steps, and that happens two
+  ways that are not billing: a job-level ``if:`` filter, and a ``needs:``
+  dependency that failed. This repo has the second shape wired —
+  ``Regression tests`` declares ``needs: lint-typecheck-test`` — so a single
+  timed-out test leaves it ``SKIPPED`` at ``steps=0``. Reading that as billing
+  tells the reader to flip a private repo public in order to debug a test
+  failure, which is the most expensive possible wrong action. **Billing requires
+  a FAILED conclusion at zero declared steps**; an exhausted allowance also
+  leaves chained jobs skipped, so the discriminator is the failing row, never the
+  matrix read through its skips.
 * **A PASS in seconds needs the same scrutiny as a FAIL in seconds.** Some checks
   legitimately finish in 7s (`markdownlint`, `frontend-check`) because they sit
   behind a `dorny/paths-filter`. Duration narrows suspicion; only `steps` settles it.
@@ -46,7 +57,8 @@ Every guard here is a recorded scar, so none of them is decoration:
   inside the poll loop; an unrecoverable one propagates.
 
 Exit codes: ``0`` green and observed · ``1`` genuine failure · ``2`` timeout ·
-``3`` billing (``steps=0``) · ``4`` settled green but step counts unreadable.
+``3`` billing (FAILED at ``steps=0``) · ``4`` settled green but step counts
+unreadable.
 
 Usage:  make wait-ci PR=200  ·  make wait-ci-main
 """
@@ -164,10 +176,17 @@ def fmt_steps(row: JobRow) -> str:
 def verdict(rows: Sequence[JobRow]) -> tuple[int, list[str]]:
     """Exit code plus printable lines for a settled set of checks."""
     out: list[str] = ["  (steps are EXECUTED/DECLARED; a filtered job skips its body)"]
-    billing = failed = unknown = 0
+    billing = failed = unknown = skipped = 0
     for row in sorted(rows, key=lambda r: r.name):
         flag = ""
-        if row.steps == 0:
+        # A SKIPPED job was never created, so it declares nothing. That is NOT
+        # billing: a `needs:` dependency failing produces exactly this row, and
+        # an exhausted allowance ALSO leaves chained jobs skipped -- so the skip
+        # never settles the matrix in either direction. The FAILED row does.
+        if row.conclusion.upper() == "SKIPPED":
+            skipped += 1
+            flag = "  <-- SKIPPED, which is NOT billing (the job was never created)"
+        elif row.steps == 0:
             billing += 1
             flag = "  <-- steps=0: BILLING, flip the repo public; do NOT debug"
         elif row.conclusion.upper() != "SUCCESS":
@@ -186,6 +205,11 @@ def verdict(rows: Sequence[JobRow]) -> tuple[int, list[str]]:
         return EXIT_BILLING, out
     if failed:
         out.append(f"\n{failed} check(s) genuinely failed.")
+        if skipped:
+            out.append(
+                f"{skipped} further check(s) read SKIPPED because a `needs:` "
+                "dependency failed — fix the failure, not the skip."
+            )
         return EXIT_FAILED, out
     if unknown:
         out.append(

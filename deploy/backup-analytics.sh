@@ -169,8 +169,22 @@ BACKUP_DIRS=(
 #                           days of fires were lost permanently. The OHLCV bars
 #                           and the outcome resolutions both recovered -- only
 #                           the fires depend on this file. Parent fix: #771.
+#   config/youtube_channels.toml
+#                           the /ingest-feed follow list. Gitignored, single-copy,
+#                           and it sits under `config/` rather than `docs/plans`,
+#                           so no BACKUP_DIRS glob reaches it -- the third file to
+#                           land in this class after `signal_state.json` and
+#                           `sensitive-terms.txt`, and it arrived 2026-09-19,
+#                           AFTER these arrays were last reviewed. ⚠ Its loss is
+#                           silent: `/ingest-feed` reads an absent follow list as
+#                           "not configured" and reports an empty poll, which is
+#                           exactly how the skill read while it was BLOCKED on the
+#                           file never having existed. `.example` is committed and
+#                           is a schema demo, not a copy -- the channel IDs are a
+#                           hand-curated roster no tool reproduces. Parent #704.
 BACKUP_FILES=(
     "config/stocks.json"
+    "config/youtube_channels.toml"
     "signal_state.json"
     ".claude/settings.json"
     ".claude/settings.local.json"
