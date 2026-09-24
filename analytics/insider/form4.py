@@ -1,10 +1,10 @@
 """Form 4 (statement of changes in beneficial ownership) parsing — pure.
 
 Every function here is fixture-testable and touches no network. The XML shape
-was validated against a real filing (Apple Inc., accession 0001140361-26-034741,
-fetched 2026-08-29); the committed fixtures are synthetic reconstructions of that
-shape, because a real Form 4 names a private individual and a test fixture is a
-poor place to keep one.
+is validated against a real filing (Apple Inc., accession 0001140361-26-034741);
+the committed fixtures are synthetic reconstructions of that shape, because a
+real Form 4 names a private individual and a test fixture is a poor place to
+keep one.
 
 Three parse hazards are handled explicitly rather than discovered later, because
 this repo's standing lesson is that ingest parsing fails *silently*:
@@ -14,7 +14,7 @@ this repo's standing lesson is that ingest parsing fails *silently*:
    ``<footnoteId>`` in place of ``<value>`` — a price "as described in footnote
    3" — which yields a field that exists but carries no number.
 2. **A filing can report for several owners.** A joint Form 4 lists multiple
-   ``<reportingOwner>`` blocks against ONE set of transactions. The study's unit
+   ``<reportingOwner>`` blocks against one set of transactions. The study's unit
    is the *insider*, so one row is emitted per (owner × transaction); the
    alternative — attributing to the first owner — would silently drop the other
    insiders' trading histories, which is the input the classifier keys on.
@@ -22,7 +22,7 @@ this repo's standing lesson is that ingest parsing fails *silently*:
    ``nonDerivativeTable`` is read; option grants and exercises live in
    ``derivativeTable`` and are out of scope by pre-registration.
 
-A transaction that cannot be parsed is RETURNED as a failure, never dropped: the
+A transaction that cannot be parsed is returned as a failure, never dropped: the
 phase-1 acceptance observable is a parse *rate*, and a parser that silently skips
 what it cannot read reports 100% coverage by construction.
 """
@@ -125,13 +125,13 @@ def iter_form4_filings(
     Accepts either the full submissions document or a bare shard (which has the
     column arrays at top level). ``since`` filters on filing date, inclusive.
 
-    ⚠ This reads ONE payload, and ``filings.recent`` is a WINDOW rather than a
+    This reads one payload, and ``filings.recent`` is a window rather than a
     history, so a caller covering a multi-year span must also walk
     ``filings.files`` — see :func:`utils.edgar_client.fetch_submissions_shard`.
-    (SEC documents ``recent`` as the most recent 1,000 filings; measured on one
-    company, AAPL 2026-08-29, it held exactly 1000 and reached back only to
-    2015-06-10. The shard walk is unconditional, so it does not depend on that
-    figure being the same for every filer.)
+    SEC documents ``recent`` as the most recent 1,000 filings; for at least one
+    filer (AAPL) it held exactly 1000 and reached back only to 2015-06-10. The
+    shard walk is unconditional, so it does not depend on that figure being the
+    same for every filer.
     """
     block = submissions.get("filings", {}).get("recent", submissions)
     forms = block.get("form", [])
@@ -211,14 +211,10 @@ def parse_form4(xml_bytes: bytes) -> ParseOutcome:
             )
             if got is None
         ]
-        # ⚠ The failure string CARRIES THE TRANSACTION CODE, and that is the
-        # point of it. Phase 1 measured a 4.8% shortfall whose every printed
-        # reason was `missing price`, and inferred — without evidence — that it
-        # was gifts and awards, i.e. codes the pre-registration does not trade
-        # on. The reason string was the only record of a rejected row and it
-        # dropped the one field that could settle that, so the inference could
-        # not be checked at any sample size. Spec Amendment 2 asked for the
-        # confirmation; this is what makes it possible on the next run.
+        # The failure string carries the transaction code on purpose: a claim
+        # about which codes are behind a shortfall (e.g. gifts/awards lacking a
+        # price) needs the code in the record to be checked against evidence,
+        # not inferred blind from a reason string that dropped it.
         if missing:
             failures.append(
                 f"txn {seq} [code {code or '?'}]: missing {'/'.join(missing)}"

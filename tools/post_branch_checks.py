@@ -369,47 +369,8 @@ NEGATIVE_CLAIM_EXEMPT: dict[tuple[str, str], str] = {
         "falsify it. ⚠ Adding an installer to the repo does, so strike this "
         "entry then rather than re-scoping the line"
     ),
-    (".claude/context/analytics.md", "symbol"): (
-        "a parameter name in the engine signatures quoted on this line, not the "
-        "subject of any absence claim in this file"
-    ),
-    (".claude/context/analytics.md", "strategy_params"): (
-        "the same shape as the 'symbol' entry above — a parameter name in the "
-        "engine signatures quoted on this line, not the config file that "
-        "happens to share it. Editing that config scopes these lines in on the "
-        "bare word, and neither absence claim on them concerns it. ⚠ Keep this "
-        "reason free of the OTHER identifiers those signatures quote: the "
-        "scoping haystack is the diff itself, so naming one here re-scopes the "
-        "line this entry exists to release"
-    ),
-    (".claude/context/analytics.md", "signal_watch"): (
-        "names the live configs the paragraph describes; the claim beside it is "
-        "about per-direction ADR overrides"
-    ),
-    (".claude/context/analytics.md", "sharpe"): (
-        "a metric the paragraph lists as PRESENT — the claim is about the "
-        "book-dependent attribution funcs, which sharpe is not"
-    ),
-    (".claude/context/analytics.md", "test_regression.py"): (
-        "cited as a consumer of the cost model, not as anything claimed absent"
-    ),
-    (".claude/context/analytics.md", "evaluate"): (
-        "a forecast-book function name; the claim on its line is about the "
-        "parent's book-dependent attribution"
-    ),
-    # ⚠ The three below are keyed on a matched MARKER and were surfaced only
-    # when the corpus query stopped filtering on the letter `x` (2026-08-26).
-    # Each is a sentence no branch can ever settle, so without an entry it fails
-    # open on every run forever — which is the state this leg was extracted from
-    # prose to stop being.
-    (".claude/context/tools.md", "nothing read"): (
-        "past tense, and about a defect already fixed: the sentence opens 'Live "
-        "consequence WHILE IT WAS MISSING'. It records what happened before "
-        "that flag had a reader, so no future branch can falsify it. "
-        "⚠ Reason kept free of the identifier the sentence names — the scoping "
-        "haystack is the diff itself, so writing it here re-scoped the "
-        "same-marker claim in ingest-video's SKILL.md on this very branch"
-    ),
+    # The two below are also keyed on a matched marker. Each is a sentence no
+    # branch can settle, so without an entry the leg would never report clean.
     (".claude/skills/pr-summary/SKILL.md", "there is no"): (
         "'there is no collaborator permission to lack' is a claim about "
         "GitHub's permission model on a single-owner fork, not about anything "

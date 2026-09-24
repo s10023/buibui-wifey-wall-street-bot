@@ -6,26 +6,26 @@ only. Two things this report does that no earlier sleeve's did, both because the
 pre-registration asked for them by name:
 
 ``paired``      The reversal observable. Each trial is differenced against its
-                routine-arm placebo day-for-day and bootstrapped: **a CI
+                routine-arm placebo day-for-day and bootstrapped: a CI
                 containing zero means the routine and opportunistic arms are
-                indistinguishable on this panel, so the classification carries no
-                information here and the row closes.** This is a control, not a
-                trial — a placebo never enters the DSR family.
+                indistinguishable on this panel, so the classification carries
+                no information here and the row closes. This is a control, not
+                a trial — a placebo never enters the DSR family.
 
 ``long_only``   T2/T4 are not market-neutral, so the velocity lesson binds
                 (``long_only`` +0.649 gross hedged to +0.004, alpha t +0.01): a
                 long-only pass counts as signal only when the beta-hedged alpha
                 t-stat is positive. Declared in the spec before any data.
 
-⚠ **The DSR family is the FOUR trials, not the eight books.** The pre-registered
-family size is what ``distil_power`` priced the 0.3047 bar at; deflating against
-eight would silently raise the bar the sleeve was registered to clear, and
-inflating it by counting controls as trials is the same error in the other
-direction.
+The DSR family is the four trials, not the eight books: the pre-registered
+family size is what ``distil_power`` priced the 0.3047 bar at. Deflating
+against eight would silently raise the bar the sleeve was registered to clear,
+and inflating it by counting controls as trials is the same error in the
+other direction.
 
-⚠ **"Session-day cluster keys" collapses to a no-op at this unit and that is
-why no cluster key is passed.** ``audit_guard``'s clustering exists because many
-trades share one session day; a calendar-time book already emits exactly one
+"Session-day cluster keys" collapses to a no-op at this unit, which is why no
+cluster key is passed: ``audit_guard``'s clustering exists because many trades
+share one session day, but a calendar-time book already emits exactly one
 observation per session day, so the deflator would be 1.0 by construction. The
 serial dependence that remains is absorbed by the stationary block bootstrap.
 """
@@ -59,12 +59,12 @@ LONG_ONLY_KEYS = tuple(key for key, (_, long_only, _) in TRIALS.items() if long_
 class PairedDifference:
     """One trial minus its routine placebo, bootstrapped on the paired series.
 
-    ⚠ **Three states, not two.** "The arms are indistinguishable" and "the pair
-    could not be measured" are different findings and collapsing them prints the
-    confident one — the ``audit_guard`` lesson (an ``INSUFFICIENT`` cell is not a
-    powered null). ``measurable`` is False when neither book was ever funded, and
-    a book of all zeros is an empty panel rather than a book that agrees with its
-    mirror.
+    Three states, not two: "the arms are indistinguishable" and "the pair
+    could not be measured" are different findings, and collapsing them prints
+    the confident one (the ``audit_guard`` lesson — an ``INSUFFICIENT`` cell is
+    not a powered null). ``measurable`` is False when neither book was ever
+    funded, since a book of all zeros is an empty panel, not a book that
+    agrees with its mirror.
     """
 
     trial: str
@@ -76,7 +76,7 @@ class PairedDifference:
 
     @property
     def indistinguishable(self) -> bool:
-        """True when the pair IS measurable and its CI contains zero.
+        """True when the pair is measurable and its CI contains zero.
 
         This is the spec's reversal observable. An unmeasurable pair returns
         False here and must be read off :attr:`measurable`, never as evidence
@@ -116,7 +116,7 @@ class InsiderReport:
 
     @property
     def reversal_fires(self) -> bool:
-        """True when the PRIMARY trial is indistinguishable from its placebo."""
+        """True when the primary trial is indistinguishable from its placebo."""
         pair = self.paired.get(self.primary_key)
         return bool(pair.indistinguishable) if pair is not None else False
 
@@ -138,7 +138,7 @@ def paired_difference(
     a, b = trial.portfolio_return, placebo.portfolio_return
     n = min(len(a), len(b))
     diff = np.asarray(a[-n:] - b[-n:], dtype=np.float64)
-    # Measurability is a property of the BOOKS, not of their difference: an
+    # Measurability is a property of the books, not of their difference: an
     # all-zero difference between two funded books is a real null, while two
     # never-funded books produce the same zeros and establish nothing.
     funded = bool(np.any(a[-n:] != 0.0) or np.any(b[-n:] != 0.0))
@@ -172,7 +172,7 @@ def evaluate_insider_trials(
     """Score every book, gate the primary cell, and pair each trial's placebo.
 
     ``market_ret`` is the SPY daily return over the same index. For the L/S cells
-    a large realized β means the dollar-neutral construction FAILED, so that cell
+    a large realized β means the dollar-neutral construction failed, so that cell
     is not evidence about the premise — the ``lowvol`` / ``pead`` precedent, where
     a fired guardrail invalidated the construction rather than the claim.
 

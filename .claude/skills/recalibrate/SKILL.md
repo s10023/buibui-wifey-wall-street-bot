@@ -24,37 +24,29 @@ the live signal filter's quality gate.
 2. Maps avg_r → 1–5 stars (see thresholds below) — combined, long, and short directions
 3. Dry-run (default): prints a diff of old vs new ratings
 4. `--apply` with `--config`: writes combined + directional (long/short) stars to `confidence_ratings` DB table, keyed by `(config_name, strategy, tf, direction)`, and **prunes rows for cells the config no longer declares**
-5. `--apply` without `--config`: legacy fallback that patched `confidence=N` into `indicators_lib.py` — **dead in this fork**, that file was removed in strat-3. Always pass `--config`
+5. `--apply` without `--config`: legacy fallback that patched `confidence=N` into `indicators_lib.py` — **dead in this fork**, that file was removed. Always pass `--config`
 
-**Two filters on the input population, both easy to forget and both silent when wrong**
-(2026-08-06):
+Two filters on the input population are easy to forget because both fail silently:
 
 - **Declared cells only.** With `--config`, only `(strategy, timeframe)` pairs the config
   actually scans are rated — `declared_cells`, which honours `strategy_timeframes`.
-  `backtest_runs` is a permanent record, so without this a cell keeps its stars long after
-  leaving the config: `fib_golden_zone × 4h` showed 3★ +0.4688, the second-highest-rated
-  cell in the `signal_watch` table, 2.5 months after removal. Existing rows are deleted by
-  `prune_undeclared_confidence_ratings` (the upsert cannot remove them); a declared cell
-  that is merely *unrated this run* is left alone.
+  `backtest_runs` is a permanent record, so without this filter a cell keeps its stars long
+  after leaving the config. `prune_undeclared_confidence_ratings` deletes existing rows for
+  undeclared cells (the upsert alone cannot remove them); a declared cell that is merely
+  *unrated this run* is left alone.
 - **Sweep rows only** (`sweep_id IS NOT NULL`). The live EV gate also writes to
   `backtest_runs` — one row per direction-leg, single strategy, no live-parity params, no
-  conflict resolver. Dedup is "latest per (strategy, tf, symbol)", so those newer rows used
-  to *supersede* the competed sweep rows: 42 of 316 inputs on `signal_watch` (13%), 15 of
-  22 declared cells, five of them landing on the wrong side of zero.
-- **The same two writers also shared a `run_id`** until 2026-08-07, so the live gate's
-  `INSERT OR REPLACE` *overwrote* the sweep row outright — meaning the filter above could
-  not recover the competed measurement, it dropped that symbol. `signal_watch` was rated on
-  263 of 312 sweep rows (`trend_day × 4h` on 3 of 13 symbols). Each writer now stamps an
-  `origin`, and one `make db-update` restores the full grid. **If a cell's ratings look
-  thin, check its symbol count before its avg_r.**
+  conflict resolver. Dedup is "latest per (strategy, tf, symbol)", so an unfiltered live-gate
+  row can supersede the competed sweep row for the same cell. Each writer stamps an `origin`
+  so the two no longer collide on one `run_id`; run `make db-update` to restore the full grid
+  if a cell's ratings look thin — check its symbol count before its avg_r.
 
-- **The input population is now LIVE-PARITY gated** (2026-08-07). `config/strategy_params.toml`
-  declares `[backtest.live_parity]` with five gates on, so the sweep measures what the daemon
-  would dispatch, not the raw detector output — closed trades are ~33–35% below the ungated
-  count and 52 of 160 rating rows changed stars at the flip. **`conflict_resolver` is off on
-  purpose**: it reads `confidence_ratings`, so enabling it makes recalibrate non-deterministic
-  (two full passes disagreed on 108 rows). If you ever see `make db-update` produce different
-  stars on a re-run with no code change, check that flag first.
+The input population is live-parity gated: `config/strategy_params.toml` declares
+`[backtest.live_parity]` with five gates on, so the sweep measures what the daemon would
+actually dispatch, not the raw detector output. **`conflict_resolver` stays off inside the
+sweep** — it reads `confidence_ratings`, so enabling it there turns the sweep into a
+fixed-point loop rather than a gate. If `make db-update` produces different stars on a
+re-run with no code change, check that flag first.
 
 Run `make check-dead-surfaces` after applying — it fails on any orphan that survived.
 

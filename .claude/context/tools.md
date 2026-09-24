@@ -23,869 +23,745 @@ table, `read_only=True`); `build_coverage_rows`/`summarize` are the testable uni
 
 ## dead_surface_check.py — cells where declaration and output disagree
 
-Reports `(strategy × timeframe)` cells in **both** directions of the mismatch — the
-data-driven half of the silent-surface enforcement (the static half is
-`tests/test_makefile_invocations.py`). Both halves key off the same declared set,
-`analytics.signal_config.declared_cells` (every strategy × its `strategy_timeframes`
-override, else the config's `timeframes`), which lives in `signal_config` precisely so
-the two questions cannot drift apart.
+Reports `(strategy × timeframe)` cells in both directions of the mismatch — the data-driven half
+of the silent-surface enforcement (the static half is `tests/test_makefile_invocations.py`). Both
+halves key off the same declared set, `analytics.signal_config.declared_cells` (every strategy ×
+its `strategy_timeframes` override, else the config's `timeframes`), which lives in
+`signal_config` so the two questions cannot drift apart.
 
-**Declared but dead** (`find_dead_cells`) — joins the declared set against `backtest_runs`
-scoped by `day_filter` and flags any cell with **no runs** or **runs but zero
-`total_signals`**.
+**Declared but dead** (`find_dead_cells`): joins the declared set against `backtest_runs` scoped
+by `day_filter` and flags any cell with no runs, or runs but zero `total_signals`.
 
-**Rated but undeclared** (`find_orphan_ratings`) — the inverse. Scans
-`confidence_ratings` for the config's TOML stem and flags any row whose `(strategy, tf)`
-the config no longer declares, in every direction, worst-stars-first. `recalibrate` had no
-notion of the current config and `upsert_confidence_ratings` never deletes, so a dropped
-cell kept its stars and took a **fresh timestamp on a stale value** on every refresh: on
-2026-08-06, `fib_golden_zone × 4h` sat at 3★ +0.4688 — second-highest-rated cell in the
-whole `signal_watch` table — 2.5 months after the strategy left the config. Note the
-asymmetry that let it survive: a dead cell surfaces as a zero and reads as *absence*, an
-orphan surfaces as a number and reads as *evidence*.
+**Rated but undeclared** (`find_orphan_ratings`): the inverse. Scans `confidence_ratings` for the
+config's TOML stem and flags any row whose `(strategy, tf)` the config no longer declares,
+worst-stars-first. `recalibrate` has no notion of the current config and `upsert_confidence_ratings`
+never deletes, so a dropped cell keeps its stars and takes a fresh timestamp on a stale value on
+every refresh — measured 2026-08-06: `fib_golden_zone × 4h` sat at 3-star +0.4688, the
+second-highest-rated cell in the whole `signal_watch` table, 2.5 months after the strategy left the
+config. A dead cell surfaces as a zero and reads as absence; an orphan surfaces as a number and
+reads as evidence, which is the asymmetry that let it survive.
 
-Orphans carry a **tier** (`OrphanRating.tier`, from sister PR #608): `undeclared anywhere`
-versus `declared by another config`. Both mean the rating's own daemon will never scan the
-cell, so the tier **labels a finding and never suppresses one** — but the fix differs, and
-the split is real here because `signal_watch`'s **22** declared cells are a strict subset of
-`signal_watch_weekdays`' **32**, leaving **10** that only one config declares. `main` decides
-the tier from `cells_declared_elsewhere(declared_by_config, config)`, which is extracted
-rather than inlined because `main` itself has no test — an inlined union would have been the
-one part of the tier decision nothing could falsify. The parent's direction-aware half was
-deliberately **not** ported: it exists upstream because all three of its configs carry
+Orphans carry a tier (`OrphanRating.tier`): `undeclared anywhere` versus
+`declared by another config`. Both mean the rating's own daemon will never scan the cell, so the
+tier labels a finding
+and never suppresses one — but the fix differs, and the split is real because `signal_watch`'s 22
+declared cells are a strict subset of `signal_watch_weekdays`'s 32, leaving 10 that only one config
+declares. `main` decides the tier from `cells_declared_elsewhere(declared_by_config, config)`,
+extracted rather than inlined because `main` itself has no test. The parent's direction-aware half
+stays behind on the sync queue: it exists upstream because all three of its configs carry
 `strategy_timeframes_long`/`_short` narrowing, and this repo declares no such key, so
-`declared_cells` is direction-agnostic and a direction-aware check reports the same set.
+`declared_cells` is direction-agnostic and a direction-aware check would report the same set.
 
-The second case is the one that matters and the reason a plain "did it run?" check is not
-enough: `signal_watch.toml` held **338** `1wk`/`tue_thu` rows with zero closed trades for
-three months, so the surface *looked* covered (#139). Emptiness is indistinguishable from
-coverage unless something explicitly asks.
+The undeclared-rating case is the one that matters, because a plain "did it run?" check cannot see
+it: `signal_watch.toml` held 338 `1wk`/`tue_thu` rows with zero closed trades for three months, so
+the surface looked covered. Emptiness is indistinguishable from coverage unless something
+explicitly asks.
 
 `_KNOWN_DEAD_CELLS` is a `(day_filter, strategy, timeframe)` allowlist mirroring
-`tests/test_lookahead.py::_KNOWN_LOOKAHEAD_DETECTORS` — **it should only ever shrink**, and
-it reached **empty** on 2026-08-06 (its five entries were resolved; the diagnosis recorded
-beside three of them turned out to be wrong, which the module's docstring keeps as a
-caution). There is no allowlist for orphaned ratings: the fix is to prune them, not to
-accept them.
+`tests/test_lookahead.py::_KNOWN_LOOKAHEAD_DETECTORS` and should only ever shrink; it reached empty
+on 2026-08-06 (its five entries were resolved, though the diagnosis recorded beside three of them
+turned out to be wrong — the module's docstring keeps that as a caution). There is no allowlist for
+orphaned ratings: the fix is to prune them, not to accept them.
 
-Pure read (`read_only=True`). Exit 1 on any non-allowlisted dead cell **or** any orphaned
-rating; `--strict` also fails on allowlisted dead cells, which is how you verify the list
-can shrink. Inside `make db-update` it never blocks the refresh, but the completion banner
-is conditional on it — it previously printed an unqualified `✅` beside nine orphans, one
-of them displaying 3★.
+Pure read (`read_only=True`). Exits 1 on any non-allowlisted dead cell or any orphaned rating;
+`--strict` also fails on allowlisted dead cells, which is how you verify the list can shrink.
+Inside `make db-update` it never blocks the refresh, but the completion banner is conditional on
+it.
 
 **Run:** `make check-dead-surfaces` or
 `poetry run python tools/dead_surface_check.py [--config PATH ...] [--db PATH] [--strict]`
 
 ## orphan_test_audit.py — test classes that NAME a unit but never CALL it
 
-The third mechanical enforcement check, alongside `dead_surface_check.py` (data-driven)
-and `tests/test_makefile_invocations.py` (static). It exists because a green suite proves
-nothing about whether a test exercises its subject: `TestEvGate` held five tests that never
-invoked the EV gate, because the gate was `def _passes_ev_gate` **nested inside**
-`run_scan_cycle` and therefore unimportable. Every test re-implemented the comparison
-inline; one asserted the defect as the expectation, another reduced to `assert None is
-None`, and all five passed against any implementation (#150).
+The third mechanical enforcement check, alongside `dead_surface_check.py` (data-driven) and
+`tests/test_makefile_invocations.py` (static). It exists because a green suite proves nothing about
+whether a test exercises its subject: `TestEvGate` held five tests that never invoked the EV gate,
+because the gate was `def _passes_ev_gate` nested inside `run_scan_cycle` and therefore
+unimportable. Every test re-implemented the comparison inline — one asserted the defect as the
+expectation, another reduced to `assert None is None` — and all five passed against any
+implementation.
 
 Two verdicts:
 
-- **`not-importable`** — the subject matches a **closure** and no module-level callable.
-  The unit is unreachable from a test, so the tests can only re-implement it. **Extraction
-  is a prerequisite for the fix, not scope creep.**
-- **`not-called`** — an importable callable matches but no test in the class calls it.
-  Ordinary drift after an extract or rename.
+- **`not-importable`**: the subject matches a closure and no module-level callable. The unit is
+  unreachable from a test, so the tests can only re-implement it. Extraction is a prerequisite for
+  the fix, not scope creep.
+- **`not-called`**: an importable callable matches but no test in the class calls it. Ordinary
+  drift after an extract or rename.
 
-Matching is token-based and **directional**: the callable's name must contain the class's
-subject tokens contiguously and in order, so `ev_gate` matches `_passes_ev_gate` while
-`p_r` matches neither. An earlier substring formulation produced **95** findings on a clean
-tree, nearly all junk. A class whose subject matches nothing at all is deliberately not
-reported — descriptive names (`TestWatermarkOnSend`) are legitimate and were most of that
-noise.
+Matching is token-based and directional: the callable's name must contain the class's subject
+tokens contiguously and in order, so `ev_gate` matches `_passes_ev_gate` while `p_r` matches
+neither. An earlier substring formulation produced 95 findings on a clean tree, nearly all junk. A
+class whose subject matches nothing at all is not reported — descriptive names
+(`TestWatermarkOnSend`) are legitimate and were most of that noise.
 
-`EXEMPT_CLASSES` is keyed `"<test file>::<class>"` and every entry carries its reason. The
-three current entries are all the same false-positive shape — the subject reached **one
-indirection away**, via a local test helper or a CLI `main()`. An entry without a reason is
-how the check decays into a no-op, and a check that always prints the same findings is
-ignored, which amounts to the same thing.
+`EXEMPT_CLASSES` is keyed `"<test file>::<class>"` and every entry carries its reason inline; an
+entry without one lets the check decay into a no-op. The three current entries are the same
+false-positive shape — the subject reached one indirection away, via a local test helper or a CLI
+`main()`.
 
-Heuristic, so it is **advisory and not part of `make test`** — unlike
-`tests/test_schema_insert_arity.py`, which is deterministic and therefore runs in the
-suite. Exit 0 by default; `--strict` exits 1 on findings. Verified against the pre-#150
-tree, where it isolates `TestEvGate` and names `_passes_ev_gate`; clean on HEAD.
+Heuristic, so it is advisory and not part of `make test`, unlike `tests/test_schema_insert_arity.py`,
+which is deterministic and runs in the suite. Exit 0 by default; `--strict` exits 1 on findings.
+Verified against the pre-fix tree, where it isolates `TestEvGate` and names `_passes_ev_gate`;
+clean on HEAD.
 
-⚠ **Its `EXEMPT_CLASSES` allowlist was a SILENT NO-OP on Windows until 2026-09-21.** The keys
-are written with forward slashes and the lookup built its key with
-`str(path.relative_to(REPO_ROOT))`, which renders backslashes there — so all four exemptions
-missed and the check reported **4 findings it had already ruled on**, permanently. A leg that
-can never be clean trains dismissal, which is the cost this repo keeps naming. Now `as_posix()`,
-pinned by `tests/test_orphan_test_audit.py`. ⚠ **The defect is PLATFORM-DEPENDENT, and the module
-had no tests at all** — on Linux `str()` and `as_posix()` agree, so it could only ever appear on
-the host with nothing running against it. The same two sites also called `read_text()` with no
-`encoding=`, surviving only because `make` exports `PYTHONUTF8=1`.
+Its `EXEMPT_CLASSES` lookup must use `as_posix()`, never `str(path.relative_to(REPO_ROOT))`: the
+keys are written with forward slashes, and on Windows `str()` renders backslashes, so all four
+exemptions missed and the check reported four findings it had already ruled on. The defect is
+platform-dependent — on Linux `str()` and `as_posix()` agree — which is why it needed a positive
+test rather than reasoning from Linux behavior; the same sites also need `read_text(encoding=...)`
+rather than relying on `PYTHONUTF8=1` from `make`. Pinned by `tests/test_orphan_test_audit.py`.
 
-⚠ **Measured while pinning it: the obvious assertion is VACUOUS.** Asserting that no exempt
-class appears in the findings passes *under the bug too* — with backslash keys the intersection
-is empty whether the lookup works or misses entirely. The control that actually observes the
-channel asserts the emitted keys contain no backslash, plus a liveness check that each exempt
-class still exists in the tree.
+Asserting that no exempt class appears in the findings is a vacuous check here: with backslash keys
+the intersection is empty whether the lookup works or misses entirely. The control that actually
+observes the channel asserts the emitted keys contain no backslash, plus a liveness check that each
+exempt class still exists in the tree.
 
 **Run:** `make check-orphan-tests` or
 `poetry run python tools/orphan_test_audit.py [--strict]`
 
 ## post_branch_checks.py — every mechanical `/post-branch` check, in one run
 
-Thirteen checks — twelve of them once **16 shell blocks embedded in `post-branch/SKILL.md`**, which a
-session had to notice and copy by hand. That is the failure CLAUDE.md names as *a hand walk
-is not the walk*, and it is why the same defects kept recurring: the skill's answer to each
-one was more prose, and prose cannot enforce. Extracting them cut the skill from **1,649 to
-~600 lines** and made the checks testable — `tests/test_post_branch_checks.py` gives each a
-**positive control**, which the prose versions never had.
+Thirteen checks, extracted from shell blocks that used to live inline in `post-branch/SKILL.md` and
+had to be noticed and copied by hand. Extraction cut the skill from 1,649 to ~600 lines and made
+the checks testable: `tests/test_post_branch_checks.py` gives each a positive control, which the
+prose versions never had.
 
 Checks: `queue-items` · `handoff-symbols` · `new-files` · `new-modules` · `new-targets` ·
 `amended-targets` · `negative-claims` · `doc-indexes` · `md-atx` · `memory-cap` · `handoff-size` ·
-`stale-anchors` (engine in `stale_anchors.py`, below) · `sensitive-terms` (the pre-flip
-gate, ported from parent #658; asks the tracked tree, this branch's commit **content** and
-its commit **messages**, because a flip republishes the whole history and no file edit
-reaches a message. An absent `.claude/sensitive-terms.txt` is a FINDING reading
-`NOT CONFIGURED`, never a SKIP, and terms are masked in the output).
+`stale-anchors` (engine in `stale_anchors.py`, below) · `sensitive-terms` (the pre-flip gate,
+ported from the parent; asks the tracked tree, this branch's commit content and its commit
+messages, because a flip republishes the whole history and no file edit reaches a message. An
+absent `.claude/sensitive-terms.txt` is a finding reading `NOT CONFIGURED`, never a skip, and
+terms are masked in the output).
 
-⚠ **`amended-targets` is the thirteenth, and it is the only leg that fires on a doc which is
-CORRECT about the artifact.** `new-targets` matches an added `+target:` line, so an existing
-target that gains an override or changes a default leaves every presence check green while the
-doc's enumeration goes one short. Three pure functions: `changed_line_numbers` walks hunk
-headers, and ⚠ **a deletion is blamed on the position it VACATED** — skipping it would make a
-recipe line *removed* from a target invisible, the same amendment arriving as a subtraction;
-`targets_by_line` maps each line to its owning recipe, with `.PHONY:` failing the declaration
-regex and, being un-indented, also clearing the current target; `check_amended_targets`
-intersects them and subtracts targets this branch ADDED, so `new-targets` keeps that case.
-⚠ **`names_token` replaces `\b`, and that is not incidental** — `-` is a non-word character, so
-`\bwifey-backtest\b` matches inside `wifey-backtest-extra`; it is the `-w` trap this file already
-documents for `_`, from the other side, and nearly every target here is hyphenated.
-⚠ **`check_new_targets` keeps the plain `\b` deliberately**, as upstream left it: there a
-substring hit reads as DOCUMENTED, so it fails in the quieter direction, and widening it could
-newly fire on real branches. ⚠ **`_read_each` keys on `as_posix()`, a wifey divergence** — on
-Windows `rglob` yields backslashes, and this report gets pasted into handoffs; #302 was the
-sharper version of that class, an allowlist that matched nothing once separators diverged.
-Verified by a counterfactual rather than an assertion: adding `$(if $(SINCE),…)` to
-`wifey-universe-sync` emits `AMENDED: wifey-universe-sync — re-read .claude/context/tools.md,
-CLAUDE.md, deploy/README.md`. Ported from parent #747.
+### amended-targets
 
-⚠ **The three handoff-dependent legs — `queue-items`, `handoff-symbols`, `handoff-size` —
-report `SKIPPED: no handoff file` rather than clean when the handoff is absent**, which it is
-on a worktree or a fresh clone, the file being gitignored. `handoff-size` was built as a plain
-result while its two siblings already skipped, so it read **green** there: the parent's #699
-defect mirrored, and in the worse direction, since upstream returns a finding. One
-`_handoff_leg` now carries the decision for all three — "no finding" and "no handoff" are
-different states and only one of them is green.
+The only leg that fires on a doc that is correct about the artifact: `new-targets` matches an
+added `+target:` line, so an existing target that gains an override or changes a default leaves
+every presence check green while the doc's enumeration goes one short. Three pure functions:
+`changed_line_numbers` walks hunk headers and blames a deletion on the position it vacated
+(skipping it would make a recipe line removed from a target invisible); `targets_by_line` maps
+each line to its owning recipe, with `.PHONY:` failing the declaration regex and, being
+un-indented, also clearing the current target; `check_amended_targets` intersects them and
+subtracts targets this branch added, so `new-targets` keeps that case.
 
-`--text <file>` (`make post-branch-text FILE=<path>`) is a **fourth** surface for that gate
-and runs alone, without any git surface: a PR title or body is neither the tree nor a commit,
-so the three legs above report `clean` on one naming every term — correctly, and uselessly.
-Repeatable, `FILE=-` reads stdin, exit 1 on a hit (make collapses that to its own 2, as with
-`wait_ci`). It prints line numbers and a masked term and **never the matching line**,
-because the match sits inside the very prose being screened. Hand-screening caught #245's
-first draft naming all three terms, in the window the gate exists to make safe; the second
-hand-check (#249) used a throwaway six-line loop, which is what this wires in. Belongs in
-phase 5 — a posted body is public on landing and a later edit does not unpublish it.
+`names_token` matches on `-` boundaries explicitly rather than relying on `\b`, because `-` is a
+non-word character and `\bwifey-backtest\b` matches inside `wifey-backtest-extra` — nearly every
+target here is hyphenated. `check_new_targets` keeps the plain `\b` deliberately, as the parent
+left it: there a substring hit reads as documented, so it fails in the quieter direction, and
+widening it could newly fire on real branches. `_read_each` keys on `as_posix()`: on Windows
+`rglob` yields backslashes, and this report gets pasted into handoffs, so a separator mismatch
+would make an allowlist match nothing.
 
-⚠ **`negative-claims` read 15% of its own corpus for eight months, and nothing could see it.**
-From the #218 extraction until 2026-08-26 the corpus query was `git grep -nI -e x`, written as
-if the pattern meant "every line". It does not — it matches *every line containing the letter
-`x`*, which is **1,892 of 12,277 non-blank corpus lines (15%)**. **46 of the 69 claim-shaped
-lines then in the corpus carry no `x` at all** and had never been reachable, including `Makefile`'s "The 505-member
-research universe has NO scheduled refresher" — a claim #265 falsified while this leg reported
-nothing about it. Three things made it durable: every test injects a **fake runner**, so the
-real argv was never exercised; the leg's quietness read as a well-tuned scope rather than as
-blindness; and **every triage figure ever quoted for it** ("33 → 21 lines", "8 of 8", "0–5 to
-1–11 per run") was measured on the truncated slice, so the numbers corroborated the defect.
-⚠ **The error direction was flattering, which is why it survived** — a filter nobody declared
-reads exactly like a corpus nobody wrote a claim into. `TestCorpusQueryReachesEveryLine` now
-pins the argv and the behaviour separately, with an `x`-free line as the positive control;
-only the argv leg goes red when the defect is reintroduced, because the behaviour leg's fake
-runner cannot see it. On the fixed corpus the leg reports **13.2 findings + 18.2 soft per
-run** against 8.5 while blind — **4.2× quieter per corpus line**. A finding now needs a
-backticked or punctuated token; a hit on bare English ("there is no **state**") is demoted to
-a named re-read note rather than dropped, and the subject is read to the LEFT of `has no` as
-well as the right, since that is where the discriminating noun sits.
+Verified by a counterfactual: adding `$(if $(SINCE),…)` to `wifey-universe-sync` emits `AMENDED:
+wifey-universe-sync — re-read .claude/context/tools.md, CLAUDE.md, deploy/README.md`. Ported from
+the parent.
 
-`negative-claims` narrows through `NEGATIVE_CLAIM_EXEMPT`, `(path, token)` → reason. A hit
-is dropped only when **every** matched token is exempt, so one unexempt token still reports
-the line and an entry narrows rather than deletes; the count is printed, never swallowed,
-and `tests/test_post_branch_checks.py` fails a dead entry against the real file so the
-allowlist keeps an external referent. ⚠ **The obvious alternative is the wrong one.** These
-claim lines are 3–6 KB paragraphs carrying 49 and 113 tokens, so scoping on a window around
-the regex match looks like the real fix; measured against the pre-#248 tree it would have
-suppressed the leg's only true positive, where the regex matched
-`gate_audit.py … not ported` and the sentence the branch falsified sat ~1,400 characters
-earlier on the same line. The finding's value was a human re-reading the paragraph, which is
-why the line stays the unit and `attribution` stays off the allowlist — on two of those
+### Handoff-dependent legs
+
+`queue-items`, `handoff-symbols` and `handoff-size` report `SKIPPED: no handoff file` rather than
+clean when the handoff is absent, which it is on a worktree or a fresh clone since the file is
+gitignored. One `_handoff_leg` carries the decision for all three, because "no finding" and "no
+handoff" are different states and only one of them is green — a leg reporting a plain clean result
+while its siblings skip would be invisibly wrong on exactly that case.
+
+### The `--text` surface
+
+`--text <file>` (`make post-branch-text FILE=<path>`) is a fourth surface for the sensitive-terms
+gate and runs alone, without any git surface: a PR title or body is neither the tree nor a commit,
+so the three git-scoped legs report clean on one naming every term. Repeatable, `FILE=-` reads
+stdin, exit 1 on a hit (`make` collapses that to its own 2, as with `wait_ci`). It prints line
+numbers and a masked term, never the matching line, because the match sits inside the very prose
+being screened. Belongs in phase 5 — a posted body is public on landing and a later edit does not
+unpublish it.
+
+### negative-claims
+
+The corpus query must reach every line, never a bare `git grep -nI -e x`, which matches every line
+containing the letter x rather than every line. That earlier form read 15% of the corpus
+(1,892 of 12,277 non-blank lines) and said nothing about the other 85%: 46 of 69 claim-shaped lines
+in the corpus at the time carried no `x` at all, including the Makefile's "The 505-member research
+universe has NO scheduled refresher," a claim later falsified while this leg reported nothing about
+it. The tests inject a fake runner, so the real argv was never exercised, and every triage figure
+ever quoted for this leg was measured on the truncated slice. `TestCorpusQueryReachesEveryLine`
+pins the argv and the behavior separately, with an `x`-free line as the positive control, since a
+fake-runner test cannot see an argv regression on its own.
+
+On the fixed corpus the leg reports 13.2 findings + 18.2 soft per run against 8.5 while reading 15%
+of the tree — 4.2x quieter per corpus line it actually reaches. A finding needs a backticked or
+punctuated token; a hit on bare English ("there is no **state**") is demoted to a named re-read
+note rather than dropped, and the subject is read to the left of `has no` as well as the right,
+since that is often where the discriminating noun sits.
+
+`NEGATIVE_CLAIM_EXEMPT` narrows findings, keyed `(path, token)` → reason. A hit is dropped only
+when every matched token is exempt, so one unexempt token still reports the line — an entry narrows
+rather than deletes, and the count is printed, never swallowed. `tests/test_post_branch_checks.py`
+fails a dead entry against the real file so the allowlist keeps an external referent. Do not scope
+a finding to a window around the regex match instead of the whole line: these claim lines are 3-6
+KB paragraphs, and scoping to a window suppressed the leg's only true positive in testing, where
+the regex match sat roughly 1,400 characters after the sentence a branch had actually falsified.
+The line is the unit for this reason, and `attribution` stays off the allowlist because on two
 lines it is the claim's own subject.
 
-⚠ **The phrasing allowlist was the leg's real hole, and it was invisible for the reason
-allowlists always are.** Measured 2026-08-26 against the signal-timer branch (#261): of the
-absence claims that branch falsified, it reported **0 of 8** — every one written in the plain
-*"there is no X"* / *"X has no Y"* form, which is simply how absence gets written, and which
-had no entry because no past incident had happened to use it. Two of the eight sat in
-`deploy/`, outside `NEGATIVE_CLAIM_PATHS` entirely and so unreachable at any regex; the path
-and the widening therefore ship together, since `deploy/` alone surfaces **zero** hits against
-the unwidened regex. The tree's own emphasis convention hid one more — `has **no daemon at
-all**` puts a bold marker mid-phrase — so the pattern carries an emphasis slot.
+The phrasing allowlist is the leg's main blind spot. Measured 2026-08-26: of eight absence claims
+one branch falsified, the leg caught none — all eight named the missing thing directly, in a bare
+existential or possessive-negation form, a phrasing with no allowlist entry because no prior
+incident had used it.
+Two of the eight sat in `deploy/`, outside `NEGATIVE_CLAIM_PATHS` and unreachable at any regex, so
+the path and the phrasing widened together. The tree's own emphasis convention hides a further case
+("has **no daemon at all**"), so the pattern must allow a bold marker mid-phrase.
 
-Three things bounded the cost, and each was measured rather than reasoned:
+Three properties bound the leg's cost:
 
-- **`has no` is anchored to a subject that is not a third party** — `wifey`, `this
-  repo|fork|tree|skill`, `the fork|repo`, or any definite noun phrase that is not `the parent`
-  or `the endpoint` — plus an intervening-adverb slot and a line-initial arm for a claim whose
-  subject sits on the previous line. Bare, it matches mostly claims about what something ELSE
-  lacks (*"yfinance OHLCV has no taker data"*, *"the endpoint has no children field"*), which
-  no wifey branch can falsify; unanchored it measures **57.5 findings per run**. ⚠ The
-  line-count figures once quoted here were measured through the `-e x` corpus filter and are
-  gone rather than restated — see the corpus note above.
-- **`claim_subject_tokens` is a scoping fallback, not a wider token list.** Widening the regex
-  took claim lines carrying no backticked token — unscopable, therefore reported on *every*
-  branch forever — from **0 to 11**, which would have made the leg permanently unclean. The
-  fallback scopes such a line on its own subject noun, so it can only ever REMOVE a report.
-  ⚠ **It is the opposite knob from #250's**: that one scopes lines IN wholesale. Fail-open
-  survives where it is still earned — a subject that is all stopwords, or that runs off the
-  end of its line, still reports.
-- ⚠ **Price the TRIAGE LOAD, not just the catch.** On the fixed corpus the leg reports
-  **13.2 findings + 18.2 soft per run** over the six branches to `7519f0b`, against 8.5 while
-  it was reading 15% of the tree — **4.2× quieter per corpus line**. That is paid on every
-  branch and is the standing argument against going wider: **a check that is never clean
-  trains dismissal.**
-  `TestTheLegIsCleanOnAnUNRELATEDBranch` pins the property that made it shippable — zero claim
-  lines report unconditionally — against the real tree, so a future doc edit fails there. The
-  fix is then to scope or exempt that one sentence, never to grow `_SUBJECT_STOP` until the
-  number goes away.
+- `has no` is anchored to a subject that is not a third party — `wifey`, `this
+  repo|fork|tree|skill`, `the fork|repo`, or any definite noun phrase that is not `the parent` or
+  `the endpoint` — plus an intervening-adverb slot and a line-initial arm for a claim whose subject
+  sits on the previous line. Unanchored, it matches mostly claims about what something else lacks
+  ("yfinance OHLCV has no taker data," "the endpoint has no children field"), which no wifey branch
+  can falsify, and measures 57.5 findings per run.
+- `claim_subject_tokens` is a scoping fallback, not a wider token list: it lets a claim line with no
+  backticked token be scoped by its own subject noun instead of being unscopable and therefore
+  reported on every branch forever (widening the regex without this fallback took such lines from 0
+  to 11). It can only remove a report; a subject that is all stopwords, or that runs off the end of
+  its line, still reports.
+- Price the triage load, not just the catch: on the fixed corpus the leg reports 13.2 findings +
+  18.2 soft per run over six branches, against 8.5 while reading 15% of the tree — 4.2x quieter per
+  corpus line. A check that is never clean trains dismissal.
+  `TestTheLegIsCleanOnAnUNRELATEDBranch` pins the property that made it shippable (zero claim lines
+  report unconditionally) against the real tree. Fix a newly-noisy line by scoping or exempting
+  that one sentence, never by growing `_SUBJECT_STOP` until the number goes away.
 
-Two are new and fix defects the prose form structurally could not:
+### queue-items, new-files and the unscoped negative-claims fix
 
-- **`queue-items`** — nothing swept the handoff's own task list for work the branch just
-  finished, so a completed item survived under a heading reading *"Settled — do not
-  re-litigate"*, i.e. as an instruction to redo it. Confirmed three times. The earlier
-  mitigation keyed on added Python **symbols**, so a docs-only branch defeated it entirely;
-  this keys the handoff's own distinctive tokens against the diff **content**, which every
-  branch has. It fired correctly on its own introducing branch.
-- **`new-files`** — the prose probed `basename`, and every skill's basename is the shared
-  constant `SKILL.md`, which matches CLAUDE.md's generic *"Skills live in
-  `.claude/skills/<name>/SKILL.md`"*. A fabricated skill therefore reported COVERED — the
-  exact false positive that check's own `-w` rule exists to prevent. `probe_names` probes
-  the **parent directory** when the basename names a role rather than a file
-  (`SKILL.md`, `README.md`, `__init__.py`, `INDEX.md`).
+`queue-items` exists because nothing previously swept the handoff's own task list for work the
+branch just finished, so a completed item could survive under a heading like "Settled — do not
+re-litigate" — i.e. as an instruction to redo it. An earlier mitigation keyed on added Python
+symbols, so a docs-only branch defeated it; this keys the handoff's own distinctive tokens against
+the diff content, which every branch has.
 
-- **`negative-claims`** — shipped **unscoped** and was the third defect of this shape.
-  `check_negative_claims` took no diff argument at all: it grepped the tree for absence
-  language and reported every hit on every branch, so it returned the same 7 findings
-  forever while the skill's table described it as asking about *"something this branch just
-  added"*. Code and sentence disagreed and only the sentence was read — the same
-  reachability-vs-scope gap as the fixture class, and its own test could not have caught it
-  because **it had no test at all**, the only check without one. It now intersects the claim
-  line's distinctive tokens against the diff's **added** lines (a removal makes an absence
-  claim *more* true, so additions only), and the remainder becomes a `note:` rather than a
-  finding. ⚠ **A claim line with no extractable token is REPORTED, not suppressed** — this
-  leg fails open on purpose, because a miss ships a doc denying something now present.
-  ⚠ **A check that is never clean trains dismissal**, precisely as a check that is never
-  green stops being read; that is the cost the unscoped form was paying.
+`new-files` exists because a plain basename probe reported a fabricated skill as covered: every
+skill's basename is the shared constant `SKILL.md`, which matches CLAUDE.md's generic "Skills live
+in `.claude/skills/<name>/SKILL.md`." `probe_names` probes the parent directory instead when the
+basename names a role rather than a file (`SKILL.md`, `README.md`, `__init__.py`, `INDEX.md`).
 
-⚠ **Untracked files count as added.** `git diff` cannot see them in any form, so the
-presence checks used to report zero on precisely the branch they existed for; the skill
-answered that with "remember to `git add -A` first", one more hand-step to forget. Reading
-`git status --porcelain` makes them correct either way.
+`negative-claims` originally shipped unscoped: `check_negative_claims` took no diff argument,
+grepped the tree for absence language, and reported the same findings on every branch regardless of
+what that branch touched, while the skill's own table described it as asking about "something this
+branch just added." It now intersects the claim line's distinctive tokens against the diff's added
+lines — a removal makes an absence claim more true, so only additions count — and the remainder
+becomes a `note:` rather than a finding. A claim line with no extractable token is still reported,
+not suppressed: this leg fails open on purpose, because a miss ships a doc denying something now
+present.
 
-⚠ **`new-modules` asks TWO questions, because a presence probe cannot answer the second.**
-Where the context docs merely *mention* a package it asks whether the module is named at
-all — the original word-boundary probe. Where they keep an **inventory** of one, it compares
-the documented member set against `ls` and reports the **set difference**. The quorum is two
-backticked siblings: below that the mentions are incidental prose, and the leg falls back to
-the probe so every merely-mentioned package does not start firing.
+Untracked files count as added: `git diff` cannot see them at all, so the presence checks read
+`git status --porcelain` rather than relying on the diff, and are correct whether or not a new file
+has been `git add`ed yet.
 
-**Why the second question had to exist.** The probe form reported COVERED on a real omission
-(2026-08-21, wifey #255): `analytics/research_guards/sharpe.py` landed while
-`.claude/context/analytics.md` enumerated **ten of the package's eleven** members, and the
-word "sharpe" appears throughout that file as ordinary prose. The omission was found by
-diffing the documented list against `ls` by hand. ⚠ **Tightening the regex cannot fix this
-class** — the hit was a real token in real prose, so no boundary rule separates them; the
-check has to change *what it asks*, not how precisely it asks it. Backticks are the
-discriminator the bare probe lacked, because docs write a **file** as `sharpe.py` and a
-**concept** as plain "sharpe", and only the former is a claim about the package's contents.
+### new-modules
 
-This is the `skill-claims` split in code: the mechanical half asks *does the artifact
-exist*, the semantic half asks *does it still mean what the claim says*, and only the second
-needs an **external referent** — here `ls`, something outside the check that the check can be
-wrong about. Same shape as `/stats-dashboard`'s card **count** passing over a wrong inventory
-and `missed_ports.py`'s undeclarable `PORTED` set. **A count, a presence probe and an
-allowlist all pass on any error that conserves their own shape.**
+Asks two questions, because a presence probe alone cannot answer the second. Where the context docs
+merely mention a package, it asks whether the module is named at all (the original word-boundary
+probe). Where the docs keep an inventory of a package's members — a quorum of two backticked
+siblings, below which the mentions are treated as incidental prose and the leg falls back to the
+probe — it compares the documented member set against `ls` and reports the set difference.
 
-Advisory by design — a finding is a candidate to dismiss in seconds, never an automatic
-edit. The asymmetry is the point: a false positive costs a glance, a silent miss ships a doc
-that enumerates every sibling but one and reads as complete. The Makefile is deliberately
-**not** an enumerating doc; a build rule is not documentation.
+The second question exists because the probe form reported a real omission as covered: measured
+2026-08-21, `analytics/research_guards/sharpe.py` landed while `.claude/context/analytics.md`
+enumerated ten of the package's eleven members, and the word "sharpe" appears throughout that file
+as ordinary prose. Tightening the regex cannot fix this class — the hit is a real token in real
+prose, so no boundary rule separates them; the check has to change what it asks. Backticks are the
+discriminator, because docs write a file as `sharpe.py` and a concept as plain "sharpe," and only
+the former is a claim about the package's contents.
 
-**The full sweep closes by naming the `/post-branch` phases it does NOT reach**
-(`UNCOVERED_STEPS` / `uncovered_notice()`), so passing the mechanical half cannot feel like
-passing the walk. Upstream shipped this after finding **both** parallel sessions of one wave
-substituting the sweep for the skill, *neither being careless* — its always-loaded tier carried a
-sibling sentence licensing the substitution. **The fix belongs on reachability, not on another
-rule**: a rule that competes with a nearby rule loses to whichever is read last.
+This is the `skill-claims` split in code: a mechanical half asks whether the artifact exists, a
+semantic half asks whether it still means what the claim says, and only the second needs an
+external referent outside the check itself (here, `ls`) — the same shape as `/stats-dashboard`'s
+card count and `missed_ports.py`'s undeclarable `PORTED` set. A count, a
+presence probe and an allowlist all pass on any error that conserves their own shape.
 
-⚠ **wifey cites `Phase N` where upstream cites `Step N`, and that divergence is deliberate.**
-Upstream's phases are table rows declaring no headings, so a phase citation there is a dead anchor
-its own `stale_anchors` correctly flags — hence its mutation test pinning the ABSENCE of the word
-*phase*. Here the skill has real `## Phase N` headings **and** `tools/stale_anchors.py` resolves
-`phase N` against them (`_HEAD_TYPED`), so the citation is a CHECKED anchor and the better one;
-porting the upstream rule verbatim would have swapped a live reference for a vague one.
-`TestUncoveredSteps::test_every_cited_phase_resolves_in_the_skill` is what makes that falsifiable.
-**Port the rule, re-derive the reason.** Ported from parent #697.
+Advisory by design: a finding is a candidate to dismiss in seconds, never an automatic edit. A false
+positive costs a glance; a silent miss ships a doc that enumerates every sibling but one and reads
+as complete. The Makefile is deliberately not an enumerating doc — a build rule is not
+documentation.
 
-The notice is suppressed for `--text` (which screens one composed PR body seconds before a
-visibility flip, and wants no step list at the moment the operator is triaging under time
-pressure) and for any `--check` run, which is a deliberate partial invocation.
+### Uncovered steps
+
+The sweep closes by naming the `/post-branch` phases it does not reach (`UNCOVERED_STEPS` /
+`uncovered_notice()`), so passing the mechanical half cannot feel like passing the whole review. A
+rule that competes with a nearby rule loses to whichever is read last, so the fix belongs on
+reachability rather than another written reminder.
+
+wifey cites `Phase N` where the parent cites `Step N`, and that divergence is deliberate: the
+parent's phases are table rows with no headings, so a phase citation there is a dead anchor its own
+`stale_anchors` correctly flags. Here the skill has real `## Phase N` headings and
+`tools/stale_anchors.py` resolves `phase N` against them (`_HEAD_TYPED`), so the citation is a
+checked, live anchor. `TestUncoveredSteps::test_every_cited_phase_resolves_in_the_skill` pins it.
+Port the rule, re-derive the reason, rather than porting the parent's phrasing verbatim. Ported from
+the parent.
+
+The notice is suppressed for `--text` (which screens one composed PR body under time pressure and
+wants no step list) and for any `--check` run, a deliberate partial invocation.
 
 **Run:** `make post-branch-checks` (passes `--exit-zero`), or
-`PYTHONPATH=. poetry run python tools/post_branch_checks.py [--check NAME ...] [--exit-zero]`
-to let it exit 1 on findings. ⚠ **`--check` is repeatable, and it was NOT until 2026-09-06** —
-it was declared without `action="append"` while the `--text` flag on the next line had it, so
-`--check memory-cap --check handoff-size` ran **`handoff-size` alone** and printed a
-complete-looking clean sweep. That is exactly the two legs `/post-branch` phase 1 tells you to
-re-read after phase 6, i.e. emptiness reading as coverage on the pair most able to hide a
-finding. ⚠ **An unknown name now aborts the whole run** rather than silently shortening it: a
-typo among several would otherwise run the survivors and report clean.
-⚠ **The `PYTHONPATH=.` is load-bearing** — direct invocation without it dies
+`PYTHONPATH=. poetry run python tools/post_branch_checks.py [--check NAME ...] [--exit-zero]` to let
+it exit 1 on findings. `--check` is repeatable (`action="append"`) — without it,
+`--check memory-cap --check handoff-size` would run `handoff-size` alone and print a
+complete-looking clean sweep. An unknown check name aborts the whole run rather than silently
+shortening it. `PYTHONPATH=.` is required: a direct invocation without it dies
 `ModuleNotFoundError: No module named 'tools'`.
 
 ## wait_ci.py — did CI settle, and did it actually RUN?
 
 Two gates in one tool. `--pr <n>` (`make wait-ci PR=<n>`) waits on a PR's own checks; `--branch main
---min-jobs 5` (`make wait-ci-main`) is the **flip-back gate** — main's push run must reach a
-job-count floor before the repo goes private again, because flipping kills whatever is created after
-it and `Regression tests` is not created until ~4 minutes in.
+--min-jobs 5` (`make wait-ci-main`) is the flip-back gate — main's push run must reach a job-count
+floor before the repo goes private again, because flipping kills whatever is created after it and
+`Regression tests` is not created until ~4 minutes in. The branch mode wraps the same tested tool
+rather than fresh hand-rolled shell at this step, since hand-rolled waiters have been wrong here
+before (one reported `jobs=0` against a live `total_count=2`).
 
-The branch mode existed only as hand-rolled shell, at exactly the step with a documented trap. One
-such waiter **was** wrong — it reported `jobs=0` against a live `total_count=2` — and the two traps
-below are recorded against the PR gate as #194 and #195. Both are encoded here, so the flip-back
-gate is the same tested tool rather than fresh shell each time:
+- A job-count floor, never "nothing pending": an empty result satisfies "no check is unresolved,"
+  so a naive loop exits instantly and renders identically to all-green. `is_settled` requires the
+  floor and `completed == total`; dropping either half restores a real defect, and `TestIsSettled`
+  pins both plus the vacuous input.
+- A `gh` failure raises; it is never turned into data. Returning `""` on a non-zero exit left an
+  unreadable `actions/runs` response with every step count `None` and printed a false green
+  asserting exactly what it had failed to observe. That state is now exit 4. Transient failures
+  are retried inside the poll loop; an unrecoverable one propagates.
 
-- **A job-count FLOOR, never "nothing pending".** An empty result satisfies "no check is
-  unresolved", so the naive loop exits instantly and renders identically to all-green. `is_settled`
-  requires the floor **and** `completed == total`; dropping either half restores a real defect, and
-  `TestIsSettled` pins both plus the vacuous input.
-- ⚠ **A `gh` failure RAISES; it is never turned into data.** The previous `gh()` returned `""` on a
-  non-zero exit, so an unreadable `actions/runs` response left every step count `None` and the tool
-  printed **"all green, all executed real steps"** — a false green asserting exactly what it had
-  failed to observe. That state is now exit **4**. Transient failures are retried inside the poll
-  loop; an unrecoverable one propagates.
+The branch gate counts `push`-event runs only. A `main` SHA also carries a GitHub-managed `dynamic`
+run ("Configured Graph Update: pip in /.") created several minutes after the push runs finish;
+unfiltered, a live run reported `jobs=6` where CLAUDE.md, this file and the tool's own constant all
+say 5. `test_unfiltered_includes_the_dependency_graph_job` is the characterization test pinning the
+exclusion.
 
-⚠ **The branch gate counts `push`-event runs only, and this was found by RUNNING it.** A `main` SHA
-also carries a GitHub-managed `dynamic` run — "Configured Graph Update: pip in /." — created several
-minutes after the push runs finish. Unfiltered, the first live run reported `jobs=6` where CLAUDE.md,
-this file and the tool's own constant all say 5. Reading the code would not have shown it; the
-characterization test `test_unfiltered_includes_the_dependency_graph_job` keeps the reason visible.
+`steps` prints as executed/declared, never declared alone. A job behind a `dorny/paths-filter`
+declares its whole step list on every diff and skips the body on most of them, so a bare `steps=14`
+on a docs-only PR would read as "the heavy leg ran" — the opposite of what happened.
+`step_counts` splits the two by counting the steps GitHub reports as `skipped`; `?/N` means only the
+executed half was unobservable and `?` means neither was. An exhausted allowance still declares
+nothing, so `steps=0/0` settles as billing regardless of the executed/declared split. This closes
+the hole memory `reference_ci_steps_counts_skipped` names: a green job with a healthy step count can
+have run nothing. Ported from the parent.
 
-⚠ **`steps` prints as EXECUTED/DECLARED, because declared alone reads backwards.** A job behind a
-`dorny/paths-filter` declares its whole step list on every diff and skips the body on most of them,
-so a bare `steps=14` on a docs-only PR reads as "the heavy leg ran" — the opposite of what happened,
-and it contradicts CLAUDE.md's paths-filter claim, which is correct. `step_counts` splits the two by
-counting the steps GitHub reports as `skipped`; `?/N` means only the executed half was unobservable
-and `?` means neither was. **#673's executed/declared split left the billing discriminator
-untouched** — an exhausted allowance declares nothing, so `steps=0/0` still settled it, and a test
-pinned that it had not moved. This closes the hole memory `reference_ci_steps_counts_skipped` names:
-*a green job with a healthy step count can have run nothing.* Ported from parent #673.
+`steps=0` alone is not the billing discriminator: a job GitHub never created settles `SKIPPED`
+declaring nothing, which is what `Regression tests`'s `needs: lint-typecheck-test` produces from a
+single failed test. Billing requires a FAILED conclusion at zero declared steps — an exhausted
+allowance leaves chained jobs skipped too, so the failing row settles the matrix and its skips never
+do. CLAUDE.md states the SKIPPED-vs-FAILURE tell under CI quota; the code reads `conclusion` before
+branching on `steps` for the same reason.
 
-⚠ **The discriminator DID move later, and `steps=0` alone is no longer it** (parent #755). A job
-GitHub never created settles **`SKIPPED`** declaring nothing, which is what
-`Regression tests`' `needs: lint-typecheck-test` produces from a single failed test — so `verdict`
-returned billing and told the reader to flip a **private** repo public in order to debug a test
-failure. **Billing now requires a FAILED conclusion at zero declared steps.** ⚠ An exhausted
-allowance leaves chained jobs skipped too, so **the failing row settles the matrix and its skips
-never do** — that is the mutation case, and it is the one this fix could plausibly have blinded.
-CLAUDE.md had stated the SKIPPED-vs-FAILURE tell under **CI quota** all along; the code branched on
-`steps` before ever reading `conclusion`, so the doc and the tool disagreed and only the doc was
-right.
-
-Exit codes: `0` green and observed · `1` genuine failure · `2` timeout · `3` billing (**FAILED** at
-`steps=0`) · `4` settled green but step counts unreadable. ⚠ **`make` collapses all of them to its
-own `2`**, so call the script directly when the code matters.
+Exit codes: `0` green and observed, `1` genuine failure, `2` timeout, `3` billing (FAILED at
+`steps=0`), `4` settled green but step counts unreadable. `make` collapses all of them to its own
+`2`, so call the script directly when the code matters.
 
 **Run:** `make wait-ci PR=<n>` · `make wait-ci-main` · or
 `PYTHONPATH=. poetry run python tools/wait_ci.py --branch main --min-jobs 5 [--timeout-min N]`.
 
 ## stale_anchors.py — citations of a section number that no longer exists
 
-The engine behind `post_branch_checks`'s `stale-anchors` leg. Document A cites a numbered
-section of document B — `/post-branch` "Step 10b", `/sanity-check` "§4a" — and B
-later renumbers itself. Nothing noticed: this recurred **three times**, the third caused by
-the branch that shipped `/sanity-check`, and no existing check could see it because
-`handoff-symbols` keys on symbols and **a section number is not a symbol**.
+The engine behind `post_branch_checks`'s `stale-anchors` leg. Document A cites a numbered section of
+document B — `/post-branch` "Step 10b", `/sanity-check` "§4a" — and B later renumbers itself.
+No existing check could see this: `handoff-symbols` keys on symbols, and a section number is not a
+symbol.
 
-⚠ **It is a library, not a CLI — there is no `__main__` and no argparse.** A bare
-`poetry run python tools/stale_anchors.py` prints nothing and exits **0**, which is
-indistinguishable from a clean sweep. Reach it through `make post-branch-checks`, which is
-what passes scope. (Found by the sibling repo running the ported copy this way and reading
-the silence as a pass — the same *a SKIP is not a PASS* class as a leg that degrades to
-`SKIPPED` when a symbol it references no longer exists.)
+It is a library, not a CLI: there is no `__main__` and no argparse, so a bare
+`poetry run python tools/stale_anchors.py` prints nothing and exits 0, indistinguishable from a
+clean sweep. Reach it through `make post-branch-checks`, which passes scope.
 
 Three decisions carry it:
 
-- **Quoting is tested as an enclosing SPAN, never as the two adjacent characters.** A
-  quotation marks a *mention* rather than a *use*, and the adjacent-character form carried
-  one bug in each direction: it missed a quotation wrapping target-plus-anchor as one phrase
-  (a false positive, which fired on this repo's own prose describing the check), and because
-  `_QUOTES` is a `str`, `"" in _QUOTES` is `True` — so an anchor ending the line
-  short-circuited to "quoted" and was dropped **in silence**. Only the end-of-line branch was
-  ever reachable: `citations()` calls `_anchor_after` with `start = t.end()` of a target that
-  must precede the anchor, so `begin == 0` cannot occur. An unterminated quotation now yields
-  no span and therefore reports, because a false positive costs a glance while a suppressed
-  citation is invisible.
-- **Kinds must agree, unless the citation is untyped.** `§4a` names "the section numbered
-  4a" without claiming a kind, so it matches any declaration; `Step 6` and `Phase 6` are
-  typed and must agree. A label-only comparison would call those two a match — and
-  Step → Phase is the exact rename that keeps breaking.
-- **The ordered-list fallback is CONDITIONAL**, and the real corpus is what forced it. A
-  document with no numbered heading (`/db-update`, `/ingest-x`) numbers itself through its
-  column-0 ordered list, so those items are its steps. But `/post-branch` says *"Phases, not
-  step numbers"* while carrying three column-0 **rubric** lists numbered 1..5 — harvesting
-  those unconditionally would have silently validated every dead `/post-branch` "Step N"
-  citation, i.e. blinded the check to its own founding defect.
+- Quoting is tested as an enclosing span, never as the two adjacent characters. A quotation marks a
+  mention rather than a use. The adjacent-character form missed a quotation wrapping
+  target-plus-anchor as one phrase, and because `_QUOTES` is a `str`, `"" in _QUOTES` is `True`, so
+  an anchor ending the line silently short-circuited to "quoted" and was dropped. Only the
+  end-of-line branch was ever reachable, since `citations()` calls `_anchor_after` with
+  `start = t.end()` of a target that must precede the anchor, so `begin == 0` cannot occur. An
+  unterminated quotation now yields no span and therefore reports, because a false positive costs a
+  glance while a suppressed citation is invisible.
+- Kinds must agree, unless the citation is untyped. `§4a` names "the section numbered 4a"
+  without claiming a kind, so it matches any declaration; `Step 6` and `Phase 6` are typed and must
+  agree — a label-only comparison would call those two a match, and Step to Phase is the exact
+  rename that keeps recurring.
+- The ordered-list fallback is conditional. A document with no numbered heading (`/db-update`,
+  `/ingest-x`) numbers itself through its column-0 ordered list, so those items are its steps. But
+  `/post-branch` says "Phases, not step numbers" while carrying three column-0 rubric lists numbered
+  1..5 — harvesting those unconditionally would silently validate every dead `/post-branch` "Step N"
+  citation, blinding the check to its own founding defect.
 
-⚠ **Scope is wider than the repo**, and the build measured why: of the **6** dead (or, under
-the mutation below, would-be-dead) citations observed, **2 sat in the memory tree** — which no
-repo-scoped check can reach. So this runs over `.claude/`, the four current-state files *and*
-`memory/*.md`. It is also why the check is not in CI-gating `sanity_checks`: CI cannot see the
-memory tree at all, and the named hole below would make a gate red by construction. Dated trees
-are excluded (`is_dated_path`) on the fork-drift leg's reasoning — a citation in a dated record
-was correct when written, and the hand sweep that preceded this found 2 such correct ones.
+Scope extends beyond the repo: of 6 dead (or would-be-dead, under mutation testing) citations
+observed, 2 sat in the memory tree, which no repo-scoped check can reach. It runs over `.claude/`,
+the four current-state files and `memory/*.md`. This is also why the check is not in CI-gating
+`sanity_checks`: CI cannot see the memory tree at all. Dated trees are excluded (`is_dated_path`) on
+the fork-drift leg's reasoning — a citation in a dated record was correct when written.
 
-⚠ **Do not repeat the pre-build claim that "two of four live instances were in the memory
-tree".** The handoff that filed this check said so, but its own enumeration lists CLAUDE.md,
-two handoff blocks and one memory file — i.e. **one**. The figure above is this branch's own
-measurement and is reproducible; the inherited one is not.
+A first run found 3 real dead citations a hand sweep had missed: `/ingest-x` "step 5" cited twice
+(`.claude/context/tools.md`, `/ingest-video`) when that skill's Flow stops at step 4, and a
+surviving `/post-branch` "step 10b" in `memory/feedback_handoff_prompt_location.md`. Mutation-checked
+against the live tree by renumbering post-branch's `Phase 6` heading, which surfaced 3 further live
+citations, one in the memory tree — confirming the wider scope is load-bearing.
 
-**First run found 3 real dead citations** the hand sweep had missed: `/ingest-x` "step 5"
-cited twice (`.claude/context/tools.md`, `/ingest-video`) when that skill's Flow stops at
-step 4, and a surviving `/post-branch` "step 10b" in
-`memory/feedback_handoff_prompt_location.md`.
-Mutation-checked against the live tree by renumbering post-branch's `Phase 6` heading, which
-surfaced 3 further live citations — one of them in the memory tree, which is the proof that
-the wider scope is load-bearing rather than decorative.
-
-⚠ **Known hole, named rather than papered over** (`TestKnownHoles`): a document's own
-sub-label sitting beside another document's name is syntactically indistinguishable from a
-citation of it — `/ingest-x` wrote *handed to `/ingest-video` (1b)* where the label 1b was
-`/ingest-x`'s own. Suppressing that by "the source declares this anchor too" was built,
-measured, and **reverted**: documents share small integers, and it dropped a real cross-doc
-finding. Only target-then-anchor is read, within a bounded window, so a citation far from
-its target is invisible.
+Known hole, pinned rather than papered over (`TestKnownHoles`): a document's own sub-label sitting
+beside another document's name is syntactically indistinguishable from a citation of it —
+`/ingest-x` wrote "handed to `/ingest-video` (1b)" where the label 1b was `/ingest-x`'s own.
+Suppressing that by "the source declares this anchor too" was tried and reverted: documents share
+small integers, and it dropped a real cross-doc finding. Only target-then-anchor is read, within a
+bounded window, so a citation far from its target is invisible.
 
 **Run:** via `make post-branch-checks`, or
 `PYTHONPATH=. poetry run python tools/post_branch_checks.py --check stale-anchors`.
 
 ## claude_home.py — the one derivation of this checkout's memory tree
 
-Five call sites derived the Claude project directory independently — `cadence_check`,
-`post_branch_checks`, `sync_parent`, `deploy/backup-analytics.sh` and the Makefile — and every
-one of them was wrong after the move to the Windows host. Two carried the old Linux box's
-absolute home as a tracked literal, so no environment variable could rescue them; the other
-three folded `/` alone, which leaves a `C:\Users\…` path untouched and yields a "slug" that is
-itself drive-absolute.
+Five call sites — `cadence_check`, `post_branch_checks`, `sync_parent`, `deploy/backup-analytics.sh`
+and the Makefile — used to derive the Claude project directory independently, and every one broke
+after the move to the Windows host: two carried the old Linux box's absolute home as a tracked
+literal, so no environment variable could rescue them, and the other three folded `/` alone, which
+leaves a `C:\Users\…` path untouched and yields a "slug" that is itself drive-absolute.
 
-⚠ **The class never raises, and it fails toward ABSENCE.** An unresolvable memory tree reads as
-absent to every consumer: the backup script warns and records `files: 0`, `cadence_check` prints
-a note, `post_branch_checks` measures the MEMORY.md cap against a file it never found, and
-`make status` printed `?`. So it reads as *nothing to do* on a host where the tree is present
-and merely unlocated — which is how it survived a migration whose brief already listed the slug
-remapping as a restore step.
+The class never raises; it fails toward absence. An unresolvable memory tree reads as absent to
+every consumer: the backup script warns and records `files: 0`, `cadence_check` prints a note,
+`post_branch_checks` measures the MEMORY.md cap against a file it never found, and `make status`
+prints `?`. It therefore reads as "nothing to do" even on a host where the tree is present but
+merely unlocated.
 
-⚠ **`slugify_path` takes TEXT rather than a `Path`, and that is the testability decision.**
-Linux CI can then assert the Windows rule and a Windows box the POSIX one. A `Path` argument
-resolves against the running host, which makes exactly one of the two assertions unwritable —
-and the one you cannot write is the one that breaks. Both separators and the drive colon fold,
-so `C:\Users\User\repo\x` → `C--Users-User-repo-x` and `/home/kng/repo/x` → `-home-kng-repo-x`.
+`slugify_path` takes text rather than a `Path`, which is the testability decision: Linux CI can then
+assert the Windows rule and a Windows box the POSIX one, where a `Path` argument would resolve
+against the running host and make one of the two assertions unwritable. Both separators and the
+drive colon fold, so `C:\Users\User\repo\x` becomes `C--Users-User-repo-x` and `/home/kng/repo/x`
+becomes `-home-kng-repo-x`.
 
-⚠ **Root selection tests `projects/<slug>`, never the config ROOT's existence — and the first
-version got this wrong.** It probed whether `~/.claude-personal` existed and took it if so, which
-shipped broken within the hour: that directory appeared on the dev box while both profiles were
-in use, the probe chose a root that had never held this project, and every consumer went straight
-back to reading ABSENT against a tree that was present under `~/.claude` all along. **Both roots
-can exist; only one holds the tree.** This is the repo's own recurring lesson landing on the fix
-for it — *a check is only true about the scope it looked at*. Root existence is a proxy; the
-project directory is the thing wanted, so it is what gets tested. Order is the tie-break and only
-the tie-break: with a tree under both, the more specific `.claude-personal` still wins.
-`CLAUDE_CONFIG_DIR` collapses the candidate list to one, because an explicit setting must not be
-second-guessed by a probe. `claude_home()` is *derived from* `project_dir()` rather than computed
-beside it, so the two cannot disagree about which root won. No tree anywhere falls back rather
-than raising: every consumer already degrades to a printed note, and raising would cost the
-backup rather than the report.
+Root selection tests `projects/<slug>`, never the config root's own existence. An earlier version
+probed whether `~/.claude-personal` existed and took it if so; that directory can appear on a dev
+box while both profiles are in use without ever holding this project, so every consumer read absent
+against a tree that was present under `~/.claude` all along. Both roots can exist; only one holds
+the tree, so root existence is a proxy and the project directory is what gets tested. Order is the
+tie-break and only the tie-break — with a tree under both, the more specific `.claude-personal`
+still wins. `CLAUDE_CONFIG_DIR` collapses the candidate list to one, since an explicit setting must
+not be second-guessed by a probe. `claude_home()` is derived from `project_dir()` rather than
+computed beside it, so the two cannot disagree about which root won. Finding no tree anywhere falls
+back rather than raising, since every consumer already degrades to a printed note.
 
-**Run:** nothing — it is a library. `tests/test_claude_home.py` pins both platform rules, the
-probe order and the fallback; `tests/test_backup_local_coverage.py` pins that the shell script
-and the Python consumers resolve to the *same* place, which is the coupling that drifted.
+**Run:** nothing — it is a library. `tests/test_claude_home.py` pins both platform rules, the probe
+order and the fallback; `tests/test_backup_local_coverage.py` pins that the shell script and the
+Python consumers resolve to the same place.
 
 ## cadence_check.py — which recurring tasks are overdue
 
 `make cadence-check` reads `docs/plans/task-marks/` — one file per task holding an ISO-8601 UTC
 timestamp — and reports what is past its period. `make cadence-stamp TASK=<slug>` records a run.
 Ported from the parent's `daily_check.py` task-mark block; the parent's other ~1,650 lines are
-crypto-specific (signal-watch mtime, the xsmom executor, a majors cross-section) and were not
-taken.
+crypto-specific (signal-watch mtime, the xsmom executor, a majors cross-section) and are not taken.
 
-**Three divergences from upstream, each because the parent's REASON does not hold here.**
+Three divergences from the parent, each because the parent's reason does not hold here:
 
-- **The checker is TRACKED.** Upstream's lives under gitignored `docs/plans/` and its own
-  docstring admits a reclone loses it. That is the failure wifey fixed on 2026-08-20 by inverting
-  `.claude/` to a denylist, so repeating it here would import a defect. The **marks** stay
-  gitignored — they are per-machine state, and `docs/plans/` is already covered wholesale by
-  `make backup`.
-- **The mark's CONTENT is authoritative, not its mtime.** Upstream writes an ISO line and then
-  reads `st_mtime`, so the content it carefully writes has no consumer — the same self-referential
-  shape that cost the handoff its `Line count:` stamp. mtime also moves for reasons that are not
-  runs (an editor open, a restore that does not preserve times), and that failure direction
-  reports **fresher than reality**. An unparseable mark here reads as OVERDUE, never as fresh.
-- **Stamping is a flag.** Upstream tells each skill to run `date -u +%FT%TZ > …/<task>`; a redirect
-  typo silently writes the wrong file and a missing directory fails the write. `--stamp` creates
-  the directory and **refuses a slug that is not a declared task**.
+- The checker itself is tracked. The parent's lives under gitignored `docs/plans/` and its own
+  docstring admits a reclone loses it — the same failure this repo fixed by inverting `.claude/` to
+  a denylist, so repeating it here would reimport a defect. The marks stay gitignored: they are
+  per-machine state, and `docs/plans/` is already covered wholesale by `make backup`.
+- The mark's content is authoritative, not its mtime. The parent writes an ISO line and then reads
+  `st_mtime`, so the content it writes has no consumer. mtime also moves for reasons that are not
+  runs (an editor open, a restore that does not preserve times), and that failure direction reports
+  fresher than reality. An unparseable mark here reads as overdue, never as fresh.
+- Stamping is a flag rather than a shell redirect. The parent tells each skill to run
+  `date -u +%FT%TZ > …/<task>`, where a typo silently writes the wrong file and a missing directory
+  fails the write. `--stamp` creates the directory and refuses a slug that is not a declared task.
 
-⚠ **A MISSING mark reads as OVERDUE on purpose** — the fail-safe direction, since the opposite
-mistake reports "fresh" for a task that has never run once.
+A missing mark reads as overdue on purpose — the fail-safe direction, since the opposite mistake
+would report "fresh" for a task that has never run once.
 
-⚠ **ADVISORY, and it must never enter `make test` or a CI job.** The marks are gitignored, so a
-fresh clone sees every one absent and would report every task permanently overdue. **A check that
-can only be red in CI is worse than no check.** `--exit-nonzero` exists for a human who wants a
-shell condition.
+Advisory, and must never enter `make test` or a CI job: the marks are gitignored, so a fresh clone
+sees every one absent and would report every task permanently overdue. `--exit-nonzero` exists for
+a human who wants a shell condition.
 
-The four inclusion rules — rots silently · named consequence · one cheap field · exactly one
-action clears it — and the reason each rejected candidate fails one (`make backup`, `make
-go-live`, `/db-update`, `/ingest-feed`) live beside `TASKS` in the module, so the table cannot
-grow into noise without someone stating which rule the new line satisfies.
+The four inclusion rules — rots silently, named consequence, one cheap field, exactly one action
+clears it — and the reason each rejected candidate fails one (`make backup`, `make go-live`,
+`/db-update`, `/ingest-feed`) live beside `TASKS` in the module, so the table cannot grow into noise
+without someone stating which rule the new line satisfies.
 
-**The audit-verdict → SoT ownership join rides in the same report** (parent #641's other half,
-its `daily_check.py` § 6b). An audit whose verdict recommends action and that NO SoT row names is
-a finding with no owner — the parent measured its only BUILD verdict in 47 audits sitting unowned
-for seven weeks in a generated, test-enforced index, because a research chain of audits has an
-owner at every link except the last: each link's owner is the next audit, and the terminal
-recommendation is owned by nobody. It reads `docs/audits/INDEX.md`, never the audit bodies — the
-index's currency is already gated by `tests/test_docs_index.py`, so a stale index reds that test,
-not this line. **Ownership = a SoT row naming the audit's FILENAME**, open or closed — "is it
-implemented" needs a judgement no string match can make, and green being reachable two ways (do
-the work, or record where it was already done) is what keeps this from becoming an amber nobody
-believes. It is NOT a `Task`: no mark, no cadence — an observed-state join, hosted here because
-the audits are in the repo, the SoT is in `~/.claude-personal`, and no pytest can see both.
+The audit-verdict to SoT ownership join rides in the same report, ported from the parent's
+`daily_check.py`. An audit whose verdict recommends action and that no SoT row names is a finding
+with no owner: a research chain of audits has an owner at every link except the last, since each
+link's owner is the next audit and the terminal recommendation is owned by nobody. It reads
+`docs/audits/INDEX.md`, never the audit bodies — that index's currency is already gated by
+`tests/test_docs_index.py`. Ownership means a SoT row naming the audit's filename, open or closed;
+green is reachable two ways (do the work, or record where it was already done). It is not a `Task`:
+no mark, no cadence — an observed-state join, hosted here because the audits are in the repo, the
+SoT is in `~/.claude-personal`, and no pytest can see both.
 
-Three divergences from the parent's join, same discipline as the block above. The **predicates are
-re-derived** against wifey's FOUND / BOUNDED / EXCLUDED / BLOCKED taxonomy — the parent keys on
-BUILD / NO-EDGE, words wifey audits never say — and `INSUFFICIENT` is deliberately OFF the settled
-list, because the corpus's one live SUPPRESS-CANDIDATE rides in an "INSUFFICIENT on 11 of 12
-cells" verdict and a global veto would silently skip exactly the row carrying a recommendation
-(pinned by a test). **Rows match by date shape, not the parent's `| 2026-` prefix**, which goes
-blind at the new year with every row silently dropped — and a 0-rows parse prints as parser
-drift, never as clean. **The predicates are under real pytest** (`tests/test_cadence_check.py`,
-including the parent's decisive strip-the-owner mutation and an empty-SoT positive control on the
-committed index): the parent's module executes on import, so its proof is a hand-run sibling that
-duplicates the regexes and must be edited in lockstep — this file is importable, so drift between
-code and test is structurally impossible. The blind bracket (`31/41 readable, 10 state it in a
-table`) prints because a green line is a claim about the readable rows only.
+Three divergences from the parent's join. The predicates are re-derived against wifey's FOUND /
+BOUNDED / EXCLUDED / BLOCKED taxonomy rather than the parent's BUILD / NO-EDGE; `INSUFFICIENT` is
+deliberately off the settled list, because the corpus's one live SUPPRESS-CANDIDATE rides in an
+"INSUFFICIENT on 11 of 12 cells" verdict, and a global veto would silently skip the row carrying a
+recommendation. Rows match by date shape, not the parent's `| 2026-` prefix, which goes blind at the
+new year with every row silently dropped — a 0-rows parse prints as parser drift, never as clean.
+The predicates are under real pytest (`tests/test_cadence_check.py`, including the parent's
+strip-the-owner mutation and an empty-SoT positive control on the committed index), whereas the
+parent's module executes on import and its only proof is a hand-run sibling that duplicates the
+regexes; being importable here means code and test cannot drift apart structurally. The blind
+bracket (`31/41 readable, 10 state it in a table`) prints because a green line is a claim about the
+readable rows only.
 
 ## backup_check.py — is the newest snapshot actually recent?
 
 `make backup-check` runs `tools/backup_check.py`, which reads `$WIFEY_BACKUP_ROOT` (default
-`~/backups/wifey`) and reports the **age of the newest verified snapshot**. It is the observed-state probe that `cadence_check.py`'s own
-exclusion note points at: `make backup` fails that tool's inclusion rule (4), because a scheduled
-`wifey-backup.timer` clears it and no human action does — but its real risk was never "a human
-forgot", it is **the timer stopping silently**, and a mark cannot see that.
+`~/backups/wifey`) and reports the age of the newest verified snapshot. `make backup` fails
+`cadence_check.py`'s inclusion rule 4, since a scheduled `wifey-backup.timer` clears it and no human
+action does — this tool is the observed-state probe that exclusion points to, because the real risk
+is the timer stopping silently, and a mark cannot see that.
 
-**Why a mark could not do this job.** Alerting is failure-only (`OnFailure=` starts
-`wifey-alert@`), which makes the channel unfalsifiable: a timer with nothing to report and a timer
-that stopped firing are indistinguishable from the Telegram side. `deploy/README.md` states the
-transferable rule — **a scheduled job can only attest to the step it performs** — so for a green
-light to mean "the data is current", something has to check the *input's* age rather than the
-copy's exit code. This reads the tree the off-site leg copies **from**.
+A mark could not do this job because alerting is failure-only (`OnFailure=` starts `wifey-alert@`),
+so a timer with nothing to report and a timer that stopped firing are indistinguishable from the
+Telegram side. `deploy/README.md` states the transferable rule: a scheduled job can only attest to
+the step it performs, so for a green light to mean "the data is current," something has to check the
+input's age rather than the copy's exit code. This reads the tree the off-site leg copies from.
 
-⚠ **The two tiers are DIFFERENT ARTIFACTS and are graded separately.** `daily/` holds verified
-snapshots each carrying `MANIFEST.json`; `weekly/` holds a format-independent **parquet export**
-and carries no manifest at all, by design. The first draft graded them together and so reported
-every weekly dir as a malformed snapshot — a permanent warning about a directory that was exactly
-as the backup script intended. **A check that is never clean stops being read**, which is why the
-daily tier alone decides the verdict and the archive is reported beside it as informational
-against its own 7d bar. Pinned by `TestTiersAreDifferentArtifacts`, whose control asserts that a
-manifest-less dir under `daily/` **is** still flagged, so the exemption cannot widen.
+The two tiers are different artifacts and are graded separately. `daily/` holds verified snapshots
+each carrying `MANIFEST.json`; `weekly/` holds a format-independent parquet export and carries no
+manifest at all, by design. Grading them together reports every weekly dir as a malformed snapshot —
+a permanent warning about a directory that is exactly as the backup script intends — so the daily
+tier alone decides the verdict and the weekly archive is reported beside it as informational against
+its own 7-day bar. Pinned by `TestTiersAreDifferentArtifacts`, whose control asserts that a
+manifest-less dir under `daily/` is still flagged, so the exemption cannot widen.
 
-**Four load-bearing properties**, each mirroring a defect this repo has already paid for:
+Four properties matter:
 
-- **The manifest's CONTENT is authoritative, not the directory's mtime.** `captured_at_utc` is read
-  from inside the file, exactly as `cadence_check` reads a mark's content — mtime moves for things
-  that are not runs (a restore that does not preserve times, an editor, an `rclone` round-trip) and
-  it fails in the direction that reports **fresher than reality**. The weekly tier has no manifest,
-  so it falls back to the date the script stamped into the **directory name**, still a recorded
-  decision rather than a filesystem side effect. `test_a_fresh_mtime_cannot_rescue_an_old_manifest`
-  is the only test separating the two fields; a mutation adding an mtime fallback fails 8 tests.
-- **Every unreadable state reads as STALE, never as fresh** — a missing manifest, a corrupt one, a
+- The manifest's content is authoritative, not the directory's mtime. `captured_at_utc` is read from
+  inside the file — mtime moves for things that are not runs (a restore that does not preserve
+  times, an editor, an `rclone` round-trip) and fails in the direction that reports fresher than
+  reality. The weekly tier has no manifest, so it falls back to the date stamped into the directory
+  name, still a recorded decision rather than a filesystem side effect.
+  `test_a_fresh_mtime_cannot_rescue_an_old_manifest` is the only test separating the two fields; a
+  mutation adding an mtime fallback fails 8 tests.
+- Every unreadable state reads as stale, never as fresh — a missing manifest, a corrupt one, a
   missing field and an unparseable timestamp all funnel to the same verdict, matching the off-site
-  script's stance that a missing `MANIFEST.json` is a fault rather than "nothing to do".
-- **An ABSENT root is its own verdict** (`NO BACKUP ROOT`), not a stale one. Collapsing them prints
-  the milder of the two, and they want different actions: "the timer broke" versus "this machine
-  never backed up at all".
-- **ADVISORY, and it must never enter `make test`, `make sanity-checks` or a CI job** — the backup
-  root is machine-local single-copy state no clone has, so CI would report a missing backup
-  forever, the same structural reason `cadence_check` stays out. `--exit-nonzero` opts in.
+  script's stance that a missing `MANIFEST.json` is a fault rather than "nothing to do."
+- An absent root is its own verdict (`NO BACKUP ROOT`), not a stale one, since "the timer broke" and
+  "this machine never backed up at all" want different actions.
+- Advisory, and must never enter `make test`, `make sanity-checks` or a CI job — the backup root is
+  machine-local single-copy state no clone has. `--exit-nonzero` opts in.
 
-⚠ **Two holes, named rather than papered over.** It measures the **LOCAL tree only** and cannot see
-whether the off-site mirror received the snapshot — that needs a network `rclone` call, and a probe
-that fails when the laptop is offline reports a backup problem for a connectivity one. The off-site
-leg's own success plus a fresh source here is the two-part answer, and neither half is sufficient
-alone. And **it refuses nothing**: wiring a staleness refusal into `deploy/backup-offsite.sh` is
-the second candidate fix in `deploy/README.md` and stays a deliberate user call, because a guard
-that costs you the backup is worse than the gap it closes.
+Two known holes. It measures the local tree only and cannot see whether the off-site mirror received
+the snapshot, since that needs a network `rclone` call and a probe that fails when the laptop is
+offline would report a backup problem for a connectivity one — the off-site leg's own success plus a
+fresh source here is the two-part answer. And it refuses nothing: wiring a staleness refusal into
+`deploy/backup-offsite.sh` is a candidate fix in `deploy/README.md` and stays a deliberate user call,
+because a guard that costs you the backup is worse than the gap it closes.
 
 ## freshness_check.py — did the scheduled work actually run?
 
-`make freshness-check` runs `tools/freshness_check.py`. Same premise as `backup_check.py` — all
-three `wifey-*` units alert through `OnFailure=wifey-alert@%N.service`, and that channel cannot
-tell a quiet timer from a stopped one — applied to the two surfaces the backup probe cannot see.
-Ported from the parent's `ohlcv_freshness.py` (#681/#698 — that path exists upstream, not here),
-whose motivating measurement was **22 of
-25 universe symbols frozen for eleven weeks, all `TRADING`, nothing broken and nothing watching**.
+`make freshness-check` runs `tools/freshness_check.py`, applying `backup_check.py`'s premise — all
+`wifey-*` units alert through `OnFailure=wifey-alert@%N.service`, which cannot tell a quiet timer
+from a stopped one — to the two surfaces the backup probe cannot see. Ported from the parent's
+`ohlcv_freshness.py`, whose motivating measurement was 22 of 25 universe symbols frozen for eleven
+weeks, all `TRADING`, nothing broken and nothing watching.
 
-### The port's one hard divergence: sessions, not wall-clock
+### Sessions, not wall-clock
 
-The parent computes `age_bars = (now - newest) / bar_ms`. That is correct on a 24h tape and **wrong
-here in the direction that reds everything forever**: `4h` RTH is 2 bars/day, not 6, so a healthy
-two-session-old series reads ~12 bars behind, and every Monday adds a phantom weekend on top. Wifey
+The parent computes `age_bars = (now - newest) / bar_ms`, which is correct on a 24h tape and wrong
+here in the direction that reds everything forever: `4h` RTH is 2 bars/day, not 6, so a healthy
+two-session-old series would read ~12 bars behind, with every Monday adding a phantom weekend. Wifey
 counts NYSE sessions via `analytics/trading_calendar.py::nyse_sessions` and multiplies by
 `cost_model.BARS_PER_DAY` — the single shared table, imported rather than forked, so a change there
-reaches this too. `TestRthDivergenceFromParent` pins it, which is what makes a future "tidy-up"
-back to the parent's formula fail in the suite rather than in production.
+reaches this too. `TestRthDivergenceFromParent` pins the divergence. `sessions_elapsed` floors at
+zero, so a bar stamped in the future cannot read as freshness with room to spare.
 
-`sessions_elapsed` floors at zero, so a bar stamped in the future cannot read as freshness with
-room to spare — that is a different defect and must not be laundered into a green.
+### The watermark is dated but ungraded
 
-### Why the watermark is dated but UNGRADED
+An early build graded the `signal_state.json` watermarks against the timer's daily cadence and
+printed STALE at 4 sessions on a healthy system, with `fired_at_ms` run evidence on only two of the
+three intervening sessions — the third carries no row, which is not evidence of no run, since a
+scan detecting nothing new writes nothing and this channel can confirm a run happened but never
+that one did not. The watermark advances on dispatch, not on every run, and dispatch is intermittent
+by design: `day_filter = tue_thu` suppresses on the bar's open weekday, so a Mon run (Fri bars) and a
+Tue run (Mon bars) can never alert. There is deliberately no signal-side tolerance constant, since
+the cadence is a consequence of `day_filter` rather than a schedule and a hand-picked constant would
+red a healthy system.
 
-The first build graded the `signal_state.json` watermarks against the timer's daily cadence and
-printed **STALE at 4 sessions on a healthy system**, with run evidence on **two of the three**
-intervening sessions (`fired_at_ms` rows on 08-24 and 08-25). ⚠ The third (08-21) carries no row,
-which is **not** evidence of no run: a scan detecting nothing new writes nothing, so this channel
-can confirm a run happened and can never confirm one did not.
-The watermark advances on **dispatch**, not on every run, and dispatch is intermittent by design:
-`day_filter = tue_thu` suppresses on the bar's open weekday, so a Mon run (Fri bars) and a Tue run
-(Mon bars) can never alert. There is deliberately **no signal-side tolerance constant** — the
-cadence is a consequence of `day_filter` rather than a schedule, so any constant would lack an
-external referent, and a hand-picked one reds a healthy system.
+Run-liveness lives on the ohlcv leg instead: a `go-live` run's first act is a watchlist sync, so
+fresh watchlist bars are the evidence a run happened, and that quantity has a declared cadence. The
+signal leg's only finding is no watermarks at all — a scan has never run, or the state file is
+unreadable. Primary and `:wife` watermarks are dated separately because they mean different things;
+a primary mark ahead of `:wife` is the normal resting state, not a fault.
 
-The module's own stated principle ("staleness is meaningless without a declared cadence") is what
-condemned its first draft. **Run-liveness moved to the ohlcv leg**: a `go-live` run's first act is
-a watchlist sync, so fresh watchlist bars *are* the evidence a run happened, and that quantity has
-a cadence. The signal leg's only finding is **no watermarks at all** — a scan has never run here,
-or the state file is unreadable. Primary and `:wife` are dated separately because they mean
-different things; a primary mark ahead of `:wife` is the normal resting state, not a fault.
+### Two tiers
 
-### Two tiers, because grading everything trains dismissal
+A series is scheduled when some declared `Cadence` covers it. Two exist: the watchlist cadence
+(`wifey-signal-watch.timer`, `4h`/`1d`, one fire per trading day) and the universe cadence
+(`wifey-universe-sync.timer`, `4h`/`1d`/`1wk`, one fire a week). When both cover a series the
+tightest gap wins, since a watchlist name is refreshed daily whether or not the weekly timer also
+touches it.
 
-A series is **scheduled** when some declared `Cadence` covers it. Two exist: the **watchlist**
-cadence (`wifey-signal-watch.timer`, `4h`/`1d`, one fire per trading day) and the **universe**
-cadence (`wifey-universe-sync.timer`, `4h`/`1d`/`1wk`, one fire a week). When both cover a series
-the **tightest gap wins** — a watchlist name is refreshed daily whether or not the weekly timer also
-touches it, so the tight bar is both achievable and the only one that would notice the daily timer
-stopping.
+Whether the universe tier exists at all is read from the box, not assumed: `universe_timer_enabled`
+asks the host's own scheduler, and `main` passes the active members to `evaluate_ohlcv` only when
+that returns enabled. The units are opt-in and nothing in the repo installs them, so "the universe
+has a cadence" is true on one machine and false on the next.
 
-⚠ **Whether the universe tier exists at all is read from the BOX, not asserted here.**
-`universe_timer_enabled` asks the host's own scheduler, and `main` passes the ACTIVE members to
-`evaluate_ohlcv` **only** when that returns enabled. The units are opt-in and nothing in the repo
-installs them, so "the universe has a cadence" is true on one machine and false on the next;
-hardcoding either answer is wrong on half of them. This is the tool's one piece of non-DB observed
-state, and it exists because the file previously asserted "nothing refreshes the 505-member research
-universe" as a **constant**, which stopped being true the day a timer was written.
+It dispatches per host. `host_platform.is_windows()` picks the reader: Linux shells out to
+`systemctl --user is-enabled` and accepts `enabled`/`enabled-runtime`; Windows runs
+`Get-ScheduledTask -TaskPath '\wifey\'` and accepts `Ready`/`Running`. `task_name_for_unit` is the
+one transform between the two naming schemes (`wifey-universe-sync.timer` becomes
+`wifey-universe-sync`), shared with `deploy/windows/install-tasks.ps1` and pinned by a test, because
+a probe looking in the wrong folder returns "not enabled" rather than an error. On Windows the field
+is `State`, never existence: `install-tasks.ps1` registers `wifey-backup-offsite` and disables it on
+purpose, since `rclone sync` mirrors deletions and this host has no remote of its own yet — "the task
+is there" and "the task will fire" are different answers, and only the second licenses grading a
+cadence.
 
-⚠ **It DISPATCHES per host, and a non-Linux box is no longer one of the failure branches.**
-`host_platform.is_windows()` picks the reader: Linux shells out to `systemctl --user is-enabled`
-and accepts `enabled`/`enabled-runtime`; Windows runs `Get-ScheduledTask -TaskPath '\wifey\'`
-and accepts `Ready`/`Running`. `task_name_for_unit` is the one transform between the two naming
-schemes (`wifey-universe-sync.timer` → `wifey-universe-sync`), shared with
-`deploy/windows/install-tasks.ps1` and pinned by a test, because a probe looking in the wrong
-folder returns "not enabled" rather than an error and so is indistinguishable from a box that
-installed nothing.
+A genuine reader failure — no `systemctl`, no PowerShell, a timeout, an unregistered task, a
+permission error — degrades to "not enabled," the direction that cannot invent faults. That
+degradation is only correct while the platform in question truly cannot run the job; treat it as a
+live assumption rather than a permanent one when a new scheduling mechanism becomes available.
 
-⚠ **On Windows the field is `State`, never existence.** `install-tasks.ps1` registers
-`wifey-backup-offsite` and then **disables it on purpose** — `rclone sync` mirrors deletions, and
-until this host has its own remote a scheduled run could mirror an empty local tree over the
-snapshots. So "the task is there" and "the task will fire" are genuinely different answers, and
-only the second licenses grading a cadence.
+Measured 2026-08-26, both worlds on the same tree: timer off gives 26 graded and 1,131 unscheduled;
+timer on gives 1,115 graded, 42 unscheduled, 4 findings. All four were true positives (`SATS`
+delisted, `EA` wound down post-acquisition). Grading unconditionally on a box with no timer would
+print ~1,100 findings, and a leg that is never green stops being read.
 
-⚠ **Why the non-Linux branch had to stop degrading to False.** It used to be correct:
-`systemctl` is absent on Windows, the `OSError` branch returned False, and the leg reported the
-absence — right up until the host moved and the job was registered with Task Scheduler instead.
-From that moment the same False would have meant "no cadence" about a job running every Saturday,
-and the leg would have stayed **silent forever on the one host it was newly wrong about**.
-*Degrading to the safe answer is only safe while the safe answer is also the true one.* Genuine
-failures — no `systemctl`, no PowerShell, a timeout, an unregistered task, a permission error —
-still degrade to **not enabled**, the direction that cannot invent faults.
+Those four findings are no longer reachable, by design rather than regression: `EA`, `EQR` and
+`SATS` were flagged `delisted` on 2026-09-02, and `read_universe_symbols` now excludes delisted
+members, since `analytics_runner` resolves `--universe` through `active_symbols()` and nothing
+refreshes a delisted name. The counts above describe the pre-flag tree; the graded population is now
+the 502 active members.
 
-Measured 2026-08-26, both worlds on the same tree: **timer off → 26 graded, 1131 unscheduled**;
-**timer on → 1115 graded, 42 unscheduled, 4 findings**. All four were true positives (`SATS`
-delisted, `EA` wound down post-acquisition), which is the point — grading unconditionally on a box
-with no timer would have printed ~1,100, and a leg that is never green stops being read, the same
-argument that bounds `negative-claims`' triage load.
+A weekly bar cannot be graded on the daily footing. A `1wk` bar stamps on the week's Monday open and
+closes Friday, so a perfectly refreshed weekly series trails a daily one by four sessions for reasons
+that are not staleness. `tolerance_sessions_for` is `base + cadence gap + max(0, sessions_per_bar -
+1)`, with `sessions_per_bar` the reciprocal of `cost_model.BARS_PER_DAY`, imported rather than a new
+constant — without the third term every weekly series would red forever. `4h` and `1d` close inside a
+session, so the term is 0 for both and their shipped tolerances are unaffected; pinned by a
+regression test.
 
-⚠ **Those four findings are no longer REACHABLE, and that is the fix rather than a regression.**
-`EA`, `EQR` and `SATS` were flagged `delisted` on 2026-09-02, and `read_universe_symbols` now
-excludes delisted members — because `analytics_runner` resolves `--universe` through
-`active_symbols()`, so nothing refreshes a delisted name **by design**. Grading it anyway prints a
-permanent STALE for a decision, which is the same never-green failure this tier's timer probe
-already guards against, one level down. The counts above therefore describe the pre-flag tree; the
-graded population is now the 502 active members.
+The residual absence is still a hazard: the pundit ledger has no timer at all, and a pooled
+cross-section that reaches unrefreshed names mixes stale series with the fresh watchlist inside one
+query — the fresh set being precisely the mega-cap tilt `4h`'s 21% coverage already carries, so
+recency skew and coverage skew compound in the same direction. Nothing errors; `n_eff`, breadth
+counts and any `1wk` panel are just quietly wrong.
 
-⚠ **A weekly bar cannot be graded on the daily footing.** A `1wk` bar stamps on the week's Monday
-open and closes Friday, so a perfectly refreshed weekly series trails a daily one by four sessions
-for reasons that are not staleness. `tolerance_sessions_for` is `base + cadence gap +
-max(0, sessions_per_bar - 1)`, with `sessions_per_bar` the reciprocal of `cost_model.BARS_PER_DAY`
-— imported, never a new constant. Without the third term every weekly series reds forever, which is
-**the parent's wall-clock failure mode arriving by a different route**: the port already fixed
-wall-clock-vs-sessions and this is the same error one level down, in bar span rather than clock.
-`4h` and `1d` close inside a session, so the term is 0 for both and their shipped tolerances did not
-move — pinned by a regression test, because that is the half a reader would not think to check.
+An empty member set — an absent or unreadable watchlist, or a universe timer that is not enabled —
+puts those series in the unscheduled tier, which degrades toward "nothing was graded" rather than
+"everything is graded against a cadence it does not have." `universe_symbols` defaults to empty for
+the same reason: a caller that has not checked the timer must not get the graded tier by accident.
+Every reader (`read_watermarks`, `read_scheduled_symbols`, `read_universe_symbols`, `read_series`)
+degrades the same way; `read_series` returns `None` on a lock conflict too, since a writer holding
+the DB is not a finding about the data.
 
-⚠ **The residual absence is still a hazard, and the report still says so.** The pundit ledger has no
-timer at all, and a pooled cross-section that reaches unrefreshed names mixes stale series with the
-fresh watchlist **inside one query** — the fresh set being precisely the mega-cap tilt `4h`'s 21%
-coverage already carries, so recency skew and coverage skew compound in the same direction. Nothing
-errors; `n_eff`, breadth counts and any `1wk` panel are just quietly wrong.
-
-An **empty** member set — an absent or unreadable watchlist, or a universe timer that is not enabled
-— puts those series in the unscheduled tier. That degrades toward "nothing was graded", which
-reports an absence, rather than toward "everything is graded against a cadence it does not have".
-`universe_symbols` **defaults to empty** for the same reason: a caller that has not checked the
-timer must not get the graded tier by accident. Every reader (`read_watermarks`,
-`read_scheduled_symbols`, `read_universe_symbols`, `read_series`) degrades the same way;
-`read_series` returns None on a lock conflict too, because a writer holding the DB is not a finding
-about the data.
-
-⚠ **ADVISORY, never in `make test` / `make sanity-checks` / CI** — both legs read machine-local
-single-copy state no clone has. The **pure grading half** is in `make test`
-(`tests/test_freshness_check.py`), positive control included: `TestScheduledTierHasTeeth`
-constructs a stale scheduled series at wifey's real 2026-06-18 freeze date and asserts it is
-caught, plus the other half — that a fresh one is not — because a check that has never been red is
-indistinguishable from one that cannot be. `--exit-nonzero` opts in for a shell condition, and the
-unscheduled tier deliberately cannot make it fire.
+Advisory, never in `make test` / `make sanity-checks` / CI — both legs read machine-local
+single-copy state no clone has. The pure grading half is in `make test`
+(`tests/test_freshness_check.py`), positive control included: `TestScheduledTierHasTeeth` constructs
+a stale scheduled series at wifey's real 2026-06-18 freeze date and asserts it is caught, plus that a
+fresh one is not. `--exit-nonzero` opts in for a shell condition, and the unscheduled tier
+deliberately cannot make it fire.
 
 ## host_platform.py — which scheduler this box actually has
 
-`tools/host_platform.py` is one predicate, `is_windows()`, wrapping `os.name` — ⚠ **`os.name`,
-not `sys.platform`; this paragraph said `sys.platform` until 2026-09-22, a stale VALUE under a
-correct KEY, which is the shape a name-grep cannot catch.** It exists so the host test has a
-single name rather than that comparison re-spelled at each call site, and so a test can
-monkeypatch one symbol instead of the interpreter's own attribute — patching `os.name` also
-repoints `pathlib`, and every `Path(...)` under that patch raises.
+`tools/host_platform.py` is one predicate, `is_windows()`, wrapping `os.name` (not `sys.platform`).
+It exists so the host test has a single name rather than that comparison re-spelled at each call
+site, and so a test can monkeypatch one symbol instead of the interpreter's own attribute — patching
+`os.name` also repoints `pathlib`, and every `Path(...)` under that patch raises.
 
-Its consumers are `freshness_check.universe_timer_enabled`, which reads systemd on Linux and
-Task Scheduler on Windows (see that section), and `venv_bootstrap`, which picks between
-`.venv/Scripts/python.exe` and `.venv/bin/python` and between two swap mechanisms.
-⚠ **The transferable rule is in why it was added,
-not in what it does**: the probe used to treat "not Linux" as a failure and degrade to *not
-enabled*, which was true while no non-Linux box could run the job at all, and became silently
-wrong the moment `deploy/windows/install-tasks.ps1` could register one. A platform test only
-belongs behind a named predicate once the platforms genuinely differ in answer rather than in
-availability.
+Its consumers are `freshness_check.universe_timer_enabled`, which reads systemd on Linux and Task
+Scheduler on Windows (see that section), and `venv_bootstrap`, which picks between
+`.venv/Scripts/python.exe` and `.venv/bin/python` and between two swap mechanisms. A platform test
+belongs behind a named predicate like this one only once the platforms genuinely differ in answer
+rather than in availability — treating "not Linux" as a failure that degrades to "not enabled" is
+correct only while no non-Linux box can run the job at all, and becomes silently wrong the moment a
+Windows scheduled task exists.
 
 ## venv_bootstrap.py — a hand-run script that degrades instead of failing
 
-`reexec_into_venv(root)` replaces the current process with the same argv under `root/.venv`.
-It returns normally — never raises, never exits — when the sentinel is already set (so a broken
-venv cannot loop), when the venv is absent (a fresh clone, CI, `make preflight`'s clone) or when
-we are already inside it, which is what makes it safe to call unconditionally.
+`reexec_into_venv(root)` replaces the current process with the same argv under `root/.venv`. It
+returns normally — never raises, never exits — when the sentinel is already set (so a broken venv
+cannot loop), when the venv is absent (a fresh clone, CI, `make preflight`'s clone), or when already
+inside it, which is what makes it safe to call unconditionally.
 
-⚠ **The "already inside it" test is `sys.prefix`, never `sys.executable`.** On POSIX
-`.venv/bin/python` is a symlink to the system interpreter, so comparing resolved executables
-reports the venv and a bare `python3` as the same path and the swap never fires.
+The "already inside it" test must be `sys.prefix`, never `sys.executable`: on POSIX
+`.venv/bin/python` is a symlink to the system interpreter, so comparing resolved executables reports
+the venv and a bare `python3` as the same path and the swap never fires.
 
-⚠ **Scope is narrow, and the discriminator is whether the failure is LOUD.** Measured
-2026-09-22: `python tools/sanity_checks.py` exits **0** printing `0 finding(s)` with three of
-eight legs reading `SKIPPED  (project dependencies are not installed)` — the same words the legs
-that skip legitimately use, so the wrong interpreter is invisible inside a healthy-looking
-report. Against that, `freshness_check.py` dies on an immediate `ModuleNotFoundError` traceback
-and so does NOT earn the bootstrap, while `cadence_check.py`, `backup_check.py`,
-`post_branch_checks.py` and `orphan_test_audit.py` import nothing third-party and cannot
-degrade at all. **Only a script that keeps going and renders something that looks like an answer
-earns this.** Its one call site is scoped to `__main__`, because `tests/test_sanity_checks.py`
-imports that module and a swap at import time would fire mid-collection.
+Only a script that keeps going and renders something that looks like an answer needs this bootstrap
+— the discriminator is whether a wrong interpreter fails loudly. Measured 2026-09-22:
+`python tools/sanity_checks.py` under the wrong interpreter exits 0 printing `0 finding(s)` with
+three of eight legs reading `SKIPPED  (project dependencies are not installed)`, the same words the
+legs that skip legitimately use, so the wrong interpreter is invisible inside a healthy-looking
+report. `freshness_check.py` dies on an immediate `ModuleNotFoundError` traceback and so does not
+need the bootstrap; `cadence_check.py`, `backup_check.py`, `post_branch_checks.py` and
+`orphan_test_audit.py` import nothing third-party and cannot degrade at all. Its one call site is
+scoped to `__main__`, because `tests/test_sanity_checks.py` imports that module and a swap at import
+time would fire mid-collection.
 
-⚠ **Two divergences from parent #742/#760, both MEASURED — a verbatim copy is worse than no
-port here.** (1) The interpreter is `Scripts/python.exe`; upstream probes `bin/python` and
-returns when it is absent, which on this box is a permanent silent no-op, i.e. the
-reads-clean-while-doing-nothing class removed four times on 2026-09-21. (2) **`os.exec*` does
-not work on this host**: `os.execve` with an env dict segfaults (exit 139), and `os.execv` with
-an absolute path exits **0** having run nothing the caller can see — child orphaned, stdout
-never reaching the console, exit code lost — identically from `cmd.exe`, so not an MSYS
-artifact. Windows therefore swaps via `subprocess.run` and raises `SystemExit` carrying the
-child's code; POSIX keeps upstream's `os.execve`.
+Two divergences from the parent, both measured, since a verbatim copy is worse than no port here.
+The interpreter is `Scripts/python.exe`; the parent probes `bin/python` and returns when it is
+absent, which on this box is a permanent silent no-op. And `os.exec*` does not work on this host:
+`os.execve` with an env dict segfaults (exit 139), and `os.execv` with an absolute path exits 0
+having run nothing the caller can see — child orphaned, stdout never reaching the console, exit code
+lost — identically from `cmd.exe`, so not an MSYS artifact. Windows therefore swaps via
+`subprocess.run` and raises `SystemExit` carrying the child's code; POSIX keeps the parent's
+`os.execve`.
 
-`_venv_first_path` prepends the venv's script directory to `PATH`, because each fix covers only
-the resolver it names — `sys.path` for repo imports, the interpreter for third-party imports,
-`PATH` for subprocesses. ⚠ **Carried, not measured here**: wifey's one bootstrapped script
-shells out only to `git`, so this half has no current consumer, and it ships because landing the
-interpreter swap alone would re-open a documented defect one level down. Prepended rather than
-appended so a stale system copy cannot shadow a pinned one.
+`_venv_first_path` prepends the venv's script directory to `PATH`, because each fix covers only the
+resolver it names — `sys.path` for repo imports, the interpreter for third-party imports, `PATH` for
+subprocesses. wifey's one bootstrapped script shells out only to `git`, so this half has no current
+consumer here but ships because landing the interpreter swap alone would leave a documented defect
+one level down. Prepended rather than appended so a stale system copy cannot shadow a pinned one.
 
-⚠ **The end-to-end test SKIPPED on its first run**, because `shutil.which("python3")` under
-`poetry run` resolves to the venv — green-by-skip, the same defect reproduced inside the test
-written to prove it fixed. It now derives the foreign interpreter from `sys.base_prefix` and
-carries a negative control asserting the degraded run is observable; without that control a pass
-is satisfied by the swap working *or* by never reaching a degraded run.
+The end-to-end test must derive the foreign interpreter from `sys.base_prefix` rather than
+`shutil.which("python3")`, which under `poetry run` resolves to the venv itself and produces a
+green-by-skip result. It carries a negative control asserting the degraded run is observable;
+without that control a pass is satisfied by the swap working or by never reaching a degraded run.
 
 ## clone_preflight.py — does the suite pass on a machine that is not this one?
 
 `make preflight` clones HEAD into a temp dir, runs `poetry install --no-root` against the clone's
-own lock, and runs `make test`'s exact argv there. Ported from parent #667.
+own lock, and runs `make test`'s exact argv there. Ported from the parent.
 
-**It REPLACES that branch's `make test` rather than adding to it** — `PYTEST_ARGS` mirrors the
-`test:` recipe argument-for-argument, and `TestWiredIntoTheWorkflow` pins that against the
-Makefile so the claim has an external referent instead of only the sentence asserting it.
+It replaces that branch's `make test` rather than adding to it: `PYTEST_ARGS` mirrors the `test:`
+recipe argument-for-argument, and `TestWiredIntoTheWorkflow` pins that against the Makefile so the
+claim has an external referent.
 
-**What it catches that no local run can.** A gitignored path that exists on this box and nowhere
-else is invisible to every check that runs here — `config/stocks.json`,
-`.claude/sensitive-terms.txt`, `docs/plans/` and `analytics.db` are all absent on a clean clone.
-Two defects share that symptom and a prose rule only addresses the first: **(a)** a test depends
-on a local file, so CI reds; **(b)** *production* code loads a local file it does not need, so
-the CLI is broken on a clean clone while a hermetic test passes anyway. wifey has already paid
-for this class in the other direction — `.claude/` was an allowlist until 2026-08-20, so the
-hooks were untracked and silently did not survive a reclone.
+What it catches that no local run can: a gitignored path that exists on this box and nowhere else is
+invisible to every check that runs here — `config/stocks.json`, `.claude/sensitive-terms.txt`,
+`docs/plans/` and `analytics.db` are all absent on a clean clone. Two defects share that symptom: a
+test can depend on a local file, so CI reds; or production code can load a local file it does not
+need, so the CLI is broken on a clean clone while a hermetic test passes anyway.
 
-⚠ **CI already IS this gate**, being a clean checkout. What this closes is **TIMING, not
-detection**: on a private repo, detection after a push costs a metered Actions cycle, a red PR,
-and a visibility flip to read the failure at all.
+CI is already this gate, being a clean checkout; what this closes is timing, not detection — on a
+private repo, detection after a push costs a metered Actions cycle, a red PR, and a visibility flip
+to read the failure at all.
 
-**The dirty-tree refusal is the load-bearing part.** A clone sees **committed** state only, so a
-run against an uncommitted tree tests stale HEAD and reports GREEN — the same invisible pass the
-gate exists to kill. It refuses **before taking any clone**, and `test_refuses_before_taking_any_clone`
-asserts the clone's absence rather than only the exit code. That is also why it belongs in
-`/post-branch` **phase 5**, after the doc commits, and not in phase 1's sweep.
+The dirty-tree refusal is the load-bearing part. A clone sees committed state only, so a run against
+an uncommitted tree tests stale HEAD and reports green — the same invisible pass the gate exists to
+kill. It refuses before taking any clone, and `test_refuses_before_taking_any_clone` asserts the
+clone's absence rather than only the exit code. That is also why it belongs in `/post-branch` phase
+5, after the doc commits, rather than phase 1's sweep.
 
-Two cheaper tricks were refuted upstream and the reasoning is structural, so it ports: **a foreign
-working directory** makes every relative path absent at once, committed assets included (27
-failures, almost none the bug); **monkeypatching the `DEFAULT_*` constants is partial by
-construction**, since `DEFAULT_DB_PATH` is re-exported into two modules that captured it at import
-— a shape wifey shares via `analytics.store` and `analytics.data_store`.
+Two cheaper alternatives are structurally wrong and are not used: a foreign working directory makes
+every relative path absent at once, committed assets included; monkeypatching the `DEFAULT_*`
+constants is partial by construction, since `DEFAULT_DB_PATH` is re-exported into `analytics.store`
+and `analytics.data_store`, which capture it at import.
 
-⚠ **Two holes, stated because a gate whose reach is unknown gets over-trusted.** It cannot see an
-**absolute** default (`$HOME/…`), because `$HOME` is identical in the clone — `EXTERNAL_ROOTS` in
-`deploy/backup-analytics.sh` is exactly that shape. And it only reaches class (b) where a *test*
-exercises the path; neither mechanism sees an untested CLI branch.
+Two known holes: it cannot see an absolute default (`$HOME/…`), because `$HOME` is identical in the
+clone — `EXTERNAL_ROOTS` in `deploy/backup-analytics.sh` is exactly that shape — and it only reaches
+a production-code-loads-a-local-file defect where a test exercises the path; neither mechanism sees
+an untested CLI branch.
 
-Exit codes: **0** pass · **1** the suite failed, a real finding · **2** REFUSED, dirty tree · **3**
-INFRA, the clone or install died. ⚠ **`make` collapses all of them to its own 2**, so branch on
-the printed banner or call the module directly.
+Exit codes: `0` pass, `1` the suite failed (a real finding), `2` REFUSED (dirty tree), `3` INFRA (the
+clone or install died). `make` collapses all of them to its own 2, so branch on the printed banner or
+call the module directly.
 
-**First run, 2026-08-20: PASSED** — **3123 passed / 4 skipped** in the clone against **3124 / 3**
-locally, so wifey's suite is clean-clone-safe. ⚠ **The one-test delta is the finding.**
+First run, 2026-08-20: passed, 3,123 passed / 4 skipped in the clone against 3,124 / 3 locally, so
+the suite is clean-clone-safe. The one-test delta is the finding:
 `test_pundit_score.py::test_live_ledger_rows_all_survive_the_new_guards` guards
-`docs/plans/pundit-calls.jsonl`, which is gitignored — so it runs **only** on the operator's box,
-and **its assertion has never been evaluated by CI and never can be**. The code says as much
-(`# gitignored; absent on a fresh clone`), so this is by design rather than a defect; what is new
-is that the asymmetry is now *observable*. Locally the test silently passes, in CI it silently
-skips, and **neither surface reports that it ran nowhere meaningful** — which is precisely the
-shape the gate exists to expose. Suite portion **295s** in the clone against **254s** locally
-(+16%), before the clone and `poetry install`.
+`docs/plans/pundit-calls.jsonl`, which is gitignored, so it runs only on the operator's box and its
+assertion has never been evaluated by CI and never can be — by design, since the code comments this
+explicitly (`# gitignored; absent on a fresh clone`), but the asymmetry (silently passes locally,
+skips in CI, neither surface
+reporting that it ran nowhere meaningful) is exactly the shape this gate exists to expose. Suite
+portion 295s in the clone against 254s locally (+16%), before the clone and `poetry install`.
 
 **Run:** `make preflight`, or `python3 tools/clone_preflight.py [--repo R] [--dest D] [--dry-run]`.
-Bare `python3` on purpose — stdlib-only, so the gate still runs when the dev venv is the thing
-that is broken.
+Bare `python3` on purpose — stdlib-only, so the gate still runs when the dev venv is the thing that
+is broken.
 
 ## sanity_checks.py — every mechanical `/sanity-check` check, in one run
 
@@ -893,144 +769,124 @@ Eight checks: `fork-drift` (invocable artifacts a doc names but the code lacks �
 timeframes, `--strategy`, `SYMBOL`), `parent-leakage`, `missing-paths`, `context-coverage`,
 `router-wiring`, `config-strategies`, `cli-documented`, `regression-surface`.
 
-⚠ **Three of those degrade to `SKIPPED  (project dependencies are not installed)`, which is why
-`__main__` re-execs into the venv** — see `venv_bootstrap.py` above. The CI-portability that
-makes `_load_code_facts` swallow any import failure is the same property that made a
-wrong-interpreter run indistinguishable from a healthy one: exit 0, `0 finding(s)`, three legs
-quietly not run.
+Three of those degrade to `SKIPPED  (project dependencies are not installed)` when run under the
+wrong interpreter, which is why `__main__` re-execs into the venv (see `venv_bootstrap.py` above):
+`_load_code_facts` swallows any import failure for CI portability, and that same property makes a
+wrong-interpreter run print exit 0, `0 finding(s)`, with three legs quietly not run.
 
 `regression-surface` reads the globs CI's regression paths-filter fires on straight out of
-`.github/workflows/lint.yaml` and asserts CLAUDE.md names each one. ⚠ **It keys on the block
-mentioning `tests/test_regression.py`, never on a job name or a position** — there is a second
-`filters:` block in that file (the frontend one) and a positional read silently grades the wrong
-one; the first draft's regex did exactly that, matching across blocks because `\s+` spans
-newlines. ⚠ **An empty filter is a FINDING, not a pass**: if the workflow moves, the leg must say
-it can no longer see what it grades rather than reporting clean against nothing. The comparison is
-**verbatim** for a reason — until 2026-08-26 the doc list diverged in BOTH directions (narrower on
-`analytics/` and `config/`, silent on four paths, *wider* on `tests/fixtures/`), and a paraphrase
-(`analytics/backtest/` for `analytics/**/*.py`) is not diffable by any tool. ⚠ **Only the
-narrowing direction is harmful** — over-running the gate costs ~8s, under-running it costs a
-metered Actions cycle. The first draft of this note called the list a *strict subset*; the claims
-audit caught it, which is the audit working on its own branch. Ported from parent #698 (ST89). Same shape as `post_branch_checks.py` —
+`.github/workflows/lint.yaml` and asserts CLAUDE.md names each one. It keys on the block mentioning
+`tests/test_regression.py`, never on a job name or position, because a second `filters:` block
+exists in that file (the frontend one) and a positional read would silently grade the wrong one. An
+empty filter is a finding, not a pass: if the workflow moves, the leg must say it can no longer see
+what it grades rather than reporting clean against nothing. The comparison is verbatim rather than
+paraphrased, because a paraphrase (`analytics/backtest/` for `analytics/**/*.py`) is not diffable by
+any tool, and this doc's own trigger list has previously diverged from CI's filter in both
+directions — narrower on `analytics/` and `config/`, wider on `tests/fixtures/`. Only the narrowing
+direction is harmful: over-running the gate costs ~8s, under-running it costs a metered Actions
+cycle. Ported from the parent. Same shape as `post_branch_checks.py` —
 pure functions over text, git injected as `runner`, one `Finding` per thing a human must look at —
 with two deliberate differences.
 
-**It GATES rather than advises**, and it runs in **two** CI places. `tests/test_sanity_checks.py`
-asserts the working tree is clean, which puts it inside `make test`; and CI's `markdownlint` job
-runs it **unconditionally** as well. The second placement is not redundancy: the test job sits
-behind a `**/*.py` paths filter, so on a docs-only PR — the exact change these checks guard — the
-pytest gate never fires at all. CLAUDE.md's *a self-check outside CI is not a check* is what forced
-both.
+It gates rather than advises, and runs in two CI places. `tests/test_sanity_checks.py` asserts the
+working tree is clean, which puts it inside `make test`; CI's `markdownlint` job also runs it
+unconditionally, because the test job sits behind a `**/*.py` paths filter and would never fire on a
+docs-only PR — exactly the change these checks guard.
 
-**Every leg is CI-portable, and that constraint is what found the prose form's two bugs.** The old
-§4a shell block read the gitignored `config/stocks.json` directly, so it would have crashed in a
-clean checkout, and its `MISSING` allowlist was calibrated on a developer machine where
-`config/youtube_channels.toml` happens to exist. Now `check_missing_paths` asks **git** whether a
-path is expected to be absent, the watchlist leg degrades to a printed note, and the three legs
-needing project imports report `SKIPPED` where nothing is installed. ⚠ **A degraded leg is a note,
-never a finding** — counting it would leave the sweep permanently red in CI, and a check that is
-never green stops being read.
+Every leg is CI-portable, which is what surfaced two defects in the earlier prose form: a shell block
+that read the gitignored `config/stocks.json` directly would have crashed in a clean checkout, and a
+`MISSING` allowlist calibrated on a developer machine where `config/youtube_channels.toml` happens to
+exist. `check_missing_paths` asks git whether a path is expected to be absent; the watchlist leg
+degrades to a printed note, and the three legs needing project imports report `SKIPPED` where
+nothing is installed. A degraded leg is a note, never a finding — counting it would leave the sweep
+permanently red in CI.
 
-⚠ **`parent-leakage` is scoped to `.claude/` while its siblings are not**, and that asymmetry is
-load-bearing. Widening it to CLAUDE.md / README / `docs/system-overview.md` returns four hits that
-are all *correct history* — the fork-lineage paragraph, the sister-memory pointer, the README's
-"forked from" line — which is the prose-marker grep that was built, measured and rejected. A skill
-instructs an *action*, so a parent artifact there is invocable rather than historical. Pinned by
-`test_scope_stops_at_dot_claude`.
+`parent-leakage` is scoped to `.claude/` while its siblings are not, and that asymmetry is
+load-bearing: widening it to CLAUDE.md, README or `docs/system-overview.md` returns hits that are all
+correct history (the fork-lineage paragraph, the sister-memory pointer, the README's "forked from"
+line). A skill instructs an action, so a parent artifact named there is invocable rather than
+historical, and only that surface is worth flagging. Pinned by `test_scope_stops_at_dot_claude`.
 
 Extraction found three defects in the inherited code, none by reading:
 
-- The skill's documented expectations were stale in **two of three** legs — it claimed "no leakage
-  hits" and "exactly these ten `MISSING` paths"; the real numbers were **3** and **9**, and all
-  three leakage hits were legitimate. A check that reports known-good noise gets skimmed.
+- The skill's documented expectations were stale in two of three legs — it claimed "no leakage hits"
+  and "exactly these ten `MISSING` paths," where the real numbers were 3 and 9, and all three leakage
+  hits were legitimate. A check that reports known-good noise gets skimmed.
 - The symbol pattern capped at `[A-Z]{2,6}`, so a 7-character `BTCUSDT` was reported as
-  `symbol=BTCUSD` — a finding naming a string that appears nowhere, so triaging it means grepping
-  for something that does not exist.
+  `symbol=BTCUSD` — a finding naming a string that appears nowhere.
 - `cli/main.py` built its argparse tree inside `main()`, so the CLI surface could not be read
-  without being run. Extracting `build_parser` was a prerequisite, not scope creep — and the check
-  immediately found `wifey param-audit` documented nowhere in README.
+  without being run. Extracting `build_parser` was a prerequisite, and the check immediately found
+  `wifey param-audit` documented nowhere in README.
 
-Every allowlist entry carries its reason inline; an entry without one is how a check decays into a
+Every allowlist entry carries its reason inline; an entry without one lets a check decay into a
 no-op.
 
-**Run:** `make sanity-checks`, or `PYTHONPATH=. poetry run python tools/sanity_checks.py
-[--check NAME] [--exit-zero]`. It runs stdlib-only too (`python3 tools/sanity_checks.py`), which is
-how the CI step works.
+**Run:** `make sanity-checks`, or
+`PYTHONPATH=. poetry run python tools/sanity_checks.py [--check NAME] [--exit-zero]`. It runs
+stdlib-only too (`python3 tools/sanity_checks.py`), which is how the CI step works.
 
 ## docs_index.py — generated audit + spec indexes
 
-Generates `docs/audits/INDEX.md` (18 verdicts) and `docs/superpowers/specs/INDEX.md`
-(14 specs) — 32 documents that nothing indexed. CLAUDE.md cites 9 of the 18 audits
-inline; the other 9 and 13 of the 14 specs had no surface listing them at all. Ported
-from parent #600. `tests/test_docs_index.py` regenerates both and compares byte-for-byte,
-so a new audit or spec **fails CI until it is indexed** — the enforcement half, without
-which the index is the silent-surface class again. Output is deterministic (no
-generated-at timestamp) precisely so `--check` can compare bytes.
+Generates `docs/audits/INDEX.md` (18 verdicts) and `docs/superpowers/specs/INDEX.md` (14 specs) — 32
+documents that nothing else indexes; CLAUDE.md cites only 9 of the 18 audits inline. Ported from the
+parent. `tests/test_docs_index.py` regenerates both and compares byte-for-byte, so a new audit or
+spec fails CI until it is indexed. Output is deterministic (no generated-at timestamp), so `--check`
+can compare bytes.
 
-**Nothing is guessed.** Date and title come from the filename prefix and the H1 (100%
-reliable across both corpora). A verdict line is emitted **only** where it reads as prose
-under a Verdict heading or in the inline `**Verdict: …**` form — **8 of 18** here — and
-every other row gets an em dash, with the index header stating that coverage out loud.
-Table rows, blockquotes, list items and `**Date:**` metadata lines each have a named
-negative test; the last is live in `2026-06-21-experiment-1-residual-xsmom.md`, whose H1
-matches the Verdict-heading pattern and is immediately followed by `**Date:**`.
+Nothing is guessed. Date and title come from the filename prefix and the H1 (100% reliable across
+both corpora). A verdict line is emitted only where it reads as prose under a Verdict heading or in
+the inline `**Verdict: …**` form — 8 of 18 here — and every other row gets an em dash, with the index
+header stating that coverage. Table rows, blockquotes, list items and `**Date:**` metadata lines each
+have a named negative test.
 
-### Two divergences from parent #600
+### Two divergences from the parent
 
-**A wrapped verdict is read as a whole paragraph in BOTH forms.** Upstream joined
-paragraphs under a Verdict *heading* but left the inline form reading a single line. This
-corpus hard-wraps at ~80 columns, so on the first run **6 of the 8** readable verdicts
-published as mid-sentence fragments — and because the cut fell on a word boundary with no
-ellipsis, a fragment was **indistinguishable from a complete, shorter verdict**. The worst
-was `2026-08-12-exit-mfe-mae-diagnostic-rerun.md`, cut at *"…SUPERSEDED at the cohort
-level, and"* — dropping the clause that records the finding **reversed direction**, which
-is the whole point of that audit. The inline pattern also now consumes an `=` separator
-(`**Verdict = FAIL.**`), which otherwise leaked into the cell as a leading `= FAIL`.
-**The same defect is live upstream** (2 of its 4 inline verdicts) — raise it there.
+A wrapped verdict is read as a whole paragraph in both the heading and inline forms. The parent
+joined paragraphs under a Verdict heading but left the inline form reading a single line; this
+corpus hard-wraps at ~80 columns, so on a mid-sentence cut a fragment can be indistinguishable from a
+complete, shorter verdict — one case reversed an audit's finding by dropping its qualifying clause.
+The inline pattern also consumes a `=` separator (`**Verdict = FAIL.**`), which would otherwise leak
+into the cell as a leading `= FAIL`. The same defect is live in the parent (2 of its 4 inline
+verdicts); raise it there rather than treating it as fixed by this port.
 
-The join needed a stop rule, and the first version did not have one: several audits open
-with `**Date:** / **Verdict:** / **Audit:** / **Spec:**` on **consecutive lines with no
-blank between**, which markdown calls one paragraph, so joining onward merged the *Audit*
-field into the verdict and turned two clean one-line verdicts into run-on text crediting a
-make target. `_continues_paragraph` therefore stops at a bold field label (`_BOLD_FIELD`)
-as well as at a heading, table, blockquote or list — and **both** extraction paths share
-it, since the Verdict-heading path had the identical latent flaw. Stopping early costs a
-few words; not stopping fabricates a verdict out of adjacent metadata.
+The join needs a stop rule: several audits open with `**Date:** / **Verdict:** / **Audit:** /
+**Spec:**` on consecutive lines with no blank between, which markdown treats as one paragraph, so
+joining onward merges the Audit field into the verdict and turns a clean one-line verdict into run-on
+text crediting a make target. `_continues_paragraph` stops at a bold field label (`_BOLD_FIELD`) as
+well as at a heading, table, blockquote or list, and both extraction paths share it. Stopping early
+costs a few words; not stopping fabricates a verdict out of adjacent metadata.
 
-**The reconcile column states its own floor.** `0 of N` renders identically whether the
-detector found nothing or could never fire, and those are different facts. This corpus has
-**zero** spec-reconcile audits, so 0 is the only reachable value; `spec_reconcile_audits()`
-is read separately from the per-spec join so the page can say *no reconcile has been
-written up* rather than publish a bare `0 of 14` that reads as *14 specs went
-unreconciled* — a claim about the specs the data cannot support. (Same class as the
-`exits/` MFE median: check the floor is reachable before quoting the number.) A spec counts
-as reconciled only when an audit naming its filename says so **in its own filename or H1** —
-keying on "reconcile" anywhere in the body mislabelled a doc reconciling two *findings*
-upstream, and that case is a regression test here.
+The reconcile column states its own floor. `0 of N` renders identically whether the detector found
+nothing or could never fire, and those are different facts — this corpus has zero spec-reconcile
+audits, so `spec_reconcile_audits()` is read separately from the per-spec join and the page says "no
+reconcile has been written up" rather than publishing a bare `0 of 14` that reads as a claim the data
+cannot support (the same class as the `exits/` MFE median: check the floor is reachable before
+quoting the number). A spec counts as reconciled only when an audit naming its filename says so in
+its own filename or H1 — keying on "reconcile" anywhere in the body mislabeled a doc reconciling two
+findings, and that case is a regression test here.
 
 **Run:** `make docs-index` (write) / `make docs-index-check` (verify, writes nothing), or
 `poetry run python tools/docs_index.py [--check] [--audit-dir PATH] [--spec-dir PATH]`
 
 ## distil_power.py — price a hypothesis BEFORE it is written into the inbox
 
-The **G3 gate of `/research-distil`**. Prints the effect size the gate demands at the
-declared `n` and trial family, so a claim is *priced* rather than estimated. Ported
-verbatim from parent HEAD, with only the module docstring's precedent re-flavored;
-`tests/test_distil_power.py` + `tests/test_research_guards_power.py` (48 cases) passed
-here with **zero** code adaptation, because `dsr.py` and `psr.py` are byte-identical
-across the two repos.
+The G3 gate of `/research-distil`. Prints the effect size the gate demands at the declared `n` and
+trial family, so a claim is priced rather than estimated. Ported verbatim from the parent, with only
+the module docstring's precedent re-flavored; `tests/test_distil_power.py` +
+`tests/test_research_guards_power.py` (48 cases) passed here with zero code adaptation, because
+`dsr.py` and `psr.py` are byte-identical across the two repos.
 
-⚠ **It cannot price a hypothesis that is not Sharpe-shaped, and there is no error for that.**
-`--units` is `per_trade | per_alert | per_book_day`, and the whole model asks what Sharpe clears
-the DSR gate — so a **calendar-conditioning** claim (a seasonal or political-cycle effect, whose
-unit is a *year* and which has no book, no trades and no Sharpe) has no honest way through it.
-Passing one of the three existing units to get a number out is exactly the defect the module
-docstring exists to prevent: *a figure that looks portable and silently changes meaning with the
-panel.* Use the two-sample MDE instead — `(z_0.975 + z_0.80) · sd · sqrt(1/n1 + 1/n2)` with `sd`
-**measured from the panel** — and say so. Worked example, both halves:
-`docs/audits/2026-08-20-h001-h002-midterm-cycle-power-precheck.md`. ⚠ **The `--bar` /`--sd` legs
-are still usable on their own** for the `powered_null` containment question; it is the Sharpe
-half that does not port.
+It cannot price a hypothesis that is not Sharpe-shaped, and there is no error for that case.
+`--units` is `per_trade | per_alert | per_book_day`, and the whole model asks what Sharpe clears the
+DSR gate — a calendar-conditioning claim (a seasonal or political-cycle effect, whose unit is a year
+and which has no book, no trades and no Sharpe) has no honest way through it. Passing one of the
+three existing units to get a number out is exactly the defect the module docstring exists to
+prevent: a figure that looks portable and silently changes meaning with the panel. Use the
+two-sample MDE instead — `(z_0.975 + z_0.80) · sd · sqrt(1/n1 + 1/n2)` with `sd` measured from the
+panel — and say so explicitly. Worked example, both halves:
+`docs/audits/2026-08-20-h001-h002-midterm-cycle-power-precheck.md`. The `--bar`/`--sd` legs are still
+usable on their own for the `powered_null` containment question; it is only the Sharpe half that
+does not port.
 
 ```bash
 PYTHONPATH=. poetry run python tools/distil_power.py \
@@ -1039,16 +895,14 @@ PYTHONPATH=. poetry run python tools/distil_power.py \
   [--n-series S --n-eff E] [--sd SD] [--bar R] [--corpus-best C]
 ```
 
-`PYTHONPATH=.` is required — the bare invocation dies on `ModuleNotFoundError`, the same
-shape as `route_dedup.py`. Exit 2 on a declared-error argument combination.
+`PYTHONPATH=.` is required — the bare invocation dies on `ModuleNotFoundError`, the same shape as
+`route_dedup.py`. Exit 2 on a declared-error argument combination.
 
-**Why it exists at all**: trial count dominates n, and it is not close. Re-derived here
-against wifey's own `required_sharpe` — holding the trial family at 20, a **21× range of
-n** (100 → 2,100) moves the bar **1.17×**; holding n at the live ledger's 267, going from
-**1 to 320 trials** moves it **15.9×** (0.101 → 1.611). So a skill that reads three books
-and emits forty hypotheses inflates the trial family until every cell is unreachable,
-including ones that would have passed alone. The tool is what makes that arithmetic
-tracked rather than recalled. Reproduce:
+Trial count dominates n, and by a wide margin. Re-derived against wifey's own `required_sharpe`:
+holding the trial family at 20, a 21x range of n (100 to 2,100) moves the bar 1.17x; holding n at the
+live ledger's 267, going from 1 to 320 trials moves it 15.9x (0.101 to 1.611). A skill that reads
+three books and emits forty hypotheses inflates the trial family until every cell is unreachable,
+including ones that would have passed alone. Reproduce:
 
 ```python
 from analytics.research_guards import required_sharpe
@@ -1056,92 +910,81 @@ required_sharpe(100, n_trials=20, sr_variance=0.25) / required_sharpe(2100, n_tr
 required_sharpe(267, n_trials=320, sr_variance=0.25) / required_sharpe(267, n_trials=1, sr_variance=0.25)
 ```
 
-**Three flags carry the traps.** `--units` is mandatory with **no default**, because a
-figure that looks portable silently changes meaning with the panel — `regime.py` carried
-crypto bar counts across the fork, so its "90-day" ATR window really spanned ~270 sessions
-on `4h` (RTH is 2 bars/day, not 6) and 12.02% of `4h` labels moved when it was corrected.
-`--n-series`/`--n-eff` must be supplied together — one alone raises, and omitting both on
-a pooled multi-symbol panel overstates `n`. ⚠ **Omitting both still prints an UNDEFLATED
-`n`**, i.e. an upper bound and therefore a bar smaller than the true one; never present
-such a pass as having margin it did not measure. ⚠ **The repo DOES now have a measured
-`n_eff`** — `make wifey-n-eff`, ≈2.96 at `1d` on the 505-member universe (2026-08-20), so
-there is no longer any excuse for an undeflated run. The sentence here said the opposite
-until 2026-08-26; it was written before the measurement existed and nothing touched it
-after → the absence-claim decay class.
+Three flags carry the traps. `--units` is mandatory with no default, because a figure that looks
+portable silently changes meaning with the panel — `regime.py` carried crypto bar counts across the
+fork, so its "90-day" ATR window really spanned ~270 sessions on `4h` (RTH is 2 bars/day, not 6) and
+12.02% of `4h` labels moved when it was corrected. `--n-series`/`--n-eff` must be supplied together —
+one alone raises, and omitting both on a pooled multi-symbol panel overstates `n`, printing an
+undeflated upper bound rather than the true bar; never present such a pass as having margin it did
+not measure. The repo has a measured `n_eff` (`make wifey-n-eff`, ~2.96 at `1d` on the 505-member
+universe, 2026-08-20), so there is no reason to run undeflated.
 
-⚠ **`--corpus-best` without `--sd` is NOT a pass, and used to render as one.** The
-comparison converts the required Sharpe into effect units, which needs `--sd`; without it
-the branch fell through to the same bare `VERDICT REACHABLE` a cleared bar prints. Since
-`/research-distil`'s G3 gate **mandates** running this tool, *did not compare* read as
-*passed*. It now names the missing input. **That is the second fail-open path found in
-this one file** — the first being the undeflated `n` above — so treat a `REACHABLE` here
-as a claim to check rather than a result to quote. Ported from parent #692 (ST76).
+`--corpus-best` without `--sd` is not a pass. The comparison converts the required Sharpe into effect
+units, which needs `--sd`; without it, the tool must name the missing input rather than falling
+through to the same bare `VERDICT REACHABLE` a cleared bar prints, since `/research-distil`'s G3 gate
+mandates running this tool and "did not compare" must not read as "passed." Ported from the parent.
+Treat a `REACHABLE` verdict as a claim to check rather than a result to quote.
 
-`UNREACHABLE` is a **successful output**, not a failure: more data of that shape cannot
-fix it, only a smaller trial family can. The null-containment verdict is delegated to
+`UNREACHABLE` is a successful output, not a failure: more data of that shape cannot fix it, only a
+smaller trial family can. The null-containment verdict is delegated to
 `analytics.audit_guard.powered_null` and is never restated in the tool.
 
 ## n_eff.py — how many INDEPENDENT series a pooled panel actually carries
 
 `make wifey-n-eff` (`ARGS="--source universe --timeframe 1d"`). Wraps
-`analytics/research_guards/correlation.py::effective_independent_series`, ported 2026-08-20
-from the parent's `analytics/forecast/attribution.py`. Under an equicorrelation
-approximation with mean pairwise correlation `rho`, `k` series carry the noise reduction
-of only `n_eff = k / (1 + (k-1)·rho)`, so a naive pooled t-stat is inflated by
-`sqrt(k / n_eff)`.
+`analytics/research_guards/correlation.py::effective_independent_series`, ported from the parent's
+`analytics/forecast/attribution.py`. Under an equicorrelation approximation with mean pairwise
+correlation `rho`, `k` series carry the noise reduction of only `n_eff = k / (1 + (k-1)·rho)`, so a
+naive pooled t-stat is inflated by `sqrt(k / n_eff)`.
 
-**It exists because `distil_power.py` failed open.** That tool has always *accepted*
-`--n-series` / `--n-eff` and deflated by them, while nothing here could *measure* the
-second — and `effective_n` returns `n_obs` **undeflated** when both are omitted. So every
-power calculation this repo has run was either undeflated or used a borrowed figure,
-including the H-004 pricing that closed it at G3. ⚠ **H-001/H-002 did NOT go
-through this tool** — `distil_power` cannot price a calendar-cycle claim, so they
-used a two-sample MDE, where a pooled `sd` carries the same correlation problem.
+It exists because `distil_power.py` accepts `--n-series` / `--n-eff` and deflates by them but has no
+way to measure the second on its own — `effective_n` returns `n_obs` undeflated when both are
+omitted, so every power calculation before this tool existed was either undeflated or used a
+borrowed figure. H-001/H-002 did not go through this tool: `distil_power` cannot price a
+calendar-cycle claim, so they used a two-sample MDE, where a pooled `sd` carries the same correlation
+problem.
 
 ### Measured 2026-08-20 (first run)
 
 | Panel | k | mean rho | `n_eff` | t inflation |
 | --- | --- | --- | --- | --- |
-| universe `1d` | 504 | +0.3365 | **2.96** | **13.05x** |
+| universe `1d` | 504 | +0.3365 | 2.96 | 13.05x |
 | universe `1wk` | 503 | +0.3459 | 2.88 | 13.22x |
-| universe `4h` | 105 (21%, SIZE-TILTED) | +0.1958 | 4.92 | 4.62x |
+| universe `4h` | 105 (21%, size-tilted) | +0.1958 | 4.92 | 4.62x |
 | watchlist `1d` | 13 | +0.5189 | 1.80 | 2.69x |
 
-⚠ **The 505-member universe is worth about THREE independent bets, not 505.** And
-`n_eff → 1/rho` as `k` grows (1/0.3365 = 2.97 against a measured 2.96), so **adding names
-buys almost nothing once `k` is large** — breadth is capped by the correlation, not by the
-roster. Going 13 → 504 names is 39x the symbols for 1.6x the `n_eff`. This prices the
-parent's "505 members is not breadth 505" caveat and lands well below its own ~11 estimate.
+The 505-member universe is worth about three independent bets, not 505. `n_eff` approaches `1/rho`
+as `k` grows (1/0.3365 = 2.97 against a measured 2.96), so adding names buys almost nothing once `k`
+is large — breadth is capped by the correlation, not the roster. Going from 13 to 504 names is 39x
+the symbols for 1.6x the `n_eff`.
 
-⚠ **The parent's `n_eff` 2.92 does NOT transfer** — that is 25 crypto perps at rho 0.315,
-and it moves on its own panel (14 → 1.97, three → 1.42). The near-agreement with our 2.96
+The parent's `n_eff` of 2.92 does not transfer: that figure is 25 crypto perps at rho 0.315, and it
+moves on its own panel (14 series gives 1.97, three gives 1.42). The near-agreement with wifey's 2.96
 is the `1/rho` asymptote, not portability.
 
 ### Two things the tool refuses to do
 
-- **It withholds the `distil_power` flags when `measured` is False.** An unmeasurable panel
-  and an uncorrelated one both carry a deflator of 1.0; emitting flags for the first would
-  launder "could not tell" into "no correction needed". Same distinction as
-  `audit_guard`'s `INSUFFICIENT` vs `powered_null`. Exit code 1, and the banner says so.
-- **It reports coverage every run rather than assuming it.** `4h` reaches 105 of 505 and
-  that subset is SIZE-TILTED, so a deflator measured there describes large caps.
+- It withholds the `distil_power` flags when `measured` is False. An unmeasurable panel and an
+  uncorrelated one both carry a deflator of 1.0; emitting flags for the first would launder "could
+  not tell" into "no correction needed" — the same distinction as `audit_guard`'s `INSUFFICIENT` vs
+  `powered_null`. Exit code 1, and the banner says so.
+- It reports coverage every run rather than assuming it. `4h` reaches 105 of 505 and that subset is
+  size-tilted, so a deflator measured there describes large caps only.
 
-### ⚠ The pivot trap — a shared index silently empties the panel
+### The pivot trap
 
-The first implementation pivoted every symbol onto one union `open_time` index and called
-`pct_change` across it. **When symbols sit on different stamp grids, consecutive union rows
-belong to different symbols, so almost every return goes NaN.** Measured against the live DB
-at `1wk` it dropped **505 of 505** symbols that the fixed implementation keeps (503 of 505).
+An early implementation pivoted every symbol onto one union `open_time` index and called
+`pct_change` across it. When symbols sit on different stamp grids, consecutive union rows belong to
+different symbols, so almost every return goes NaN — measured against the live DB at `1wk`, this
+dropped 505 of 505 symbols that a per-entity implementation keeps (503 of 505). It failed in the safe
+direction (a refusal, not a wrong number), and `1d`'s grids happen to align, so that timeframe's
+headline of 2.96 is identical before and after the fix. Compute a per-entity series on its own index;
+alignment is the correlation step's job, not the return step's. Pinned by
+`tests/test_n_eff_tool.py::TestLoadReturns::test_misaligned_stamp_grids_do_not_null_the_panel`, which
+gives two symbols zero index overlap.
 
-Two reasons it survived: it **failed in the safe direction** (a refusal, not a wrong number),
-and `1d`'s grids happen to align, so the timeframe anyone would hand-check passed — the `1d`
-headline of 2.96 is identical before and after the fix. **Compute a per-entity series on its
-own index; alignment is the correlation step's job, not the return step's.** Pinned by
-`tests/test_n_eff_tool.py::TestLoadReturns::test_misaligned_stamp_grids_do_not_null_the_panel`,
-which gives two symbols zero index overlap.
-
-⚠ **`config/stocks.json` is keyed by symbol but also carries N1's `universe_policy` block**,
-so a bare `sorted(json.load(f))` returns it as a 14th ticker. Go through
+`config/stocks.json` is keyed by symbol but also carries N1's `universe_policy` block, so a bare
+`sorted(json.load(f))` returns it as a 14th ticker. Go through
 `utils.config_validation.load_stocks_config`, which pops it.
 
 ## live_outcomes_report.py — read-only signal_alert_outcomes spot-check
@@ -1230,72 +1073,65 @@ One-shot ingest for the **first non-price sleeve** (design and frozen pre-regist
 research universe, walks each CIK's Form 4 index, fetches each filing's ownership XML, upserts
 `insider_transactions`. Pure units = `build_rows` / `collect_filings`; network in `main`.
 
-⚠ **`filings.recent` is a WINDOW, not a history** — SEC documents it as the most recent 1,000
-filings, and that bound was confirmed on **one** company (AAPL, 2026-08-29: exactly 1000 entries
-reaching back only to 2015-06-10, with one shard covering 1994→2015). The shard walk is
-unconditional, so nothing depends on 1,000 holding for every filer; what matters is the shape,
-since a fetcher reading `recent` alone returns a truncated history that reads exactly like a
-quiet insider, so
-`collect_filings` also walks every `filings.files` shard whose `filingTo` lands on/after the
-window start (and skips the rest, which is what keeps a full run off the 1990s).
+`filings.recent` is a window, not a full history: SEC documents it as the most recent 1,000
+filings, confirmed on one company (AAPL, 2026-08-29: exactly 1,000 entries reaching back only to
+2015-06-10, with one shard covering 1994-2015). `collect_filings` also walks every `filings.files`
+shard whose `filingTo` lands on or after the window start (skipping the rest keeps a full run off
+the 1990s), since a fetcher reading `recent` alone returns a truncated history that reads exactly
+like a quiet insider.
 
-⚠ **`primaryDocument` points at the XSL-RENDERED HTML** (`xslF345X06/form4.xml`); the
-machine-readable XML is the bare filename under the same accession. `raw_document_name` is that
-one-line strip, and fetching the prefixed path yields a document carrying no ownership elements.
+`primaryDocument` points at the XSL-rendered HTML (`xslF345X06/form4.xml`); the machine-readable
+XML is the bare filename under the same accession. `raw_document_name` is that one-line strip —
+fetching the prefixed path yields a document carrying no ownership elements.
 
-⚠ **The window starts 3 years before the study** (`--since 2015-01-01` by default): the
-classifier needs a trade in each of three preceding years, so a run covering only 2018→ leaves
-every insider unclassifiable.
+The window starts 3 years before the study (`--since 2015-01-01` by default): the classifier needs
+a trade in each of three preceding years, so a run covering only 2018 onward leaves every insider
+unclassifiable.
 
-⚠ **Requires `EDGAR_CONTACT_EMAIL`** — see the `edgar_client` note below. The run's last line is
-the **phase-1 acceptance observable**: parse coverage against its 80% floor, printed PASS/FAIL.
-A footnote-only price counts as a FAILURE (not a drop), while a derivative-only filing counts as
-clean-but-empty — conflating those two is how a parser reports 100% coverage by construction.
+Requires `EDGAR_CONTACT_EMAIL` (see the `edgar_client` note below). The run's last line is the
+phase-1 acceptance observable: parse coverage against its 80% floor, printed PASS/FAIL. A
+footnote-only price counts as a failure, not a drop, while a derivative-only filing counts as
+clean-but-empty — conflating those two would let a parser report 100% coverage by construction.
 
 **Run:** `make wifey-insider-backfill` (or
 `tools/insider_backfill.py [--since ISO] [--stride N] [--limit N] [--symbols A,B]
-[--max-filings-per-symbol N] [--db PATH] [--resume]
-[--max-consecutive-failures N]`)
+[--max-filings-per-symbol N] [--db PATH] [--resume] [--max-consecutive-failures N]`)
 
-⚠ **A LONG RUN IS ONLY INTERRUPT-SAFE UNDER `--resume`, and the failure it prevents is
-SILENT.** The per-filing and per-symbol handlers here both `warn → continue`, so a dropped
-connection never crashed a run — it permanently skipped those filings and still printed `✅ done`
-and a coverage figure. A plausible result with holes in it and no signal. `--resume` skips only
-symbols carrying a completion marker in `insider_backfill_progress`, written **after** the upsert
-and only when the symbol had **zero fetch errors**, so an interrupted or partially-failed symbol
-is retried in full. Without the flag a restart re-walks from symbol 1 (safe via the upsert, just
-wasteful).
+A long run is interrupt-safe only under `--resume`. The per-filing and per-symbol handlers both
+warn and continue, so a dropped connection never crashes a run — it permanently skips those
+filings while still printing a done banner and a coverage figure that looks plausible but has
+holes. `--resume` skips only symbols carrying a completion marker in `insider_backfill_progress`,
+written after the upsert and only when the symbol had zero fetch errors, so an interrupted or
+partially-failed symbol is retried in full. Without the flag a restart re-walks from symbol 1
+(safe via the upsert, just wasteful).
 
-⚠ **The marker key carries `since`, and PARSE failures deliberately do not deny one.** A marker
-attests to the window it covered, so widening `--since` correctly re-runs everything rather than
-reading the old completion as coverage. And a code-M option exercise carries no price and reports
-a parse failure on *every* run — counting those as errors would deny the symbol a marker forever
-and re-fetch it on each pass, i.e. resume that never resumes. Only **fetch** errors block a
-marker.
+The marker key carries `since`, and parse failures deliberately do not deny one. A marker attests
+to the window it covered, so widening `--since` correctly re-runs everything rather than reading
+the old completion as coverage. A code-M option exercise carries no price and reports a parse
+failure on every run, so counting those as errors would deny the symbol a marker forever and
+re-fetch it on each pass — only fetch errors block a marker.
 
-⚠ **A sustained outage ABORTS** after `--max-consecutive-failures` symbols (default 5) rather
-than walking the universe recording empty results. Nothing is lost: re-run with `--resume`.
+A sustained outage aborts after `--max-consecutive-failures` symbols (default 5) rather than
+walking the universe recording empty results; re-run with `--resume`, nothing is lost.
 
-⚠ **`--limit` ALONE TAKES THE HEAD, and `config/universe.json` is grouped by SECTOR** — so
-`--limit 15` is fifteen Information Technology mega-caps, not a sample. Measured 2026-09-01 they
-carry **18,549** Form 4 documents (CRM 4,175 + ACN 2,922 ≈ 38%), making the head simultaneously
-the slowest slice in the universe and the least informative: parse failures concentrate among
-small and older filers it contains none of, so a head-sampled coverage figure cannot support the
-≥80% phase-1 floor in either direction. Pair it with `--stride`, which spreads the pick across
-the file (measured: 7 sectors vs 1).
+`--limit` alone takes the head, and `config/universe.json` is grouped by sector, so `--limit 15`
+is fifteen Information Technology mega-caps, not a sample. Measured 2026-09-01, that group carries
+18,549 Form 4 documents (CRM 4,175 + ACN 2,922, ~38%), making the head simultaneously the slowest
+slice in the universe and the least informative, since parse failures concentrate among small and
+older filers it contains none of. Pair it with `--stride`, which spreads the pick across sectors
+(measured: 7 sectors vs 1).
 
-⚠ **`--max-filings-per-symbol` spreads across each symbol's range and MUST NOT become a head
-cap.** `collect_filings` returns newest-first and recent filings are the most uniform, so taking
-the first N measures the easy end and biases coverage **optimistically** — worse than no cap,
-since the floor exists to catch exactly the documents it would drop. Same defect as the sector
-one, one level down: sectors for symbols, filing vintage for documents. Both pinned by
+`--max-filings-per-symbol` spreads across each symbol's range and must not become a head cap:
+`collect_filings` returns newest-first and recent filings are the most uniform, so taking the
+first N measures the easy end and biases coverage optimistically — worse than no cap, since the
+floor exists to catch exactly the documents it would drop. Same defect as the sector one, one
+level down: sectors for symbols, filing vintage for documents. Both pinned by
 `tests/test_insider_backfill.py`; the sampling rationale is spec Amendment 1.
 
-⚠ **Runtime is round-trip bound, not throttle bound: ~2.1 documents/second measured** against
-`www.sec.gov/Archives` (the 0.12s `_MIN_INTERVAL` is not the binding constraint). So the full
-501-stock backfill is **20–40 hours**, an overnight job — the spec's "50–150k documents" estimate
-is the right order but low at the top end. A coverage pilot wants breadth, not depth:
-`--stride 10 --limit 50 --max-filings-per-symbol 40` ≈ 2,000 documents across 50 companies in
+Runtime is round-trip bound, not throttle bound: ~2.1 documents/second measured against
+`www.sec.gov/Archives` (the 0.12s `_MIN_INTERVAL` is not the binding constraint). The full
+501-stock backfill is 20-40 hours, an overnight job. A coverage pilot wants breadth, not depth:
+`--stride 10 --limit 50 --max-filings-per-symbol 40` gives ~2,000 documents across 50 companies in
 every sector, ~16 min.
 
 ## insider_cohort.py — H-024 phase 2, routine/opportunistic cohort shape
@@ -1308,30 +1144,30 @@ at one inside phase 3's gated report.
 (`[--db PATH] [--symbols A,B] [--since YEAR]`). Read-only; no network, no
 `EDGAR_CONTACT_EMAIL`.
 
-Prints the split in **three units that disagree by design** — rows, trade-days and insiders. A
-tranched sale is one trade-day and several rows, so a split quoted without its unit compares to
-nothing; the WP's ~55% is a *trade* share, which makes `routine share of classified rows` the only
-comparable line. The share is over **classified** rows: folding unclassifiable insiders into
+Prints the split in three units that disagree by design: rows, trade-days and insiders. A tranched
+sale is one trade-day and several rows, so a split quoted without its unit compares to nothing;
+the working paper's ~55% is a trade share, which makes "routine share of classified rows" the only
+comparable line. The share is over classified rows: folding unclassifiable insiders into
 "opportunistic" would inflate that arm with insiders the rule never examined.
 
-⚠ **The phase-1 sample cannot answer this question, and that is the tool's main finding to date.**
-`--max-filings-per-symbol 40` was right for observable (b) — a proportion whose validity comes
-from filer diversity — and is wrong here, because the classifier needs a per-INSIDER calendar and
-thinning a company's filings thins every one of its insiders'. Measured 2026-09-03: the capped
-draw classifies **3.5%** of rows with **0 routine** across 47 companies, against **46.0%** on the
-6 uncapped names, which supply **97.7%** of every classified row in the table. ⚠ **The cap
-biases the LABEL, not just the count** — a thinned calendar cannot exhibit a same-month streak, so
-everything it does classify falls to opportunistic. **The transferable rule: a sample designed for
-one observable is not a sample for another**, and nothing in the stored data announces that the
-unit changed from *document* to *insider-year*.
+The phase-1 sample cannot answer this question, which is the tool's main finding to date.
+`--max-filings-per-symbol 40` is right for the coverage observable, whose validity comes from
+filer diversity, and wrong here, because the classifier needs a per-insider calendar and thinning
+a company's filings thins every one of its insiders'. Measured 2026-09-03: the capped draw
+classifies 3.5% of rows with 0 routine across 47 companies, against 46.0% on the 6 uncapped names,
+which supply 97.7% of every classified row in the table. The cap biases the label, not just the
+count — a thinned calendar cannot exhibit a same-month streak, so everything it does classify
+falls to opportunistic. A sample designed for one observable is not a sample for another, and
+nothing in the stored data announces that the unit changed from document to insider-year.
 
-⚠ **Do not quote the 74.0% routine share as a panel figure** — it is six technology mega-caps, and
-the 10b5-1-era explanation for its gap to the WP's 55% is a hypothesis nothing here tested.
+Do not quote the 74.0% routine share as a panel figure: it is six technology mega-caps, and the
+10b5-1-era explanation for its gap to the working paper's 55% is a hypothesis nothing here has
+tested.
 
-The observability-divergence block (printed unconditionally, no flag) is a **probe, not an
-alternative rule**: it re-runs the frozen classifier against only filings public on 1 January and
-measured **1 of 6,981 (insider, year) labels (0.0%)**, which is what licences the frozen
-trade-date reading rather than merely assuming it. Spec Amendment 3.
+The observability-divergence block (printed unconditionally, no flag) is a probe, not an
+alternative rule: it re-runs the frozen classifier against only filings public on 1 January and
+measured 1 of 6,981 (insider, year) labels (0.0%), which licenses the frozen trade-date reading
+rather than merely assuming it. Spec Amendment 3.
 
 ## insider_audit.py — H-024 phase 3, the gated trial family
 
@@ -1343,72 +1179,65 @@ Read-only; no writes, no network, no `EDGAR_CONTACT_EMAIL`.
 **Run:** `make wifey-insider-audit`, wrapping `tools/insider_audit.py`
 (`[--db PATH] [--symbols A,B]`).
 
-⚠ **This is the row's FIRST look at a return.** Ingestion, the coverage observable, the classifier
-and the cohort shape were all built and reported without one, which is what makes this output a
-test rather than a search. Everything it prints is therefore reportable as-is, including a null.
+This is the row's first look at a return. Ingestion, the coverage observable, the classifier and
+the cohort shape were all built and reported without one, which makes this output a test rather
+than a search, so everything it prints is reportable as-is, including a null.
 
-**Books are priced GROSS and NET side by side**, because the two verdicts read differently: a
-sleeve that is negative before costs is a *signal* failure, and one that is positive gross and
-negative net is a *cost* failure. The gross column is the live cost model with every charge zeroed
-rather than a second model, so nothing but the prices differs between the two runs.
+Books are priced gross and net side by side, because the two verdicts read differently: a sleeve
+that is negative before costs is a signal failure, and one that is positive gross and negative net
+is a cost failure. The gross column is the live cost model with every charge zeroed rather than a
+second model, so nothing but the prices differs between the two runs.
 
-⚠ **The DSR family is the four TRIALS, never the eight books.** Placebos are controls; deflating
-against eight would silently raise the bar the sleeve was pre-registered to clear. Pinned by
+The DSR family is the four trials, never the eight books. Placebos are controls; deflating against
+eight would silently raise the bar the sleeve was pre-registered to clear. Pinned by
 `tests/test_insider_report.py::TestDsrFamilyIsTheFourTrials`, whose control drops a real trial and
-asserts the DSR *does* move — a family-size test that only asserted invariance would pass on a
-report that ignored the family entirely.
+asserts the DSR does move — a family-size test that only asserted invariance would pass on a report
+that ignored the family entirely.
 
-⚠ **The reversal observable prints THREE states.** A pair reads `measurable` from the BOOKS, not
-from their difference: two never-funded books produce an all-zero difference and a CI of `[0, 0]`,
-which satisfies "indistinguishable" while establishing nothing — `audit_guard`'s lesson that
-`INSUFFICIENT` and a powered null are different verdicts and collapsing them prints the confident
-one. An all-zero difference between two *funded* books is a real null and is reported as one.
+The reversal observable prints three states. A pair reads `measurable` from the books, not from
+their difference: two never-funded books produce an all-zero difference and a CI of `[0, 0]`,
+which satisfies "indistinguishable" while establishing nothing (`audit_guard`'s lesson that
+`INSUFFICIENT` and a powered null are different verdicts, and collapsing them prints the confident
+one). An all-zero difference between two funded books is a real null and is reported as one.
 
-⚠ **Weights are trailing dollar ADV, not market cap** — there is no market-cap series in this repo,
-so spec Amendment 4 rules the substitute in. It is a **liquidity** weight, so the book tilts to
-high-turnover names, and any comparison to the WP's 82 bps/mo carries that tilt. The same number
-buckets the spread each name pays, so weight and cost are read off one quantity.
+Weights are trailing dollar ADV, not market cap: there is no market-cap series in this repo, so
+spec Amendment 4 rules the substitute in. It is a liquidity weight, so the book tilts to
+high-turnover names, and any comparison to the working paper's 82 bps/mo carries that tilt.
 
-⚠ **Do not run it on a symbol subset to get "a result".** `--symbols` exists for reproducing a
-recorded draw, not for sampling: a non-pre-registered draw is the error Amendments 1 and 3 were
-written about, and it spends the first look at a return on a panel that cannot be the registered
-one.
+Do not run it on a symbol subset to get "a result." `--symbols` exists for reproducing a recorded
+draw, not for sampling — a non-pre-registered draw is the error Amendments 1 and 3 were written
+about, and it spends the first look at a return on a panel that cannot be the registered one.
 
-⚠ **It needs the FULL uncapped backfill** (`insider_backfill_progress` certifies 497 symbols over
-779,914 rows as of 2026-09-19). It also needs real memory: the panel is ~2,190 sessions × 498
-names and the run died on a box whose kernel paged pool had leaked to 42.8 GiB of a 15.4 GiB
-machine. ⚠ **A gate run under memory pressure is uninterpretable** — an OOM and a real failure
-look identical.
+It needs the full uncapped backfill (`insider_backfill_progress` certifies 497 symbols over
+779,914 rows as of 2026-09-19), and it needs real memory: the panel is ~2,190 sessions x 498 names,
+and the run has died on a box whose kernel paged pool leaked to 42.8 GiB of a 15.4 GiB machine. A
+gate run under memory pressure is uninterpretable, since an OOM and a real failure look identical.
 
 ## edgar_client.py — the SEC User-Agent contract
 
-⚠ **MEASURED 2026-08-29: a User-Agent carrying a URL is refused (HTTP 403) by both SEC hosts**,
-with or without parentheses. The module used to fall back to the repo URL when
-`EDGAR_CONTACT_EMAIL` was unset, documented as "SEC may throttle an address-less UA harder" —
-too kind by the time it was measured: unset meant a hard 403 everywhere, so
-`make wifey-pead-backfill` could not run on an unconfigured box and failed as though SEC were
-down. Probe matrix (`data.sec.gov` / `www.sec.gov`): **name+email 200/200 · name only 200/403 · URL
-with parens 403/403 · URL without parens 403/403**. `_user_agent()` now raises
-`EdgarContactMissing` when the contact is absent or has no `@`, so an unconfigured box fails
-loud at the call site instead of three frames away.
+Measured 2026-08-29: a User-Agent carrying a URL is refused (HTTP 403) by both SEC hosts, with or
+without parentheses. An unset `EDGAR_CONTACT_EMAIL` means a hard 403 everywhere, so
+`make wifey-pead-backfill` cannot run on an unconfigured box and fails as though SEC were down.
+Probe matrix (`data.sec.gov` / `www.sec.gov`): name+email 200/200, name only 200/403, URL with
+parens 403/403, URL without parens 403/403. `_user_agent()` raises `EdgarContactMissing` when the
+contact is absent or has no `@`, so an unconfigured box fails loud at the call site instead of
+three frames away.
 
-⚠ **The contact reaches that check only because the entry points load `.env` — which neither did
-until 2026-09-01.** `edgar_client` reads `os.environ`, and `tools/insider_backfill.py` and
-`tools/pead_backfill.py` never called `load_dotenv()`, so a box with `EDGAR_CONTACT_EMAIL` set
-exactly where `.env.example`, the README and the error message all say to put it still died on
-`EdgarContactMissing` — advice naming a file the tool never read, which reads as operator error
-rather than as a defect. Both now load it as their first statement, pinned by
-`tests/test_edgar_user_agent.py` (the loader is patched to RAISE, so the test fixes the ordering
-as well as the call).
+The contact reaches that check only because the entry points load `.env`: `edgar_client` reads
+`os.environ`, so `tools/insider_backfill.py` and `tools/pead_backfill.py` must call
+`load_dotenv()` as their first statement, or a box with `EDGAR_CONTACT_EMAIL` set exactly where
+`.env.example`, the README and the error message all say to put it will still die on
+`EdgarContactMissing`. Pinned by `tests/test_edgar_user_agent.py` (the loader is patched to raise,
+so the test fixes the ordering as well as the call).
 
-⚠ **Bounded retry, on TRANSIENT shapes only.** `_open_with_retry` is the single place `_last_call`
-advances, so both `_get_json` and `_get_bytes` share one throttle clock and a retry storm cannot
-breach the SEC's 10 req/s ceiling. It retries **429 and 5xx, `URLError` and `TimeoutError`** —
-4 attempts, 1.5s doubling — and raises everything else on the **first** attempt. **403 and 404 are
-excluded deliberately**: a 403 is the User-Agent contract above and a 404 is a document that does
-not exist, so retrying either burns the budget three times over and buries a configuration error
-under what looks like flakiness. Before this, one dropped packet cost a filing permanently in
-every caller that swallows per-item exceptions — which both backfills do.
+Retry is bounded and applies to transient shapes only. `_open_with_retry` is the single place
+`_last_call` advances, so both `_get_json` and `_get_bytes` share one throttle clock and a retry
+storm cannot breach the SEC's 10 req/s ceiling. It retries 429 and 5xx, `URLError` and
+`TimeoutError` — 4 attempts, 1.5s doubling — and raises everything else on the first attempt. 403
+and 404 are excluded deliberately: a 403 is the User-Agent contract above and a 404 is a document
+that does not exist, so retrying either burns the budget for no reason and buries a configuration
+error under what looks like flakiness. Both backfills swallow per-item exceptions, so an
+unretried transient failure there costs a filing permanently.
 
 ## pead_audit.py — edge-hunt #4 audit for the PEAD-lite sleeve
 
@@ -1431,7 +1260,7 @@ the breadth universe (1d) at 0/2/8 bps, prints DSR/PBO/boot-CI + realized β + `
 plus the descriptive gap population. `build_grid`/`_grid_frame` are the testable units.
 **Read `corr_reversal` before `sharpe`** — the magnet construction is mechanically a gap-fade.
 **Verdict = EXCLUDED, direction REFUTED** (`docs/audits/2026-08-14-edge-hunt-5-gapfill-magnet.md`).
-**⚠ Its "0 bps" column is not cost-free** — `fee_pct` defaults to 1bp; see `velocity_audit.py`.
+Its "0 bps" column is not cost-free: `fee_pct` defaults to 1bp; see `velocity_audit.py`.
 
 **Run:** `make wifey-gapfill-audit` or
 `PYTHONPATH=. poetry run python tools/gapfill_audit.py [--slippage-bps N]`
@@ -1496,8 +1325,8 @@ rather than silently un-stamped.
 
 ## exit_audit.py — exit MFE/MAE diagnostic
 
-Read-only **exit MFE/MAE diagnostic** for the `analytics/exits/` package (PR #96 / parent #433),
-diagnose mode only. Prints coverage, the overall win/loss/expired cohort roll-up, the
+Read-only **exit MFE/MAE diagnostic** for the `analytics/exits/` package (PR #96, ported from the
+parent), diagnose mode only. Prints coverage, the overall win/loss/expired cohort roll-up, the
 per-(strategy, tf, direction) table, and the exit spec §2 verdict grid inline over the live
 `signal_alert_outcomes` ledger. No `--replay` (the exit-policy A/B ships with the deferred #437
 port).
@@ -1545,73 +1374,70 @@ subset hard mode would have suppressed vs the subset it would have kept. Deliber
 than forward observation. Regime is classified off the most recent **CLOSED** 4h candle at entry
 (`_regimes_at_entries`), mirroring the live drop-the-in-progress-bar rule.
 
-⚠ **That resolution is POSITIONAL and must stay so.** It was arithmetic until 2026-08-18:
-`_regime_at_entry` floored `entry_time` to a UTC 4h boundary — correct on a 24/7 tape, impossible on
-an RTH equity one, where 4h bars stamp 13:30/17:30 UTC and **0 of 105,708** 4h bars in the DB are
-UTC-4h aligned (a single offset, 90 minutes). Every lookup missed, `fillna("unknown")` turned each
-miss into a fall-open, and the tool reported **0 suppressed of 2,849 trades** under
-`HOLD — insufficient suppressed trades`, which is exactly what a genuine sample shortage prints.
-`regime_threshold_sweep.py` imports the same helper and was equally blind;
-`direction_filter_replay.py` does no bar alignment and was never affected; a repo-wide scan finds no
-other timestamp floor. **Live was never affected** — `scanner.py` reads `_series.iloc[-2]`.
+Regime resolution at entry must be positional, never arithmetic: `_regime_at_entry` flooring
+`entry_time` to a UTC 4h boundary is correct on a 24/7 tape but impossible on an RTH equity one,
+where 4h bars stamp 13:30/17:30 UTC and 0 of 105,708 4h bars in the DB are UTC-4h aligned (a single
+offset, 90 minutes). An arithmetic floor misses every lookup, `fillna("unknown")` turns each miss
+into a fall-open, and the tool would report 0 suppressed of 2,849 trades under
+`HOLD — insufficient suppressed trades`, indistinguishable from a genuine sample shortage.
+`regime_threshold_sweep.py` imports the same helper and shares the exposure;
+`direction_filter_replay.py` does no bar alignment and is unaffected. Live is unaffected too, since
+`scanner.py` reads `_series.iloc[-2]`.
 
-⚠ **Its own test could not have caught it**, which is why the fix is a test shape rather than a
-patch. `test_lookup_hits_previous_closed_candle` built 5 bars on a UTC-aligned grid, below the
-classifier's minimum history, then asserted the result was `"unknown"` — the bug's own output, so it
-passed identically before and after. The replacement pivots on `test_rth_entry_does_NOT_fall_open`,
-the only assertion that fails against the old implementation (mutation-checked: **0 of 6** RTH
-lookups hit under the modulo). A UTC-aligned case is retained as a non-regression for the crypto
-shape.
+`test_lookup_hits_previous_closed_candle` cannot catch this class: it asserts the classifier's
+`"unknown"` output on a UTC-aligned grid below its minimum history, which is the bug's own symptom
+and passes identically either way. `test_rth_entry_does_NOT_fall_open` is the assertion that
+actually fails against an arithmetic-floor implementation (mutation-checked: 0 of 6 RTH lookups hit
+under the modulo); a UTC-aligned case is retained as a non-regression for the crypto shape.
 
-**The decision rule is PER CELL, then combined under the single-switch constraint** (rebuilt
-2026-08-19). Each suppressed (strategy × regime) cell earns an `analytics/audit_guard.py`
-verdict — a block-bootstrap CI on the suppressed slice's mean R that must clear ±`bar`, AND a
-Holm-adjusted p-value below `alpha` across the family of tested cells. `ENABLE` = that slice
-reliably loses, so dropping it helps; `DISABLE`/`CONCENTRATE` = it reliably wins, so dropping it
-costs; `INSUFFICIENT` = the run cannot tell.
+The decision rule is per cell, then combined under a single-switch constraint. Each suppressed
+(strategy x regime) cell earns an `analytics/audit_guard.py` verdict — a block-bootstrap CI on the
+suppressed slice's mean R that must clear ±`bar`, and a Holm-adjusted p-value below `alpha`
+across the family of tested cells. `ENABLE` means that slice reliably loses, so dropping it helps;
+`DISABLE`/`CONCENTRATE` means it reliably wins, so dropping it costs; `INSUFFICIENT` means the run
+cannot tell.
 
-⚠ **The cells are combined, never pooled.** `mode` is ONE GLOBAL SWITCH, so a single
-reliably-winning cell blocks the flip regardless of how many cells or how much volume point the
-other way. **An n-weighted mean cannot express that**, which is how the previous rule printed
-`FLIP justified` off a table that contradicted it. The pooled aggregates are still printed,
-labelled `DESCRIPTIVE — NOT decision-bearing`. Pinned by
+The cells are combined, never pooled: `mode` is one global switch, so a single reliably-winning
+cell blocks the flip regardless of how many cells or how much volume point the other way. An
+n-weighted mean cannot express that, which is why the pooled aggregates are printed only as
+`DESCRIPTIVE — NOT decision-bearing`. Pinned by
 `TestFlipVerdictCombinesCellsNotPools::test_one_blocking_cell_vetoes_a_dominant_losing_aggregate`,
-which asserts the fixture satisfies the OLD pooled FLIP condition *and* still comes back blocked —
+which asserts the fixture satisfies the pooled-mean FLIP condition and still comes back blocked —
 without both halves it would pass against a pooling implementation and could not detect a revert.
 
-**Live-DB verdict 2026-08-19: `DO NOT FLIP`**, and it inverts the old banner on the same data
-(pooled suppressed −0.1585 ≤ 0 with kept −0.0153 above it — the old rule's exact FLIP condition).
-The blocker is `ema`/`high_vol`: n=172, avg_r **+0.5497**, CI **[+0.085, +1.023]**, Holm-adj
-p=0.001 → `DISABLE`. `bos`/`trend` (n=897, −0.3540, CI [−0.462, −0.246], p=0.000) is a genuine
-`ENABLE` and is the cell that carried the old aggregate.
+Live-DB verdict 2026-08-19: `DO NOT FLIP` (pooled suppressed -0.1585 <= 0 with kept -0.0153 above
+it — the pooled-mean rule's own FLIP condition, inverted by the per-cell rule). The blocker is
+`ema`/`high_vol`: n=172, avg_r +0.5497, CI [+0.085, +1.023], Holm-adj p=0.001, verdict `DISABLE`.
+`bos`/`trend` (n=897, -0.3540, CI [-0.462, -0.246], p=0.000) is a genuine `ENABLE` and is the cell
+that carried the old pooled aggregate.
 
-⚠ **The significance test DEMOTES one of the three cells previously cited.** `ema`/`range`
-(+0.3291, n=110) comes back **INSUFFICIENT** — CI [−0.210, +0.966] straddles zero at adj p=0.117 —
-so the filed "three of six cells pointed the other way" overstates it: **one** survives a
-significance test, not three. Correct frame, wrong count; the flip is blocked either way.
+The significance test demotes one of three cells previously cited as evidence for flipping:
+`ema`/`range` (+0.3291, n=110) comes back `INSUFFICIENT` (CI [-0.210, +0.966] straddles zero at
+adj p=0.117), so "three of six cells pointed the other way" overstates it — only one survives a
+significance test. The flip is blocked either way.
 
-⚠ **A `DO NOT FLIP` here is not a clean bill for the config.** `bos`/`high_vol` (−0.3852, n=655,
-the worst cell in the table) is a **kept** cell, so it is never tested and the tool says nothing
-about it. That is the separate, still-open refutation of the inherited crypto calibration: the
-`bos` override exists because a 2026-05-13 crypto audit found `high_vol` was bos's best regime, and
-on equities it is bos's worst. Blocking the flip does not fix it.
+A `DO NOT FLIP` verdict here is not a clean bill for the config: `bos`/`high_vol` (-0.3852, n=655,
+the worst cell in the table) is a kept cell, so it is never tested and the tool says nothing about
+it. That is a separate, still-open question about the inherited crypto calibration — the `bos`
+override exists because a 2026-05-13 crypto audit found `high_vol` was bos's best regime, and on
+equities it is bos's worst. Blocking the flip does not fix that.
 
-⚠ **Every figure above is IN-SAMPLE** — 13 symbols, 2025-06-06 → 2026-08-11, one pass, no
+Every figure above is in-sample — 13 symbols, 2025-06-06 to 2026-08-11, one pass, no
 out-of-sample split. It is evidence against flipping, never evidence for a replacement mapping.
-→ [[project_flag_deltas_need_significance_tests]]
+See [[project_flag_deltas_need_significance_tests]].
 
 **Run:** `PYTHONPATH=. poetry run python tools/regime_gate_replay.py [--db PATH]`
 
 ## regime_threshold_sweep.py — slope-threshold sensitivity for the regime classifier
 
-Re-runs `regime_gate_replay`'s annotation across a grid of candidate
-`_SLOPE_TREND_THRESHOLD` values in `analytics/regime.py`, reporting suppressed/kept `n` and
-`avg_r` plus `lift = kept_avg_r − suppressed_avg_r` per threshold. Tests whether the live 0.5%
-default mis-labels exhaustion as trend: if some threshold separates cleanly the §6 mapping is
-salvageable, and if none does, the mapping itself is the problem.
+Re-runs `regime_gate_replay`'s annotation across a grid of candidate `_SLOPE_TREND_THRESHOLD`
+values in `analytics/regime.py`, reporting suppressed/kept `n` and `avg_r` plus
+`lift = kept_avg_r - suppressed_avg_r` per threshold. Tests whether the live 0.5% default
+mis-labels exhaustion as trend: if some threshold separates cleanly the mapping is salvageable, and
+if none does, the mapping itself is the problem.
 
-**This is a threshold sweep in the literal frozen sense** — it selects a parameter value. Read it
-as diagnosis of the mapping, not as a source of a new constant.
+This is a threshold sweep in the literal frozen sense — it selects a parameter value. Read it as
+diagnosis of the mapping, not as a source of a new constant.
 
 **Run:** `PYTHONPATH=. poetry run python tools/regime_threshold_sweep.py [--db PATH]`
 
@@ -1647,38 +1473,36 @@ after `make wifey-combo-backtest` / `make wifey-cross-tf-backtest` (both `SAVE=1
 
 ## warning_value_audit.py — do the W1–W8 alert warnings predict avg_r?
 
-Ported from parent #492. **This is the tool that WIRED `analytics/audit_guard.py`** — the guard
-sat hostless through Phase N2 because the obvious host (`tools/gate_audit.py`) needs
-`low_volume`/`volume_spike` on `backtest_trades`, columns wifey never had, and skipping that
-migration fails **silently** via `fillna(False)`. This audit needs neither: it re-derives its
-flags from OHLCV. Closing that gap closed SoT N2.
+Ported from the parent. This is the tool that wired `analytics/audit_guard.py` into a real host:
+the obvious host, `tools/gate_audit.py`, needs `low_volume`/`volume_spike` on `backtest_trades`,
+columns wifey never had, and skipping that migration fails silently via `fillna(False)`. This audit
+needs neither, since it re-derives its flags from OHLCV.
 
 Regenerates each historical trade's six candle-warning flags through `analytics/warning_audit.py`
 (which imports the live `alert_formatter` helpers rather than reimplementing them) and emits a
 pre-committed SUPPRESS-CANDIDATE / REVERSE / COSMETIC / INSUFFICIENT verdict per
-(warning × direction) — bootstrap CI clearing ±`bar` **and** a Holm-adjusted p, one family per
-source. `backtest_trades` is primary and deduped across saved runs on
+(warning x direction) — bootstrap CI clearing ±`bar` and a Holm-adjusted p, one family per source.
+`backtest_trades` is primary and deduped across saved runs on
 `(symbol, tf, strategy, direction, signal_time)`; `signal_alert_outcomes` is corroboration only.
 Read-only.
 
-**`_tf_ms` delegates to `parse_timeframe_secs` — do not "simplify" it back to a literal map.**
-Upstream's map spells the weekly timeframe `1w`; every equity surface here uses `1wk`, which
-carries 497 signals, so a verbatim copy raises `KeyError` on the first real run.
-`TestTimeframeLength` pins this and was mutation-checked in both directions.
+`_tf_ms` must delegate to `parse_timeframe_secs` rather than a literal map: the parent's map spells
+the weekly timeframe `1w`, while every equity surface here uses `1wk` (497 signals), so a literal
+map raises `KeyError` on the first real run. `TestTimeframeLength` pins this and was
+mutation-checked in both directions.
 
-**Result (2026-08-13, CORRECTED same day): 11 of 12 backtest cells INSUFFICIENT, one
-SUPPRESS-CANDIDATE — `w5_wick_rejection`/long** (n=316 warned at −0.315R vs −0.037R clean; Holm
-p=0.002; sign holds on all three timeframes and on 5 of 6 strategies). **Not shipped as a gate** —
-the live substrate has n=1 for that cell.
+Result (2026-08-13): 11 of 12 backtest cells INSUFFICIENT, one SUPPRESS-CANDIDATE —
+`w5_wick_rejection`/long (n=316 warned at -0.315R vs -0.037R clean; Holm p=0.002; sign holds on all
+three timeframes and on 5 of 6 strategies). Not shipped as a gate, since the live substrate has n=1
+for that cell.
 
-⚠ **The first run reported those 11 cells as COSMETIC and that was an artifact** (parent #617,
-ported 2026-08-13p). COSMETIC was awarded on `n >= min_n`, a sample-size floor that says a test
-*ran* but never that it could have *seen* anything. Under the honest test — `powered_null`, the
-CI strictly inside ±bar — **0 of 11 survive** and **0 of 12 cells** have a CI inside ±0.05R
-(half-width median **4.1×** the bar, range 1.8×–6.2×; **4 of 11** point estimates *exceed* the
-bar, worst `w1_marubozu`/long at **+0.289R**, CI [−0.007, +0.615]). The honest reading is **"we
-cannot tell"**, never "the warnings are decoration". The W5 lead is unchanged — only negative
-labels can move. Verdict + caveats: `docs/audits/2026-08-13-warning-value-audit.md`.
+The honest verdict for those 11 cells is INSUFFICIENT, not COSMETIC: a sample-size floor
+(`n >= min_n`) says a test ran but never that it could have seen anything. Under `powered_null` —
+the CI strictly inside ±bar — 0 of 11 survive and 0 of 12 cells have a CI inside ±0.05R (half-width
+median 4.1x the bar, range 1.8x-6.2x; 4 of 11 point estimates exceed the bar, worst
+`w1_marubozu`/long at +0.289R, CI [-0.007, +0.615]). The honest reading is "we cannot tell," never
+"the warnings are decoration" — only negative labels can move under this correction, so the W5 lead
+is unchanged. Verdict and caveats: `docs/audits/2026-08-13-warning-value-audit.md`.
 
 **Run:** `make wifey-warning-value-audit` (`ARGS="--source live|backtest|both --min-n N --out PATH"`).
 
@@ -1689,177 +1513,166 @@ OHLCV → hit-rate + R proxies per author × setup-family × direction, plus a m
 `docs/plans/pundit-priors.json` sidecar. Level parsing, family tagging, roll-up and
 output shape are byte-identical to the parent so the two ledgers stay comparable.
 
-**Descriptive priors only — NO gate is implemented, and the docstring used to imply one**
-(parent #582's A7, ported 2026-08-13). It read *"audit_guard gates come later, only if a
-cell earns n>=30"*, which reads as a live threshold; the only implemented construct is
-`--min-n` (default 5), which renders a `⚠` marker and changes no output. **Nothing happened
-when a cell crossed 30.** The claim is wrong a second and worse way here than upstream:
-wifey *does* have a wired `audit_guard` since #183 (`analytics/warning_audit.py`), but it
-scores the **W1–W8 signal warnings** and no code path joins it to pundit cells — so the
-sentence read as a forward reference to something that had since arrived. `AUDIT_ELIGIBLE_N
-= 30` does **not** restore a gate: `audit_eligible_cells()` returns cell *keys*, and
-`render_report` prints a NOTE saying in words that none fires, so the crossing stops being
-silent. **Deciding what a pundit prior should gate is an open research question** — do not
-wire this to anything without answering it. Preventive today: the largest author cell is
-**n=13** of 19 ledger rows, so the NOTE fires on **zero** cells (`make wifey-pundit-score`).
+Descriptive priors only — no gate is implemented, though an earlier docstring implied one by
+saying "audit_guard gates come later, only if a cell earns n>=30." The only implemented construct
+is `--min-n` (default 5), which renders a marker in the report and changes no output — nothing
+happens when a cell crosses 30. wifey does have a wired `audit_guard` (`analytics/warning_audit.py`),
+but it scores the W1-W8 signal warnings and no code path joins it to pundit cells.
+`AUDIT_ELIGIBLE_N = 30` does not restore a gate: `audit_eligible_cells()` returns cell keys, and
+`render_report` prints a note saying in words that none fires, so the crossing stops being silent.
+Deciding what a pundit prior should gate is an open research question — do not wire this to
+anything without answering it. The largest author cell is n=13 of 19 ledger rows, so the note
+fires on zero cells today (`make wifey-pundit-score`).
 
 `load_ledger` enforces three field domains at the read boundary via the pure
-`analytics/pundit_{direction,horizon,authors}.py` guards (parent #560/#561/#555 — see
-`context/analytics.md`): a violation becomes a per-line warning naming the line and the
-value, rather than a silent wrong number downstream. **`horizon` is the one that was live
-here** — an unrecognised value took *two* silent `.get` fallbacks (`SCORE_TIMEFRAME`'s wrong
-bar series *and* `SESSION_WINDOWS`' wrong window), where the parent has only the latter. The
-`author` guard changes the **priors JSON key shape** (`@fenggemeigu` → `fenggemeigu`); nothing
-in this fork reads that sidecar yet, so a future Brief/Card port must join on the normalised
-key. No scored number changed: the committed 19-row ledger produces a byte-identical report
-apart from the author column.
+`analytics/pundit_{direction,horizon,authors}.py` guards (see `context/analytics.md`): a violation
+becomes a per-line warning naming the line and the value, rather than a silent wrong number
+downstream. `horizon` is the one that mattered here — an unrecognized value took two silent `.get`
+fallbacks (`SCORE_TIMEFRAME`'s wrong bar series and `SESSION_WINDOWS`'s wrong window), where the
+parent has only the latter. The `author` guard changes the priors JSON key shape (`@fenggemeigu`
+becomes `fenggemeigu`); a future Brief/Card port must join on the normalized key. No scored number
+changed: the committed 19-row ledger produces a byte-identical report apart from the author column.
 
-### A hyphenated range OVERRIDES a `/`-ladder (measured 2026-08-13)
+### A hyphenated range overrides a `/`-ladder
 
-`parse_level_field` emits `zones` and `numbers` separately, and `select_level` prefers a
-zone. So **any** hyphenated range in a `target` field — including a clarifying
-parenthetical after a valid ladder — replaces the intended level. Reproduced against the
-production functions at `ref_close=64,000`, `role="target"`: `67,000 / 70,362.23 / 82,000`
-→ **67,000**, and the same string plus `(or 65k-68k)` → **65,000** long / **68,000** short.
+`parse_level_field` emits `zones` and `numbers` separately, and `select_level` prefers a zone. Any
+hyphenated range in a `target` field — including a clarifying parenthetical after a valid ladder —
+therefore replaces the intended level. Reproduced against the production functions at
+`ref_close=64,000`, `role="target"`: `67,000 / 70,362.23 / 82,000` resolves to 67,000, and the same
+string plus `(or 65k-68k)` resolves to 65,000 long / 68,000 short.
 
-The zone resolves to whichever edge price reaches **first**, so the error runs in *both*
-directions: a long lands nearer (manufacturing an optimistic WIN) and a short lands further
-(stranding the row OPEN). **This corrects the upstream note in parent #616**, which states
-the error "only ever pushes the target further away" — true of its short example, not of
-the mechanism. Write-side rule and the `make wifey-pundit-score` round-end check live in
-`/ingest-video` step 8 and `/ingest-x` step 4.
+The zone resolves to whichever edge price reaches first, so the error runs in both directions: a
+long lands nearer (manufacturing an optimistic WIN) and a short lands further (stranding the row
+OPEN) — it is not one-directional. Write-side rule and the `make wifey-pundit-score` round-end
+check live in `/ingest-video` step 8 and `/ingest-x` step 4.
 
-### The level-negation guard (parent #589, ported 2026-08-12)
+### The level-negation guard
 
-`parse_level_field` drops **all** candidates when a field's *head* negates the level
-(`_NEGATION_HEAD_RE`). `_UNSPECIFIED_MARKERS` cannot catch this on its own — it matches the
-**whole stripped string**, so bare `not specified` was caught while
-`"not stated (implied ~454 resistance)"` fell through to `_NUM_RE` and returned the
-parenthetical as the level.
+`parse_level_field` drops all candidates when a field's head negates the level
+(`_NEGATION_HEAD_RE`). `_UNSPECIFIED_MARKERS` cannot catch this alone, since it matches the whole
+stripped string: bare `not specified` was caught while
+`"not stated (implied ~454 resistance)"` fell through to `_NUM_RE` and returned the parenthetical
+as the level.
 
-**The sanity gate is no backstop and cannot be made into one.** Its window is
-`0.2×–5.0× ref_close`, and the worst form of the phantom number *is* a level near
-`ref_close` — it passes, and with exactly one sane candidate `select_level` returned it at
-`low_confidence = False`, so a fabricated call was indistinguishable from a real one at the
-highest confidence label the scorer has.
+The sanity gate is no backstop for this and cannot be made into one. Its window is
+`0.2x-5.0x ref_close`, and the worst form of a phantom number is a level near `ref_close` — it
+passes the gate, and with exactly one sane candidate `select_level` returns it at
+`low_confidence = False`, so a fabricated call is indistinguishable from a real one at the highest
+confidence label the scorer has.
 
-**Anchored at the head deliberately.** A negation that *trails* a stated level qualifies its
-**provenance**, not its existence — `"~420 (current market, no explicit entry stated)"` is a
-real level. Those keep their candidates and set `ParsedField.hedged`, which `select_level`
-ORs into `low_confidence`, downgrading rather than deleting a genuine call. An
-"anywhere in the text" match — the obvious first design — destroys that second class.
+The negation check is anchored at the head deliberately. A negation that trails a stated level
+qualifies its provenance, not its existence — `"~420 (current market, no explicit entry stated)"`
+is a real level. Those keep their candidates and set `ParsedField.hedged`, which `select_level`
+ORs into `low_confidence`, downgrading rather than deleting a genuine call; an "anywhere in the
+text" match would destroy that second class.
 
-Measured on this repo's **19-row / 33 populated-level-field** ledger (script:
-`docs/plans/scripts/pundit_negation_impact.py`; **do not import the parent's 603-field
-counts as wifey's**): **2 fields stop fabricating a level, 1 keeps its level at reduced
-confidence, 30 unchanged.** Only **one** of the two reaches a published number, and the
-discriminating check is why — a parse-layer count is not a scorer-layer count:
+Measured on this repo's 19-row / 33 populated-level-field ledger (script:
+`docs/plans/scripts/pundit_negation_impact.py`; do not carry the parent's field counts across, its
+ledger is a different, non-overlapping population): 2 fields stop fabricating a level, 1 keeps its
+level at reduced confidence, 30 unchanged. Only one of the two reaches a published number, because
+a parse-layer count is not a scorer-layer count:
 
 | row | field | before | after |
 | --- | --- | --- | --- |
-| `luckychartape` TSLA short | stop `"not stated (implied ~454 resistance)"` | `454.00`, conf **ok**, **R +3.27** | dropped, conf **low**, R — (ATR-R 6.36) |
-| `benjaminjcowen` SLV long | target `"not stated (qualitative; 1970s analog…)"` | `1970` **already rejected** by the gate — ~**38×** SLV's 52.16 reference close, against a 5.0× ceiling | no published change |
+| `luckychartape` TSLA short | stop `"not stated (implied ~454 resistance)"` | `454.00`, conf ok, R +3.27 | dropped, conf low, R -- (ATR-R 6.36) |
+| `benjaminjcowen` SLV long | target `"not stated (qualitative; 1970s analog...)"` | `1970` already rejected by the sanity gate (~38x SLV's 52.16 reference close, against a 5.0x ceiling) | no published change |
 
-`other/short` therefore flips **+1.13 → −1.00 avg R**, and that +3.27 was the ledger's *largest*
-positive-R win (the only other is `fenggemeigu` MSFT at +1.35) and the only one that rested on a
-fabricated level. **`fenggemeigu` — the one author with a rankable `n` — does not move at all**
-(−0.41 either way), which settles the same question it settled upstream: the negative floor on
-the only rankable author is real, not a parsing artifact. **Any `pundit-priors.json` generated
-before 2026-08-12 carries the fabricated record — regenerate rather than reasoning from it.**
+`other/short` therefore flips +1.13 to -1.00 avg R, and that +3.27 was the ledger's largest
+positive-R win (the only other is `fenggemeigu` MSFT at +1.35) and the only one resting on a
+fabricated level. `fenggemeigu` — the one author with a rankable `n` — does not move at all (-0.41
+either way), confirming the negative floor on the only rankable author is real, not a parsing
+artifact. Any `pundit-priors.json` generated before this fix carries the fabricated record;
+regenerate rather than reasoning from it.
 
-### `avg R` ships its own denominator (parent #602, ported 2026-08-12)
+### `avg R` ships its own denominator
 
-**`avg_r` and `n` are different populations, and the report used to print them adjacent.**
-`r` needs a stated stop (`score_call`: `if risk is not None and risk > 0`), so a call that
-stopped out necessarily has one while a win scored against a target often does not —
-`avg_r` describes a loss-enriched subsample while `n` / `resolved` describe the whole cell.
+`avg_r` and `n` are different populations, and an earlier report printed them adjacent without
+saying so. `r` needs a stated stop (`score_call`: `if risk is not None and risk > 0`), so a call
+that stopped out necessarily has one while a win scored against a target often does not — `avg_r`
+describes a loss-enriched subsample while `n` / `resolved` describe the whole cell.
 
-Measured here 2026-08-12 (19 calls, 8 resolved; script:
-`docs/plans/scripts/pundit_r_coverage.py`, which calls the production scorer — **do not carry
-the parent's 43%/79% across**, that is a 203-row crypto ledger sharing no rows with this one):
+Measured 2026-08-12 (19 calls, 8 resolved; script: `docs/plans/scripts/pundit_r_coverage.py`, which
+calls the production scorer — do not carry the parent's coverage figures across, that is a 203-row
+crypto ledger sharing no rows with this one):
 
 | cohort | resolved | with `r` | coverage |
 | --- | --- | --- | --- |
-| WIN | 3 | 1 | **33%** |
-| LOSS | 5 | 5 | **100%** |
+| WIN | 3 | 1 | 33% |
+| LOSS | 5 | 5 | 100% |
 
-**The censoring is worse here than upstream and it inverts the headline.** Every loss carries
-an `r`; a third of wins do. `fenggemeigu` reads `avg R` **−0.41** over `r_n=6` while the
-complete `atr_r` sample over all 7 resolved calls is **+0.80** — the two disagree in **sign**,
-where the parent's only disagreed in significance. `luckychartape` is the mechanism in one
-row: a WIN whose stop was the fabricated level dropped by #589, so it now contributes
-`ATR-R 6.36` and **nothing at all** to `avg R` (`— (0/1)`).
+The censoring here inverts the headline: every loss carries an `r`; a third of wins do.
+`fenggemeigu` reads `avg R` -0.41 over `r_n=6` while the complete `atr_r` sample over all 7
+resolved calls is +0.80 — the two disagree in sign. `luckychartape` is the mechanism in one row: a
+WIN whose stop was the fabricated level above now contributes `ATR-R 6.36` and nothing at all to
+`avg R` (`-- (0/1)`).
 
-The fix is disclosure, not a new statistic: `CellStats.r_coverage`, a
+The fix is disclosure, not a new statistic: `CellStats.r_coverage`, an
 `avg R (r_n/resolved)` cell in both report tables, and `r_n` / `r_coverage` / `atr_r_n` in the
-priors JSON. **`avg ATR-R` now leads `avg R` in the column order** because it is the complete
-sample. Nothing in this fork reads the sidecar yet, so this is free to re-key.
+priors JSON. `avg ATR-R` leads `avg R` in the column order because it is the complete sample.
 
-**Transferable rule: a mean and a count printed side by side assert a shared denominator.**
-When they do not share one, the disclosure belongs *in the cell*, not in a footnote — a reader
-comparing two authors' `avg R` is comparing two different populations and nothing on the row
-says so.
+A mean and a count printed side by side assert a shared denominator. When they do not share one,
+the disclosure belongs in the cell, not in a footnote — a reader comparing two authors' `avg R` is
+comparing two different populations and nothing on the row says so otherwise.
 
-### Nine documented divergences
+### Nine documented divergences from the parent
 
-(1)–(8) cover everything that touches the tape, because equities are a sessioned market, and
-(9) is a correctness fix that is not equity-specific:
+(1) through (8) cover everything that touches the tape, because equities are a sessioned market;
+(9) is a correctness fix that is not equity-specific.
 
-- **(1)** scoring frame follows the horizon (`1h` intraday / `1d` swing+unspecified — several
-  ledger symbols have no 1h bars at all)
-- **(2)** no call-candle containment — the reference is the last bar *fully closed* at/before
-  the call, so after-hours and weekend calls still resolve
-- **(3)** thesis entries fill at the **next open**, not the call bar's close (the parent's
-  convention is a look-ahead)
-- **(4)** gap-aware direction-aware level crossing — a long stops at `min(open, stop)` rather
-  than needing `low <= stop <= high`
-- **(5)** adverse-first resolved by the open (opened-beyond-stop → loss at open; both-intrabar
+- (1) scoring frame follows the horizon (`1h` intraday / `1d` swing+unspecified — several ledger
+  symbols have no 1h bars at all)
+- (2) no call-candle containment — the reference is the last bar fully closed at or before the
+  call, so after-hours and weekend calls still resolve
+- (3) thesis entries fill at the next open, not the call bar's close (the parent's convention is a
+  look-ahead)
+- (4) gap-aware direction-aware level crossing — a long stops at `min(open, stop)` rather than
+  needing `low <= stop <= high`
+- (5) adverse-first resolved by the open (opened-beyond-stop means loss at open; both-intrabar
   keeps the parent's stop-wins rule)
-- **(6)** windows counted in **NYSE sessions** (2 / 21 / 10) via
-  `analytics/trading_calendar.py`, not wall-clock
-- **(7)** month-anchored years stripped before level parsing (US index levels share the
-  1,900–2,100+ band with year strings — the first run read "…starting Aug-Sep 2026" as a
-  2,026 target on a 7,436 index)
-- **(8)** staleness measured against the last closed session, not wall-clock now (else every
-  symbol reads STALE overnight). Also folds in the null-symbol guard that previously existed
-  only as `/ingest-video` skill prose.
-- **(9)** `_geometry_note` delegates to `x_route.check_level_order` and covers the **target**
-  leg as well as the stop (2026-08-04): a wrong-sided stop only yields a nonsense R, but a
-  wrong-sided target is already in profit at the fill and books an instant `WIN` at ~0.00 R —
-  a phantom statistic rather than a visible error, which is how a mis-written "unless it
-  reclaims 29,200" *stop* produced a 100% hit rate with zero warnings. Such a row is now
-  `UNSCORED` with the offending pair named. The parent was ported from the same code and so
-  likely carries this latent defect — raise it on the next `/sync-parent` rather than assuming
-  it was fixed upstream.
+- (6) windows counted in NYSE sessions (2 / 21 / 10) via `analytics/trading_calendar.py`, not
+  wall-clock
+- (7) month-anchored years stripped before level parsing, since US index levels share the
+  1,900-2,100+ band with year strings (an early run read "...starting Aug-Sep 2026" as a 2,026
+  target on a 7,436 index)
+- (8) staleness measured against the last closed session, not wall-clock now, else every symbol
+  reads STALE overnight; also folds in the null-symbol guard that previously existed only as
+  `/ingest-video` skill prose
+- (9) `_geometry_note` delegates to `x_route.check_level_order` and covers the target leg as well
+  as the stop: a wrong-sided stop only yields a nonsense R, but a wrong-sided target is already in
+  profit at the fill and books an instant WIN at ~0.00 R — a phantom statistic rather than a
+  visible error, which is how a mis-written "unless it reclaims 29,200" stop produced a 100% hit
+  rate with zero warnings. Such a row is now `UNSCORED` with the offending pair named. The parent
+  was ported from the same code and likely carries this latent defect; raise it on the next
+  `/sync-parent` rather than assuming it was fixed upstream.
 
 Read-only; no schema change, goldens untouched.
 
 **Run:** `make wifey-pundit-score` or
 `PYTHONPATH=. poetry run python tools/pundit_score.py [--as-of ISO] [--min-n N]`
 
-### Its OHLCV is a third universe, and nothing else refreshes it
+### Its OHLCV is a third universe
 
-`make go-live` syncs `config/stocks.json` — 13 ETF and equity **proxies**. The ledger records the
-index and futures **underlyings** a pundit actually quoted (`^GSPC`, `GC=F`, `^TNX`), so the two
-sets barely intersect and syncing one never refreshed the other. Measured 2026-08-15 right after an
-operator `CATCH_UP=1 make go-live`: the mega-caps reached 2026-08-14 while eight ledger symbols sat
-at 2026-08-04 and `^TNX` had **no bars at all** — and go-live reported success throughout, because
-`pundit_score` degrades a stale symbol to `STALE` rather than erroring. A permanently-unresolving
+`make go-live` syncs `config/stocks.json` — 13 ETF and equity proxies. The ledger records the index
+and futures underlyings a pundit actually quoted (`^GSPC`, `GC=F`, `^TNX`), so the two sets barely
+intersect and syncing one never refreshed the other. Measured 2026-08-15 right after an operator
+`CATCH_UP=1 make go-live`: the mega-caps reached 2026-08-14 while eight ledger symbols sat at
+2026-08-04 and `^TNX` had no bars at all, while go-live reported success throughout, because
+`pundit_score` degrades a stale symbol to `STALE` rather than erroring — a permanently-unresolving
 ledger is indistinguishable from one where nothing has triggered yet.
 
-Fixed 2026-08-17 by `wifey analytics {sync,backfill} --pundit`, wrapped as `make wifey-pundit-sync`
-/ `make wifey-pundit-backfill`. Three properties worth keeping:
+Fixed by `wifey analytics {sync,backfill} --pundit`, wrapped as `make wifey-pundit-sync` /
+`make wifey-pundit-backfill`. Three properties worth keeping:
 
-- **It resolves from the ledger at run time**, never from a second hardcoded list. A frozen list
-  would reproduce the original defect one level over — the ledger gains symbols as calls are routed.
-- **An empty resolve exits non-zero rather than falling back to the watchlist.** A fallback would
-  resync the same 13 names go-live already covers and report success, which is exactly the shape
-  being fixed.
-- **`--universe` and `--pundit` are mutually exclusive at argparse level**, so a conflicting pair is
+- It resolves from the ledger at run time, never from a second hardcoded list. A frozen list would
+  reproduce the original defect one level over, since the ledger gains symbols as calls are
+  routed.
+- An empty resolve exits non-zero rather than falling back to the watchlist. A fallback would
+  resync the same 13 names go-live already covers and report success, reproducing the defect.
+- `--universe` and `--pundit` are mutually exclusive at argparse level, so a conflicting pair is
   rejected outright instead of silently resolving by precedence.
 
 `INVALID_LEDGER_SYMBOLS` (in `utils/config_validation.py`) is the single definition of "not a
-symbol", imported by both the loader and this scorer — if they diverge, the sync path fetches
+symbol," imported by both the loader and this scorer — if they diverge, the sync path fetches
 symbols the scorer discards, or skips ones it scores. `tests/test_analytics_runner.py` pins the
 identity.
 
@@ -1868,117 +1681,107 @@ After scoring, the ledger's own state is the check that the refresh worked: 22 r
 
 ## backfill_null_tp_outcomes.py — one-shot retro migration
 
-One-shot retro migration (ported from parent #410): reconstructs the pct-fallback SL/TP for
-legacy `signal_alert_outcomes` rows written with NULL `tp_price` (before
-`_resolve_outcome_sl_tp`), then resolves them via `backfill_outcomes`. Read-only by default;
-`--apply` gated; idempotent.
+One-shot retro migration, ported from the parent: reconstructs the pct-fallback SL/TP for legacy
+`signal_alert_outcomes` rows written with NULL `tp_price` (before `_resolve_outcome_sl_tp`), then
+resolves them via `backfill_outcomes`. Read-only by default; `--apply` gated; idempotent.
 
 **Run:** `PYTHONPATH=. poetry run python tools/backfill_null_tp_outcomes.py [--config config/signal_watch.toml] [--apply]`
 
 ## x_fetch.py — read-only X/Twitter post fetcher
 
 Read-only X/Twitter post fetcher via the public syndication endpoint
-(`cdn.syndication.twimg.com/tweet-result`; no auth/scraping — a non-empty `token` is required
-but its value is not validated, so a fixed dummy suffices). URL → `XPost` (text + full-res
+(`cdn.syndication.twimg.com/tweet-result`; no auth or scraping — a non-empty `token` is required
+but its value is not validated, so a fixed dummy suffices). URL to `XPost` (text + full-res
 `?name=orig` chart URLs + `video_present`/`is_thread`/`is_quote` flags + best-effort
-`quoted_text`/`quoted_author` from the nested quoted tweet) + `download_photos` (charts →
+`quoted_text`/`quoted_author` from the nested quoted tweet) + `download_photos` (charts to
 gitignored `.cache/x-media/<id>/`); graceful `Unavailable` on
-protected/deleted/tombstone/non-200/non-dict. Batch path `fetch_x_batch` fetches N URLs once
-each with a randomized cooldown *between network fetches only* (default 4–12s; skipped before
-the first fetch and on cache hits) + a per-id dedup cache (`.cache/x-posts/<id>.json` → zero
-network on re-runs); `sleep`/`rng`/`get` are injected for deterministic, network-free tests
-while `fetch_x_post` stays pure. **Thread path** `walk_thread` (parent #591) recovers one
-author's self-thread by following `in_reply_to_status_id_str` **upward** from the tail,
-returning a `ThreadChain` (posts root→leaf with `thread_pos`, plus `notes`). **The direction is
-a hard constraint, not a choice: the endpoint has no replies/children field, so a thread is
-reachable only from its LAST post — a bookmarked parent yields nothing below it.** `XPost`
-gained `in_reply_to_id` / `in_reply_to_author` / `conversation_count` / `thread_pos`, **all
-defaulted** because `_load_cached` does `XPost(**raw)` and any pre-existing cache entry lacks
-the keys (wifey's `.cache/x-posts/` is empty, so this is inherited belt-and-braces here — and
-`_load_cached` already catches `TypeError` as a cache miss, so it fails safe either way). The
-walk stops at the root, on an author change (climbing further would attribute another pundit's
-words to the bookmarked author), at `max_hops` (25), or on an unavailable hop — every stop but
-the root records a note, and it never raises. It **reads** the per-id cache but deliberately
-does **not write** it: an entry written here with empty `photo_paths` would make a later ingest
-of that post skip its chart download. ⚠ `conversation_count` counts the whole conversation's
-replies (everyone's) and is **not** thread length. Backs the `/ingest-x` skill (ported from
-parent #466/#467; spec `docs/superpowers/specs/2026-06-30-x-post-ingest-design.md`).
+protected/deleted/tombstone/non-200/non-dict. Batch path `fetch_x_batch` fetches N URLs once each
+with a randomized cooldown between network fetches only (default 4-12s; skipped before the first
+fetch and on cache hits) plus a per-id dedup cache (`.cache/x-posts/<id>.json`, giving zero network
+on re-runs); `sleep`/`rng`/`get` are injected for deterministic, network-free tests while
+`fetch_x_post` stays pure.
+
+The thread path, `walk_thread`, recovers one author's self-thread by following
+`in_reply_to_status_id_str` upward from the tail, returning a `ThreadChain` (posts root to leaf
+with `thread_pos`, plus `notes`). The direction is a hard constraint, not a choice: the endpoint
+has no replies/children field, so a thread is reachable only from its last post — a bookmarked
+parent yields nothing below it. `XPost` carries `in_reply_to_id` / `in_reply_to_author` /
+`conversation_count` / `thread_pos`, all defaulted, because `_load_cached` does `XPost(**raw)` and
+a pre-existing cache entry may lack the keys; `_load_cached` catches `TypeError` as a cache miss
+either way. The walk stops at the root, on an author change (climbing further would attribute
+another pundit's words to the bookmarked author), at `max_hops` (25), or on an unavailable hop —
+every stop but the root records a note, and it never raises. It reads the per-id cache but
+deliberately does not write it: an entry written here with empty `photo_paths` would make a later
+ingest of that post skip its chart download. `conversation_count` counts the whole conversation's
+replies (everyone's) and is not thread length. Backs the `/ingest-x` skill, ported from the parent
+(spec `docs/superpowers/specs/2026-06-30-x-post-ingest-design.md`).
 
 **Run:** `PYTHONPATH=. poetry run python tools/x_fetch.py <url…> [--batch] [--thread] [--json] [--force] [--min-delay/--max-delay S] [--cache-dir/--media-root DIR]`
 
 ## x_route.py — routing decision and shared level sign-check
 
-Pure routing decision **and** the shared level sign-check for the ingest skills.
-`route_target(content_type, verdict, *, retrospective=False, rejected=False) -> str | None`
-is the content-type gate
-setup/mechanic/claim → the research pipeline's 4-bucket verdict taxonomy on the claim path →
-Stream A `thesis-inbox.md` / B `mechanics-backlog.md` / C `pundit-calls.jsonl`, or drop.
+Pure routing decision and the shared level sign-check for the ingest skills.
+`route_target(content_type, verdict, *, retrospective=False, rejected=False) -> str | None` is the
+content-type gate (setup/mechanic/claim), routed through the research pipeline's 4-bucket verdict
+taxonomy on the claim path to Stream A `thesis-inbox.md` / B `mechanics-backlog.md` / C
+`pundit-calls.jsonl`, or dropped.
 
-**Two keyword-only suppressors drop a `setup`** — `retrospective` and `rejected`, both
-defaulting to `False` (parent #521, ported 2026-08-13). A `setup` with either returns
-`None`; a `mechanic`/`claim` is unaffected on purpose, since neither has an entry to
-decline and honouring the flag there would let one mis-set field delete a routable item.
+Two keyword-only suppressors drop a `setup` — `retrospective` and `rejected`, both defaulting to
+`False`, ported from the parent. A `setup` with either returns `None`; a `mechanic`/`claim` is
+unaffected on purpose, since neither has an entry to decline and honoring the flag there would let
+one mis-set field delete a routable item. Callers must pass the flags explicitly — defaulting to
+`False` means a forgetful call site fails open and silently.
 
-**They were missing here for 13 days and the gap was invisible.** wifey ported this file
-on 2026-07-31 (#123); the parent added the suppressors on 2026-08-01 (#521) — a timing
-artifact, not an equity divergence. What hid it: **wifey's #130 cites `#518/#521` in its
-own title** while porting only #521's `route_dedup` half, so the PR number reads as
-"already applied" to any check keyed on citations. **A PR cited in a port commit is not
-evidence that every half of it landed** — #521 touched `x_route.py` *and*
-`tests/test_x_route.py`, and #130 touched the first by 14 lines and the second not at all.
+While these suppressors were missing here, `/ingest-video`'s pass 1 could set `retrospective` on a
+setup lifted from a channel's intro recap with nothing reading it, so the call would route to
+`pundit-calls.jsonl` carrying today's `call_ts_utc` and be scored on an already-resolved trade.
+Porting a fix by citing the PR that introduced it is not evidence every half of that PR landed — a
+citation naming the right PR number can still leave a sibling file (here, `tests/test_x_route.py`)
+untouched. No ledger rows were actually damaged, since all rows predate the flags.
 
-Live consequence while it was missing: `/ingest-video`'s pass 1 *does* set `retrospective`
-on a setup lifted from a channel's intro recap, and nothing read it — so the call routed
-to `pundit-calls.jsonl` carrying **today's** `call_ts_utc` and was scored on an
-already-resolved trade. **Zero rows were actually damaged** (all 19 ledger rows predate
-the flags and none carries either field), so this is preventive.
+`unattributable` is the parent's third suppressor and is deliberately absent here — it belongs to
+relay-attribution work this fork has refused.
 
-**`unattributable` is the parent's third suppressor and is deliberately absent** — it
-belongs to the relay-attribution work (#558), which this fork has refused. **Callers must
-pass the flags explicitly**; defaulting to `False` means a forgetful call site fails open
-and silently, which is exactly how the original gap survived.
-
-`check_level_order(direction, *, entry, stop, target) -> str` (2026-08-04) is the sign-check: a
-long must satisfy `stop < entry < target`, a short `target < entry < stop`; every pair whose
-legs are both present is judged, equality counts as a violation (zero risk / zero reward), and
-an unjudgeable direction warns rather than passing silently.
+`check_level_order(direction, *, entry, stop, target) -> str` is the sign-check: a long must
+satisfy `stop < entry < target`, a short `target < entry < stop`; every pair whose legs are both
+present is judged, equality counts as a violation (zero risk / zero reward), and an unjudgeable
+direction warns rather than passing silently.
 
 `check_row_levels` applies it to a ledger-shaped row (`<role>_px` overriding the free text via
-`first_level`, which strips **three** classes of number that read as a level but are not one).
+`first_level`, which strips three classes of number that read as a level but are not one).
 
 ### Three number classes stripped by `first_level`
 
 - Month-anchored years — `MONTH_YEAR_RE`, the single definition also imported by
   `pundit_score.py` as its divergence 7
-- Percentage *ranges* via `PCT_RE`, since the `%` binds to the second number
-- Chart **timeframes** via `TIMEFRAME_RE` (2026-08-05; Latin `4h`/`1d`/`15m`/`1wk` + CJK
-  `小时`/`日线`/`分钟`)
+- Percentage ranges via `PCT_RE`, since the `%` binds to the second number
+- Chart timeframes via `TIMEFRAME_RE` (Latin `4h`/`1d`/`15m`/`1wk` + CJK `小时`/`日线`/`分钟`)
 
 The first two are the single definitions, also imported by `tools/route_dedup.py`'s
-`normalize_levels`, which has no sanity gate either; `TIMEFRAME_RE` is deliberately **not**
-shared, because `normalize_levels` is already immune by a different mechanism — its
-`_MIN_LEVEL = 100.0` floor drops a `4h` → `4.0` as sub-$100. `TIMEFRAME_RE` was added after a
-gold long whose entry read "break above the 4h descending trendline" sign-checked as
-`stop 4000 on the wrong side of entry 4`; that instance warned *loudly*, but the same artifact
-passes **silently** whenever the stripped number happens to out-rank a real leg — a long with
-entry `4h` and a stop of 3 reads 4 > 3 = OK — which is the fake-`WIN` class the guard exists to
-catch. Its `(?<![\d.])` lookbehind is load-bearing: without it `\b` matches at the decimal
-point, so `4.5m` matches its own `5m` tail and leaves a bare `4.` behind).
+`normalize_levels`, which has no sanity gate of its own; `TIMEFRAME_RE` is deliberately not shared,
+because `normalize_levels` is already immune by a different mechanism — its `_MIN_LEVEL = 100.0`
+floor drops a `4h` reading as `4.0` as sub-$100. `TIMEFRAME_RE` exists because a gold long whose
+entry read "break above the 4h descending trendline" sign-checked as "stop 4000 on the wrong side
+of entry 4" — that instance warned loudly, but the same artifact passes silently whenever the
+stripped number happens to out-rank a real leg (a long with entry `4h` and a stop of 3 reads
+4 > 3 = OK), which is the fake-WIN class the guard exists to catch. Its `(?<![\d.])` lookbehind is
+load-bearing: without it `\b` matches at the decimal point, so `4.5m` matches its own `5m` tail and
+leaves a bare `4.` behind.
 
 Consumed by `/ingest-x` + `/ingest-video` step 8 through the `--check-levels` CLI (JSONL from a
-file or stdin; **advisory** — prints, exits 1 iff any row warned, never rewrites or drops) and
-by `tools/pundit_score.py` on the read side. It warns and never drops, because the failure mode
-being fixed is *silence*. Stdlib only, no I/O beyond the CLI's read.
+file or stdin; advisory — prints, exits 1 if any row warned, never rewrites or drops) and by
+`tools/pundit_score.py` on the read side. It warns and never drops, because the failure mode being
+fixed is silence. Stdlib only, no I/O beyond the CLI's read.
 
 ### Known blind spot
 
 The pairwise rule cannot judge a row stating one level and nothing else — that shape is caught
 read-side only, where the scorer substitutes the market price for a missing entry. This is the
-*dominant* shape, not an edge case: in the 2026-08-05 @fenggemeigu batch **7 of 11 candidate
-rows were one-legged** (a lone 防势点 "defense point" and nothing else), 1 had zero legs, and
-the only full entry/stop/target triple was degenerate — the support level served as both entry
-and stop, which the check correctly flagged as zero risk. Encode such a row as entry+target
-with the stop left unstated rather than inventing a gap the pundit never gave.
+dominant shape, not an edge case: in one measured batch, 7 of 11 candidate rows were one-legged (a
+lone "defense point" and nothing else), 1 had zero legs, and the only full entry/stop/target triple
+was degenerate — the support level served as both entry and stop, which the check correctly
+flagged as zero risk. Encode such a row as entry+target with the stop left unstated rather than
+inventing a gap the pundit never gave.
 
 **Run:** no standalone CLI invocation of its own — consumed via the `--check-levels` CLI
 (JSONL from a file or stdin) inside `/ingest-x` + `/ingest-video` step 8, and read-side by
@@ -2002,75 +1805,68 @@ Two layers with different machinery:
   does the same item-vs-item over one source's *pending* items, which `find_similar`
   structurally cannot see because every check runs before the approval that writes anything
 
-**Advisory except for `already_routed`** — it surfaces candidates for the review digest and
-never drops a row. CLI `check | mark | unmark | pairs | seed`; `mark` runs strictly *after* the
-sink write (marking at check time is the #68 watermark-on-send defect class).
+Advisory except for `already_routed` — it surfaces candidates for the review digest and never
+drops a row. CLI `check | mark | unmark | pairs | seed`; `mark` runs strictly after the sink write
+(marking at check time is the watermark-on-send defect class).
 
-⚠ **`--sink` is gated on `KNOWN_SINKS`, and the reason is the KEY, not tidiness.** `is_routed`
-keys on `(source_id, item_ts, sink)` via `_key`, so a sink outside those three full paths is
-**dedup-blind** — it writes a ledger row no later round can ever match, while `find_similar`
-stays lenient on an unrecognised sink because scoping genuinely cannot apply there. That
-leniency is why bad rows were writable at all, so the membership check sits at the CLI boundary
-and nowhere else. ⚠ **Ported from parent #706 as PREVENTION, not a repair**: wifey's ledger held
-**0 bad rows of 54** when it landed, against upstream's 30 writable — do not quote that count as
-this repo's.
+`--sink` is gated on `KNOWN_SINKS` because of the ledger key, not for tidiness: `is_routed` keys on
+`(source_id, item_ts, sink)` via `_key`, so a sink outside those three full paths is dedup-blind —
+it writes a ledger row no later round can ever match — while `find_similar` stays lenient on an
+unrecognized sink because scoping genuinely cannot apply there. The membership check sits at the
+CLI boundary for that reason. Ported from the parent as prevention rather than a repair for an
+existing problem here.
 
-⚠ **A bare `python3 tools/route_dedup.py` now works**, and it did not before: that invocation
-puts `tools/` on `sys.path` rather than the repo root, so the `tools.x_route` import died with
-`ModuleNotFoundError` and only `make` or an explicit `PYTHONPATH=.` ran. A `sys.path` bootstrap
-fixes it, scoped to tools that actually import from the repo — in one that does not it is dead
-code masking the breakage the moment the first import appears. ⚠ **The guarantee is
-`test_bare_invocation_works`, never the comment beside that line**; the test runs the module with
-`PYTHONPATH` stripped from the environment, which is the exact condition that failed, and it was
-mutation-checked. The parent hits the same class on `analytics.*` — the rule ports, the failing
-module name does not.
+A bare `python3 tools/route_dedup.py` must work. That invocation puts `tools/` on `sys.path`
+rather than the repo root, so the `tools.x_route` import dies with `ModuleNotFoundError` unless a
+`sys.path` bootstrap runs first — scoped to tools that actually import from the repo, since in one
+that does not it would be dead code masking the breakage the moment the first import appears. The
+guarantee is `test_bare_invocation_works`, which runs the module with `PYTHONPATH` stripped from
+the environment and was mutation-checked, never a comment beside the bootstrap line. The parent
+hits the same class on `analytics.*`; the rule ports even though the failing module name differs.
 
 ### Seven divergences from the parent
 
-Ported from parent #518/#521 with **seven divergences**, every one found by running the ported
-code against the live sinks rather than by reading it, and four of the seven (1, 3, 6, 7)
-traceable to the single structural fact that wifey's Stream A sink is a **markdown table** where
-the parent's is prose:
+Ported from the parent with seven divergences, every one found by running the ported code against
+the live sinks rather than by reading it. Four of the seven (1, 3, 6, 7) trace to the single
+structural fact that wifey's Stream A sink is a markdown table where the parent's is prose:
 
-- **(1)** Stream A splits on **table rows**, not the parent's level-two headings — the parent's
-  splitter returns *one blob* for the whole live file (measured), so every comparison would
-  silently score against it while `semantic_scope` still reported `all-entries`
-- **(2)** `normalize_levels` also strips month-anchored years + percentages, reusing `x_route`'s
-  `MONTH_YEAR_RE`/`PCT_RE` single definitions (US index levels share the year band — the
-  PR #128 scorer defect, third consumer)
-- **(3)** URLs are stripped before **both** scoring layers, since Stream A rows embed the
-  source deep-link and its `&t=124s` offset reads as a price level (measured: the parent reads
-  `124.0` off the live H-001 row)
-- **(4)** bare 4-digit years in `_YEAR_BAND` (1900–2099) are not levels — before this rule
-  **3 of 28 live Stream A pairs flagged and all three were year artifacts**; the rule keys on
-  *how the number is written* (a level in that band carries a separator or decimal, a year
-  never does), at the stated cost of losing a bare `2050` level
-- **(5)** the ledger key **truncates** `item_ts` to whole seconds (`_ts_key`) where the parent
-  rounds to 1dp — an offset arrives both as the row's float `ts` (`566.81`) and as the deep link
-  it persists (`&t=566s`, truncated), and `round()` maps those to *different* keys, so a seeded
-  ledger would silently fail to block a re-route
-- **(6)** term overlap is **containment over the shorter side**, not jaccard (`_overlap` +
-  `_MIN_DENOM`) — a Stream A entry is a whole row incl. a `gap note` column, so jaccard scored a
-  near-verbatim restatement of the live H-002 row at **1.86 and never fired** (containment reads
-  0.89)
-- **(7)** the pipeline's own verdict vocabulary is excluded from term matching (`_STOPWORDS`
-  derived from `x_route.VERDICTS`) — `ALREADY-TESTED` is stamped on every entry and
-  `already`+`tested` carried **all three** remaining live flags, the same defect
-  `_PUNDIT_CONTENT_FIELDS` fixes for Stream C in the shape a table takes
+- (1) Stream A splits on table rows, not the parent's level-two headings — the parent's splitter
+  returns one blob for the whole live file, so every comparison would silently score against it
+  while `semantic_scope` still reported `all-entries`
+- (2) `normalize_levels` also strips month-anchored years and percentages, reusing `x_route`'s
+  `MONTH_YEAR_RE`/`PCT_RE` single definitions, since US index levels share the year band
+- (3) URLs are stripped before both scoring layers, since Stream A rows embed the source deep-link
+  and its `&t=124s` offset reads as a price level (measured: the parent reads `124.0` off a live
+  row)
+- (4) bare 4-digit years in `_YEAR_BAND` (1900-2099) are not levels — before this rule 3 of 28 live
+  Stream A pairs flagged and all three were year artifacts; the rule keys on how the number is
+  written (a level in that band carries a separator or decimal, a year never does), at the stated
+  cost of losing a bare `2050` level
+- (5) the ledger key truncates `item_ts` to whole seconds (`_ts_key`) where the parent rounds to
+  1dp — an offset can arrive both as the row's float `ts` (`566.81`) and as the deep link it
+  persists (`&t=566s`, truncated), and `round()` maps those to different keys, so a seeded ledger
+  would silently fail to block a re-route
+- (6) term overlap is containment over the shorter side, not jaccard (`_overlap` + `_MIN_DENOM`) —
+  a Stream A entry is a whole row including a gap-note column, so jaccard scored a near-verbatim
+  restatement of a live row at 1.86 and never fired, where containment reads 0.89
+- (7) the pipeline's own verdict vocabulary is excluded from term matching (`_STOPWORDS` derived
+  from `x_route.VERDICTS`) — `ALREADY-TESTED` is stamped on every entry and `already`+`tested`
+  carried all three remaining live flags, the same defect `_PUNDIT_CONTENT_FIELDS` fixes for
+  Stream C in the shape a table takes
 
 ### Inherited limits
 
-Two inherited limits are documented rather than "fixed": sub-$100 names contribute no numeric
-evidence (`_MIN_LEVEL`), and Stream C's `same-source` scope is blind to one author restating a
-call across uploads (deliberate — two calls a week apart are two genuine observations the
-scorer resolves against different bars).
+Two inherited limits are documented rather than fixed: sub-$100 names contribute no numeric
+evidence (`_MIN_LEVEL`), and Stream C's `same-source` scope is blind to one author restating a call
+across uploads, deliberately — two calls a week apart are two genuine observations the scorer
+resolves against different bars.
 
 ### Calibration
 
-Calibration after all seven, on the live sinks: **0/28 Stream A and 0/7 same-source Stream C**
-pairs flagged (highest non-flagging score 2.5 vs a 3.0 threshold), while restatements of the
-live H-002/H-003 rows score **8.9 / 8.8** against the correct row — discriminating, not inert,
-which matters because the inert failure is indistinguishable from "checked and clean".
+On the live sinks: 0/28 Stream A and 0/7 same-source Stream C pairs flagged (highest non-flagging
+score 2.5 vs a 3.0 threshold), while restatements of known-duplicate rows score 8.9 / 8.8 against
+the correct row — discriminating, not inert, which matters because an inert check is
+indistinguishable from a clean one.
 
 Consumed by `/ingest-x` (step 3 check, step 4 mark) and `/ingest-video` (step 7 check +
 `pairs`, step 8 mark).
@@ -2081,176 +1877,157 @@ Consumed by `/ingest-x` (step 3 check, step 4 mark) and `/ingest-video` (step 7 
 
 ## video_calltime.py — pure call-time resolution
 
-Pure call-time resolution, the `/ingest-video` look-ahead guard (kept out of prompt-space
-deliberately — LLM date arithmetic is a known failure mode and this field decides whether every
-author's hit rate is honest): `resolve_call_ts` prefers a video's stated in-video time but
-bounds it (`stated < publish`, `publish − stated ≤ STATED_TS_MAX_LEAD_H` (168h), a
-naive/offset-less stated value is rejected not assumed-UTC **unless
-`stated_date_only` is set**, date-only → conservative end-of-day clamped below publish),
-else falls back to `publish_ts_utc`; `is_backlog` flags
-`publish → ingested` lag > `BACKLOG_THRESHOLD_H` (24h) — computed from publish time, so it
-describes ingest lag, not the pundit's.
+Pure call-time resolution, the `/ingest-video` look-ahead guard, kept out of prompt-space
+deliberately since LLM date arithmetic is a known failure mode and this field decides whether every
+author's hit rate is honest. `resolve_call_ts` prefers a video's stated in-video time but bounds it
+(`stated < publish`, `publish − stated ≤ STATED_TS_MAX_LEAD_H` (168h); a naive/offset-less stated
+value is rejected rather than assumed-UTC unless `stated_date_only` is set, in which case it uses a
+conservative end-of-day clamped below publish), else falls back to `publish_ts_utc`. `is_backlog`
+flags `publish → ingested` lag greater than `BACKLOG_THRESHOLD_H` (24h), computed from publish
+time, so it describes ingest lag rather than the pundit's own lag.
 
 **Run:** `PYTHONPATH=. poetry run python tools/video_calltime.py --publish <iso> [--stated <iso>] [--date-only] --stated-raw "<quote>" [--ingested <iso>]`
 
-⚠ **The naive carve-out is keyed on the FLAG, never on the value's shape**, and it exists
-because the date-only branch was **unreachable on its own documented input** until
-2026-08-20: `/ingest-video` tells its pass-1 subagent to emit `YYYY-MM-DD`, `_parse_aware`
-required an explicit offset, so a bare date returned `None` and the publish fallback won
-every time. Two properties make the carve-out safe where the blanket rejection is not — a
-date carries no zone to lose, and end-of-day normalisation can only move the result
-**later**, away from the look-ahead-permitting direction. A time component is discarded
-rather than trusted, since the flag asserts there is none. **It failed in the SAFE
-direction**, which is why a dead branch could sit there through a full suite: the fallback
-is the most conservative answer available, so nothing downstream ever looked wrong.
+The naive-date carve-out is keyed on the `--date-only` flag, never on the value's shape, because
+`/ingest-video` tells its pass-1 subagent to emit `YYYY-MM-DD` and `_parse_aware` requires an
+explicit offset — a bare date without the flag returns `None` and the publish fallback wins. Two
+properties make the flag-based carve-out safe where a blanket rejection is not: a date carries no
+zone to lose, and end-of-day normalization can only move the result later, away from the
+look-ahead-permitting direction. A time component is discarded rather than trusted, since the flag
+asserts there is none.
 
 ## yt_feed.py — YouTube channel auto-feed backing `/ingest-feed`
 
-Ported from parent #515, taken at **parent HEAD** rather than at #515's merge commit, so
-six follow-ups (#516, #529, #535, #558, #582, #585) land with it (724 → 894 lines).
-**#516 is the one that matters operationally** — it added `load_dotenv()`, without which
-`YOUTUBE_API_KEY`
-in `.env` is invisible and every API subcommand fails; porting #515 literally would have
-shipped a feed that could not authenticate.
+Ported from the parent at parent HEAD rather than at the original PR's merge commit, so several
+follow-up fixes land with it (724 to 894 lines) — notably `load_dotenv()`, without which
+`YOUTUBE_API_KEY` in `.env` is invisible and every API subcommand fails.
 
-Read-only `poll` of each configured channel's uploads playlist (Data API v3,
-`YOUTUBE_API_KEY`, ~2–3 units/channel/day, **never `search.list`**) + `backfill` deep pager
-(floor ignored, ledger respected). **`poll --since` NARROWS the floor only**
-(`max(floor, since)`, shared `_parse_since` with `backfill`): the floor records what the
-operator already declined, so honouring an earlier `--since` would resurface it — reaching
-below the floor stays `backfill`'s job, and that asymmetry is the whole difference between
-the two subcommands. `mark` is the **ONLY** writer, stamped post-review-gate, so the
-wifey-#68 watermark-on-send defect class is structurally impossible: no fetch-time writes,
-no moving watermark, static per-channel `floor_ts`. Plus `resolve` (handle → ready-to-paste
-TOML block) and `hint` (pure local config read; resolves **ahead of** the API-key gate, so
-it needs no `YOUTUBE_API_KEY`).
+Read-only `poll` of each configured channel's uploads playlist (Data API v3, `YOUTUBE_API_KEY`,
+~2-3 units/channel/day, never `search.list`) plus `backfill` deep pager (floor ignored, ledger
+respected). `poll --since` narrows the floor only (`max(floor, since)`, shared `_parse_since` with
+`backfill`): the floor records what the operator already declined, so honoring an earlier
+`--since` would resurface it — reaching below the floor stays `backfill`'s job, and that asymmetry
+is the whole difference between the two subcommands. `mark` is the only writer, stamped
+post-review-gate, so the watermark-on-send defect class is structurally impossible here: no
+fetch-time writes, no moving watermark, static per-channel `floor_ts`. Plus `resolve` (handle to
+ready-to-paste TOML block) and `hint` (pure local config read, resolving ahead of the API-key gate,
+so it needs no `YOUTUBE_API_KEY`).
 
 Config is the gitignored `config/youtube_channels.toml` (committed `.example`). State is
-`docs/plans/yt-feed-state.json` (gitignored, atomic writes, loud-abort on malformed).
-Injected HTTP `get` → network-free request-shape tests (70 of them).
+`docs/plans/yt-feed-state.json` (gitignored, atomic writes, loud-abort on malformed). Injected HTTP
+`get` gives network-free request-shape tests (70 of them).
 
-**Two wifey-specific divergences, both re-derived here rather than inherited:**
+Two wifey-specific divergences, both re-derived here rather than inherited:
 
-- **`item_cap` is nearly inert in this repo.** It defaults to `video_marks.ITEM_CAP`,
-  imported not re-literalled — so it correctly picks up wifey's **12** (the parent's is
-  5, raised here in #128 alongside a `MIN_ITEM_SPECIFICITY` floor). But `/ingest-video`
-  requires `item_cap + len(TAIL_OFFSETS_S) <= FRAME_CAP`, i.e. **≤ 13**, so the usable
-  range is 13..13. **`yt_feed.py` does not validate this** — it imports `FRAME_CAP` only
-  to estimate tokens — and a larger value silently degrades kept items to
-  `vision_confidence: "low"`. The parent has 8 of headroom and never hit the ceiling.
-- **`hint` EXITS 1 when `config/youtube_channels.toml` is absent** (`load_feed_config`
-  raises `SystemExit`; it does not return `matched: false`). That file may legitimately
-  not exist here, since `/ingest-video`'s primary mode in this repo is a hand-pasted URL
-  with no follow list — so its step-3 call is guarded with `|| true` and a missing config
-  is treated as `matched: false`, not as an error.
+- `item_cap` is nearly inert in this repo. It defaults to `video_marks.ITEM_CAP`, imported rather
+  than re-literalled, so it correctly picks up wifey's 12 (the parent's is 5). But `/ingest-video`
+  requires `item_cap + len(TAIL_OFFSETS_S) <= FRAME_CAP`, i.e. at most 13, so the usable range is
+  13..13. `yt_feed.py` does not validate this — it imports `FRAME_CAP` only to estimate tokens —
+  and a larger value would silently degrade kept items to `vision_confidence: "low"`. The parent
+  has 8 of headroom and never hits the ceiling.
+- `hint` exits 1 when `config/youtube_channels.toml` is absent (`load_feed_config` raises
+  `SystemExit`; it does not return `matched: false`). That file may legitimately not exist here,
+  since `/ingest-video`'s primary mode in this repo is a hand-pasted URL with no follow list, so
+  its step-3 call is guarded with `|| true` and a missing config is treated as `matched: false`,
+  not as an error.
 
 **Run:** `PYTHONPATH=. poetry run python tools/yt_feed.py poll|backfill|mark|resolve|hint`
 
-⚠ **`mark` being the ONLY writer is also its sharpest failure mode, and it set the ranking
-rule: a silent WRITE-path failure outranks a loud READ-path one.** `-mx3UwwJ5P4` is a valid
-YouTube id and argparse read the leading `-` as a flag, so `nargs="*"` dropped it. Because
-`mark` is the sole writer of consumption state, the swallowed id was never recorded and the
-video **re-presented forever with no other symptom** — no error, no partial write, nothing
-downstream that looked wrong. `mark` now extracts `--ingested`/`--skipped` from `argv`
-before argparse sees them, so every call shape works
-(`tests/test_yt_feed.py::TestDashLeadingVideoIds`, 5 tests).
+`mark` must extract `--ingested`/`--skipped` from `argv` before argparse sees them, because a
+YouTube id like `-mx3UwwJ5P4` starts with a hyphen and argparse reads the leading `-` as a flag,
+silently dropping it from an `nargs="*"` list. Since `mark` is the sole writer of consumption
+state, a swallowed id is never recorded and the video re-presents forever with no other symptom —
+no error, no partial write, nothing downstream that looks wrong. Pinned by
+`tests/test_yt_feed.py::TestDashLeadingVideoIds` (5 tests).
 
-`route_dedup --source-id` is the deliberate contrast and is left unchanged: it takes one
-value, so `--source-id=<id>` works natively and the space form fails **loudly**, which its
-`--help` says. A read-path tool that dies in front of you costs a retry; a write-path tool
-that drops one argument costs a ledger nobody knows is wrong. **Rank the fix by whether
-anything could have SEEN the failure, not by its blast radius.**
+`route_dedup --source-id` is a deliberate contrast and is left unchanged: it takes one value, so
+`--source-id=<id>` works natively and the space form fails loudly, which its `--help` says. Rank a
+fix by whether anything could have seen the failure, not by its blast radius — a read-path tool
+that dies in front of you costs a retry, while a write-path tool that silently drops one argument
+costs a ledger nobody knows is wrong.
 
 ## video_fetch.py — read-only YouTube/X video fetcher
 
 Read-only YouTube/X video fetcher: every yt-dlp call goes through
-`_YT_DLP = ("yt-dlp", "--js-runtimes", "node")` — never a bare `["yt-dlp", …]` (yt-dlp
-≥2026.07.04 enables only **deno** by default; without an available JS runtime every *media*
-path 403s while captions still resolve, so the failure masquerades as one unlucky video.
-`--js-runtimes` is additive, and the `yt-dlp-ejs` runtime dep backs it).
+`_YT_DLP = ("yt-dlp", "--js-runtimes", "node")`, never a bare `["yt-dlp", …]`, because yt-dlp
+>=2026.07.04 enables only deno by default — without an available JS runtime every media path 403s
+while captions still resolve, so the failure masquerades as one unlucky video. `--js-runtimes` is
+additive, and the `yt-dlp-ejs` runtime dep backs it.
 
-⚠ **At least two independent causes produce that identical symptom, and the JS runtime is
-only one of them** — the count is a floor, not an enumeration. The media fetch also 403s when the *extractor client* is left to yt-dlp's
-own default selection, which is why `_ensure_local_media` pins
-`--extractor-args youtube:player_client=android`. Measured 2026-08-19 on 2026.07.04, the stable
-this repo pinned before the nightly bump, with `node` installed and `--js-runtimes node` already in effect: the default
-pick `android_vr` 403s, while `android` / `mweb` / `web_embedded` all download; `tv` fails
-to load, and `web_safari` / `ios` fail *differently* — "requested format is not available"
-against `bv*[height<=1080]` — so they are **not** substitutes. **A version bump is not the
-fix** and `poetry.lock` is not involved; an earlier filing said otherwise and was wrong.
-The 3-attempt retry cannot cover this either: it was written for an *intermittent* 403 and
-this one is deterministic. Pinned by
-`tests/test_video_fetch.py::test_local_media_download_pins_the_extractor_client`, which
-asserts the flag/value pair adjacently because the regression shape is an **absent flag**.
-⚠ **Both causes are silent in the same direction** — captions resolve either way, so the
-vision pass returns chart-uncorrected items that look fine. Diagnose by running the
-download, never by reading the code.
+At least two independent causes produce that identical symptom; the JS runtime is only one of
+them. The media fetch also 403s when the extractor client is left to yt-dlp's own default
+selection, which is why `_ensure_local_media` pins
+`--extractor-args youtube:player_client=android`. Measured 2026-08-19, with `node` installed and
+`--js-runtimes node` already in effect: the default pick `android_vr` 403s, while
+`android` / `mweb` / `web_embedded` all download; `tv` fails to load, and `web_safari` / `ios` fail
+differently ("requested format is not available" against `bv*[height<=1080]`), so they are not
+substitutes. A yt-dlp version bump alone does not fix this, and `poetry.lock` is not involved. The
+3-attempt retry does not cover it either, since it was written for an intermittent 403 and this one
+is deterministic. Pinned by
+`tests/test_video_fetch.py::test_local_media_download_pins_the_extractor_client`, which asserts the
+flag/value pair adjacently because the regression shape is an absent flag. Both causes are silent
+in the same direction — captions resolve either way, so the vision pass returns chart-uncorrected
+items that look fine. Diagnose by running the download, never by reading the code.
 
-- `fetch_meta` (yt-dlp `--dump-json` → `VideoMeta` incl. publish time)
+- `fetch_meta` (yt-dlp `--dump-json` to `VideoMeta` including publish time)
 - `fetch_transcript` (existing captions in any language first, else Groq `whisper-large-v3` over
   extracted opus audio — `split_audio` chunks past the 25MB cap using `duration_s` for
   offset-correct per-chunk timestamps). Returns a `TranscriptResult` carrying the segments, the
   chosen `lang` and a `source` of `manual_captions` / `auto_captions` / `asr_whisper` /
-  `captions_unknown` / `asr_whisper_captions_missed`. ⚠ **`captions_unknown` is NOT folded into
-  `auto`** — "we did not ask" and
-  "we asked and it was ASR" are different claims, and every pre-port cache entry is the former.
-  An ASR transcript is a materially weaker source than an author-written one, and every item,
-  `raw_quote` and call-time derives from that text
-- ⚠ **`asr_whisper_captions_missed` is the fifth value, and it is the one to ACT on.** Ported
-  from parent #750. `fetch_transcript` used to run yt-dlp, **discard the result**, and glob for
-  `sub*.vtt` — so a transient `HTTP 429` produced an empty list byte-identical to the one a
-  caption-less video produces, and the ASR fallback downgraded the note permanently and
-  silently, with no record that a track had ever existed. `_download_captions` returns
-  `(vtts, missed)` and retries once (`_CAPTION_ATTEMPTS = 2`, `sleep` injected so the suite
-  stays fast). ⚠ **The discriminator is the METADATA, not the empty glob** — `_sub_langs`
-  always appends a last resort, so a caption-less video legitimately requests a track that
-  cannot land while yt-dlp still exits 0; a miss is *the metadata listed tracks and none
-  arrived*, plus any non-zero exit. Relaxing that to "no vtt landed" passes every other test
-  and mislabels every caption-less video, which is why
-  `test_a_genuinely_caption_less_video_stays_plain_asr` exists. Unlike plain `asr_whisper` this
-  value is **recoverable by re-running that video**, and the no-Groq path says
-  `caption download failed` rather than `no captions available` so the one surface a human
-  reads carries the distinction too
-- ⚠ **`_sub_langs` decides which caption tracks are even REQUESTED, and asking wrong costs the
-  whole transcript.** yt-dlp returns `language: null` on a large slice of the follow list, and the
-  pre-port expression then asked for `en` ALONE — so a Chinese upload with an author-written
-  `zh-Hant` track got "no subtitles for the requested languages" and fell through to ASR, worst
-  exactly where ASR is weakest. It now widens the request with the codes `--dump-json` already
-  returned (same call, no extra quota), resolves a REGIONAL `lang` down to its base (`en-US` →
-  `en`), and caps the list at `_MAX_SUB_LANGS = 6` so no video can request a translate matrix —
-  upstream measured 157 auto codes led by `ab`/`aa`/`af`, answered with HTTP 429 partway through,
-  leaving the transcript's language decided by which file survived the rate limit. Ported from
-  parent #668 + #674. ⚠ **The chapters/recap half of #668 is now PORTED too** (2026-08-27), at
-  its **post-#695 shape** rather than as merged
+  `captions_unknown` / `asr_whisper_captions_missed`. `captions_unknown` is not folded into
+  `auto`, because "we did not ask" and "we asked and it was ASR" are different claims. An ASR
+  transcript is a materially weaker source than an author-written one, and every item, `raw_quote`
+  and call-time derives from that text.
+- `asr_whisper_captions_missed` is the fifth value and the one to act on, since it is recoverable
+  by re-running that video, unlike plain `asr_whisper`. `fetch_transcript` must not run yt-dlp,
+  discard the result, and glob for `sub*.vtt`: a transient HTTP 429 then produces an empty list
+  byte-identical to the one a caption-less video produces, permanently and silently downgrading the
+  note with no record that a track ever existed. `_download_captions` returns `(vtts, missed)` and
+  retries once (`_CAPTION_ATTEMPTS = 2`, `sleep` injected so the suite stays fast). The
+  discriminator is the metadata, not the empty glob: `_sub_langs` always appends a last resort, so
+  a caption-less video legitimately requests a track that cannot land while yt-dlp still exits 0; a
+  miss means the metadata listed tracks and none arrived, plus any non-zero exit. Relaxing that to
+  "no vtt landed" mislabels every caption-less video, which is why
+  `test_a_genuinely_caption_less_video_stays_plain_asr` exists. The no-Groq path says
+  `caption download failed` rather than `no captions available` so the distinction survives to the
+  one surface a human reads.
+- `_sub_langs` decides which caption tracks are even requested, and asking wrong costs the whole
+  transcript. yt-dlp returns `language: null` on a large slice of the follow list, and requesting
+  `en` alone means a Chinese upload with an author-written `zh-Hant` track gets "no subtitles for
+  the requested languages" and falls through to ASR, worst exactly where ASR is weakest. It widens
+  the request with the codes `--dump-json` already returned (same call, no extra quota), resolves a
+  regional `lang` down to its base (`en-US` becomes `en`), and caps the list at
+  `_MAX_SUB_LANGS = 6` so no video can request a translate matrix — the parent measured 157 auto
+  codes led by `ab`/`aa`/`af`, answered with HTTP 429 partway through, leaving the transcript's
+  language decided by which file survived the rate limit. Ported from the parent.
 - `Chapter` / `_parse_chapters` / `recap_window_s` — a video's own leading recap chapter answers
-  per VIDEO what `intro_recap_s` answers per CHANNEL, and beats it in **both** directions (a
+  per video what `intro_recap_s` answers per channel, and overrides it in both directions (a
   shorter chapter window must narrow the trim too, or the override is just a bigger constant).
-  Chapters ride in on the `--dump-json` call `fetch_meta` already makes, so this costs parsing,
-  not quota; `_parse_chapters` drops a malformed entry rather than failing the fetch, since the
-  list is author-supplied. `recap_window_s` returns `0.0` for "no answer here", leaving the
-  constant in charge — upstream found no chapters at all on about half its corpus.
-  ⚠ **`_RECAP_TITLE_HINTS` deliberately EXCLUDES `intro`.** Upstream shipped it, then removed it
-  in #695 after a leading chapter titled `Intro` marked the first 26% of an educational upload as
-  a position recap — **on a channel configured `intro_recap_s: 0`, which is exactly wifey's
-  setting for BOTH live channels**. So the unamended list would have reproduced that defect here
-  on day one rather than importing it dormant. An introduction OPENS content; a recap REPLAYS
-  prior calls, and only the second is what the window trims. `review` and 概述 are the same
-  shape and are UNMEASURED — treat a sighting on either as this defect again, not a new one.
-  ⚠ **Here the chapter window is the ONLY trim that can fire**, both channels being at 0, so a
-  false positive has no constant to fall back to and costs the whole trim.
-  ⚠ **`_meta_from_cache` must COERCE chapters back into `Chapter` objects** — `asdict` flattens
-  them to dicts and a frozen dataclass does no coercion, so the field would claim
-  `tuple[Chapter, ...]` while holding dicts and `recap_window_s` would die on `chapter.title` at
-  the first cache hit. mypy cannot see it: `**` builds the lie at runtime
-- `extract_frames` (one ffmpeg seek per caller-supplied `FrameMark`, never speculative; retries
-  the whole download-and-seek on **total** failure only — 3 attempts spaced by
-  `_FRAME_RETRY_BACKOFF_S`, since a partial result means those marks individually failed to
-  seek)
-- `fetch_video_batch` (per-video dedup cache at `.cache/video/<id>/asset.json`, randomized
-  cooldown *between network fetches only*, one failing video never kills the batch)
+  Chapters ride in on the `--dump-json` call `fetch_meta` already makes, so this costs parsing, not
+  quota; `_parse_chapters` drops a malformed entry rather than failing the fetch, since the list is
+  author-supplied. `recap_window_s` returns `0.0` for "no answer here," leaving the constant in
+  charge — the parent found no chapters at all on about half its corpus.
+  `_RECAP_TITLE_HINTS` deliberately excludes `intro`: the parent shipped it, then removed it after
+  a leading chapter titled "Intro" marked the first 26% of an educational upload as a position
+  recap, on a channel configured `intro_recap_s: 0` — exactly wifey's setting for both live
+  channels, so the unamended list would reproduce that defect here on day one. An introduction
+  opens content; a recap replays prior calls, and only the second is what the window trims.
+  "review" and 概述 are the same shape and are unmeasured — treat a sighting on either as this
+  defect again, not a new one. The chapter window is the only trim that can fire here, both
+  channels being at 0, so a false positive has no constant to fall back to and costs the whole
+  trim. `_meta_from_cache` must coerce chapters back into `Chapter` objects, since `asdict`
+  flattens them to dicts and a frozen dataclass does no coercion — without the coercion the field
+  would claim `tuple[Chapter, ...]` while holding dicts, and `recap_window_s` would die on
+  `chapter.title` at the first cache hit; mypy cannot see this because `**` builds the lie at
+  runtime.
+- `extract_frames` (one ffmpeg seek per caller-supplied `FrameMark`, never speculative; retries the
+  whole download-and-seek on total failure only — 3 attempts spaced by `_FRAME_RETRY_BACKOFF_S`,
+  since a partial result means those marks individually failed to seek)
+- `fetch_video_batch` (per-video dedup cache at `.cache/video/<id>/asset.json`, randomized cooldown
+  between network fetches only, one failing video never kills the batch)
 
-`run`/`get`/`sleep`/`rng` injected so the suite is network-free. Backs `/ingest-video` (ported
-from parent #513; spec `docs/superpowers/specs/2026-07-28-ingest-video-design.md`).
+`run`/`get`/`sleep`/`rng` injected so the suite is network-free. Backs `/ingest-video`, ported from
+the parent (spec `docs/superpowers/specs/2026-07-28-ingest-video-design.md`).
 
 **Run:** `PYTHONPATH=. poetry run python tools/video_fetch.py <url…> --batch --json [--force] [--min-delay/--max-delay S] [--cache-dir DIR]` (frame extraction has no CLI —
 `/ingest-video` calls `extract_frames` directly after `video_marks.select` picks timestamps)
@@ -2278,15 +2055,15 @@ specificity desc then ts asc.
 
 ### `ITEM_CAP` tie-break bias
 
-**That tie-break has a measured directional bias:** ts-asc means a tie at the cap resolves in
-favour of *earlier* material, and a pundit who opens with macro and closes with single names
-therefore loses the single names first. Measured 2026-08-05 — `ITEM_CAP=12` bound on all four
-@fenggemeigu videos (26/15/39/36 candidates), and on `EKtmvhDOW20` it dropped the NVDA setup
-**and both GOOGL items despite those two names being in the video's own title**, because they
-sat past 1,090s behind a gold/DXY block. The cap is doing what it is specified to do; the note
-exists so a thin-looking Stream C yield from a dense video is read as a cap artifact rather than
-as a video that made no calls. The **floor** binds first and stops a *thin* video padding
-low-specificity vibes up to the cap just because slots exist; the **cap** binds on a *dense* one.
+The tie-break has a measured directional bias: ts-asc means a tie at the cap resolves in favor of
+earlier material, so a pundit who opens with macro and closes with single names loses the single
+names first. Measured 2026-08-05: `ITEM_CAP=12` bound on all four @fenggemeigu videos (26/15/39/36
+candidates), and on one video it dropped the NVDA setup and both GOOGL items despite those two
+names being in the video's own title, because they sat past 1,090s behind a gold/DXY block. The cap
+is doing what it is specified to do; a thin-looking Stream C yield from a dense video should read
+as a cap artifact rather than as a video that made no calls. The floor binds first and stops a thin
+video padding low-specificity vibes up to the cap just because slots exist; the cap binds on a
+dense one.
 
 A-priori constants: `ITEM_CAP=12`, `MIN_ITEM_SPECIFICITY=3`, `FRAME_CAP=15`,
 `DEDUP_WINDOW_S=45`, `SAFETY_SAMPLE_S=300` — `ITEM_CAP` is bounded by
@@ -2347,52 +2124,46 @@ squash suffix (the parent has **no merge commits**), translates each touched par
 wifey target, and classifies SKIP / PORT / EVALUATE with an ALREADY-APPLIED confidence overlay.
 Read-only on both repos except the state file, which only `--bump-to` writes.
 
-**The report is the triage artifact, so it is written in-repo:**
-`docs/plans/parent-sync/parent-sync-<date>.md` (gitignored via `docs/plans/`, directory created
-on demand). It was `/tmp` until 2026-08-11 — a `/tmp` clear destroyed the 2026-07-29 report with
-**57 of 67 PRs still undecided**, forcing a full re-scan. A reviewer decides PRs against this
-file over days; it has to outlive a reboot.
+The report is the triage artifact, so it is written in-repo:
+`docs/plans/parent-sync/parent-sync-<date>.md` (gitignored via `docs/plans/`, directory created on
+demand). Writing it to `/tmp` is unsafe: a `/tmp` clear once destroyed a report with 57 of 67 PRs
+still undecided, forcing a full re-scan, since a reviewer decides PRs against this file over days
+and it has to outlive a reboot.
 
-**The parent's checked-out branch does not matter.** Every parent read is ref-based against
-`origin/main` (`cat-file` / `fetch` / `log` / `show` / `rev-parse`) and nothing touches the
-parent working tree, so the only real precondition is that `origin/main` resolves. A
-checked-out-branch guard blocked scans outright on 2026-06-17 and 2026-08-11 and was removed.
+The parent's checked-out branch does not matter. Every parent read is ref-based against
+`origin/main` (`cat-file` / `fetch` / `log` / `show` / `rev-parse`) and nothing touches the parent
+working tree, so the only real precondition is that `origin/main` resolves.
 
-**ALREADY-APPLIED reads SYMBOLS, and a MODIFIED symbol's name is not evidence** (fixed
-2026-08-13q). A signature-only change re-emits its own `def` line, so the name sits on both
-sides of the diff and a name-presence grep matches wifey's *old* copy. Parent **#521** is the
-worked example — its entire payload was two kwargs on an existing `route_target`, and the
-resolver returned **HIGH / ALREADY-APPLIED** while wifey had only the two-arg version, a real
-missed port that stood until #186 closed it by hand. `extract_symbol_changes` now splits
-`added` from `modified`; a modified symbol's evidence is the **identifiers the change
-introduced** (restricted to syntactically-used tokens, since a bare `\w+` sweep harvests
-docstring prose and the wifey grep is repo-wide), and modify-only with no new identifier
-reports **UNKNOWN** — "cannot tell", never "applied". Parsing is hunk-scoped: `git show`
-without `--format=` prepends the commit message, whose prose has no diff prefix and otherwise
-reads as context, subtracting the very identifiers the change introduced.
+ALREADY-APPLIED reads symbols, and a modified symbol's name alone is not evidence: a signature-only
+change re-emits its own `def` line, so the name sits on both sides of the diff and a
+name-presence grep matches wifey's old copy too. One parent PR is the worked example — its entire
+payload was two kwargs on an existing `route_target`, and the resolver returned HIGH /
+ALREADY-APPLIED while wifey had only the two-arg version, a real missed port that stood until
+closed by hand. `extract_symbol_changes` splits `added` from `modified`; a modified symbol's
+evidence is the identifiers the change introduced (restricted to syntactically-used tokens, since a
+bare `\w+` sweep harvests docstring prose and the wifey grep is repo-wide), and modify-only with no
+new identifier reports UNKNOWN — "cannot tell," never "applied." Parsing is hunk-scoped: `git show`
+without `--format=` prepends the commit message, whose prose has no diff prefix and otherwise reads
+as context, subtracting the very identifiers the change introduced.
 
-**Two further limits to know before trusting a bucket.** The classifier defaults to EVALUATE whenever a
-path resolves, so at a wide range the counts degrade (2026-08-11: 0 SKIP / 39 PORT / 107
-EVALUATE over 156 PRs). And **buckets cannot see portability** — a mechanical check of whether
-the touched files exist in wifey is the cheap filter, and it inverts the parent's own ranking:
-on 2026-08-11 `fix(xsmom)` #572 touched **0** files present here despite wifey owning
+Two further limits to know before trusting a bucket. The classifier defaults to EVALUATE whenever a
+path resolves, so at a wide range the counts degrade (measured 2026-08-11: 0 SKIP / 39 PORT / 107
+EVALUATE over 156 PRs). And buckets cannot see portability: a mechanical check of whether the
+touched files exist in wifey is the cheap filter, and it inverts the parent's own ranking — measured
+2026-08-11, one `fix(xsmom)` PR touched 0 files present here despite wifey owning
 `analytics/xsmom/`.
 
 **Run:** `make wifey-sync-parent [FROM=<hash>] [FULL=1] [NO_FETCH=1] [BUMP_TO=<hash>]`. Never
-`--bump-to` while the state file doubles as a memory — it rewrites the file to a stub and wipes
-the triage body; hand-edit the frontmatter pointer instead.
+`--bump-to` while the state file doubles as a memory — it rewrites the file to a stub and wipes the
+triage body; hand-edit the frontmatter pointer instead. The tool itself must never print
+`--bump-to` as a suggested next step (`format_report` and `main()` both name the hand-edit
+instead, and the flag's own `--help` says `DESTRUCTIVE`) — a printed suggestion to run it would
+destroy the very rulings the report exists to hold. `test_header_and_range` pins that the report
+names `last_synced_hash` and does not contain `--bump-to`, so the presence half keeps the absence
+assertion from passing vacuously.
 
-⚠ **Until 2026-09-21 the tool ADVERTISED that forbidden command.** `format_report` printed it as
-the report's headline next step and `main()` repeated it on stdout, so a session following the
-printed hint destroyed the very rulings the report exists to hold. Both now name the hand-edit, and
-the flag's own `--help` says `DESTRUCTIVE`. `test_header_and_range` pins it in both directions — the
-report names `last_synced_hash`, and does **not** contain `--bump-to` — because the presence half is
-what keeps the absence assertion from passing vacuously.
-
-⚠ **The import-dependency filter is GITIGNORED, so nothing mechanical proves it RAN.**
-`docs/plans/scripts/missed_ports.py` had been dead since the 2026-09-18 host move — two pre-move
-Linux literals, exiting on the first before scanning anything — and no lint, test or CI leg reaches
-`docs/plans/`. **A shortlist built without it is blind to every greenfield port**, the class that hid
-`/ingest-feed` (#515) through two syncs, because a file-existence check scores a new file ~0 by
-construction. **Confirm it printed `scan range: <from>..origin/main`**: a dead filter and an empty
-result are different states that render identically.
+The import-dependency filter (`docs/plans/scripts/missed_ports.py`) is gitignored, so nothing
+mechanical proves it ran, and no lint, test or CI leg reaches `docs/plans/`. A shortlist built
+without it is blind to every greenfield port — the class that hid `/ingest-feed` through two syncs,
+because a file-existence check scores a new file ~0 by construction. Confirm it printed
+`scan range: <from>..origin/main`: a dead filter and an empty result render identically otherwise.

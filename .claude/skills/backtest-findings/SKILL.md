@@ -12,6 +12,9 @@ allowed-tools: Bash, Read, Edit
 
 # Backtest Findings — Interpreting Sweep Output
 
+Dormant while the TA book is frozen (see CLAUDE.md → Fork lineage); run only for maintenance the
+user asks for.
+
 Workflow for reading a sweep table and translating results into committed TOML config.
 
 ## Min-trades thresholds (before trusting any result)
@@ -66,29 +69,22 @@ Always printed alongside main results (regardless of `volume_suppress` setting):
 ```
 
 - **Positive Δ** (High Vol >> Low Vol): consider `volume_suppress = true` for this strategy
-- **Negative Δ** (Low Vol >> High Vol): do NOT suppress — low-vol signals have edge here
+- **Negative Δ** (Low Vol >> High Vol): do not suppress — low-vol signals have edge here
 - Decision threshold: |Δ| > 0.10R is meaningful; < 0.05R is noise
 
-**Before acting on a positive Δ (both added 2026-08-06):**
+**Before acting on a positive Δ:**
 
-1. **`volume_suppress = true` requires `adr_exempt = true`** on the same strategy —
+1. `volume_suppress = true` requires `adr_exempt = true` on the same strategy —
    `load_signal_config` raises otherwise. The ADR gate keeps quiet, small-range bars
    while this flag keeps high-volume ones, and range/volume correlate at ~+0.65, so
-   the conjunction discards ~99% of signals silently.
-2. **The Δ above is a point estimate, not a result.** Significance-test it before
-   committing: a Δ of +0.11R justified throwing away 94% of `bos`'s signals for
-   months, and on retest every cell gave p ≥ 0.113 with the CI straddling zero. All
-   four shipped volume flags were removed once tested.
+   the conjunction can silently discard nearly all of a strategy's signals.
+2. The Δ above is a point estimate, not a result. Significance-test it (a Welch t-test
+   or bootstrap on the difference) before committing — see `/volume-sweep` for the method.
+
+No strategy in either config currently sets `volume_suppress*`; always re-run the volume split
+after any tp_r change before trusting an old Δ.
 
 See `/volume-sweep` and `docs/audits/2026-08-06-adr-volume-gate-conjunction.md`.
-
-**A14b findings — SUPERSEDED; do not re-apply.** Every A14b volume flag was removed on
-2026-08-06: three because the ADR-gate conjunction voided their strategies, and `bos`
-because its claim failed retest on equities (p ≥ 0.113 on every cell). **As of
-2026-08-06 no strategy in either config sets `volume_suppress*`.** The old
-suppress/do-not lists survive only in `/volume-sweep`'s superseded table, kept as a
-record of how the decisions were made. Always re-run the volume split after any tp_r
-change before trusting any old Δ.
 
 ## Reading the duration table
 
@@ -98,11 +94,11 @@ change before trusting any old Δ.
   bos         1h    4356     1.4d       13.0h         39.8d
 ```
 
-Speed tiers (⚠ crypto-era illustration — wifey's TFs are 4h/1d/1wk and its bars are RTH;
-re-derive tiers from a current duration table before quoting any of these):
+Speed tiers below are illustrative — wifey's TFs are 4h/1d/1wk on RTH bars, so re-derive the
+tiers from a current duration table before quoting any of them:
 
 - **Fast < 1d median**: marubozu, eqh_eql, trend_day — hits SL/TP quickly
-- **Overnight 13–16h**: all candlestick patterns regardless of TF — NOT scalping strategies
+- **Overnight 13–16h**: all candlestick patterns regardless of TF — not scalping strategies
 - **Multi-day**: bos 4h (2.2d), order_block 1d (6.3d) — need patient management
 
 ## Committing TOML config
@@ -164,8 +160,8 @@ wifey recalibrate --apply --config config/signal_watch.toml  # writes confidence
 - `config/signal_watch.toml` — committed `[strategy_params.*]` overrides, each with an
   inline WFO-evidence comment (the durable record of *why* a value was picked)
 - `analytics.db` — all saved `backtest_runs` rows (queryable via DuckDB)
-- (The old `project_f6_tp_sweep_findings.md` / `project_a13_volume_findings.md` memory
-  files no longer exist in either repo's tree — do not cite them)
+- `project_f6_tp_sweep_findings.md` and `project_a13_volume_findings.md` do not exist in either
+  repo's tree — do not cite them
 
 ## Task: interpret and commit sweep results
 

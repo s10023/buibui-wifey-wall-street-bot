@@ -26,11 +26,11 @@ suggested approach. **It never edits wifey code** — a human ports.
 
 ## Prerequisites
 
-- Parent clone present as a **SIBLING of this checkout** (`../buibui-moon-trader-bot`)
-  with a readable `origin/main`. `tools/sync_parent.py` DERIVES it that way rather
-  than from a literal, so it holds on both boxes and survives the next host move. **Its checked-out branch does not matter** — every parent read is
-  ref-based against `origin/main` and nothing touches the parent working tree, so
-  the parent can stay parked on a feature branch while you scan.
+- Parent clone present as a **sibling of this checkout** (`../buibui-moon-trader-bot`)
+  with a readable `origin/main`. `tools/sync_parent.py` derives the path this way rather
+  than from a literal, so it holds across hosts. Its checked-out branch does not
+  matter — every parent read is ref-based against `origin/main` and nothing touches the
+  parent working tree, so the parent can stay parked on a feature branch while you scan.
 - State file `project_parent_sync_state.md` exists in wifey memory, or the skill
   bootstraps from the fork commit `635ed5a` on first run.
 
@@ -46,10 +46,9 @@ make wifey-sync-parent BUMP_TO=<hash>  # DO NOT USE — see Workflow step 5
 
 Direct: `PYTHONPATH=. poetry run python tools/sync_parent.py [flags]`.
 
-**`BUMP_TO=` rewrites `project_parent_sync_state.md` to a stub and wipes the
-triage body.** Advance the pointer by hand-editing `last_synced_hash` in that
-file's frontmatter instead. The flag is documented here only so it is recognised
-and refused.
+**`BUMP_TO=` rewrites `project_parent_sync_state.md` to a stub and wipes the triage
+body.** Advance the pointer by hand-editing `last_synced_hash` in that file's
+frontmatter instead. The flag is documented here only so it is recognised and refused.
 
 ## Output
 
@@ -59,10 +58,9 @@ and refused.
   paths → wifey targets, the parent MEMORY excerpt, and a suggested approach
   (`verify-only` / `cherry-pick-with-edits` / `re-implement`).
   **In-repo and gitignored, deliberately not `/tmp`** — the report is the triage
-  artifact and a review spans days. A `/tmp` clear destroyed the 2026-07-29 report
-  with 57 of 67 PRs still undecided, forcing a full re-scan.
+  artifact and a review spans days, and `/tmp` clears on reboot.
 - The **Workstreams** table clusters the range's PRs into multi-PR campaigns
-  (e.g. a `live-parity (backtest engine port)` row spanning 6 PRs) so a large
+  (e.g. a `live-parity (backtest engine port)` row spanning several PRs) so a large
   range reads as a handful of themes rather than a flat PR list. Clustering is
   driven by `WORKSTREAM_RULES` in `tools/sync_parent.py` — ordered (regex, label)
   rules with a conventional-commit `type(scope)` fallback. Add a rule when the
@@ -72,31 +70,25 @@ and refused.
 ## Workflow
 
 1. Run `make wifey-sync-parent`. If it reports a fail-fast error (parent missing,
-   no readable `origin/main`, malformed state), **surface it to the user and stop**
+   no readable `origin/main`, malformed state), surface it to the user and stop
    — do not auto-clone, auto-fetch, or auto-bump.
 
-   **A carried shortlist is not the range — re-derive the range, and report how many
-   commits are UNDECIDED, not just which are shortlisted.** A handoff naming "the
-   remaining candidates" describes the parent as of the last scan, and the parent
-   keeps merging. On 2026-08-12 the handoff and the SoT both carried
-   `#557 / #600 / #586-part` as the whole remainder while the parent had merged **9
-   more PRs**, one of them (#602) a live defect in a tool wifey runs and on no
-   shortlist at all. It was found only because the range was re-derived. State the
-   count both ways every run: *"167 PRs in range, 74 undecided, 11 never triaged."*
-2. **Run BOTH portability filters, and say which findings came from which.**
-   They have opposite blind spots, so either one alone produces a shortlist that
-   silently omits a whole class:
+   **Re-derive the range every run; don't trust a carried shortlist.** A handoff
+   naming "the remaining candidates" describes the parent as of the last scan, and the
+   parent keeps merging in the meantime. State the count both ways every run: *"167 PRs
+   in range, 74 undecided, 11 never triaged."*
+2. **Run both portability filters, and say which findings came from which.** They have
+   opposite blind spots, so either one alone produces a shortlist that silently omits a
+   whole class:
    - **File-existence** (the report's own bucketing): does the parent's changed
      path exist here? Kills false ports; scores every **greenfield** port ~0,
      because a new file cannot exist in wifey yet.
 
-     ⚠ **A BUCKET LABEL IS NOT A RULING, and the report's counts are what make a
-     backlog look triaged when it is not.** The classifier defaults to `EVALUATE`
-     whenever a path resolves, so on 2026-08-21 round 13 read "8 undecided" while
-     the true figure was **40** — ~50 modify-only PRs each carried a label and no
-     ruling, and no scan could fix that, because the import filter sees ADDED
-     files only. **Run the file-existence pass over EVERY remaining PR, and
-     bucket by SUBSTANTIVE surface**, which is not the same as presence:
+     **A bucket label is not a ruling.** The classifier defaults to `EVALUATE`
+     whenever a path resolves, so most modify-only PRs carry a label and no ruling —
+     the import filter sees ADDED files only, so no scan closes that gap. Run the
+     file-existence pass over every remaining PR, and bucket by **substantive
+     surface**, which is not the same as presence:
 
      | Surface | Reading |
      | --- | --- |
@@ -104,151 +96,122 @@ and refused.
      | `Makefile`, `.github/`, `deploy/`, `tools/`, `analytics/`, `signals/`, `tests/`, `.claude/skills/` | **Real surface.** These carry shared mechanism |
      | `poetry.lock`, `pyproject.toml` alone | **Never a port** — dependabot runs independently per repo |
 
-     That one distinction cut 47 false "partials" to 25 real candidates in a
-     single run. Ruling buckets are **PORT** (defect verified present here) ·
-     **ALREADY-APPLIED** · **EVALUATE** (judgement, not a missing fact) ·
-     **NO PORT**. ⚠ **Expect ALREADY-APPLIED to be large** — it was 11 of 40 that
-     run, some of it the parent porting *wifey's* work back. **A port queue is a
-     claim about the fork, not a record of it**, so verify each against an
-     artifact in this tree, never against the note that recorded it.
+     Bucketing by substantive surface, not mere presence, is what turns false
+     "partials" into real candidates. Ruling buckets are **PORT** (defect verified
+     present here) · **ALREADY-APPLIED** · **EVALUATE** (judgement, not a missing
+     fact) · **NO PORT**. Expect ALREADY-APPLIED to be large — some of it is the
+     parent porting *wifey's* work back. **A port queue is a claim about the fork, not
+     a record of it**, so verify each against an artifact in this tree, never against
+     the note that recorded it.
    - **Import-dependency**: `PYTHONPATH=. python docs/plans/scripts/missed_ports.py`,
      using this repo's venv interpreter (`.venv/Scripts/python.exe` on Windows,
      `.venv/bin/python` on Linux)
      — does the new module's import set resolve against wifey? Finds greenfield
      ports; silent on modify-only PRs.
 
-     ⚠ **CONFIRM IT PRINTED A SCAN RANGE BEFORE TRUSTING THE SHORTLIST — this filter
-     can fail silently and look like a clean result.** On 2026-09-21 it had been DEAD
-     since the 2026-09-18 host move: it hardcoded two pre-move Linux paths and exited
-     on the first one, scanning nothing. It is gitignored, so no lint, test or CI leg
-     reaches it, and a shortlist built without it is blind to every greenfield port
-     — exactly the class that hid `/ingest-feed` (#515) through two syncs. A run that
-     worked prints `scan range: <from>..origin/main`; anything else is a dead filter,
-     not an empty result. It reads the range from
-     `last_synced_hash` in `memory/project_parent_sync_state.md`, so **never edit
-     a range into the script** — `--range` is for a deliberate wider scan only.
-     **Prune its `PORTED` set from the run's own dead-entry report, never from
-     memory**: every run prints the entries falling outside the scanned range.
-     ⚠ **Do not delete the `PORTED` set** — the rulings in that memory are prose,
-     so the set genuinely cannot be derived; its staleness is only *visible*, not
-     self-correcting. First run of that report found **70 of 71 entries inert**,
-     i.e. the set was filtering nothing and nothing said so.
+     **Confirm it printed a scan range before trusting the shortlist — this filter
+     can fail silently and look like a clean result.** It is gitignored, so no lint,
+     test or CI leg reaches it, and a shortlist built without it is blind to every
+     greenfield port. A working run prints `scan range: <from>..origin/main`; anything
+     else is a dead filter, not an empty result. It reads the range from
+     `last_synced_hash` in `memory/project_parent_sync_state.md`, so never edit a
+     range into the script — `--range` is for a deliberate wider scan only. **Prune
+     its `PORTED` set from the run's own dead-entry report, never from memory**: every
+     run prints the entries falling outside the scanned range. Do not delete the
+     `PORTED` set outright — the rulings in that memory are prose, so the set cannot
+     be derived, and its staleness is only *visible*, not self-correcting.
 
    Both filters share a **third** blind spot: a file with no imports at all scores
-   `SELF-CONTAINED` no matter what it wraps. On 2026-08-13 the import filter
-   promoted #488 (`/card` skill) as a ready greenfield port — a `SKILL.md` has no
-   Python imports — while `card/` and `cli/card.py` do not exist here, so the
-   skill would have been an orphan wrapper around nothing. **For a docs-only or
-   skill-only PR, check that its SUBJECT exists here, not its imports**: read the
-   commands and modules the prose invokes and confirm each resolves.
+   `SELF-CONTAINED` no matter what it wraps — a `SKILL.md` has no Python imports, so
+   the import filter can promote a skill-only PR as a ready greenfield port even when
+   the module or CLI it wraps does not exist here. **For a docs-only or skill-only PR,
+   check that its subject exists here, not its imports**: read the commands and
+   modules the prose invokes and confirm each resolves.
 
-   **What this scan structurally cannot see.** It keys on **merged** parent PRs
-   and on paths, so four classes score zero hits while being real work. Silence
-   from the scan is not coverage — check these by hand each run:
-   - **An UNMERGED parent PR.** Parent **#631** was still open at scan time (its
-     CI billing-dead) and was the most consequential thing upstream; it scored
-     zero and reached wifey only because a peer session sent a message. It has
-     since merged, which is the point — by the time the scan can see a PR, the
-     window in which you needed to know about it has closed. Check
+   **What this scan structurally cannot see.** It keys on **merged** parent PRs and on
+   paths, so four classes score zero hits while being real work. Check these by hand
+   each run:
+   - **An unmerged parent PR.** By the time a PR appears in the merged-range scan, the
+     window in which you needed to know about it may have already closed — check
      `gh pr list --state open` on the parent, not just the merged range.
-   - **A prose-only convention** that lives in a `CLAUDE.md` or `SKILL.md`
-     paragraph and changes no path wifey watches.
-   - **A measurement** rather than a change — a number the parent derived that
-     alters a decision here.
+   - **A prose-only convention** that lives in a `CLAUDE.md` or `SKILL.md` paragraph
+     and changes no path wifey watches.
+   - **A measurement** rather than a change — a number the parent derived that alters
+     a decision here.
    - **A rule whose reason is repo-specific** (see below).
 
-   **Port the rule, re-derive the reason.** Agreed with the parent 2026-08-14i,
-   and the same text is owed in both repos' sync skills: *a rationale is a claim
-   about THIS repo's costs, coverage and constraints — verify it here before
-   writing it down, even when the rule itself transfers unchanged.*
+   **Port the rule, re-derive the reason.** A rationale is a claim about *this*
+   repo's costs, coverage and constraints — verify it here before writing it down,
+   even when the rule itself transfers unchanged. The parent's regression-gate bullet
+   justifies a path list because the gate is expensive there; here
+   `make test-regression` runs in ~8s, so the identical rule needs the *opposite*
+   justification — the list marks a coverage gap, not a cost. Copying the reason
+   verbatim would teach the next session to skip a gate that is nearly free. **A wrong
+   reason is worse than a wrong number, because it is not checkable against
+   anything.**
 
-   Three instances landed in a single session. The sharpest: the parent's
-   regression-gate bullet justifies a path list because the gate is expensive
-   there; here `make test-regression` runs in **~8s** (7.77s wall, measured
-   2026-08-15), so the identical rule needed the *opposite* justification — the
-   list marks a coverage gap, not a cost. Copying the reason would have taught
-   the next session to skip a gate that is nearly free.
-   **A wrong reason is worse than a wrong number, because it is not checkable
-   against anything.**
-
-   Do **not** stop at the Workstreams table and the bucket counts. At a wide range
-   they carry almost no signal — the 2026-08-11 scan bucketed 156 PRs as
-   **0 SKIP / 39 PORT / 107 EVALUATE / 10 ALREADY-APPLIED**, because the classifier
-   defaults to EVALUATE whenever a path resolves. Following that step as it used to
-   be written is what produced a shortlist blind to every greenfield port,
-   `/ingest-feed` (#515) among them, through **two** consecutive syncs.
-3. **Neither filter is evidence the defect exists here — that is a third
-   question.** Before writing any code, enumerate the upstream fix's
-   **preconditions** one at a time and check each against wifey. Parent #580 was
-   the range's highest-overlap candidate (9 of 11 files present), correct upstream,
-   and **inert here**: all three of its preconditions failed. Where the port is
-   warranted, re-derive its measured impact **on this repo's data** — an upstream
-   count is never wifey's, and "preventive, not a repair" is a legitimate finding.
+   Don't stop at the Workstreams table and the bucket counts — at a wide range they
+   carry almost no signal, since the classifier defaults to EVALUATE whenever a path
+   resolves. Stopping there is what produces a shortlist blind to every greenfield
+   port.
+3. **Neither filter is evidence the defect exists here — that is a third question.**
+   Before writing any code, enumerate the upstream fix's **preconditions** one at a
+   time and check each against wifey; a high-overlap, correct-upstream candidate can
+   still be inert here if its preconditions fail. Where the port is warranted,
+   re-derive its measured impact **on this repo's data** — an upstream count is never
+   wifey's, and "preventive, not a repair" is a legitimate finding.
 4. For each **PORT** / **EVALUATE** candidate the user wants: open a fresh Claude
-   session, paste the PR number + the parent MEMORY excerpt from the report, and
-   do the actual port work there (this skill does not edit code). Two rules the
-   report cannot express, because both are about the parent's state *now* rather
-   than at the merge commit:
+   session, paste the PR number + the parent MEMORY excerpt from the report, and do
+   the actual port work there (this skill does not edit code). Two rules the report
+   cannot express, because both are about the parent's state *now* rather than at the
+   merge commit:
 
    - **When the target is greenfield, port at parent `HEAD`, not at the PR.** The
-     report names "PR #N", which reads as an instruction to take that commit — but
-     a new file keeps being fixed after it lands, and every one of those follow-ups
-     is greenfield too. Run `git log <merge>..origin/main -- <path>` first and take
-     the file at `HEAD`. #515's `yt_feed.py` had moved **724 → 894 lines** over six
-     follow-ups, and #516 among them adds the `load_dotenv()` without which the
-     `YOUTUBE_API_KEY` the operator just provisioned is invisible. **Re-check any
-     expired NOT-PORTABLE ruling in the same pass** — #535's was correct only while
-     there was no `yt_feed.py`, and porting #515 made it moot.
-   - **A ported doc inverts its cross-repo direction, and nothing mechanical
-     catches it.** Lint, tests, and path checks are all silent on prose that is
-     simply about the other repo. `/ingest-feed`'s SKILL arrived telling a wifey
-     session *"crypto → here"*, which is exactly backwards. Grep every ported doc
-     for `here` / `our` / `this repo` / `the sibling` — **and read the example
-     DATA**, which carries the same inversion (#515's example follow list was a
-     crypto channel).
+     report names "PR #N", which reads as an instruction to take that commit — but a
+     new file keeps being fixed after it lands, and every one of those follow-ups is
+     greenfield too. Run `git log <merge>..origin/main -- <path>` first and take the
+     file at `HEAD`. **Re-check any expired NOT-PORTABLE ruling in the same pass** — a
+     prior ruling may hold only in the absence of a file that a later parent PR added.
+   - **A ported doc inverts its cross-repo direction, and nothing mechanical catches
+     it.** Lint, tests, and path checks are all silent on prose that is simply about
+     the other repo. Grep every ported doc for `here` / `our` / `this repo` /
+     `the sibling` — **and read the example data**, which can carry the same
+     inversion (an example follow list or symbol that names the wrong repo).
 5. Once the user confirms every PR in the range has been decided, advance the
    pointer. **Bump by hand-editing the `last_synced_hash` in
-   `memory/project_parent_sync_state.md`'s frontmatter — never
-   `BUMP_TO=` / `--bump-to`**, which rewrites the file to a stub and **wipes the
-   triage body**. And never bump while PRs in the range are still undecided:
-   the next scan starts from the pointer, so an early bump drops them from view
-   permanently.
+   `memory/project_parent_sync_state.md`'s frontmatter — never `BUMP_TO=` /
+   `--bump-to`**, which rewrites the file to a stub and wipes the triage body. Never
+   bump while PRs in the range are still undecided: the next scan starts from the
+   pointer, so an early bump drops them from view permanently.
 
 ## Notes
 
 - **Never hand-triage from `git log --oneline`. Re-run the tool when the range moves.**
-  On 2026-08-03 the parent was 21 commits past the last scan point; those commits were
-  eyeballed from a `git log` listing instead of re-running `make wifey-sync-parent`, and
-  #519 (a portable CLAUDE.md policy) was read past. The tool would have bucketed it
-  **PORT** — `CLAUDE.md` exists in wifey, so it resolves as a direct path, which is
-  neither `removed`/`skip` nor an EVALUATE path. Selective reading is exactly the
+  Eyeballing a `git log` listing instead of re-running `make wifey-sync-parent` reads
+  past PRs the tool would have bucketed correctly — selective reading is exactly the
   failure this skill exists to prevent.
-- **The parent's own "what's fork-ready" note is a hint, never the scope.** The parent's
-  memory sometimes names a payload it thinks is portable. That reflects *its* view of
-  its own work; it is not a substitute for this repo's classifier, and anything outside
-  that list silently drops. Same 2026-08-03 incident: the named payload was taken as the
-  scope, so five ingest PRs were only found by pulling an unrelated thread, and #519 was
-  never on any thread.
-- **Docs-only PRs are not automatically SKIP.** A parent PR touching only `CLAUDE.md` or
-  `.claude/skills/**` changes how every future session behaves, which is higher leverage
-  than most code. Beware subjects that sound repo-local but aren't: #519 reads as "cap
-  the memory index" and memory lives *outside* the repo — but the **policy** lives in
-  `CLAUDE.md`, which is in-repo and fully portable. Only the data is external.
+- **The parent's own "what's fork-ready" note is a hint, never the scope.** The
+  parent's memory sometimes names a payload it thinks is portable. That reflects
+  *its* view of its own work; it is not a substitute for this repo's classifier, and
+  anything outside that list silently drops.
+- **Docs-only PRs are not automatically SKIP.** A parent PR touching only `CLAUDE.md`
+  or `.claude/skills/**` changes how every future session behaves, which is higher
+  leverage than most code. Beware subjects that sound repo-local but aren't: memory
+  lives *outside* the repo, but a **policy about** memory (a cap, a protocol) lives in
+  `CLAUDE.md`, which is in-repo and fully portable — only the data is external.
 - The parent squash-merges every PR (one commit, `(#N)` suffix) — there are no
   merge commits, which is why the tool groups by subject, not `git log --merges`.
 - ALREADY-APPLIED is a confidence flag, never an auto-removal. Always verify.
-- **A MODIFIED symbol's name is not evidence the port landed.** A signature-only change
-  re-emits its own `def` line, so the name sits on both sides of the diff and a
-  name-presence grep matches the *old* copy. Parent **#521** is the worked example: its
-  entire payload was two kwargs on an existing `route_target`, and the resolver returned
-  **HIGH / ALREADY-APPLIED** while wifey had only the two-arg version — a real missed port
-  (closed a year later by #186). Since 2026-08-13q `extract_symbol_changes` splits
-  `added` from `modified`, and for a modified symbol the evidence becomes the
-  **identifiers the change introduced**, not the name. A modify-only PR that introduces no
-  new identifier reports **UNKNOWN** — "cannot tell", never "applied".
-- **A citation is not evidence either.** wifey's #130 cites `#518/#521` in its own title
-  while porting only the `route_dedup` half, so any check keyed on PR numbers scores #521
-  applied with its `x_route` half missing. Key on files and symbols, never on the number.
+- **A modified symbol's name is not evidence the port landed.** A signature-only
+  change re-emits its own `def` line, so the name sits on both sides of the diff and a
+  name-presence grep matches the *old* copy. `extract_symbol_changes` splits `added`
+  from `modified`, and for a modified symbol the evidence is the **identifiers the
+  change introduced**, not the name. A modify-only PR that introduces no new
+  identifier reports **UNKNOWN** — "cannot tell", never "applied".
+- **A citation is not evidence either.** A wifey PR can cite a parent PR number while
+  porting only part of its payload, so any check keyed on PR numbers can score the
+  whole parent PR applied with part of it still missing. Key on files and symbols,
+  never on the number.
 - Sweep findings (`tp_r`, ATR multipliers) land in EVALUATE: methodology may
   transfer, values won't (equity cohort ≠ crypto cohort).
 
@@ -258,10 +221,7 @@ and refused.
 make cadence-stamp TASK=sync-parent
 ```
 
-Stamp after the SCAN, not after every PR is decided — the cadence being tracked is *did we
-look*, and the pointer already records *what was decided*. `make cadence-check` reports this
-skill OVERDUE at 7d, and a **missing mark reads as overdue on purpose**.
-
-⚠ **This cadence exists because the failure it catches has already happened here**: by
-2026-08-20 the parent had merged **52** PRs since the pointer while the handoff described the
-range as empty. Nothing in the normal workflow says the parent has moved.
+Stamp after the scan, not after every PR is decided — the cadence being tracked is
+*did we look*, and the pointer already records *what was decided*.
+`make cadence-check` reports this skill OVERDUE at 7d, and a missing mark reads as
+overdue on purpose: nothing in the normal workflow otherwise says the parent has moved.

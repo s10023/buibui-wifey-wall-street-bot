@@ -1,77 +1,35 @@
 #!/usr/bin/env python3
-"""PreToolUse advisory hook — shell habits that silently cost you a result.
+"""PreToolUse advisory hook — shell habits that silently produce a wrong result.
 
-Ported from parent #743/#744/#753 at parent HEAD (2026-09-21). Self-authored (no
-third-party dependency) so every rule is reviewable here, and stdlib-only so it
-runs wherever the session does. Wired via `.claude/settings.json` ->
-`hooks.PreToolUse` on the `Bash` matcher, beside `guard-destructive.py` and
-`advise-foreground-run.py`. **Advisory, never blocking** — every pattern here has
-honest uses, and the failure this guards is a wrong BELIEF rather than a wrong
-command.
+Self-authored and stdlib-only, so it runs wherever the session does. Wired via
+`.claude/settings.json` -> `hooks.PreToolUse` on the `Bash` matcher, beside
+`guard-destructive.py` and `advise-foreground-run.py`. Advisory, never blocking:
+every pattern here has honest uses, so the risk is a wrong belief rather than a
+wrong command.
 
 Protocol: Claude Code pipes `{"tool_name","tool_input":{...},"session_id":...}` on
-stdin. Exit 0 always; the note rides `hookSpecificOutput.additionalContext`.
+stdin. Exit 0 always; the note rides `hookSpecificOutput.additionalContext`. Each
+rule speaks once per session (`_already_spoken`), so a repeated habit doesn't
+retrain its reader to skip the note.
 
-Each rule below is here because CLAUDE.md already states it in prose and the prose
-did not prevent it. That is the whole argument for a marker check over another
-paragraph — the same argument `advise-foreground-run.py` was built on.
+The gate list (RULE 2, `_GATE`) is re-derived against this repo's own Makefile and
+tools/, not copied from upstream — the target names differ. It is phrased without
+an "X has no Y" construction on purpose: with nothing backticked to scope on, that
+form makes `negative-claims` report the line on every branch forever
+(`test_no_claim_line_reports_unconditionally` catches it).
 
-RULE 1 — a hand-rolled waiter (`until ... pgrep`).
-    `run_in_background: true` already re-invokes the session when the job exits,
-    so a second shell watching the first is redundancy that decays into a false
-    report: `pgrep -f <name>` matches a CLASS of process, so the next run of the
-    same kind re-arms a waiter that already fired while its payload still points
-    at the OLD output file. ⚠ **Wifey's own instance is worse than the parent's**:
-    `until ! pgrep -f 'pytest tests/'` matches the polling shell's OWN argv, so it
-    waits on itself; the bracketed fix exits instantly instead, and an empty log
-    then reads as "done". Measured cost here: three mutually-deadlocked waiters
-    and an hour. CLAUDE.md states it, and memory `reference_env_gotchas` stated it
-    before that — it was not read either time.
+Two of the parent's rules stay out of this port, and bringing them over needs more
+than copying the pattern back:
 
-RULE 2 — a gate piped into a truncating reader (`make preflight | tail -8`).
-    A pipeline exits with the status of its LAST command, so `tail` returns 0 and
-    the gate's failure disappears. CLAUDE.md documents the neighbouring half — that
-    `make` collapses every recipe failure to its own exit 2, so you must "read the
-    printed banner" for `preflight` and `wait_ci.py` — but states it about `make`
-    swallowing the code rather than about the pipeline the session itself writes.
-    ⚠ The gate list is RE-DERIVED for this repo, not copied. Upstream's names
-    `daily_check.py`, which this repo never had, while the gates added here are
-    `cadence-check`, `backup-check`, `freshness-check`, `check-orphan-tests` and
-    `check-dead-surfaces`. (Phrased without the "X has no Y" form on purpose: that
-    construction with nothing backticked to scope on makes `negative-claims` report
-    the line on EVERY branch forever, which `test_no_claim_line_reports_unconditionally`
-    catches — it caught this very docstring.)
-
-RULE 3 — `gh auth switch`.
-    It mutates gh's GLOBAL active account. This machine's gh state is shared with
-    the operator's own terminal and every other session on it, nothing switches it
-    back when a turn ends, and a session cannot see whose account it just changed.
-    The scoped form is one env prefix and is what CLAUDE.md's own visibility-flip
-    block uses: `GH_TOKEN=$(gh auth token --user s10023) gh <cmd>`. Memory
-    `feedback_gh_account_stay_s10023` is the standing rule.
-    ⚠ `gh auth token` is the SANCTIONED reader and must not match this rule.
-
-Every rule speaks ONCE PER SESSION. A hook that fires on every occurrence trains
-its reader to skip it — the cost this repo names as "a leg that is never clean
-trains dismissal".
-
-⚠ **THREE of the parent's six rules are deliberately NOT ported. Do not "restore"
-them without reading this.**
-
-  - Parent RULE 4 (two `/card` in one exec) has **no subject here**: wifey has no
-    `/card` skill and no `card/` package. Porting it would ship a rule that can
-    never fire — the same dead-check class that `missed_ports.py` and
-    `orphan_test_audit.py`'s allowlist both shipped as (PRs #301, #302).
-  - Parent RULE 3 (a DUPLICATE waiter on a target something already waits on) and
-    RULE 6 (editing the Python tree while a suite is LIVE) both need to enumerate
-    live processes and match their command lines. The parent does that with
-    `pgrep -f`. ⚠ **`pgrep` does not exist on this Windows host** — verified
-    2026-09-21 against every PATH entry — so a verbatim port would have shipped
-    two rules that silently never fire, which is precisely the failure both of
-    this week's other PRs existed to fix. They need a Windows-capable process
-    probe (`Get-CimInstance Win32_Process`) with its own tests, plus a decision
-    about per-edit latency, since RULE 6 fires on every Edit/Write. Filed
-    separately rather than half-ported.
+- A duplicate-waiter rule and an edit-during-live-suite rule both need to
+  enumerate live processes and match command lines. The parent does that with
+  `pgrep`, which does not exist on this Windows host, so a verbatim port would
+  ship two rules that silently never fire. They need a Windows-capable process
+  probe (`Get-CimInstance Win32_Process`) with its own tests, plus a decision on
+  per-edit latency, since the live-suite rule would fire on every Edit/Write.
+- A rule for two concurrent uses of a `/card` skill has no subject here: wifey has
+  no `/card` skill and no `card/` package, so it would ship a rule that can never
+  fire.
 """
 
 from __future__ import annotations
@@ -84,10 +42,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-# A gate is a command whose EXIT CODE is the answer. Piping one into a truncating
-# reader throws that answer away. Scoped to the gates rather than to every `make`,
-# because the note has to be worth reading the first time to survive to the second.
-# ⚠ RE-DERIVED against this repo's Makefile and tools/, never copied from upstream.
+# A gate's exit code is the answer; piping into a truncating reader discards it.
+# Scoped to the gates below rather than every `make` invocation, since a note has
+# to earn attention the first time to survive to the second.
 _GATE = (
     r"(?:make\s+(?:preflight|test|test-regression|test-cov|typecheck|lint-py"
     r"|lint-py-check|lint-md|sanity-checks|post-branch-checks|post-branch-text"
@@ -100,10 +57,11 @@ _GATE = (
 )
 _TRUNCATOR = r"(?:tail|head)\b"
 
-# Anchored where a command can actually START -- the fix guard-destructive.py
-# already carries, after an unanchored rule there blocked its own commit message.
-# Allows leading env assignments (`PYTHONUTF8=1 make ...`), which are part of the
-# command and are load-bearing on this host.
+# Anchored at a real command start, not just a substring match: unanchored, this
+# could fire inside a quoted string such as a commit message that mentions the
+# command (guard-destructive.py anchors the same way, for the same reason).
+# Leading env assignments (`PYTHONUTF8=1 make ...`) are allowed since they're
+# part of the command and load-bearing on this host.
 _CMD_START = r"(?:^|[\n;&|(])\s*(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]*\s+)*"
 
 RULES: list[tuple[str, str, str]] = [
@@ -149,18 +107,13 @@ _HEREDOC = re.compile(
 
 
 def _strip_heredocs(command: str) -> str:
-    """Drop heredoc BODIES before matching -- they are data, not commands.
+    """Drop heredoc bodies before matching: they are data, not commands.
 
-    Found upstream the moment the hook shipped: the commit message documenting
-    these very rules contained "until ... pgrep", so `git commit -F - <<'MSG' ...`
-    tripped rule 1 on its own changelog. This repo already knows the class --
-    settings.json's `gh pr create` reminder anchors on `head -1` precisely so a
-    grep or heredoc merely containing the string no longer self-triggers, and
-    CLAUDE.md tells you to pass commit bodies with `-F` for the same reason.
-
-    Stripping the body rather than keeping only the first line is the stronger
-    form: `head -1` would also blind the hook to a waiter on line 3 of a genuine
-    multi-line script, which is exactly where one tends to be written.
+    A heredoc can contain the literal text of a rule (e.g. a commit message that
+    quotes "until ... pgrep") and would otherwise trip that rule on its own
+    content. Stripping the whole body rather than keeping only the first line
+    also catches a waiter written a few lines into a multi-line script, not just
+    the first line of it.
     """
     return _HEREDOC.sub("<<STRIPPED", command)
 

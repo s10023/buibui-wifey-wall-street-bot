@@ -1,31 +1,29 @@
 """Audit-tool verdicts via bootstrap CI + multiple-testing haircut.
 
-Consumers here are :mod:`analytics.warning_audit` (via
-``tools/warning_value_audit.py``) and ``tools/regime_gate_replay.py``. It
-replaces a crude ±0.05R bar with two statistical gates that BOTH must hold
-before a cell earns an ``ENABLE`` / ``DISABLE`` verdict:
+Consumers are :mod:`analytics.warning_audit` (via
+``tools/warning_value_audit.py``) and ``tools/regime_gate_replay.py``. Replaces
+a flat ±0.05R bar with two gates that must both hold before a cell earns an
+``ENABLE`` / ``DISABLE`` verdict:
 
 1. **Effect size (cluster bootstrap CI).** A CI on the suppressed slice's mean R
-   must clear the ±``bar`` on the correct side (``ci.hi <= -bar`` → losers we
-   should drop; ``ci.lo >= +bar`` → winners we must not suppress). It resamples
-   whole **clusters**, not trades.
+   must clear the ±``bar`` on the correct side (``ci.hi <= -bar`` -> losers to
+   drop; ``ci.lo >= +bar`` -> winners not to suppress). Resamples whole
+   clusters, not trades.
 2. **Multiple-testing significance (Holm haircut).** Each tested cell's
    two-sided p-value (from its slice Sharpe) is Holm-adjusted across the family
    of cells tested in one audit run; the adjusted p-value must be ``< alpha``.
-   The t-statistic uses ``n_eff = n / DEFF``, never the trade count.
+   The t-statistic uses ``n_eff = n / DEFF``, never the raw trade count.
 
-⚠ **BOTH legs are priced on the cluster unit, and it is REQUIRED.** A block
-bootstrap absorbs *serial* dependence — it resamples runs adjacent in the array
-it is handed — and same-day cross-symbol trades are scattered through that
-array, so no block length reaches them. Undeflated, this repo's own panel read
-30 of 64 cells as significant where 12 survive, and single-strategy CIs were
-~1.9x too narrow. See :mod:`analytics.research_guards.cluster` and
+Both legs price on the cluster unit, which is required rather than optional: a
+block bootstrap only absorbs serial dependence between array-adjacent runs, and
+same-day cross-symbol trades are scattered through the array, so no block
+length reaches them. See :mod:`analytics.research_guards.cluster` and
 ``docs/audits/2026-08-20-audit-guard-cluster-key-fix.md``.
 
-Cells with ``n_supp < min_n``, **or with an unusable ``cluster_key``**, are
-``INSUFFICIENT`` and excluded from the family (they never inflate the haircut
-denominator). The verdict / reason shape mirrors :mod:`analytics.sweep_guard` so
-the project's guard consumers stay consistent.
+Cells with ``n_supp < min_n``, or with an unusable ``cluster_key``, are
+``INSUFFICIENT`` and excluded from the family so they cannot inflate the
+haircut denominator. The verdict / reason shape mirrors
+:mod:`analytics.sweep_guard`.
 
 Pure: no DB / IO. Consumes :mod:`analytics.research_guards`.
 """
@@ -72,24 +70,25 @@ class AuditCell:
     trades' R — used only for the ``CONCENTRATE`` kept-vs-suppressed comparison;
     pass ``[]`` when there is no kept slice (e.g. the ADR aggregate view).
 
-    ``cluster_key`` is the dependence unit, one entry per ``supp_r`` row, and it
-    is **REQUIRED and positioned before the defaulted** ``kept_r`` so mypy
-    forces every call site to state it. For this repo's panels that is the
-    **session day**: same-day cross-symbol trades share the day's move, and a
-    block bootstrap cannot reach them because it resamples runs adjacent *in the
-    array*, where those rows are scattered.
+    ``cluster_key`` is the dependence unit, one entry per ``supp_r`` row. It is
+    required and positioned before the defaulted ``kept_r`` so mypy forces
+    every call site to state it. For this repo's panels that is the session
+    day: same-day cross-symbol trades share the day's move, and a block
+    bootstrap cannot reach them, since it resamples runs adjacent in the
+    array, where those rows are scattered.
 
-    ⚠ **A mismatched length FAILS CLOSED to ``INSUFFICIENT``** rather than
-    falling back to per-trade resampling. An unmeasurable panel and an
-    uncorrelated one must not both read as a deflator of 1.0 — that is the
-    fail-open shape this repo already closed in ``tools/distil_power.py``, and
-    the whole reason the key is required instead of optional.
+    A mismatched length fails closed to ``INSUFFICIENT`` rather than falling
+    back to per-trade resampling: an unmeasurable panel and an uncorrelated
+    one must not both read as a deflator of 1.0 (see the fail-open bug this
+    avoids in ``tools/distil_power.py``), which is why the key is required
+    rather than optional.
 
-    Keys are opaque and only compared for equality, so a UTC-day integer, an ISO
-    date or a ``(symbol, day)`` tuple all work. **For US RTH equities the UTC
-    calendar day IS the session day** — RTH spans 13:30–20:00 UTC in summer and
-    14:30–21:00 UTC in winter, both inside one UTC date — so flooring a
-    millisecond stamp to the UTC day is correct here and needs no ET conversion.
+    Keys are opaque and only compared for equality, so a UTC-day integer, an
+    ISO date or a ``(symbol, day)`` tuple all work. For US RTH equities the
+    UTC calendar day is the session day — RTH spans 13:30-20:00 UTC in summer
+    and 14:30-21:00 UTC in winter, both inside one UTC date — so flooring a
+    millisecond stamp to the UTC day is correct here and needs no ET
+    conversion.
     """
 
     label: str
@@ -129,24 +128,19 @@ class CellVerdict:
 
 
 def powered_null(ci_lo: float | None, ci_hi: float | None, *, bar: float) -> bool:
-    """True iff a two-sided CI lies strictly INSIDE ``±bar``.
+    """True iff a two-sided CI lies strictly inside ``±bar``.
 
-    **This is the only honest test for a powered null, and ``n >= min_n`` is
-    not a substitute for it.** A sample-size floor says a test *ran*; it never
-    says the test could have *seen* anything, so it cannot distinguish "the
-    effect is smaller than the bar" from "the CI is five times the bar and we
-    cannot tell". Only the bar carries the notion of "worth acting on", so only
-    a CI sized against the bar can license a negative claim.
+    This is the only honest test for a powered null; ``n >= min_n`` is not a
+    substitute for it. A sample-size floor says a test ran, not that it could
+    have seen anything, so it cannot distinguish "the effect is smaller than
+    the bar" from "the CI is five times the bar and we cannot tell". Only a CI
+    sized against the bar can license a negative claim
+    (``docs/audits/2026-08-13-warning-value-audit.md`` has the case where an
+    ``n >= min_n`` floor alone called cells null that this predicate does not).
 
-    The warning-value audit is this repo's own falsifier: awarding COSMETIC on
-    ``n >= min_n`` labelled 11 of 12 cells a null, and under this predicate
-    **0 of 11 survive** at a half-width median 4.1× the bar
-    (``docs/audits/2026-08-13-warning-value-audit.md``).
-
-    Returns ``False`` for a missing or non-finite bound: a cell that was never
-    tested has established nothing. That default is load-bearing — the failure
-    callers care about is a null claimed too easily, so the untested case must
-    fall to ``INSUFFICIENT``, never to ``powered``.
+    Returns ``False`` for a missing or non-finite bound: an untested cell has
+    established nothing, so it must fall to ``INSUFFICIENT`` rather than being
+    read as powered.
 
     This predicate is two-sided. A best-of-k arm sweep needs a one-sided
     variant, which this repo does not have; do not reach for this one there.
@@ -164,16 +158,16 @@ MS_PER_DAY = 86_400_000
 def session_day_keys(ts_ms: Sequence[int]) -> list[int]:
     """UTC calendar day per millisecond stamp — the cluster unit for this repo.
 
-    **For US RTH equities the UTC day IS the session day**, which is why no ET
+    For US RTH equities the UTC day is the session day, which is why no ET
     conversion appears here: the regular session spans 13:30–20:00 UTC under EDT
-    and 14:30–21:00 UTC under EST, and both sit inside a single UTC date. That is
-    a property of the *session*, not of the bar grid — CLAUDE.md's warning that a
-    `4h` bar renders at a different ET hour either side of the DST switch is
-    about hour-keyed logic and does not reach a day key.
+    and 14:30–21:00 UTC under EST, both inside a single UTC date. That is a
+    property of the session, not of the bar grid — a `4h` bar rendering at a
+    different ET hour either side of the DST switch is about hour-keyed logic
+    and does not reach a day key.
 
-    ⚠ **Do not port this to a 24h tape.** On crypto the UTC day is an arbitrary
-    cut through a continuous session, so it would group trades that share no
-    common driver while splitting ones that do.
+    Do not port this to a 24h tape: on crypto the UTC day is an arbitrary cut
+    through a continuous session, so it would group trades that share no common
+    driver while splitting ones that do.
 
     One definition, used by every :class:`AuditCell` producer, so two consumers
     cannot silently cluster on different units and report comparable numbers.
@@ -205,11 +199,9 @@ def _two_sided_p(abs_sr: float, n_eff: int) -> float:
     internal ``t = sr·√n`` so the family p-values align exactly with the value
     the haircut recomputes per cell.
 
-    ⚠ **``n_eff``, never the trade count.** Callers must pass the
-    cluster-deflated count and pass the *same* integer to ``haircut_sharpe``,
-    or the two disagree about the test they are running. Undeflated, this leg
-    called 30 of 64 cells significant where 12 survive — a larger error channel
-    than the CI it sits beside.
+    Pass the cluster-deflated ``n_eff``, never the raw trade count, and pass
+    the same integer to ``haircut_sharpe`` — otherwise the two disagree about
+    which test they are running.
     """
     t = abs_sr * math.sqrt(n_eff)
     return 2.0 * (1.0 - _NORM.cdf(abs(t)))
@@ -252,9 +244,9 @@ def evaluate_audit_cells(
         arr = np.asarray(cell.supp_r, dtype=np.float64)
         n = int(arr.shape[0])
         if len(cell.cluster_key) != n:
-            # FAIL CLOSED. Resampling trades here would report a confident,
-            # undeflated verdict — the exact failure the required key exists to
-            # prevent — so an unusable key must cost the verdict, not the guard.
+            # Fail closed: resampling trades here would report a confident,
+            # undeflated verdict, so an unusable key costs the verdict, not the
+            # guard.
             skip_reason[i] = f"cluster_key length {len(cell.cluster_key)} != n_supp {n}"
             continue
         if n < min_n or n < 2:
@@ -284,8 +276,8 @@ def evaluate_audit_cells(
         e.idx: (e.n_clusters, e.design_effect) for e in eligible
     }
     for e in eligible:
-        # SAME integer in both, or the family p-value and the value the haircut
-        # recomputes describe different tests.
+        # Same integer in both, or the family p-value and the value the
+        # haircut recomputes describe different tests.
         hr = haircut_sharpe(
             abs(e.sr),
             e.n_eff,

@@ -2,17 +2,14 @@
 
 A stop or a limit resting at `level` does not fill at `level` when the bar opens
 already beyond it — it fills at the open. Booking the level regardless is free
-money on the loss side and a haircut on the win side, and until 2026-08-20 both
-books did exactly that (`engine.py`'s `exit_price = sl_price` / `= tp_price`, and
-the live resolver's flat `-1.0` / `implied_tp_r`).
+money on the loss side and a haircut on the win side.
 
-**Symmetric by construction, and that is the whole point.** The 2026-08-19 audit
-measured only the adverse tail and the fix was very nearly shipped one-sided.
-Pricing the adverse gap alone does not remove a bias, it replaces one with its
-mirror: on the live ledger 21.1% of losses gap through their stop, but **26.1% of
-wins gap through their target** — the higher rate of the two, since a favourable
-gap is exactly what carries price past a distant level. One-sided, the correction
-overstates the real bias by ~65%.
+Symmetric by construction, and that is the whole point: pricing only the
+adverse gap does not remove a bias, it replaces one with its mirror. On the
+live ledger, wins gap through their target at a higher rate than losses gap
+through their stop (26.1% vs 21.1%), since a favourable gap is exactly what
+carries price past a distant level — pricing the adverse tail alone overstates
+the real bias by about 65%. Do not price gaps one-sided again.
 
 Kept as a separate pure module for the same reason `cost_model.py` is: the live
 resolver imports it without pulling in the engine, so the two books cannot drift
@@ -25,7 +22,7 @@ __all__ = ["gap_fill_price", "level_is_on_the_expected_side", "triggers_downward
 
 
 def triggers_downward(*, direction: str, side: str) -> bool:
-    """True when the resting order is reached by a FALLING price.
+    """True when the resting order is reached by a falling price.
 
     A long's stop and a short's target both sit below entry and trigger on the way
     down; a long's target and a short's stop sit above and trigger on the way up.
@@ -74,10 +71,9 @@ def level_is_on_the_expected_side(
     a gap against one turns a loss into a positive R (or a win into a negative
     one) with nothing to flag it.
 
-    This is the SINGLE definition of that test. `implied_tp_r` used to spell it
-    `implied > 0.0` inline; both now route here, because the gap-fill override
-    has to gate on exactly the condition the credit already gated on, and two
-    spellings of one rule is how the declared/effective split diverged before.
+    This is the single definition of that test: the gap-fill override must gate
+    on exactly the condition the credit already gated on, and two spellings of
+    one rule is how the declared/effective split can diverge.
     """
     if triggers_downward(direction=direction, side=side):
         return level < entry

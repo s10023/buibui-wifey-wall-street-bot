@@ -570,7 +570,7 @@ def _collect_sweep_results(
                 fee_pct=cfg.fee_pct,
                 day_filter=cfg.day_filter,
                 sweep_id=sweep_id,
-                # What the gate EXECUTED, not what the config declared. Both
+                # What the gate executed, not what the config declared. Both
                 # branches above (engine when live_parity.adr_bias is on, the
                 # legacy pre-filter when it is off) reduce to the same two
                 # conditions this helper encodes.
@@ -584,7 +584,7 @@ def _collect_sweep_results(
                 cost_model=cfg.cost_model.to_json()
                 if cfg.cost_model is not None
                 else None,
-                # The gate set this sweep RAN under. The shared base turns five
+                # The gate set this sweep ran under. The shared base turns five
                 # on, and `cli/backtest.py` can override any of them per run, so
                 # without this axis an overridden sweep replaces the routine
                 # one's row at the same id.
@@ -652,7 +652,7 @@ def run_backtest_sweep(
     # Every rating this sweep feeds is conditional on the resolved gate state,
     # so echo it. `conflict_resolver` must stay off here — it reads
     # `confidence_ratings`, which this sweep produces, making it a fixed-point
-    # iteration rather than a gate (#149).
+    # iteration rather than a gate.
     print(f"live_parity: {cfg.live_parity.describe()}")
 
     single_run_mode = not tp_sweep_mode and not atr_sweep_mode

@@ -60,9 +60,9 @@ def gap_fill_warning(
 ) -> str | None:
     """Return a warning string if the unfilled gap threatens the trade.
 
-    For a LONG trade: an unfilled gap-down above entry may act as resistance
+    For a long trade: an unfilled gap-down above entry may act as resistance
     as price attempts to fill the gap (pulling price down).
-    For a SHORT trade: an unfilled gap-up below entry may act as support
+    For a short trade: an unfilled gap-up below entry may act as support
     as price attempts to fill the gap (pushing price up).
 
     Returns None when the gap is already filled or poses no threat.

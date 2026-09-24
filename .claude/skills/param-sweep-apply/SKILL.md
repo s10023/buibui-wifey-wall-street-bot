@@ -12,6 +12,9 @@ allowed-tools: Bash, Read, Edit, Write
 
 # Param Sweep Apply — Auto-apply WFO findings to TOML
 
+Dormant while the TA book is frozen (see CLAUDE.md → Fork lineage); run only for
+maintenance the user asks for.
+
 Given one or more pasted WFO sweep tables (from `wifey param-sweep` or `wifey param-audit`),
 automatically determine the best tp_r per strategy × TF and apply to all relevant TOML files.
 

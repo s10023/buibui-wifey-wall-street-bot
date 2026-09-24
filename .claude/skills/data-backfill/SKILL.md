@@ -26,8 +26,7 @@ first.
 
 `backfill` walks history from `--since` forward, paging in 5,000-bar chunks
 (`BARS_MAX_LIMIT`) until a short page arrives — so a deep `--since` is served in
-full. ⚠ The "1500-candle" figure that stood here was the parent's Binance limit
-and never applied to yfinance; until 2026-08-19 there was no paging at all. `sync` reads the latest stored candle per (symbol, tf) and pulls only
+full. `sync` reads the latest stored candle per (symbol, tf) and pulls only
 what's missing.
 
 ## Most common invocations
@@ -54,8 +53,8 @@ There is no single canonical re-fill date — pick a deliberate `--since` and ke
 it constant across saved runs so results stay comparable (`run_backtest_sweep`
 otherwise anchors on now-minus-`days`, so two ordinary runs never share a
 window). The research universe's own backfill floor is **2018-01-02**
-(`make wifey-universe-backfill` re-fetches from there; 477 of 505 members share
-that first bar).
+(`make wifey-universe-backfill` re-fetches from there); most of the 505-member
+universe shares that first bar.
 
 ### Incremental sync (one-shot)
 

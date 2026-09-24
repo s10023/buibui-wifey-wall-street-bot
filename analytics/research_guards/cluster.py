@@ -6,23 +6,21 @@ observations that are adjacent *in the array it is handed*. It cannot absorb
 adjacent at all: twenty symbols firing on the same session day are twenty rows
 scattered through the array, and no block length reaches them.
 
-Measured on this repo's own panel (64 cells, 27,026 trades,
-``docs/audits/2026-08-20-audit-guard-cross-sectional-clustering.md``): median
-ICC by day **0.598**, design effect **3.349**, day-clustered CIs **1.92×** wider
-than the block-bootstrap ones they replaced. The analytic route (``√DEFF``,
-1.830) and the resampling route (1.919) agree at correlation **0.80**, which is
-why both are implemented here rather than one standing in for the other.
+On this repo's panel the deflation is not cosmetic — day-clustered CIs run
+roughly twice as wide as the block-bootstrap ones they replaced, and the
+analytic (``√DEFF``) and resampling routes agree closely
+(``docs/audits/2026-08-20-audit-guard-cross-sectional-clustering.md``), which
+is why both are implemented here rather than one standing in for the other.
 
 Two functions, because a verdict needs both legs and they fail differently:
 
-* :func:`cluster_bootstrap_ci` resamples whole **clusters**, so the CI widens to
+* :func:`cluster_bootstrap_ci` resamples whole clusters, so the CI widens to
   match the real information content.
 * :func:`cluster_stats` returns the design effect and ``n_eff = n_obs / DEFF``
-  for the **significance** leg. That leg is the larger of the two here — an
-  undeflated ``t = sr·√n_trades`` called 30 of 64 cells significant where 12
-  survive.
+  for the significance leg. That leg carries the larger risk of the two: an
+  undeflated ``t = sr·√n_trades`` overstates significance on a clustered panel.
 
-⚠ **The deflator can only shrink.** ``icc`` is clamped to ``[0, 1]`` and
+The deflator can only shrink: ``icc`` is clamped to ``[0, 1]`` and
 ``design_effect`` to ``>= 1``, so a negative sample ICC — routine on small
 panels — never manufactures *more* independence than the raw count. The failure
 this guards against is a confident number, so the safe direction is fewer
@@ -81,7 +79,7 @@ def cluster_stats(
     then ``1 + (m̄ - 1)·ICC`` on the *plain* mean cluster size, matching the
     figure the audit reports.
 
-    Three degenerate shapes, all resolved toward LESS information:
+    Three degenerate shapes, all resolved toward less information:
 
     * **one cluster** — every observation is in it, so ``n_eff`` is 1. This is
       the honest answer, not a guard: a single day of trades is one draw.
@@ -134,7 +132,7 @@ def cluster_bootstrap_ci(
     alpha: float = 0.05,
     seed: int | None = None,
 ) -> BootstrapCI:
-    """Percentile CI resampling whole CLUSTERS with replacement.
+    """Percentile CI resampling whole clusters with replacement.
 
     The unit of resampling is the cluster, so every observation sharing a key
     travels together and the same-day correlation the block bootstrap could not

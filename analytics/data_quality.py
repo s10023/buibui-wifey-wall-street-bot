@@ -6,12 +6,12 @@ integrity problems by positional row index (0..n-1 over a reset index).
 
 ``check_ohlcv`` stays calendar-free (no library dependency, pure): it flags only
 unambiguous timestamp anomalies (duplicates, non-monotonic order). Calendar-aware
-*session-gap* detection (N3 PR2) lives in the pure ``detect_session_gaps`` /
+*session-gap* detection lives in the pure ``detect_session_gaps`` /
 ``SessionGapReport`` below, fed an NYSE trading-date list by
 ``analytics.trading_calendar`` (the only module importing ``exchange_calendars``).
 Missing sessions are warn-only — absent data, never quarantined.
 
-A FROZEN TAIL (``series_ends_here=True``) is the one quarantine set that is a
+A frozen tail (``series_ends_here=True``) is the one quarantine set that is a
 property of the *series* rather than of a row, so it is opt-in per call: see
 ``check_ohlcv``.
 """
@@ -103,7 +103,7 @@ def _idx_tuple(mask: "pd.Series[bool]") -> tuple[int, ...]:
 
 
 def _trailing_frozen_idx(df: pd.DataFrame, valid: "pd.Series[bool]") -> tuple[int, ...]:
-    """Positional indices of the maximal FROZEN run that ENDS at the last row.
+    """Positional indices of the maximal frozen run that ends at the last row.
 
     Frozen = non-positive volume AND a close identical to the previous bar's.
     A provider that keeps quoting a name after its last trade forward-fills the
@@ -111,13 +111,12 @@ def _trailing_frozen_idx(df: pd.DataFrame, valid: "pd.Series[bool]") -> tuple[in
     the end of the frame, because the same row shape occurs harmlessly deep in
     history.
 
-    ⚠ **Position is the whole discriminator, and the row shape alone is not.**
-    Measured 2026-09-02 over the full DB: "zero volume AND unchanged close"
-    matches 1,368 rows, only 9 of which are dead tails — the other 1,359 sit
-    mid-history in live names (808 ``SW``, 231 ``AMCR``, 188 ``^GSPC``).
-    Requiring the run to terminate the series leaves exactly those 9. The
-    nearest surviving frozen row is 81 bars from its series end, so the two
-    populations do not overlap.
+    Position is the discriminator; the row shape alone is not. Across the full
+    DB, "zero volume AND unchanged close" matches roughly 1,368 rows, of which
+    only 9 are dead tails — the rest sit mid-history in live names (808 ``SW``,
+    231 ``AMCR``, 188 ``^GSPC``). Requiring the run to terminate the series
+    leaves exactly those 9, and the nearest surviving frozen row is 81 bars
+    from its series end, so the two populations do not overlap.
 
     Row 0 can never start a run (no previous close inside the frame), which
     fails in the safe direction: a wholly-frozen frame keeps its first row.

@@ -882,10 +882,9 @@ Three trees are single-copy and unreachable by git, so git protects none of them
   watermark, Streams A/B, video notes, parent-sync triage, measurement scripts, the handoff.
 - The **memory tree** (~1MB) holds `project_todo_master.md` — the single source of truth
   to-do, carrying the north star and gates G1–G4 — plus `MEMORY.md` and ~70 topic files.
-  ⚠ It lives *outside* the repo, at `~/.claude-personal/projects/<repo-path-slug>/memory`,
-  which is why it went uncovered until 2026-08-18: the backup's tree and file lists both
-  resolve against the repo root, so anything above it was invisible by construction. It is
-  now carried by the script's `EXTERNAL_ROOTS` section.
+  It lives outside the repo, at `<config-root>/projects/<repo-path-slug>/memory` (resolved by
+  `tools/claude_home.py`). The backup's tree and file lists resolve against the repo root, so
+  the script's `EXTERNAL_ROOTS` section carries it.
 
 `.gitignore` excludes `docs/plans/` wholesale, so `git ls-files docs/plans/ | wc -l` returns
 **0** and a `git clean -xdf` deletes all of it with no prompt. `analytics.db.bak` in the repo
