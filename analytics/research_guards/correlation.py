@@ -1,6 +1,6 @@
-"""Correlation deflator — how many INDEPENDENT series a pooled panel carries.
+"""Correlation deflator — how many independent series a pooled panel carries.
 
-Ported 2026-08-20 from the parent's ``analytics/forecast/attribution.py``
+Ported from the parent's ``analytics/forecast/attribution.py``
 (``effective_independent_series``), where it deflates the EWMAC regime
 attribution's t-stats. The numeric path is unchanged. Four things diverge, and
 each is a decision rather than drift:
@@ -18,9 +18,9 @@ each is a decision rather than drift:
   :func:`effective_independent_series`.
 * **Domain.** The docstrings speak about equities rather than perps.
 
-⚠ **The parent's measured ``n_eff`` 2.92 does NOT transfer.** That is 25 crypto
-perps at mean pairwise ``rho`` 0.315, and it moves on its own panel (14 series
-→ 1.97, three → 1.42). Measure the panel in front of you. A deflator quoted for
+The parent's ``n_eff`` of 2.92 does not transfer: that is 25 crypto perps at
+mean pairwise ``rho`` 0.315, and it moves on its own panel (14 series → 1.97,
+three → 1.42). Always measure the panel in front of you. A deflator quoted for
 one panel and reused on another is the same defect as ``regime.py``'s crypto
 bar counts crossing the fork — a figure that looks portable and silently
 changes meaning.
@@ -108,9 +108,9 @@ def effective_independent_series(
         return SeriesDeflator(
             k=k, rho=rho, n_eff=float(k), t_deflator=1.0, measured=False
         )
-    # Clamped at 1.0 on purpose (upstream's reasoning, carried verbatim). A
+    # Clamped at 1.0 on purpose (the parent's reasoning, carried verbatim). A
     # negative mean correlation would make n_eff > k and the "deflator" would
-    # INFLATE the t-stat — the fail-open direction for something whose whole
+    # inflate the t-stat — the fail-open direction for something whose whole
     # job is to stop a cell reading as significant when it is not. It does not
     # bind on a long-only equity panel (rho > 0), but a guard should be
     # fail-safe by construction, not by luck.

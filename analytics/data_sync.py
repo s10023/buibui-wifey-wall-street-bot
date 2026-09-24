@@ -8,16 +8,16 @@ cannot be served in one call: asking for ``1d`` bars since 1927 would store
 a symbol with no recent history. ``backfill`` pages instead, advancing past the
 last bar it stored until a short page proves the history is exhausted.
 
-``sync`` appends the tail, which is why a SPLIT used to leave a permanent fake
-return in the stored series: the provider restates every historical bar onto the
-post-split basis, while the bars already stored keep the old one, so the seam
-survives every later sync. ``ADJUSTMENT_BASIS_TOL`` closes that — the overlap
-bar is re-fetched anyway, so the restatement is observable at exactly one point
-and the whole series is re-synced when it moves.
+``sync`` appends the tail, which is why a split can leave a permanent fake
+return in the stored series: the provider restates every historical bar onto
+the post-split basis, while the bars already stored keep the old one, so the
+seam survives every later sync unless caught. ``ADJUSTMENT_BASIS_TOL`` catches
+it: the overlap bar is re-fetched anyway, so the restatement is observable at
+exactly one point, and the whole series is re-synced when it moves.
 
-⚠ The guard prevents a NEW seam; it cannot repair one already stored, because
+The guard only prevents a new seam; it cannot repair one already stored, since
 the overlap bar has long since settled onto the new basis by the time the seam
-is noticed. Repairing an existing seam is a full re-backfill of that series.
+is noticed. Repairing an existing seam needs a full re-backfill of that series.
 """
 
 import logging
@@ -35,12 +35,12 @@ from analytics.data_store import (
 )
 from analytics.trading_calendar import check_session_gaps
 
-#: Relative move in the re-fetched OVERLAP bar's close that means the provider
+#: Relative move in the re-fetched overlap bar's close that means the provider
 #: restated the series rather than merely finalising a forming candle.
 #:
-#: ⚠ This threshold is only safe because ``utils/yfinance_client`` fetches with
-#: ``auto_adjust=False``. Yahoo applies SPLITS to the raw OHLC series
-#: retroactively but leaves DIVIDENDS out of it, so a stored bar's close is
+#: This threshold is only safe because ``utils/yfinance_client`` fetches with
+#: ``auto_adjust=False``. Yahoo applies splits to the raw OHLC series
+#: retroactively but leaves dividends out of it, so a stored bar's close is
 #: stable across syncs except when a split lands — with ``auto_adjust=True``
 #: every ex-dividend date would shift history a little and trip this on names
 #: that did nothing. Re-derive the tolerance if that flag ever changes.
@@ -124,7 +124,7 @@ def _store_page(
 
 
 def basis_changed(before: float | None, after: float | None) -> bool:
-    """Did the provider restate the OVERLAP bar beyond rounding noise?
+    """Did the provider restate the overlap bar beyond rounding noise?
 
     ``before`` is the close stored for that bar before the sync, ``after`` the
     close the same bar came back with. A missing or non-positive ``before``
@@ -148,7 +148,7 @@ def sync(
     once the bar closes — otherwise a candle stored mid-formation would keep
     its stale close forever.
 
-    That overlap bar is also the ONLY point at which a change of the provider's
+    That overlap bar is also the only point at which a change of the provider's
     split-adjustment basis is observable, and this re-syncs the whole series
     when it moves — see ``ADJUSTMENT_BASIS_TOL``.
 

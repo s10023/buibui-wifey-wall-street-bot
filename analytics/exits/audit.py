@@ -3,49 +3,43 @@
 For each resolved alert this walks the forward OHLCV window (entry → entry +
 `max_hold_bars`) under a policy via `replay_exits`, and scores the resulting
 per-trade R series. Every arm sees identical entries and stops — only exit
-management differs, and the runner targets the alert's own EFFECTIVE R target
+management differs, and the runner targets the alert's own effective R target
 (see `implied_tp_r`) — so the comparison is apples-to-apples. With that target
-the `fixed` arm reproduces the live resolver's label on **267 of 267** rows.
+the `fixed` arm reproduces the live resolver's label on 267 of 267 rows.
 
-THE METRIC SUBSTITUTION (the reason this port sat backlogged; parent PR #437)
----------------------------------------------------------------------------
-Upstream judged exits on **portfolio Sharpe** from its P1 `PaperBook` — a daily
-equity curve under fixed-fractional sizing and concurrency caps. This fork has
-no `portfolio/` package, so that headline is unavailable. The substitution:
+This fork has no `portfolio/` package, so the parent's portfolio-Sharpe headline
+(a daily equity curve under fixed-fractional sizing and concurrency caps) is not
+available here. The metrics below are a substitution, not a degraded copy: the
+parent's portfolio headline was dominated by its caps (~90% of alerts were
+cap-skipped), which hid the population-level exit effect it measured as real.
+With no book, this module measures exactly that population effect instead.
 
-  * **Headline = per-trade R Sharpe**, `stats_overfit.sharpe_ratio` over the
-    realized-R series — the same statistic the four equity sleeves use. It is
-    **deliberately not annualized**: the ledger mixes `4h` and `1d` alerts at
+  * Headline is per-trade R Sharpe (`stats_overfit.sharpe_ratio` over the
+    realized-R series), the same statistic the four equity sleeves use.
+    Deliberately not annualized: the ledger mixes `4h` and `1d` alerts at
     irregular spacing with no equity curve, so any `sqrt(N)` factor would be
     invented rather than measured.
-  * **The decisive leg is a PAIRED bootstrap CI on the per-alert R uplift** —
+  * The decisive leg is a paired bootstrap CI on the per-alert R uplift —
     `research_guards.block_bootstrap_ci` with `stat_fn=mean` over
-    `d_i = r_policy_i − r_fixed_i`. Every arm re-resolves *the same* alerts, so
+    `d_i = r_policy_i − r_fixed_i`. Every arm re-resolves the same alerts, so
     pairing removes alert-level variance; a Sharpe delta alone is a point
-    estimate, and a point estimate is a coin flip with extra steps (#152).
-  * **DSR is a reported STAMP, not a leg** — `research_guards.dsr` with the arms
-    themselves as `trial_srs`, matching the four sleeves' call shape. It inherits
-    their normal higher-moment defaults, which a per-trade R series (point mass
-    at exactly −1R, long right tail) violates; that is tolerable for a stamp and
-    would not be for a leg, which is the other half of why it is not one.
-  * **`passes_sleeve_gate` is deliberately NOT called**, for two reasons that
-    are both live footguns here. Its `sharpe_annual` leg expects an annualized
-    sleeve Sharpe; feeding it a per-trade Sharpe would quote `GATE_SHARPE` as
-    "our bar" while measuring a different quantity — a gate is its full leg set,
-    not the constant with a name (#165). And its `pbo` leg needs a CSCV trial
-    matrix; with a handful of named arms CSCV returns NaN, which `passes_gate`
-    turns into an automatic fail, i.e. a guard that can never pass (#166's
-    mirror). The arms below are named hypotheses, not a swept grid.
-
-Upstream's portfolio headline was dominated by its caps (~90% of alerts were
-cap-skipped), which is why it could not see the population-level exit effect it
-measured as real. With no book, this fork measures **exactly that population
-effect** — the substitution is not a degraded copy of the parent's question, it
-is the half of it the parent could not reach.
+    estimate, and a point estimate is a coin flip with extra steps.
+  * DSR is a reported stamp, not a leg — `research_guards.dsr` with the arms
+    themselves as `trial_srs`, matching the four sleeves' call shape. It
+    inherits their normal higher-moment defaults, which a per-trade R series
+    (point mass at exactly −1R, long right tail) violates; tolerable for a
+    stamp, not for a leg, which is the other half of why it is not one.
+  * `passes_sleeve_gate` is deliberately not called. Its `sharpe_annual` leg
+    expects an annualized sleeve Sharpe, so feeding it a per-trade Sharpe would
+    quote `GATE_SHARPE` as "our bar" while measuring a different quantity — a
+    gate is its full leg set, not the constant with a name. Its `pbo` leg also
+    needs a CSCV trial matrix; with a handful of named arms CSCV returns NaN,
+    which `passes_gate` turns into an automatic fail, i.e. a guard that can
+    never pass. The arms below are named hypotheses, not a swept grid.
 
 Per-tf `max_hold_bars` is `DEFAULT_MAX_HOLD_BARS` — the live resolver's own
-window, reused rather than redeclared. The time-stop floors are RE-DERIVED for
-equities (`docs/audits/2026-08-14-mfe-timing.md`); upstream's are crypto.
+window, reused rather than redeclared. The time-stop floors are re-derived for
+equities (`docs/audits/2026-08-14-mfe-timing.md`); the parent's are crypto.
 """
 
 from __future__ import annotations
@@ -202,15 +196,13 @@ def resolve_ledger_under_policy(
         if mh is None:
             continue
         start = min(int(g[5]) for g in grp)
-        # Fetch to the END OF THE SERIES rather than deriving a calendar span
-        # from a bar count. Upstream used `max(candle_ts) + (mh + 2) * tf_ms`,
-        # which is exact on a 24/7 crypto tape and covers **0.0%** of real
-        # equity windows here: RTH gaps mean 30 `4h` bars span ~132 `4h` units
-        # of wall-clock (p95 150), and 14 `1d` bars span ~20 (p95 22). The
-        # truncation silently marked would-be winners to market at the last
-        # fetched bar, and it biased the A/B — a short window cannot touch a
-        # policy whose time-stop fires at bar 3–4, only the long-held baseline.
-        # Removing the trap by construction beats re-tuning the literal.
+        # Fetch to the end of the series rather than deriving a calendar span
+        # from a bar count: `max(candle_ts) + (mh + 2) * tf_ms` is exact on a
+        # 24/7 tape but wrong here, since RTH gaps mean 30 `4h` bars span ~132
+        # `4h` units of wall-clock (p95 150) and 14 `1d` bars span ~20 (p95 22).
+        # A truncated window marks would-be winners to market at the last
+        # fetched bar and biases the A/B: a short window cannot touch a policy
+        # whose time-stop fires at bar 3-4, only the long-held baseline.
         end = get_latest_open_time(conn, sym, tf)
         if end is None:
             continue
@@ -314,7 +306,7 @@ class ExitAbRow:
 def _paired_r(
     baseline: PolicyResult, arm: PolicyResult
 ) -> tuple[list[float], list[float]]:
-    """Realized-R series for the alerts BOTH arms resolved, in a stable order."""
+    """Realized-R series for the alerts both arms resolved, in a stable order."""
     base_by_id = {t.signal_id: t.realized_r for t in baseline.trades}
     arm_by_id = {t.signal_id: t.realized_r for t in arm.trades}
     shared = [t.signal_id for t in baseline.trades if t.signal_id in arm_by_id]
@@ -343,7 +335,7 @@ def run_exit_ab(
         for k in kinds
     }
     baseline = results[kinds[0]]
-    # The ARMS are the trials: multiplicity here is "how many policies did we
+    # The arms are the trials: multiplicity here is "how many policies did we
     # look at", not a swept grid. Same call shape the four sleeves use.
     trial_srs = [
         sharpe_ratio([t.realized_r for t in results[k].trades])
@@ -400,7 +392,7 @@ def run_exit_ab(
 
 
 def baseline_agreement(result: PolicyResult) -> tuple[int, int]:
-    """(agreements, n) between a replayed outcome and the RECORDED ledger label.
+    """(agreements, n) between a replayed outcome and the recorded ledger label.
 
     A positive control on the ported engine: the `fixed` arm re-implements what
     the live resolver already did, so a low agreement rate means the replay is

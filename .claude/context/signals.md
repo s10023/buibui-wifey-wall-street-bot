@@ -64,21 +64,64 @@ alert formatting, cooldown, the signal registry, Telegram dispatch, or config/un
   candle alert twice. **Do not give weekdays its own `state_file`.** The cost of sharing is
   narrower than it looks: `day_filter` is applied inside `scan_symbol` *before* events are
   returned, so a suppressed candle never fires and never marks — after a `tue_thu` run Mon/Fri are
-  still unmarked and a later weekdays run alerts them normally. Whichever config runs FIRST alerts
-  the shared candles with ITS `tp_r`; the other then stays silent. No alert is lost, so this is
+  still unmarked and a later weekdays run alerts them normally. Whichever config runs first alerts
+  the shared candles with its own `tp_r`; the other then stays silent. No alert is lost, so this is
   operator discipline (do not run both live on the same day), not a defect.
 - `is_new_candle` / `mark_candle` take `channel: str = "primary"` (Task D, 2026-05-20). Primary preserves the legacy `{sym}:{tf}:{strategy}` key shape so existing state files load without migration; wife uses `{sym}:{tf}:{strategy}:wife`. Scanner marks **each** channel's watermark only on a successful live `dispatch_to_channel` — primary on a successful primary send, wife on a successful wife send — so a non-sending / dry run never "consumes" a candle (which would dedup the real alert away) and the two watermarks move independently (fix `fix/watermark-on-send`, 2026-06-06; primary previously marked unconditionally).
 - `last_marked(symbol, tf, strategy, channel="primary") -> int | None` (catch-up, 2026-06-06) — returns the stored watermark or `None` when never marked. Distinct from `is_new_candle`'s `-1` sentinel: the `--catch-up` cold-start guard needs to tell "no prior watermark" (→ seed latest candle only, no burst) apart from "marked at candle 0".
 
 ## Missed-day catch-up (`--catch-up`)
 
-- The scanner normally fires only on the single latest **closed** candle, so a skipped run-day permanently loses that day's signals (no backlog replay). `wifey signal watch --catch-up` (off by default) replays every un-alerted closed candle since the last run:
-  - `scan_symbol(..., catch_up=True)` emits an event for **every** closed candle in the scan window (each carrying its own candle close as the entry price), not just the latest; the forming bar is still excluded (`open_time <= latest_open_time`).
-  - `run_scan_cycle(..., catch_up=True)` splits each `(symbol, tf)` scan result into one pseudo-result **per candle `open_time`** so conflict resolution + confluence stacking stay per-candle correct; each group carries an `is_backfill` flag. The **newest closed candle is read from OHLCV, not from the events** (mirroring `scan_symbol`'s conditional forming-bar rule) — using `max(event.open_time)` would promote an older candle to "live" whenever the newest bar produced no signal. The existing candle watermark then drops the candles already alerted on a prior run. Default (`catch_up=False`) → single latest candle → one group → byte-identical to the pre-catch-up flow.
-  - **Backfilled candles are recorded, never dispatched** (record-not-dispatch, back-ported from parent #504): the newest closed candle may reach Telegram, plus any older one still inside `max_alert_age_hours` (`may_dispatch_candle`; shared base ships **24.0**, library default `0.0` = newest-only). Older candles still get DB signals + outcome-ledger rows and consume the primary watermark (the deliberate exception to the #68 mark-on-dispatch rule; the wife watermark stays untouched — nothing was dispatched on it and nothing reads it for dedup). A signal surfaced days late is untradeable noise in the chat but real ledger evidence — replay grows `signal_alert_outcomes` without flooding the channels with stale setups.
-  - **Cold-start guard**: a key with no prior watermark would treat every window candle as "new" and burst the whole ledger on first contact. The guard (in the Phase 2b expansion, next to the backfill split) restricts such keys to the latest candle only (`open_time == latest_closed or last_marked(...) is not None`); later runs then catch up genuinely-missed candles. Recovery depth is bounded by the 200-candle `_SCAN_WINDOW` (4h ~33 days, 1d ~200 days, 1wk ~4 years).
-  - **The dispatch window (`max_alert_age_hours`, 2026-08-25)**: the newest closed candle always dispatches; an older one dispatches while its **close** is within the window. ⚠ **It is inert without `catch_up=True`** — the non-catch-up branch never produces a non-latest candle group, so `is_backfill` is unconditionally `False` there and the window is never consulted. It exists because "strictly newest" was arbitrary under a fixed cadence — with one pre-open run a day the session's FIRST 4h bar can never *be* the newest closed candle, so it was structurally undeliverable: **120 of 351 ledger candles, 34%, every one the 13:30 UTC bar**, dropped for being 19.3h stale while the 15.3h bar shipped. `0.0` restores the old rule and is the documented escape hatch; a negative value is refused at load (it would read as stricter while behaving exactly like `0.0`). ⚠ **Widening it cannot replay history** — an already-consumed watermark is dropped upstream at the `is_new_candle` filter before the window is consulted, so no window can revive it (constructed in `tests/test_catch_up.py::TestRunScanCycleRecencyWindow`). ⚠ **It does not recover a skipped run day** (~87h stale at a Mon run for Thu bars); that stays a cadence habit — run Wed/Thu/Fri. ⚠ **`fired_at_ms` is not a dispatch record** (overwritten on every re-detection); the `:wife` watermark is the only oracle, since backfill marks primary alone and a send marks both. Audit: `docs/audits/2026-08-25-dispatch-recency-window.md`.
-  - **Fidelity caveat**: regime / HTF-EMA / ADR / DOW bias context is computed as-of-now and applied to historical candles too — a deliberate best-effort approximation for a few missed days, not a full as-of-candle replay (the backtest live-parity path does that). A deep backfill is look-ahead in the *gating* and should be read as backtest output, not clean out-of-sample evidence.
+The scanner normally fires only on the single latest closed candle, so a skipped run-day
+permanently loses that day's signals — there is no backlog replay by default.
+`wifey signal watch --catch-up` (off by default) replays every un-alerted closed candle since the
+last run:
+
+- `scan_symbol(..., catch_up=True)` emits an event for every closed candle in the scan window
+  (each carrying its own candle close as the entry price), not just the latest; the forming bar is
+  still excluded (`open_time <= latest_open_time`).
+- `run_scan_cycle(..., catch_up=True)` splits each `(symbol, tf)` scan result into one
+  pseudo-result per candle `open_time`, so conflict resolution and confluence stacking stay
+  per-candle correct; each group carries an `is_backfill` flag. The newest closed candle is read
+  from OHLCV, not from the events (mirroring `scan_symbol`'s conditional forming-bar rule) — using
+  `max(event.open_time)` would promote an older candle to "live" whenever the newest bar produced
+  no signal. The existing candle watermark then drops the candles already alerted on a prior run.
+  With `catch_up=False` there is a single latest candle, one group, and output byte-identical to
+  the pre-catch-up flow.
+- Backfilled candles are recorded, never dispatched (record-not-dispatch, ported from the parent):
+  the newest closed candle may reach Telegram, plus any older one still inside
+  `max_alert_age_hours` (`may_dispatch_candle`; shared base ships 24.0, library default `0.0` =
+  newest-only). Older candles still get DB signals and outcome-ledger rows and consume the primary
+  watermark — the deliberate exception to the mark-on-dispatch rule; the wife watermark stays
+  untouched, since nothing was dispatched on it and nothing reads it for dedup. A signal surfaced
+  days late is untradeable noise in the chat but real ledger evidence: replay grows
+  `signal_alert_outcomes` without flooding the channels with stale setups.
+- Cold-start guard: a key with no prior watermark would treat every window candle as "new" and
+  burst the whole ledger on first contact. The guard restricts such keys to the latest candle only
+  (`open_time == latest_closed or last_marked(...) is not None`); later runs then catch up
+  genuinely-missed candles. Recovery depth is bounded by the 200-candle `_SCAN_WINDOW` (4h ~33
+  days, 1d ~200 days, 1wk ~4 years).
+- The dispatch window, `max_alert_age_hours`: the newest closed candle always dispatches; an older
+  one dispatches while its close is within the window. It is inert without `catch_up=True` — the
+  non-catch-up branch never produces a non-latest candle group, so `is_backfill` is unconditionally
+  `False` there and the window is never consulted. It exists because "strictly newest" was
+  arbitrary under a fixed cadence: with one pre-open run a day, the session's first `4h` bar can
+  never be the newest closed candle, so it was structurally undeliverable — 120 of 351 ledger
+  candles (34%, every one the 13:30 UTC bar) were dropped for being 19.3h stale while the 15.3h bar
+  shipped. `0.0` restores the old rule and is the documented escape hatch; a negative value is
+  refused at load, since it would read as stricter while behaving exactly like `0.0`. Widening it
+  cannot replay history, because an already-consumed watermark is dropped upstream at the
+  `is_new_candle` filter before the window is consulted, so no window can revive it (constructed in
+  `tests/test_catch_up.py::TestRunScanCycleRecencyWindow`). It also does not recover a skipped run
+  day (~87h stale at a Mon run for Thu bars) — that stays a cadence habit, so run Wed/Thu/Fri.
+  `fired_at_ms` is not a dispatch record, since it is overwritten on every re-detection; the
+  `:wife` watermark is the only dispatch oracle, since backfill marks primary alone and a send
+  marks both. Audit: `docs/audits/2026-08-25-dispatch-recency-window.md`.
+- Fidelity caveat: regime / HTF-EMA / ADR / DOW bias context is computed as of the run time and
+  applied to historical candles too — a deliberate best-effort approximation for a few missed
+  days, not a full as-of-candle replay (the backtest live-parity path does that). A deep backfill
+  is look-ahead in the gating and should be read as backtest output, not clean out-of-sample
+  evidence.
 
 ## alert_formatter.py
 
@@ -120,9 +163,9 @@ alert formatting, cooldown, the signal registry, Telegram dispatch, or config/un
 
 - `format_wife_alert()` / `format_wife_confluence_alert()` — BUY/WAIT wife-channel variant: the primary layout condensed, not a different one. Strips strategy name, reason, edge backtest summary and stats line; keeps stars and **one** warning. Design: `docs/superpowers/specs/2026-08-18-wife-alert-layout-design.md`.
 - LONG → header `BUY — $SYM TF` + stars, `Entry <price> · <time> MYT`, one `Stop … · Target …` line with signed percentages and no R multiple (same widest-structural-SL / floor / structural-TP-or-tp_r logic as the primary formatter), then at most one warning.
-- SHORT → header `WAIT — $SYM TF` + price + time + `Sit tight — conditions look weak`. No levels — wife is not expected to action shorts. ⚠ **`WAIT`, not `HOLD`**: "hold" is a position instruction presuming she is already in, when the intent is "take no action".
+- SHORT → header `WAIT — $SYM TF` + price + time + `Sit tight — conditions look weak`. No levels — wife is not expected to action shorts. The header says `WAIT`, not `HOLD`: "hold" is a position instruction presuming she is already in, when the intent is "take no action".
 - The single warning is ranked by `_WIFE_WARNING_RANK`, because `_build_candle_warnings` appends in source order and never sorts. `⚡ Volume spike` is excluded outright — it is an encouragement *and* the builder's first entry, so taking the head of the list would render it under a warning heading.
-- ⚠ **Both renders print on every `wifey signal test`**, so the wife body is reviewable without a send. It used to be built only inside the `send_telegram` branch, and the wife dry-run logs only the first line.
+- Both renders print on every `wifey signal test`, so the wife body is reviewable without a send. Do not reintroduce building it only inside the `send_telegram` branch: that limited the wife dry-run log to the first line.
 - Dispatched via `utils.telegram_router.dispatch_to_channel(msg, "wife")`; `TELEGRAM_WIFE_DRY_RUN=1` logs the first line at INFO instead of sending.
 
 ## utils/ — shared utilities
@@ -149,21 +192,22 @@ Config schema validation and the two universe loaders.
   (`policy` / `membership_as_of` / `members`; helpers `symbols()` / `active_symbols()` /
   `stocks()` (active single-names only) / `n_active` / `describe()` / `with_min_history(days)`)
   frozen dataclasses, plus `validate_research_universe` and
-  `load_research_universe(path=Path("config/universe.json"), *, min_history_days=None)`.
-  **Distinct from the live-alert watchlist.** `delisted` is a lifecycle seam, and it is **used**:
-  **3 of 505 are flagged** (`EA`, `EQR`, `SATS`, 2026-09-02) and a flagged member is retained
-  rather than deleted, so `symbols()` stays 505 while the active accessors return 502 (PIT
-  membership deliberately not scraped per gap-map decision #6).
+  `load_research_universe(path=Path("config/universe.json"), *, min_history_days=None)`. Distinct
+  from the live-alert watchlist. `delisted` is a lifecycle seam and it is used: 3 of 505 are
+  flagged (`EA`, `EQR`, `SATS`, 2026-09-02) and a flagged member is retained rather than deleted,
+  so `symbols()` stays 505 while the active accessors return 502 (point-in-time membership
+  deliberately not scraped per gap-map decision #6).
 - The optional `listed` per-member date (first available 1d bar; `None` ⇒ full-history survivor
-  listed on/before the backfill start) is the **history seam**: `with_min_history(days)` — also
+  listed on/before the backfill start) is the history seam: `with_min_history(days)` — also
   surfaced as the `load_research_universe(min_history_days=…)` kwarg — drops members with fewer than
   `days` of history as of the fixed `membership_as_of` snapshot. Pure (no DB), reproducible,
   identity for `days ≤ 0`, untagged members always kept; default-off (`None`) keeps every member
-  byte-identically. Forward-prep for the G1-gated XS-momentum sleeve's uniform lookback.
-  **"Untagged members always kept" is why the seam fails open**: it was tagged on 3 of 505 by hand
-  until 2026-08-13, so a 1-year floor dropped **0** members. Now **26**, stamped from the DB by
-  `tools/stamp_universe_listed.py` (`make universe-stamp-listed`) — re-run it after any membership
-  or backfill change, since a new constituent arrives untagged. → `context/tools.md`
+  byte-identically. Forward-prep for the G1-gated XS-momentum sleeve's uniform lookback. Untagged
+  members are always kept, which is why this seam fails open for anything never stamped: hand-
+  stamped on only 3 of 505 until 2026-08-13, so a 1-year floor dropped 0 members at that point. 26
+  members are stamped today from the DB by `tools/stamp_universe_listed.py`
+  (`make universe-stamp-listed`) — re-run it after any membership or backfill change, since a new
+  constituent arrives untagged. → `context/tools.md`
 
 ### telegram.py / telegram_router.py
 

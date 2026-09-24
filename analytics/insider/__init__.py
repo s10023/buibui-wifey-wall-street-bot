@@ -6,7 +6,7 @@ opportunistic classifier (``classify``); phase 3 adds the calendar-time book
 (``report``). Design and the frozen pre-registration:
 ``docs/superpowers/specs/2026-08-29-h024-insider-routine-opportunistic-design.md``.
 
-⚠ **Only ``replay`` touches the DB.** ``book`` and ``report`` are pure so every
+Only ``replay`` touches the DB; ``book`` and ``report`` are pure so every
 branch is fixture-testable, which is the shape every sleeve here follows.
 """
 

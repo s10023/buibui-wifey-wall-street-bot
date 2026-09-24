@@ -4,8 +4,6 @@ Each flag defaults to False so passing a default-constructed `LiveParityConfig()
 (or `None`) keeps the engine's current behaviour. Set `enabled=True` to flip
 every individual flag on at once; per-gate flags remain effective on top of the
 master switch so callers can compose `--live-parity --without-cooldown`.
-
-PR-1 lands the dataclass + plumbing only. Per-gate logic ports ship in PRs 2-5.
 """
 
 from __future__ import annotations
@@ -57,18 +55,15 @@ class LiveParityConfig:
     def describe(self) -> str:
         """One-line resolved gate state for the run banner.
 
-        Every rating in `confidence_ratings` is conditional on this line, and
-        until 2026-08-07 nothing printed it: `[backtest.live_parity]` went
-        undeclared for ~2.5 months while the sweep behind the stars ran with
-        every gate off, and the committed `tp_r` values had been calibrated
-        under an ad-hoc `--live-parity` against a population the routine sweep
-        never produced. A recorded parameter that is never echoed cannot be
-        checked against what executed — the same defect class as #144's `days`.
+        Every rating in `confidence_ratings` is conditional on this line: a
+        recorded parameter that is never echoed cannot be checked against what
+        actually executed, so print the resolved state on every run rather
+        than trusting the declared config.
         """
         return " ".join(f"{g}={'on' if self.is_on(g) else 'off'}" for g in self.GATES)
 
     def identity(self) -> str | None:
-        """Canonical token for the gate set that EXECUTED, for the run_id hash.
+        """Canonical token for the gate set that executed, for the run_id hash.
 
         Returns None when no gate is on, so a default-constructed config appends
         no suffix and every run_id written before this axis existed is unchanged

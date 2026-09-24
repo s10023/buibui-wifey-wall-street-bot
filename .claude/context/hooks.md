@@ -1,101 +1,88 @@
 # `.claude/hooks/` — PreToolUse guards and advisories
 
-**Four** `PreToolUse` hooks fire on `Bash`. **Three are files here; the fourth is inline jq in
-`.claude/settings.json`, which is what registers all four** — so the count of files in this
-directory is not the count of hooks.
+Four `PreToolUse` hooks fire on `Bash`. Three are files in this directory; the fourth is inline
+jq in `.claude/settings.json`, which is what registers all four, so the file count here is not
+the hook count.
 
-⚠ **Every one of them was DEAD on the Windows host until 2026-09-21, and nothing said so.**
-Each wrapper ran `exec python3 "$f"`; here `python3` resolves to the Windows Store App
-Execution Alias, a reparse point returning **Permission denied / exit 126**. Only exit 2
-blocks, so `guard-destructive.py` failed open on **every** command — `rm -rf`, `git reset --hard`,
-force-push, DB wipes, none of them guarded. ⚠ **The stub cannot be detected by a test
-operator**: `[ -f ]` and `[ -x ]` both report true and `wc -c` on it is denied. So the wrappers
-now ORDER their candidates — `.venv/Scripts/python.exe`, `.venv/bin/python`, `python3`,
-`python` — preferring the interpreter everything else in this repo already runs on.
-`tests/test_hook_wiring.py` is the gate: it reads the wrapper string out of `settings.json`
-and asserts the guard blocks end to end with exit 2, plus a benign command still passing, plus
-a missing file still failing OPEN.
+## Wrapper interpreter order
 
-`guard-shell-hygiene.py` is the newest, ported from parent #743/#744/#753 at parent HEAD.
-**Three of its six upstream rules are deliberately absent**: the `/card` rule has no subject
-here, and the duplicate-waiter and edit-during-suite rules both need `pgrep`, which this host
-does not have. Porting those would have shipped rules that can never fire — the same dead-check
-class as PRs #301 and #302. Its gate list is RE-DERIVED against this repo's Makefile, pinned by
-`tests/test_guard_shell_hygiene.py`.
+Each wrapper in `settings.json` tries interpreters in this order: `.venv/Scripts/python.exe`,
+`.venv/bin/python`, `python3`, `python`. Keep that order: on this host `python3` resolves to the
+Windows Store App Execution Alias, a reparse point that returns exit 126 (permission denied)
+rather than running the script, and only exit 2 blocks a `PreToolUse` hook — so a wrapper that
+ran bare `python3` would fail open on every command it was meant to gate. The stub cannot be
+detected by a test operator either: `[ -f ]` and `[ -x ]` both report true against it, and `wc -c`
+on it is denied. That is why the fix is a fallback order rather than a stub check.
+`tests/test_hook_wiring.py` reads the wrapper string out of `settings.json` and asserts the guard
+blocks end to end with exit 2, that a benign command still passes, and that a missing hook file
+still fails open.
 
-⚠ **The rule you will actually meet: it fires on a GATE PIPED INTO `tail` or `head`.** The
-pipeline exits with `tail`'s status, so the gate's own failure is masked and a red run reads as
-green — the same class CLAUDE.md documents for `make preflight` and `wait_ci.py`, where `make`
-collapses every failure to its own exit 2 and you must read the banner. **Redirect and then read
-the file** rather than piping:
+Each wrapper exits 0 when its script is missing, because `python3`'s own exit code for "cannot
+open script" is 2, the same code that means "block" — a missing hook file must not block every
+Bash call in the session. Keep this guard even though the hook files are tracked: a worktree or a
+partial checkout can still lack one.
 
-```bash
-make <gate> > <log> 2>&1; echo "exit=$?"; tail -8 <log>
-```
+## guard-destructive.py — blocks, exit 2
 
-⚠ **`guard-destructive.py` matches the whole command PAYLOAD**, so a heredoc or a JSON probe
-merely *containing* a hazard string is blocked even though nothing destructive would run — hit
-twice on 2026-09-21. Write commit bodies and scripts to a FILE and pass `-F` or a path; a file is
-invisible to the matcher. CLAUDE.md carries the commit-message half of this; the generalisation
-is that the guard reads text, not intent.
+Refuses the catastrophic-Bash set: recursive force deletes, hard resets, force-pushes, DB wipes.
+If it blocks you, surface it rather than working around it.
 
-⚠ **Tracked since the 2026-08-20 denylist inversion.** Before that `.gitignore` allowlisted over
-`.claude/*`, every artifact class defaulted to ignored, and these died silently on clone —
-CLAUDE.md carried "re-add it after a reclone" for all three. They now survive a reclone, and
-because they are tracked `.py`, **ruff and mypy strict cover them like any other module**.
+It matches the command payload, not intent, so a heredoc or a JSON probe that merely contains a
+hazard string is blocked even though nothing destructive would run. Write commit bodies and
+scripts to a file and pass `-F` or a path instead — a file is invisible to the matcher. This is
+the general form of the commit-message rule CLAUDE.md documents: it applies to any heredoc, not
+only a commit message.
 
-## `guard-destructive.py` — blocks, exit 2
+## guard-shell-hygiene.py — advises, never blocks
 
-Refuses the catastrophic-Bash set (recursive force deletes, hard resets, force-pushes, DB
-wipes). If it blocks you, **surface it rather than working around it silently**.
+Shell habits that silently produce a wrong result. It always exits 0 and speaks through
+`hookSpecificOutput.additionalContext`, once per rule per session, because every pattern it
+matches has honest uses. Three rules:
 
-⚠ **The wrapper in `settings.json` must fail OPEN on a missing file.** `python3` exits **2**
-when it cannot open a script, and 2 is the *block* code — so a missing hook would block every
-Bash call in the session rather than none. Hence
-`f="…/guard-destructive.py"; if [ -f "$f" ]; then exec python3 "$f"; fi`. Now that the file is
-tracked this is belt-and-braces, but keep it: a worktree or a partial checkout can still lack it.
+- `waiter`: an `until`/`while` loop around `pgrep`/`pidof`. A background job already re-invokes
+  the session when it exits, and `pgrep -f 'pytest tests/'` matches the polling shell's own argv.
+- `piped-gate`: a gate from `_GATE` piped into `tail` or `head`. The pipeline exits with `tail`'s
+  status, so a red run reads as green. Redirect, then read the file:
+  `make <gate> > <log> 2>&1; echo "exit=$?"; tail -8 <log>`.
+- `gh-auth-switch`: `gh auth switch` mutates gh's global active account for every session on the
+  machine; scope the account to one command with `GH_TOKEN=$(gh auth token --user s10023)`.
 
-⚠ **It matches the COMMAND PAYLOAD, so quoting a hazard trips it — including in documentation.**
-CLAUDE.md records this for commit and PR bodies ("write to a file and pass `-F`/`--body-file`; a
-heredoc is the command payload, a file is invisible to it"). **The rule is more general than the
-sentence that carries it**: it applies to *any* heredoc, not just a commit message. Observed
-2026-08-20 — a `python3 - <<'PY'` heredoc whose payload described what this hook blocks was
-itself blocked, correctly. The fix is identical: write the script to a file and run the file.
+Ported from the parent, with `_GATE` re-derived against this repo's Makefile and `tools/`;
+`tests/test_guard_shell_hygiene.py` pins it. The parent's duplicate-waiter and
+edit-during-live-suite rules are not ported, because both need `pgrep`, which this host lacks,
+and its `/card` rule has no subject here. Porting a rule that can never fire ships a dead check.
 
-## `advise-foreground-run.py` — advises, never blocks
+## advise-foreground-run.py — advises, never blocks
 
-Nudges `make test` / `make test-regression` / CI waits toward `run_in_background: true`.
+Nudges `make test`, `make test-regression` and CI waits toward `run_in_background: true`. It keys
+on the `run_in_background` tool parameter rather than the command string, because a foreground
+and a background run are byte-identical as commands and no string match could separate them. It
+is head-anchored so it does not fire on its own documentation. Run `--selftest` after any edit;
+it pins both discriminators.
 
-**It keys on the `run_in_background` tool PARAMETER, not the command string** — a foreground and
-a background run are byte-identical as commands, so no string match could separate them. It is
-**head-anchored** so it does not fire on its own documentation. `--selftest` pins both
-discriminators; run it after any edit.
+## The inline `gh pr create` advisory (in settings.json)
 
-## The inline `gh pr create` advisory (in `settings.json`)
-
-Greps the command for `gh pr create` and emits a `/post-branch` reminder. It **has to be
-`PreToolUse`**: a `PostToolUse` hook cannot fire before the PR exists, so it could not enforce
+Greps the command for `gh pr create` and emits a `/post-branch` reminder. This has to be
+`PreToolUse`: a `PostToolUse` hook fires after the PR already exists, so it could not enforce
 "sweep while the branch is still local-only" at all.
 
 ## Changing a hook
 
-⚠ **This paragraph used to say there was no test target and no CI step. That stopped being
-true on 2026-09-21.** `tests/test_hook_wiring.py` and `tests/test_guard_shell_hygiene.py` live
-in `tests/`, so `make test` and CI's `lint-typecheck-test` job both run them; `make lint-py`
-and `make typecheck` cover the hook sources as before. `advise-foreground-run.py --selftest`
-still exists and is still the odd one out.
+Put a new hook's tests in `tests/`, not beside the hook. `pyproject.toml` sets
+`testpaths = ["tests"]`, so a test file placed in this directory — where the parent keeps its
+copies — is collected by nothing: it would pass review, never run, and read exactly like
+coverage. A `--selftest` script has the same problem one step removed, since it only runs when a
+session remembers to invoke it, and a self-check outside CI is not a check.
 
-**Put a new hook's tests in `tests/`, not beside the hook.** `pyproject.toml` sets
-`testpaths = ["tests"]`, so a test file in this directory — where the parent keeps its copies
-— is collected by NOTHING. It would pass review, run never, and read exactly like coverage.
-A `--selftest` has the same problem one step removed: it only runs when a session remembers,
-and CLAUDE.md already names *a self-check outside CI is not a check*.
+Test the wiring, not just the module. `tests/test_hook_wiring.py` reads the wrapper string out of
+`settings.json` and drives it through `sh`, because a test that only imports the hook module
+passes whether or not the wrapper string in `settings.json` is correct — the wrapper string is a
+surface of its own, separate from the module it invokes.
 
-**Test the WIRING, not just the module.** The 2026-09-21 defect was entirely in the wrapper
-string in `settings.json`; every hook module was fine. A test that imports the module passes
-either way, so `test_hook_wiring.py` reads the wrapper out of `settings.json` and drives it
-through `sh`.
+`tests/test_hook_wiring.py` and `tests/test_guard_shell_hygiene.py` live in `tests/`, so
+`make test` and CI's `lint-typecheck-test` job both run them; `make lint-py` and `make typecheck`
+cover the hook sources like any other tracked `.py` module.
 
-**An advisory hook that stops firing is silent by construction** — the same shape as the
-off-site backup's failure-only alerting — so after editing one, trigger it deliberately once
-and confirm the banner appears.
+An advisory hook that stops firing is silent by construction, the same shape as the off-site
+backup's failure-only alerting. After editing one, trigger it deliberately once and confirm the
+banner appears.

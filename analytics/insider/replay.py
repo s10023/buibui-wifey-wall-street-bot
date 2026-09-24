@@ -6,7 +6,7 @@ population through the phase-2 classifier, and runs the frozen four-trial family
 plus its routine-arm placebos through the pure book in
 :mod:`analytics.insider.book`.
 
-⚠ **The cost model is read from the shared base, not constructed here.**
+The cost model is read from the shared base, not constructed here:
 ``config/strategy_params.toml``'s ``[backtest.cost_model]`` is the same block the
 TA backtests price against, so a change there reaches this sleeve; a local
 ``CostModel()`` would silently fork the moment that block moved. An absent or
@@ -138,7 +138,7 @@ def replay_insider_trials(
 
     ``inputs`` and ``labelled`` are accepted pre-loaded so a caller running the
     family more than once — the gross-vs-net read, say — pays the 505-symbol
-    panel load once. Passing a DIFFERENT panel than the one the labels were
+    panel load once. Passing a different panel than the one the labels were
     drawn from is the caller's error to avoid; nothing here can detect it.
     """
     universe = (

@@ -52,23 +52,18 @@ def get_backtest_win_rates(
     from previous param sweeps are excluded to avoid polluting the ratings.
     Only includes rows where closed_trades > 0.
 
-    **Sweep rows only** (`sweep_id IS NOT NULL`). The live EV gate also writes
-    to `backtest_runs` (`signal.scanner`, one row per direction-leg it
-    evaluates) and those rows carry no `sweep_id`. They are not the same
-    measurement as a sweep row: the live gate backtests ONE strategy with no
-    live-parity params, so it never runs the conflict resolver, over whatever
-    window `signal_runner` hands it. Because rows are deduplicated by "latest
-    per (strategy, timeframe, symbol)" with no notion of provenance, a live row
-    silently *superseded* the sweep row for that symbol. Measured 2026-08-06
-    before this filter: 42 of 316 rating inputs on `signal_watch` were live
-    rows (13%), touching 15 of its 22 declared cells, at a median 4 closed
-    trades against the sweep's 8 — and five cells sat on the wrong side of
-    zero because of it (`orb × 4h` read +0.0011 against a sweep-only +0.2126).
-    `signal_watch_weekdays` never runs live and had none, so the two configs'
-    stars were not even computed from comparable populations. The `day_filter`
-    and `adr_suppress_threshold` filters below exist to keep recalibration
-    inside one execution context; this is the same rule applied to the axis
-    they missed.
+    Sweep rows only (`sweep_id IS NOT NULL`). The live EV gate also writes to
+    `backtest_runs` (`signal.scanner`, one row per direction-leg it evaluates),
+    and those rows carry no `sweep_id`. They are not the same measurement as a
+    sweep row: the live gate backtests one strategy with no live-parity params,
+    so it never runs the conflict resolver, over whatever window
+    `signal_runner` hands it. Because rows are deduplicated by "latest per
+    (strategy, timeframe, symbol)" with no notion of provenance, a live row can
+    silently supersede the sweep row for that symbol — enough of that mixed in
+    can put a cell's rating on the wrong side of zero relative to a sweep-only
+    read. The `day_filter` and `adr_suppress_threshold` filters below exist to
+    keep recalibration inside one execution context; this is the same rule
+    applied to the axis they missed.
     If day_filter is provided, only runs saved with that day_filter value are used.
     adr_suppress_threshold: when None (default) uses only runs with no ADR gate
     (adr_suppress_threshold IS NULL); when a float, uses only runs saved with that
@@ -145,18 +140,16 @@ def get_backtest_win_rates(
     raw = raw.sort_values("run_at_ms", ascending=False).drop_duplicates(
         subset=["strategy", "timeframe", "symbol"]
     )
-    # Aggregate across symbols. Every statistic here is POOLED over trades, not
+    # Aggregate across symbols. Every statistic here is pooled over trades, not
     # averaged over symbols: `avg_r` is sum(R) / sum(trades), reconstructed as
     # sum(avg_r_i x n_i) / sum(n_i). A plain `.mean()` of the per-symbol avg_r
     # would let a 1-trade symbol move the star rating as far as a 50-trade one
     # while `min_trades` guarded the pooled count — a sample-size guard counting
     # a different population than the statistic it guards. `win_rate` on the
-    # same row was already pooled, so the two halves of one row disagreed about
-    # their denominator. Measured over the real DB when this was fixed: 22 of 22
-    # rated `signal_watch` cells moved a star, 16 of 32 on `signal_watch_weekdays`,
-    # several across zero.
+    # same row pools the same way, so the two halves of one row cannot disagree
+    # about their denominator.
     for avg_col, n_col in _WEIGHTED_MEAN_COLS:
-        # `.where(present)` on BOTH parts so numerator and denominator skip the
+        # `.where(present)` on both parts so numerator and denominator skip the
         # same rows: a directional avg_r is NULL exactly when that direction has
         # no trades, and counting its 0 in the denominator alone would drag the
         # mean toward zero.

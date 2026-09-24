@@ -6,17 +6,18 @@ Detailed reference for `web/`. Load this when working on the FastAPI backend or 
 
 - `main.py` — app + StaticFiles mount; reads `WIFEY_CONFIG` env var (set by `wifey web --config <toml>`); stores `app.state.config_name` + `app.state.active_config`
 - `deps.py` — `get_db` (per-request read-only DuckDB conn) + `require_token` (Bearer auth).
-  `get_db` returns **503** on a lock conflict and **re-raises anything else** (#162's port of
-  parent #593). It stays fail-fast on purpose: `connect_with_retry`'s ~52s budget on a
-  per-request path would hang the UI and exhaust the worker pool, so the browser retries
-  instead. Two things were wrong before and are worth not reintroducing — the bare
-  `except duckdb.IOException` reported a *missing or corrupt* database as "busy, try again in
-  a few seconds", advice that can never come true; and the message named "signal-watch", **a
-  daemon this fork does not have** (those units are the crypto parent's). The real holders are
-  `make go-live`, `make db-update` and `make backup`.
-- `main.py` lifespan — the startup RW open for `init_schema` now retries instead of silently
-  `pass`ing, and only a lock conflict is survivable. A bare `except: pass` there started the
-  API with no schema and no complaint when the database was missing.
+  `get_db` returns 503 on a lock conflict and re-raises anything else (ported from the parent).
+  It stays fail-fast on purpose: `connect_with_retry`'s ~52s budget on a per-request path would
+  hang the UI and exhaust the worker pool, so the browser retries instead. Do not reintroduce a
+  bare `except duckdb.IOException`: it reported a missing or corrupt database as "busy, try
+  again in a few seconds", advice that can never come true. Do not reintroduce a message naming
+  "signal-watch" either — that is a daemon this fork does not have; those units are the crypto
+  parent's. The real holders of `analytics.db` are `make go-live`, `make db-update` and
+  `make backup`.
+- `main.py` lifespan — the startup RW open for `init_schema` retries instead of silently
+  swallowing the error, and only a lock conflict is survivable. Do not reintroduce a bare
+  `except: pass` there: it started the API with no schema and no complaint when the database
+  was missing.
 - `routers/` — config, ohlcv, fib, signals, backtest, stats, zones (T16-full removed the Binance-Futures-only `positions` / `prices` / `stream` routers; Phase B will re-introduce per the equities broker)
 - `models/` — Pydantic models per router; `active_config.py` → `ActiveConfigResponse` + `StrategyParamsModel` + `UniversePolicyResponse`; `zones.py` → `ZoneBox`, `ZoneLine`, `SwingPoint`, `ZonesResponse`
 
@@ -49,7 +50,7 @@ Build: `make web-build` → `web/ui/dist/` served by FastAPI StaticFiles.
 - **"◈ \<config\>" button** — pre-fills all chips + fee_pct/tp_r/sl_pct from active TOML
 - Stars per row: `stars` (combined), `long_stars` (↑★), `short_stars` (↓★) — JOINed by `(strategy, tf, day_filter, direction)`
 - Columns: long/short win rate, avg R, total R (↑/↓), Max DD, RF (≥3 green / 2–3 yellow / <2 red) — all sortable
-- ADR Gate column shows `adr_suppress_threshold` per row (2dp, `—` for NULL). Since 2026-08-11 it reports **what the gate executed**, so `adr_exempt` strategies and every `1d` / `1wk` row correctly display `—`; only `4h` non-exempt rows show `0.80`. Rows written before 2026-08-06 still display `0.80` on `1d` / `1wk` — the gate really did run there back then (degenerately), so the migration left them alone
+- ADR Gate column shows `adr_suppress_threshold` per row (2dp, `—` for NULL). It reports what the gate executed, so `adr_exempt` strategies and every `1d` / `1wk` row correctly display `—`; only `4h` non-exempt rows show `0.80`. Rows written before 2026-08-06 still display `0.80` on `1d` / `1wk`, because the gate really did run there at that time (degenerately), so those rows are left as written rather than rewritten
 - Filter sections: CATEGORY (symbol/TF/strategy/day filter/ADR gate/stars), PERF (win%/trades/avg R/total R/max DD/RF), DIR (directional long+short)
 - **Analysis sub-tab** — 12 lazy-loaded cards; `min_trades` input + "◈ Scope to config" toggle
 
@@ -62,7 +63,7 @@ Build: `make web-build` → `web/ui/dist/` served by FastAPI StaticFiles.
   - Active zones extend to right edge; inactive end at `close_ms` (dimmed)
   - Colors: bull=`#56d364`, bear=`#f85149`, fib=`#e3b341`, ote=`#f0883e`
 - **Range Levels** — MO, DO, PDH/PDL, WO, PWH/PWL, Mon H/L; solid lines from origin to right edge; HTML labels
-- **CME Gap** — semi-transparent box for most recent Fri 21:00–Sun 22:00 UTC window; **1h only** (pill hidden on 4h/1d/1wk — `timeToCoordinate` returns null for inter-candle timestamps on coarser TFs). Was `15m and 1h` until 2026-08-05; `15m` is not a fetchable interval
+- **CME Gap** — semi-transparent box for most recent Fri 21:00–Sun 22:00 UTC window; shown on 1h only (pill hidden on 4h/1d/1wk, because `timeToCoordinate` returns null for inter-candle timestamps on coarser TFs). `15m` is excluded too — it is not a fetchable interval
 - Time axis + crosshair: **MYT (UTC+8)** via `localization.timeFormatter`
 - Signal markers + Fib overlay. (T16-full removed funding/OI sub-panels + the SSE / `/api/ohlcv/live` live-candle seed — yfinance has no realtime equivalent; the UI now seeds the current candle from the last DB row.)
 

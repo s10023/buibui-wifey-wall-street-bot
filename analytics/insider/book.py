@@ -19,11 +19,11 @@ recorded as Amendment 4 rather than left to whoever reads the output:
    ``config/universe.json`` — so a literal reading is unimplementable without a
    new provider. ADV is computed from our own bars, is point-in-time by
    construction, and is the same quantity the cost model already buckets, so
-   the weight and the spread it pays are read off one number. ⚠ **It is a
-   liquidity weight, not a size weight**: ADV/market-cap is turnover, which
+   the weight and the spread it pays are read off one number. It is a
+   liquidity weight, not a size weight: ADV/market-cap is turnover, which
    varies several-fold cross-sectionally, so the book tilts toward
-   high-turnover names. Declared before any return was computed (operator
-   ruling, 2026-09-19).
+   high-turnover names. This was decided before any return was computed, so
+   the choice cannot be reverse-engineered from the result.
 2. **The cost model is applied in RETURN space, not in R.**
    ``CostModel.cost_breakdown`` is trade-shaped (entry/stop prices) and a weight
    book has neither, so the *parameters* are used directly: half-spread by ADV
@@ -34,7 +34,7 @@ recorded as Amendment 4 rather than left to whoever reads the output:
    rather than dated from its trade, because dating a filing by its trade date
    is precisely the lookahead the filing clock exists to avoid.
 
-⚠ **This book carries NO volatility governor.** The pre-registration is a VW
+This book carries no volatility governor: the pre-registration is a VW
 cash book, so ``pre_governor_return`` equals ``portfolio_return`` and
 ``governor`` is all-ones — those fields exist to satisfy :class:`XSBookResult`,
 which the shared evaluation path consumes, and are not a disabled feature.
@@ -73,7 +73,7 @@ TRIALS: dict[str, tuple[str, bool, int]] = {
     "T4": (OPPORTUNISTIC, True, 3),
 }
 
-#: The routine-arm mirror of every trial. A CONTROL, never a trial: these do not
+#: The routine-arm mirror of every trial. A control, never a trial: these do not
 #: enter the DSR family, and the reversal observable is read on the paired
 #: difference between a trial and its placebo.
 PLACEBOS: dict[str, tuple[str, bool, int]] = {
@@ -110,7 +110,7 @@ def trailing_sigma(closes: pd.DataFrame, window_days: int) -> pd.DataFrame:
 
 
 def month_end_dates(index: pd.DatetimeIndex) -> dict[pd.Period, pd.Timestamp]:
-    """Last TRADING day of each calendar month present in ``index``.
+    """Last trading day of each calendar month present in ``index``.
 
     Formation happens on a trading day, never on a calendar month-end the tape
     may not have: a Sunday 30th would index nothing and silently drop that
@@ -154,7 +154,7 @@ def cohort_weights(
     A name enters month ``M``'s cohort when at least one insider carrying
     ``label`` filed a ``code`` trade in it. Weights are that name's trailing ADV
     at the month's last trading day, normalised to sum to 1 across the cohort.
-    A name whose ADV is missing or non-positive at formation is DROPPED rather
+    A name whose ADV is missing or non-positive at formation is dropped rather
     than floored: an unpriceable name is not a position.
     """
     if labelled.empty or adv.empty:
@@ -205,13 +205,13 @@ def daily_weights(
     ``hold_months`` months following its formation, so a 3-month hold runs as
     three overlapping thirds and the leg sums to 1 once it is fully ramped.
 
-    ⚠ **The ramp is left honest.** For the first ``hold_months - 1`` months only
+    The ramp is left honest: for the first ``hold_months - 1`` months only
     some of the sleeves are funded, so leg exposure starts below 1 rather than
     being renormalised up — normalising would lever the earliest cohorts, which
     is a position no investor could have held.
 
     Causality: a cohort formed on its month's last trading day first earns on
-    the NEXT trading day, so no weight is informed by the return it books.
+    the next trading day, so no weight is informed by the return it books.
     """
     weights = pd.DataFrame(0.0, index=index, columns=columns)
     if not cohorts or len(index) == 0:
@@ -289,7 +289,7 @@ def book_weights(
 
     Per name: ``gross = w * return``; ``spread`` and sqrt-law ``impact`` are
     charged on ``|dw|`` at that name's own ADV bucket, and ``borrow`` accrues
-    daily on short weights. The portfolio is the SUM of legs, matching
+    daily on short weights. The portfolio is the sum of legs, matching
     ``run_xs_backtest`` so both books' Sharpes are read on one convention.
     """
     idx = pd.DatetimeIndex(weights.index)

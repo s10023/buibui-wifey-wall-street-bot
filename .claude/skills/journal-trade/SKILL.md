@@ -19,7 +19,7 @@ allowed-tools: Bash, Write, Read, Edit
 Turn the user's manual trade into a structured journal entry. The journal is the ground-truth corpus
 for the eventual trade-planning system — every entry is a closed-loop prediction (plan) + result
 (outcome) + lesson (retrospective). The procedure memory lives in the parent's tree
-(`~/.claude-personal/projects/-home-kng-repo-buibui-moon-trader-bot/memory/project_trade_journal_procedure.md`);
+(`project_trade_journal_procedure.md` in `memory_dir(<parent checkout>)`, resolved by `tools/claude_home.py`);
 wifey has no local copy.
 
 ## When to use

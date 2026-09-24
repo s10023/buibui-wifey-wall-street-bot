@@ -6,26 +6,26 @@ and ``analytics.xsmom.report``, with a third copy inlined inside
 cross-reference comment. That is not a cosmetic duplication: its output is the
 ``sr_d`` that goes straight into :func:`deflated_sharpe_ratio` and the bootstrap
 statistic behind ``boot_lo``, i.e. two of the three legs
-:func:`analytics.research_guards.passes_sleeve_gate` compares ACROSS sleeves. Three
+:func:`analytics.research_guards.passes_sleeve_gate` compares across sleeves. Three
 copies means a numeric change to one — loosening the ``1e-12`` degenerate-sd guard,
 or switching ``ddof`` — silently desynchronises the very numbers the gate exists to
 compare, and neither mypy nor the suite can see it.
 
-**The two annualisation conventions are NOT interchangeable, and they already
-collide by name.** ``ann_sharpe`` here takes an ``ann_factor`` that is ALREADY
+The two annualisation conventions are not interchangeable, and they already
+collide by name. ``ann_sharpe`` here takes an ``ann_factor`` that is already
 ``sqrt(periods_per_year)`` — both report modules compute
 ``math.sqrt(cfg.annualization_days)`` and pass that.
 ``analytics.xsmom.diagnostics`` has a private ``_ann_sharpe`` whose second argument
 is raw ``ann_days`` and which square-roots internally, so the two functions share a
 name and a shape while meaning different things. Importing the wrong one changes
 every number it touches by a ``sqrt`` factor — about 15.9x at 252 — and nothing
-would fail. Diagnostics keeps its wrapper for that reason; it now delegates the
+would fail. Diagnostics keeps its wrapper for that reason; it delegates the
 per-period half here and applies its own ``sqrt`` visibly at the boundary.
 
-⚠ **This is NOT the one Sharpe in the repo, and unifying the others is a BEHAVIOUR
-CHANGE, not a cleanup.** Five siblings compute a mean/sd Sharpe and are deliberately
-left alone, because they disagree on the degenerate-input contract in ways that are
-load-bearing for their own callers:
+This is not the one Sharpe in the repo, and unifying the others would be a
+behaviour change, not a cleanup. Five siblings compute a mean/sd Sharpe and are
+deliberately left alone, because they disagree on the degenerate-input contract
+in ways that are load-bearing for their own callers:
 
 ===================================== ==================== =========================
 Function                              Degenerate guard     Why it differs
@@ -75,7 +75,7 @@ def per_period_sharpe(r: npt.NDArray[np.float64]) -> float:
 
 
 def ann_sharpe(r: npt.NDArray[np.float64], ann_factor: float) -> float:
-    """Annualised Sharpe. ``ann_factor`` is ALREADY ``sqrt(periods_per_year)``.
+    """Annualised Sharpe. ``ann_factor`` is already ``sqrt(periods_per_year)``.
 
     Pass ``math.sqrt(cfg.annualization_days)``, never ``annualization_days``.
     """
