@@ -142,6 +142,7 @@ the model.
 ```bash
 PYTHONPATH=. poetry run python tools/distil_power.py \
   --units {per_trade|per_alert|per_book_day} \
+  --sr-footing {per_obs|annual} [--periods-per-year P] \
   --n-obs N --n-trials K --sr-variance V \
   [--n-series S --n-eff E] [--sd SD] [--bar R] [--corpus-best C] \
   [--skew S] [--kurtosis K]
@@ -149,10 +150,21 @@ PYTHONPATH=. poetry run python tools/distil_power.py \
 
 `PYTHONPATH=.` is required — the bare invocation fails with `ModuleNotFoundError`.
 
+`--sr-footing` is mandatory. PSR runs per observation (`z = (sr − sr_benchmark)·√(n_obs−1)`), and
+every sleeve Sharpe this repo files is annualized, so a sleeve-anchored run is
+`--sr-footing annual --periods-per-year 252` with `n_obs` in sessions: the tool divides
+`--sr-variance` by the periods, scales the bar back up, and prints both footings. Under `annual`,
+`--corpus-best` and `--bar` are annualized Sharpes and `--sd` is refused. Use `per_obs` only when
+every Sharpe-valued input is already per observation. On `per_book_day` the tool refuses a `per_obs`
+declaration whose implied annual dispersion exceeds 3; on `per_trade` and `per_alert` nothing can
+check it, so the footing is yours to get right. Mixing footings priced H-023 and H-024 at 0.3047 per
+day, 4.84 annualized, and printed REACHABLE where the consistent bar is 0.83. Audit:
+`docs/audits/2026-09-27-distil-power-units-retraction.md`.
+
 There is no single filed corpus best — derive the one your units call for, from two non-interchangeable
 anchors: in per-alert R units, the exit A/B's **+0.368R** paired uplift ceiling (a difference between
-arms, never a profitable book); in sleeve-Sharpe units, cross-asset `broad_ls` at **+0.41 cost-free**,
-against `GATE_SHARPE` = 0.7.
+arms, never a profitable book); in sleeve-Sharpe units, cross-asset `broad_ls` at **+0.41 cost-free
+annualized**, against `GATE_SHARPE` = 0.7 annualized — both need `--sr-footing annual`.
 
 `--units` is mandatory with no default — a wrong bar-count assumption (e.g. treating `4h` RTH as 6
 bars/day instead of 2) silently mislabels part of the panel, the way `regime.py`'s inherited crypto
@@ -165,6 +177,7 @@ Worked example, live-ledger scope:
 ```text
 distil_power - G3 power gate
   units             per_alert
+  Sharpe footing    per_obs
   n_obs (declared)  267
   effective n       (no deflator applied)
   trial family      20 trials, sr_variance 0.25
@@ -202,12 +215,13 @@ rather than skipping silently; G4 is where a drag is priced.
 
 If `sr_variance` for the trial family is unknown, the reachability leg cannot run and the claim is
 `INSUFFICIENT`, not a pass. Derive it fresh each run as the sample variance of this repo's filed
-sleeve Sharpes — never default it or reuse a figure from a prior run. A pass is conditional on that
+sleeve Sharpes — never default it or reuse a figure from a prior run — and pass it with
+`--sr-footing annual`, because those Sharpes are annualized. A pass is conditional on that
 input, so stress it: check whether the required-Sharpe bar still clears the corpus best at the
 derived variance, and note on the row if the trial family had to be fixed in advance to keep the
 claim reachable.
 
-`--corpus-best` needs `--sd` — the comparison converts the required Sharpe into effect units, so
+On the `per_obs` footing, `--corpus-best` needs `--sd` — the comparison converts the required Sharpe into effect units, so
 without `--sd` there is nothing to compare and the tool refuses rather than printing a bare
 `REACHABLE`. Passing it alone is not a corpus comparison.
 

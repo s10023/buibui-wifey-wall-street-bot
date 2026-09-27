@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import math
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -36,6 +37,8 @@ def test_benign_family_is_reachable(capsys: pytest.CaptureFixture[str]) -> None:
         [
             "--units",
             "per_trade",
+            "--sr-footing",
+            "per_obs",
             "--n-obs",
             "20000",
             "--n-trials",
@@ -63,6 +66,8 @@ def test_hostile_family_is_unreachable(capsys: pytest.CaptureFixture[str]) -> No
         [
             "--units",
             "per_trade",
+            "--sr-footing",
+            "per_obs",
             "--n-obs",
             "2",
             "--n-trials",
@@ -85,6 +90,8 @@ def test_correlation_deflator_raises_the_bar(
             [
                 "--units",
                 "per_alert",
+                "--sr-footing",
+                "per_obs",
                 "--n-obs",
                 "4000",
                 "--n-trials",
@@ -99,6 +106,8 @@ def test_correlation_deflator_raises_the_bar(
             [
                 "--units",
                 "per_alert",
+                "--sr-footing",
+                "per_obs",
                 "--n-obs",
                 "4000",
                 "--n-trials",
@@ -133,6 +142,8 @@ def test_effect_size_reported_when_sd_given(capsys: pytest.CaptureFixture[str]) 
         [
             "--units",
             "per_trade",
+            "--sr-footing",
+            "per_obs",
             "--n-obs",
             "4000",
             "--n-trials",
@@ -159,6 +170,8 @@ def test_null_containment_uses_the_owning_predicate(
         [
             "--units",
             "per_alert",
+            "--sr-footing",
+            "per_obs",
             "--n-obs",
             "4000",
             "--n-trials",
@@ -195,6 +208,8 @@ def test_reversed_deflator_args_rejected_via_cli(
         [
             "--units",
             "per_alert",
+            "--sr-footing",
+            "per_obs",
             "--n-obs",
             "4000",
             "--n-trials",
@@ -222,6 +237,8 @@ def test_single_flag_deflator_error_exits_cleanly(
         [
             "--units",
             "per_alert",
+            "--sr-footing",
+            "per_obs",
             "--n-obs",
             "4000",
             "--n-trials",
@@ -258,6 +275,8 @@ def test_corpus_best_without_sd_never_reads_as_a_cleared_bar(
         [
             "--units",
             "per_trade",
+            "--sr-footing",
+            "per_obs",
             "--n-obs",
             "4000",
             "--n-trials",
@@ -291,6 +310,8 @@ def test_corpus_best_with_sd_still_reads_as_a_clean_pass(
         [
             "--units",
             "per_trade",
+            "--sr-footing",
+            "per_obs",
             "--n-obs",
             "4000",
             "--n-trials",
@@ -307,3 +328,152 @@ def test_corpus_best_with_sd_still_reads_as_a_clean_pass(
     assert code == 0
     assert _verdict_lines(out) == ["VERDICT           REACHABLE"]
     assert "NOT COMPARED" not in out
+
+
+# H-023's G3 inputs: 2,174 NYSE sessions, a 4-trial family, and the variance of
+# the eight annualized sleeve Sharpes (0.0652) beside the annualized corpus best
+# (0.41). Retraction audit: docs/audits/2026-09-27-distil-power-units-retraction.md.
+_H023 = ["--units", "per_book_day", "--n-obs", "2174", "--n-trials", "4"]
+
+
+def _sharpe_after(label: str, out: str) -> float:
+    (line,) = [ln for ln in out.splitlines() if ln.strip().startswith(label)]
+    return float(line.split()[2])
+
+
+def test_footing_is_mandatory() -> None:
+    """The recipe that priced H-023 at 0.3047 declared no footing; it must not run."""
+    with pytest.raises(SystemExit):
+        distil_power.main([*_H023, "--sr-variance", "0.0652"])
+
+
+def test_mixed_footing_reproduces_the_filed_bar() -> None:
+    """Positive control: the defect's arithmetic is exactly the filed 0.3047.
+
+    Without this, the tests below would pass equally if the conversion were a
+    no-op on some other path, because they never see the unconverted number.
+    """
+    bar = distil_power.required_sharpe(2174, n_trials=4, sr_variance=0.0652)
+    assert bar == pytest.approx(0.3047, abs=5e-5)
+    # ...and on the annual footing that per-day bar is 4.84, not a plausible 0.3.
+    assert bar * math.sqrt(252) == pytest.approx(4.84, abs=5e-3)
+
+
+def test_annual_footing_converts_to_the_repriced_bar(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    code = distil_power.main(
+        [
+            *_H023,
+            "--sr-footing",
+            "annual",
+            "--periods-per-year",
+            "252",
+            "--sr-variance",
+            "0.0652",
+            "--corpus-best",
+            "0.41",
+            "--bar",
+            "0.70",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert _sharpe_after("required Sharpe", out) == pytest.approx(0.83, abs=5e-3)
+    assert _verdict_lines(out) == [
+        "VERDICT           REACHABLE, but the bar EXCEEDS the corpus best"
+    ]
+    assert _sharpe_after("CI half-width", out) == pytest.approx(0.667, abs=1e-3)
+
+
+def test_both_footings_price_the_same_bar(capsys: pytest.CaptureFixture[str]) -> None:
+    """Declaring the footing must change the arithmetic, never the answer."""
+    distil_power.main(
+        [
+            *_H023,
+            "--sr-footing",
+            "annual",
+            "--periods-per-year",
+            "252",
+            "--sr-variance",
+            "0.0652",
+        ]
+    )
+    annual = _sharpe_after("required Sharpe", capsys.readouterr().out)
+    distil_power.main(
+        [*_H023, "--sr-footing", "per_obs", "--sr-variance", str(0.0652 / 252)]
+    )
+    per_obs = _sharpe_after("required Sharpe", capsys.readouterr().out)
+    assert annual == pytest.approx(per_obs * math.sqrt(252), rel=1e-5)
+
+
+def test_annualized_variance_declared_per_obs_is_refused(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    code = distil_power.main(
+        [*_H023, "--sr-footing", "per_obs", "--sr-variance", "0.0652"]
+    )
+    err = capsys.readouterr().err
+    assert code == 2
+    assert "--sr-footing annual --periods-per-year 252" in err
+
+
+def test_annualized_corpus_best_declared_per_obs_is_refused(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A plausible variance does not launder an annualized corpus best."""
+    code = distil_power.main(
+        [
+            *_H023,
+            "--sr-footing",
+            "per_obs",
+            "--sr-variance",
+            "0.00025879",
+            "--sd",
+            "1.0",
+            "--corpus-best",
+            "0.41",
+        ]
+    )
+    err = capsys.readouterr().err
+    assert code == 2
+    assert "--corpus-best 0.41" in err
+
+
+def test_per_obs_book_day_inputs_still_price(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Positive control for the two refusals: honest per-day inputs pass the guard."""
+    code = distil_power.main(
+        [
+            *_H023,
+            "--sr-footing",
+            "per_obs",
+            "--sr-variance",
+            "0.00025879",
+            "--sd",
+            "1.0",
+            "--corpus-best",
+            "0.025828",
+        ]
+    )
+    assert code == 0
+    assert "required Sharpe" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        ([], "needs --periods-per-year"),
+        (["--periods-per-year", "252", "--sd", "1.0"], "--sd does not apply"),
+        (["--periods-per-year", "0"], "must be > 0"),
+    ],
+)
+def test_annual_footing_declared_errors(
+    extra: list[str], message: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = distil_power.main(
+        [*_H023, "--sr-footing", "annual", "--sr-variance", "0.0652", *extra]
+    )
+    assert code == 2
+    assert message in capsys.readouterr().err

@@ -1,6 +1,8 @@
 # H-023 — Lazy Prices (10-K/10-Q textual change): build design + pre-registration
 
 **Status: DESIGN, pre-registration FROZEN 2026-08-29 — no return has been looked at.**
+⛔ **BLOCKED at G3 since the 2026-09-23 re-price — do not build on this design** (audit
+`docs/audits/2026-09-27-distil-power-units-retraction.md`).
 Source row: `docs/plans/thesis-inbox.md` H-023 (filed 2026-08-27, sources re-read and verified
 2026-08-29). Paper: Cohen, Malloy & Nguyen, *Lazy Prices* (NBER WP w25084; figures verified
 against the WP full text). Second non-price sleeve; sibling design:
@@ -37,6 +39,12 @@ rebalance, value-weighted.
 
 **Trial family — exactly 4, fixed in advance** (matches the filed `distil_power` run: bar
 0.3047 at 4 trials, `sr_variance` 0.0652, book-day unit):
+
+> ⚠ **Corrected 2026-09-27 — the bar quoted above is a mixed-footing figure.** 0.3047 is a
+> per-day Sharpe priced from an annualized `sr_variance` (0.0652) and read against an annualized
+> corpus best (0.41); annualized it is 4.84. On one footing the bar is **0.83 annualized**, 2× the
+> corpus best. The trial family of 4 is unchanged, so the pre-registration stands; only the
+> quoted price was wrong. Audit: `docs/audits/2026-09-27-distil-power-units-retraction.md`.
 
 | Trial | Scope | Book |
 | --- | --- | --- |

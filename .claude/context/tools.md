@@ -891,6 +891,7 @@ does not port.
 ```bash
 PYTHONPATH=. poetry run python tools/distil_power.py \
   --units {per_trade|per_alert|per_book_day} \
+  --sr-footing {per_obs|annual} [--periods-per-year P] \
   --n-obs N --n-trials K --sr-variance V \
   [--n-series S --n-eff E] [--sd SD] [--bar R] [--corpus-best C]
 ```
@@ -910,7 +911,15 @@ required_sharpe(100, n_trials=20, sr_variance=0.25) / required_sharpe(2100, n_tr
 required_sharpe(267, n_trials=320, sr_variance=0.25) / required_sharpe(267, n_trials=1, sr_variance=0.25)
 ```
 
-Three flags carry the traps. `--units` is mandatory with no default, because a figure that looks
+Four flags carry the traps. `--sr-footing` is mandatory because `research_guards.psr` is
+per-observation while every filed sleeve Sharpe is annualized: the H-023/H-024 recipe fed the
+annualized trial variance (0.0652) and corpus best (0.41) beside `n_obs` in sessions, and the tool
+printed a 0.3047 per-day bar — 4.84 annualized — as REACHABLE against 0.41; the consistent bar is
+0.83. `annual` requires `--periods-per-year`, divides `--sr-variance` by it, reads `--corpus-best`
+and `--bar` as annualized Sharpes (so `--sd` is refused) and prints both footings. On
+`per_book_day`, whose year is fixed at 252, a `per_obs` declaration implying an annualized
+dispersion or corpus best above 3 is refused; `per_trade` and `per_alert` have no fixed year and no
+such check. Audit: `docs/audits/2026-09-27-distil-power-units-retraction.md`. `--units` is mandatory with no default, because a figure that looks
 portable silently changes meaning with the panel — `regime.py` carried crypto bar counts across the
 fork, so its "90-day" ATR window really spanned ~270 sessions on `4h` (RTH is 2 bars/day, not 6) and
 12.02% of `4h` labels moved when it was corrected. `--n-series`/`--n-eff` must be supplied together —
@@ -919,7 +928,7 @@ undeflated upper bound rather than the true bar; never present such a pass as ha
 not measure. The repo has a measured `n_eff` (`make wifey-n-eff`, ~2.96 at `1d` on the 505-member
 universe, 2026-08-20), so there is no reason to run undeflated.
 
-`--corpus-best` without `--sd` is not a pass. The comparison converts the required Sharpe into effect
+On the `per_obs` footing, `--corpus-best` without `--sd` is not a pass. The comparison converts the required Sharpe into effect
 units, which needs `--sd`; without it, the tool must name the missing input rather than falling
 through to the same bare `VERDICT REACHABLE` a cleared bar prints, since `/research-distil`'s G3 gate
 mandates running this tool and "did not compare" must not read as "passed." Ported from the parent.

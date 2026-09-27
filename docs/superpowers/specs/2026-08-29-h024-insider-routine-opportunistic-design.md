@@ -41,6 +41,12 @@ run as overlapping thirds (Jegadeesh–Titman).
 **Trial family — exactly 4, fixed in advance** (matches the filed `distil_power` run: bar
 0.3047 at 4 trials, `sr_variance` 0.0652, book-day unit, n_obs 2,174 and growing):
 
+> ⚠ **Corrected 2026-09-27 — the bar quoted above is a mixed-footing figure.** 0.3047 is a
+> per-day Sharpe priced from an annualized `sr_variance` (0.0652) and read against an annualized
+> corpus best (0.41); annualized it is 4.84. On one footing the bar is **0.83 annualized**, 2× the
+> corpus best. The trial family of 4 is unchanged, so the pre-registration stands; only the
+> quoted price was wrong. Audit: `docs/audits/2026-09-27-distil-power-units-retraction.md`.
+
 | Trial | Book | Hold |
 | --- | --- | --- |
 | T1 (primary) | Opportunistic buys − opportunistic sells, VW | 1 month |
