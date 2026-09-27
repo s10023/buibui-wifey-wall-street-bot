@@ -4,13 +4,14 @@
 `make docs-index-check` (and `tests/test_docs_index.py`) fails when this file
 drifts from the corpus.
 
-**43 audits.** A verdict line is shown only where one could be read
-out of a Verdict heading as prose — that is **33 of 43**.
+**44 audits.** A verdict line is shown only where one could be read
+out of a Verdict heading as prose — that is **34 of 44**.
 An em dash means the doc states its verdict in a table, a blockquote or the body,
 **not** that it lacks one; open the file. Nothing here is keyword-guessed.
 
 | Date | Audit | Verdict (as written) | File |
 | --- | --- | --- | --- |
+| 2026-09-27 | `distil_power` units — the G3 bar priced two footings as one | BLOCKED — H-023 stays blocked at G3 on consistent units, and the 2026-08-27 REACHABLE is retracted. The tool defect that produced… | [2026-09-27-distil-power-units-retraction.md](2026-09-27-distil-power-units-retraction.md) |
 | 2026-09-20 | H-024 — insider routine-vs-opportunistic sleeve, phase 3 | EXCLUDED as a deployable sleeve — and, separately, the paper's routine/opportunistic distinction is NOT refuted here, because the… | [2026-09-20-h024-insider-phase3.md](2026-09-20-h024-insider-phase3.md) |
 | 2026-09-04 | Split-adjustment seams — the refresh that creates the defect | FOUND and FIXED — four contaminated names, a guard at the ingest seam, and one wrong-instrument tape that no refetch can repair. | [2026-09-04-split-adjustment-seams.md](2026-09-04-split-adjustment-seams.md) |
 | 2026-08-26 | `backtest_runs` identity ignored the live-parity gate set | FOUND, and closed in this branch. The `run_id` hash carried thirteen axes and none of them recorded the live-parity gate set,… | [2026-08-26-run-id-live-parity-axis.md](2026-08-26-run-id-live-parity-axis.md) |

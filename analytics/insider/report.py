@@ -18,7 +18,8 @@ pre-registration asked for them by name:
                 t-stat is positive. Declared in the spec before any data.
 
 The DSR family is the four trials, not the eight books: the pre-registered
-family size is what ``distil_power`` priced the 0.3047 bar at. Deflating
+family size is what ``distil_power`` priced the G3 bar at (filed as 0.3047, a
+mixed-footing figure; 0.83 annualized on one footing). Deflating
 against eight would silently raise the bar the sleeve was registered to clear,
 and inflating it by counting controls as trials is the same error in the
 other direction.
