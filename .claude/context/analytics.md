@@ -371,7 +371,11 @@ modules, below). Core surface: `Trade`, `BacktestResult`, `run_backtest`, format
   flat-fee.
 - `stats_overfit.py` — overfitting / multiple-testing controls; see the dedicated section below.
 
-## backtest_runner.py — thin wrapper
+## backtest_runner.py — sweep orchestrator
+
+Not a thin wrapper: besides opening the DB and calling the libs, it owns the sweep pipeline
+(detect → resolve conflicts → backtest+save), the OHLCV and ratings caches, and the combo process
+pool. It is TA-sweep code, so it stays as is while the book is frozen.
 
 - Opens the DB, loads OHLCV, calls the strategy + backtest libs.
 - `run_digest_cmd(query, min_trades, top_n)` for the CLI digest.

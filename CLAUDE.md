@@ -35,8 +35,8 @@ regenerating.
 and stop to ask if a step stops serving it. Before killing or demoting a strategy, require
 evidence on the right panel rather than one pooled number, and prefer demotion to deletion.
 
-**Token efficiency.** Skills stay dormant until invoked. Use the context-mode `ctx_*` tools for
-any command or output over roughly 20 lines, and `/compact` at a logical boundary. Delegate a
+**Token efficiency.** Skills stay dormant until invoked. Redirect any command output over roughly
+20 lines to a file and read the part you need, and `/compact` at a logical boundary. Delegate a
 heavy read to a subagent when the context it saves outweighs its startup cost.
 
 **Delegation.** The main thread orchestrates: design, judgment, review and routing stay here.

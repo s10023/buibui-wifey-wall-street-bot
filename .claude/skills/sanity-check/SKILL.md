@@ -105,7 +105,10 @@ The sweep proves lists agree. It cannot read intent.
   `hasattr` on the imported module rather than grep — the shim is the public surface,
   so the sentence above is true through it.
 - **Thin wrapper / pure lib boundary**: `*_runner.py` holds no business logic —
-  create client, open DB, call lib, close. `*_lib.py` makes no network call and
+  create client, open DB, call lib, close. One documented exception:
+  `backtest_runner.py` owns the TA sweep pipeline (`.claude/context/analytics.md`,
+  "sweep orchestrator") and stays as is while the book is frozen, so it is not a finding.
+  `*_lib.py` makes no network call and
   opens no DB connection at module level; `utils/yfinance_client.py` and
   `utils/edgar_client.py` must stay side-effect-free at import time.
 
@@ -157,12 +160,18 @@ like "no problems found."
 
 ## Phase 6 — Judgement: architecture review
 
-Launch a `feature-dev:code-reviewer` agent: dead code, duplicated logic,
-missing annotations, hardcoded values, stale markers.
+Run it inline; do not launch a subagent. Missing annotations and dead imports are already
+gated by mypy strict and ruff, and unit-naming drift by `make check-orphan-tests`, so what
+is left is stale markers plus a read for duplicated logic and hardcoded values in files
+changed since the last run.
 
 ```bash
-grep -rn "TODO\|FIXME" --include="*.py" . | grep -v ".venv"
+git grep -nE '\b(TODO|FIXME|XXX|HACK)\b' -- '*.py'
+git grep -cE '\bdef\b' -- '*.py' | head -1   # positive control: must print a hit
 ```
+
+A zero from the first line counts only if the control printed a hit, since a pattern
+the grep engine cannot parse also returns nothing.
 
 ## Two traps, both live
 

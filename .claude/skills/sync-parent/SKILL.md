@@ -77,6 +77,13 @@ frontmatter instead. The flag is documented here only so it is recognised and re
    naming "the remaining candidates" describes the parent as of the last scan, and the
    parent keeps merging in the meantime. State the count both ways every run: *"167 PRs
    in range, 74 undecided, 11 never triaged."*
+
+   **Derive "never triaged" by diffing reports, not by grepping the state file.** When
+   the pointer was held, the range restarts at it and re-lists PRs an earlier round
+   already ruled. Those rulings often sit in that round's report rather than in
+   `project_parent_sync_state.md`, so a grep for `#NNN` there reads ruled PRs as new.
+   Compare the PR sets of the previous `parent-sync-<date>.md` and this one; the PRs
+   only in the new report are the untriaged set.
 2. **Run both portability filters, and say which findings came from which.** They have
    opposite blind spots, so either one alone produces a shortlist that silently omits a
    whole class:
