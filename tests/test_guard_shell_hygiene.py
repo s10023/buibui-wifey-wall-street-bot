@@ -36,7 +36,7 @@ def _load() -> Any:
     return mod
 
 
-def _run(command: str, tool_name: str = "Bash") -> str:
+def _run(command: str, tool_name: str = "Bash", hook: Path = HOOK) -> str:
     """Drive the hook as the harness does: JSON on stdin, JSON or nothing out."""
     payload = {
         "tool_name": tool_name,
@@ -46,7 +46,7 @@ def _run(command: str, tool_name: str = "Bash") -> str:
         "session_id": f"test-{uuid.uuid4()}",
     }
     proc = subprocess.run(
-        [sys.executable, str(HOOK)],
+        [sys.executable, str(hook)],
         input=json.dumps(payload),
         capture_output=True,
         text=True,
@@ -64,7 +64,29 @@ class TestEachRuleFires:
 
     def test_gate_piped_into_tail(self) -> None:
         out = _run("make preflight | tail -8")
-        assert "piped into tail/head" in out
+        assert "exit status is SWALLOWED" in out
+
+    def test_trailing_echo_swallows_the_status(self) -> None:
+        out = _run('make preflight > f 2>&1; echo "EXIT=$?"')
+        assert "exit status is SWALLOWED" in out
+
+    def test_trailing_tail_swallows_the_status(self) -> None:
+        out = _run("make preflight > f 2>&1; rc=$?; tail -20 f")
+        assert "exit status is SWALLOWED" in out
+
+    def test_any_always_ok_trailer_counts(self) -> None:
+        out = _run("poetry run pytest tests/ -q > f; cat f")
+        assert "exit status is SWALLOWED" in out
+
+    def test_the_old_recommended_form_fires(self) -> None:
+        """The rule's own advice until parent #779 ended in `tail`, so it exited 0.
+
+        A test here pinned that string as silent -- the defect asserted as correct.
+        """
+        out = _run(
+            'make preflight > /tmp/p.log 2>&1; echo "exit=$?"; tail -8 /tmp/p.log'
+        )
+        assert "exit status is SWALLOWED" in out
 
     def test_gh_auth_switch(self) -> None:
         out = _run("gh auth switch --user someone")
@@ -79,11 +101,20 @@ class TestTheThingsItMustNotSayAnythingAbout:
         out = _run("GH_TOKEN=$(gh auth token --user s10023) gh pr view 1")
         assert out.strip() == "", f"sanctioned gh form tripped the hook: {out}"
 
-    def test_a_redirected_gate_is_the_recommended_form(self) -> None:
+    def test_the_corrected_recommended_form_is_silent(self) -> None:
         out = _run(
-            'make preflight > /tmp/p.log 2>&1; echo "exit=$?"; tail -8 /tmp/p.log'
+            "make preflight > /tmp/p.log 2>&1; rc=$?; tail -8 /tmp/p.log; exit $rc"
         )
-        assert out.strip() == "", f"the recommended redirect form tripped: {out}"
+        assert out.strip() == "", f"the recommended form tripped: {out}"
+
+    def test_an_always_ok_command_mid_chain_is_silent(self) -> None:
+        """The end-of-string anchor: only the LAST segment decides the status."""
+        out = _run('make test > f 2>&1; rc=$?; echo "rc=$rc" >> f; exit $rc')
+        assert out.strip() == "", f"mid-chain echo tripped: {out}"
+
+    def test_a_non_gate_with_a_trailing_echo_is_silent(self) -> None:
+        out = _run("git status --short; echo done")
+        assert out.strip() == ""
 
     def test_a_heredoc_body_is_data_not_a_command(self) -> None:
         """A commit message DOCUMENTING these rules must not trip them.
@@ -148,7 +179,7 @@ class TestTheGateListIsThisReposOwn:
     def test_a_real_wifey_only_gate_is_matched(self) -> None:
         """Positive control on the re-derivation, not just on its absence."""
         out = _run("make cadence-check | head -5")
-        assert "piped into tail/head" in out
+        assert "exit status is SWALLOWED" in out
 
 
 class TestNotPortedRulesAreAbsentOnPurpose:
@@ -173,4 +204,28 @@ class TestNotPortedRulesAreAbsentOnPurpose:
         assert "subprocess" not in source, (
             "this hook must not spawn a process probe: pgrep is absent on Windows "
             "and a silently-dead rule is the class #301/#302 existed to fix"
+        )
+
+
+class TestTheSemicolonHalfIsScoped:
+    """Mutation: without the always-ok set the `;` half must go silent while the
+    pipe half still fires -- otherwise a dead rule would pass the positives above.
+    """
+
+    def test_dropping_the_always_ok_set_silences_only_the_semicolon_half(
+        self, tmp_path: Path
+    ) -> None:
+        source = HOOK.read_text(encoding="utf-8")
+        target = r'_ALWAYS_OK = r"(?::|true|echo|printf|tail|head|cat|ls|wc)\b"'
+        assert target in source, "mutation anchor moved; update this test"
+        mutant = tmp_path / "no-always-ok.py"
+        mutant.write_text(
+            source.replace(target, r'_ALWAYS_OK = r"(?:__never__)\b"'),
+            encoding="utf-8",
+        )
+        assert (
+            _run('make preflight > f 2>&1; echo "EXIT=$?"', hook=mutant).strip() == ""
+        )
+        assert "exit status is SWALLOWED" in _run(
+            "make preflight | tail -1", hook=mutant
         )
