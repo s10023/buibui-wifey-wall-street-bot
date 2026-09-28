@@ -66,7 +66,9 @@ def fake_rclone(tmp_path: Path) -> Path:
         "#!/usr/bin/env bash\n"
         'echo "$@" >> "$RCLONE_LOG"\n'
         'case "$1" in\n'
-        '  lsf) printf %s "${FAKE_LSF_OUTPUT:-}" ;;\n'
+        '  lsf) printf %s "${FAKE_LSF_OUTPUT:-}"\n'
+        '       [ -n "${FAKE_LSF_STDERR:-}" ] && echo "$FAKE_LSF_STDERR" >&2\n'
+        '       exit "${FAKE_LSF_RC:-0}" ;;\n'
         "esac\n"
         "exit 0\n"
     )
@@ -80,6 +82,8 @@ def run_script(
     tmp_path: Path,
     remote: str | None,
     lsf_output: str = "",
+    lsf_rc: int = 0,
+    lsf_stderr: str = "",
 ) -> tuple[int, str, list[str]]:
     """Run the script; return (exit code, stderr, rclone subcommands invoked)."""
     log = tmp_path / "rclone.log"
@@ -91,6 +95,8 @@ def run_script(
             "WIFEY_BACKUP_ROOT": str(backup_root),
             "RCLONE_LOG": str(log),
             "FAKE_LSF_OUTPUT": lsf_output,
+            "FAKE_LSF_RC": str(lsf_rc),
+            "FAKE_LSF_STDERR": lsf_stderr,
         }
     )
     if remote is None:
@@ -209,6 +215,51 @@ def test_destination_matching_local_root_is_allowed(
         tmp_path,
         "gdrive-wifey:snapshots",
         lsf_output="daily/\nweekly/\n",
+    )
+    assert rc == 0
+    assert "sync" in calls
+
+
+def test_unlistable_destination_is_rejected(
+    backup_root: Path, fake_rclone: Path, tmp_path: Path
+) -> None:
+    """A listing that FAILED is not an empty destination (parent #785).
+
+    lsf's stderr and exit code used to be discarded, so a broken config listed
+    nothing and the intruder guard passed without having looked. Measured on
+    this host: a missing remote exits 1.
+    """
+    rc, err, calls = run_script(
+        backup_root,
+        fake_rclone,
+        tmp_path,
+        "gdrive-wifey:snapshots",
+        lsf_rc=1,
+        lsf_stderr='CRITICAL: didn\'t find section in config file ("gdrive-wifey")',
+    )
+    assert rc == 1
+    assert "sync" not in calls
+    assert "could not list" in err
+    assert "didn't find section" in err  # rclone's own reason is surfaced
+
+
+def test_absent_destination_still_syncs(
+    backup_root: Path, fake_rclone: Path, tmp_path: Path
+) -> None:
+    """The control for the test above: rc 3 IS an empty destination.
+
+    An absent Drive folder makes lsf exit 3 (measured on this host), and the
+    first-ever sync depends on that passing. A guard that failed on ANY non-zero
+    lsf would pass the test above and make the off-site leg impossible to
+    bootstrap.
+    """
+    rc, _, calls = run_script(
+        backup_root,
+        fake_rclone,
+        tmp_path,
+        "gdrive-wifey:snapshots",
+        lsf_rc=3,
+        lsf_stderr="NOTICE: Failed to lsf: directory not found",
     )
     assert rc == 0
     assert "sync" in calls
