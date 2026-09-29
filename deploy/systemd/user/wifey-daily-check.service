@@ -1,0 +1,19 @@
+[Unit]
+# The daily push of `tools/session_digest.py`: scheduler, watchlist OHLCV, backup
+# and cadence reds, open Issues, the handoff's first move. It sends EVERY day, green
+# included, so a day with no message means this box's scheduler has stopped.
+# ⚠ It cannot report "the timers were never installed" -- it is one of them. The
+# SessionStart hook in .claude/settings.json covers that case.
+Description=wifey daily check (session digest to the personal Telegram channel)
+Documentation=file:///home/kng/repo/buibui-wifey-wall-street-bot/tools/session_digest.py
+OnFailure=wifey-alert@%N.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/kng/repo/buibui-wifey-wall-street-bot
+EnvironmentFile=-/home/kng/repo/buibui-wifey-wall-street-bot/.env
+Environment=PATH=/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin
+SyslogIdentifier=wifey-daily-check
+ExecStart=/usr/bin/make session-digest TELEGRAM=1
+TimeoutStartSec=300
+Nice=10

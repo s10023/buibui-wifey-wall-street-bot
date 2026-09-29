@@ -86,6 +86,13 @@ $Jobs = @(
         Days    = , 'Saturday'
         Command = 'make wifey-universe-sync'
         Timeout = [TimeSpan]::FromHours(1)
+    },
+    @{
+        Name    = 'wifey-daily-check'
+        # OnCalendar=*-*-* 09:15:00 UTC -- after signal-watch and the 08:10 backup
+        Utc     = '09:15'
+        Command = 'make session-digest TELEGRAM=1'
+        Timeout = [TimeSpan]::FromMinutes(5)
     }
 )
 

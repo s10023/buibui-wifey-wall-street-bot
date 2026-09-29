@@ -534,7 +534,15 @@ def read_universe_symbols(path: Path = DEFAULT_UNIVERSE) -> frozenset[str]:
 
 
 def universe_timer_enabled(timer: str = UNIVERSE_TIMER) -> bool:
-    """Whether the weekly universe timer is enabled in this user's systemd.
+    """Whether the weekly universe timer is enabled; see `timer_enabled`."""
+    return timer_enabled(timer)
+
+
+def timer_enabled(timer: str) -> bool:
+    """Whether ``timer`` is enabled in this user's systemd, or as a Windows task.
+
+    Generic over the unit so `tools/session_digest.py` can ask the same question of
+    `wifey-signal-watch.timer` — a box that never registered it reads False here.
 
     ⚠ THIS IS THE PROBE'S ONE PIECE OF NON-DB OBSERVED STATE, and it is what
     keeps the universe tier honest. The units are opt-in and nothing in the repo
@@ -787,6 +795,47 @@ def render(signal: SignalReport | None, ohlcv: OhlcvReport | None) -> str:
     return "\n".join(out)
 
 
+def collect(
+    *,
+    leg: str = "both",
+    db: Path = DEFAULT_DB,
+    state: Path = DEFAULT_STATE,
+    stocks: Path = DEFAULT_STOCKS,
+    universe: Path = DEFAULT_UNIVERSE,
+) -> tuple[SignalReport | None, OhlcvReport | None]:
+    """Read observed state and grade it; the I/O half `main` and the digest share."""
+    from analytics.trading_calendar import nyse_sessions
+
+    today = latest_session(datetime.now(UTC), nyse_sessions)
+
+    signal = None
+    if leg in ("signal", "both"):
+        signal = evaluate_signal(
+            read_watermarks(state),
+            now=today,
+            sessions_fn=nyse_sessions,
+            source=state,
+        )
+
+    ohlcv = None
+    if leg in ("ohlcv", "both"):
+        series = read_series(db)
+        # ⚠ Members are passed ONLY when the timer is enabled. Handing them over
+        # unconditionally would grade the universe against a schedule that may
+        # not exist on this box — see `universe_timer_enabled`.
+        members = (
+            read_universe_symbols(universe) if universe_timer_enabled() else frozenset()
+        )
+        ohlcv = evaluate_ohlcv(
+            series or [],
+            now=today,
+            scheduled_symbols=read_scheduled_symbols(stocks),
+            sessions_fn=nyse_sessions,
+            universe_symbols=members,
+        )
+    return signal, ohlcv
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
         description="Date the observed state of the scheduled signal and OHLCV surfaces."
@@ -817,39 +866,13 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    from analytics.trading_calendar import nyse_sessions
-
-    now = datetime.now(UTC)
-    today = latest_session(now, nyse_sessions)
-
-    signal = None
-    if args.leg in ("signal", "both"):
-        signal = evaluate_signal(
-            read_watermarks(args.state),
-            now=today,
-            sessions_fn=nyse_sessions,
-            source=args.state,
-        )
-
-    ohlcv = None
-    if args.leg in ("ohlcv", "both"):
-        series = read_series(args.db)
-        # ⚠ Members are passed ONLY when the timer is enabled. Handing them over
-        # unconditionally would grade the universe against a schedule that may
-        # not exist on this box — see `universe_timer_enabled`.
-        universe = (
-            read_universe_symbols(args.universe)
-            if universe_timer_enabled()
-            else frozenset()
-        )
-        ohlcv = evaluate_ohlcv(
-            series or [],
-            now=today,
-            scheduled_symbols=read_scheduled_symbols(args.stocks),
-            sessions_fn=nyse_sessions,
-            universe_symbols=universe,
-        )
-
+    signal, ohlcv = collect(
+        leg=args.leg,
+        db=args.db,
+        state=args.state,
+        stocks=args.stocks,
+        universe=args.universe,
+    )
     print(render(signal, ohlcv))
 
     if args.exit_nonzero:
