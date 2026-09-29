@@ -56,6 +56,12 @@ _GATE = (
     r"|freshness_check)\.py)"
 )
 _TRUNCATOR = r"(?:tail|head)\b"
+# Commands that succeed on essentially any input. Put last in a `;`-sequence, one
+# makes the shell's status its own -- the same swallow the pipe form performs:
+# `; echo "exit=$?"` prints the code for a human and still hands the caller a 0.
+# Kept tight on purpose: `grep` and `diff` answer the caller's own question and can
+# legitimately fail, so they are not swallows (parent #779).
+_ALWAYS_OK = r"(?::|true|echo|printf|tail|head|cat|ls|wc)\b"
 
 # Anchored at a real command start, not just a substring match: unanchored, this
 # could fire inside a quoted string such as a commit message that mentions the
@@ -81,13 +87,21 @@ RULES: list[tuple[str, str, str]] = [
     ),
     (
         "piped-gate",
-        rf"{_GATE}[^\n|]*\|\s*{_TRUNCATOR}",
-        "a gate piped into tail/head. The pipeline exits with TAIL's status, so "
-        "the gate's failure is masked and a red run reads as green -- the same "
-        "class CLAUDE.md documents for `make preflight` and `wait_ci.py`, where "
-        "make collapses every failure to its own exit 2 and you must read the "
-        "banner. Redirect instead, then read the file: "
-        '`make <gate> > <log> 2>&1; echo "exit=$?"; tail -8 <log>`.',
+        # Pipe half: the gate's OWN segment piped into a truncator. It stops at
+        # `;`, since a later `grep f | head` after `rc=$?` loses nothing (the
+        # upstream form spanned segments and flagged `...; exit $rc` commands).
+        # `;` half: the LAST segment decides the status, so it fires when that
+        # segment is an always-ok command or a pipeline into tail/head, and an
+        # always-ok command mid-chain is fine when the status is exited with.
+        rf"{_GATE}(?:[^\n|;]*\|\s*{_TRUNCATOR}"
+        rf"|[\s\S]*[;\n]\s*(?:{_ALWAYS_OK}[^\n;]*|[^\n;|]*\|\s*{_TRUNCATOR}[^\n;]*)$)",
+        "a gate whose exit status is SWALLOWED. A pipeline exits with its LAST "
+        "command's status and a `;`-sequence with its last segment's, so `| tail`, "
+        '`; echo "exit=$?"` and `; tail -8 f` all turn a red gate green -- the '
+        "same class CLAUDE.md documents for `make preflight` and `wait_ci.py`, "
+        "where make collapses every failure to its own exit 2 and you must read "
+        "the banner. Capture the status first and make it the LAST word: "
+        "`make <gate> > <log> 2>&1; rc=$?; tail -8 <log>; exit $rc`.",
     ),
     (
         "gh-auth-switch",

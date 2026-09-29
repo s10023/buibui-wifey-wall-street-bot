@@ -217,6 +217,23 @@ fi
 # daily/weekly, so a new tier added by backup-analytics.sh does not read as an
 # intruder here. An absent or empty destination lists nothing and passes, which
 # is what makes the first-ever sync work.
+#
+# The listing must SUCCEED for any of that to mean anything (parent #785). It
+# used to discard lsf's stderr AND exit code, so an rclone that could not reach
+# the remote at all listed nothing and the guard passed without having looked.
+# Only rc 3 (directory not found) is an empty destination. Measured on this host
+# (rclone v1.75.1, 2026-09-28): an absent folder returns 3, a missing remote 1.
+lsf_err="$(mktemp)"
+listing="$(rclone lsf "$REMOTE" 2>"$lsf_err")"
+lsf_rc=$?
+if [ "$lsf_rc" -ne 0 ] && [ "$lsf_rc" -ne 3 ]; then
+    echo "ERROR: could not list $REMOTE (rclone lsf rc=$lsf_rc), so the destination" >&2
+    echo "  guard cannot vouch for it -- refusing to sync. rclone said:" >&2
+    tail -n 3 "$lsf_err" | sed 's/^/    /' >&2
+    rm -f "$lsf_err"
+    exit 1
+fi
+rm -f "$lsf_err"
 unexpected=""
 while IFS= read -r entry; do
     [ -z "$entry" ] && continue
@@ -224,7 +241,7 @@ while IFS= read -r entry; do
     [ -e "$BACKUP_ROOT/$entry" ] || unexpected="${unexpected}  ${entry}
 "
 done <<EOF
-$(rclone lsf "$REMOTE" 2>/dev/null)
+$listing
 EOF
 if [ -n "$unexpected" ]; then
     echo "ERROR: $REMOTE holds entries this script did not create:" >&2

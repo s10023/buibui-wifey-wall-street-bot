@@ -1,4 +1,10 @@
-"""Backtest runner — thin wrapper: opens DB, loads data, calls strategy + backtest libs."""
+"""Backtest runner — the orchestration layer behind `wifey backtest` and `wifey digest`.
+
+Owns the parallel sweep (`run_backtest_sweep`), single-config runs, combo and
+cross-TF co-firing backtests, and the live-parity plumbing a sweep can switch on
+(regime and HTF-slope series, the conflict-resolver hook). Detection and fills live in
+`analytics.strategies` and `analytics.backtest`; this module wires them to the DB.
+"""
 
 from __future__ import annotations
 

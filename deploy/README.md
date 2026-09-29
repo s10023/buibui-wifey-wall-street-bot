@@ -709,7 +709,9 @@ Three guards, deliberately at different layers:
    job with no off-machine copy.
 3. Reject a destination holding entries the local root does not have. Derive the allowed set from
    the local root instead of hardcoding the snapshot tiers, so a tier added later is not read as
-   an intruder.
+   an intruder. Reject a destination it cannot list at all, too: a failed `rclone lsf` lists
+   nothing and would pass. Only exit 3 (directory not found) counts as empty, which keeps the
+   first-ever sync possible.
 
 Guards 2 and 3 are tracked code and survive a reclone; guard 1 does not. That is why they
 duplicate it rather than trusting it.

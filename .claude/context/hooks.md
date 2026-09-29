@@ -41,9 +41,13 @@ matches has honest uses. Three rules:
 
 - `waiter`: an `until`/`while` loop around `pgrep`/`pidof`. A background job already re-invokes
   the session when it exits, and `pgrep -f 'pytest tests/'` matches the polling shell's own argv.
-- `piped-gate`: a gate from `_GATE` piped into `tail` or `head`. The pipeline exits with `tail`'s
-  status, so a red run reads as green. Redirect, then read the file:
-  `make <gate> > <log> 2>&1; echo "exit=$?"; tail -8 <log>`.
+- `piped-gate`: a gate from `_GATE` whose exit status is swallowed, either by piping the gate's
+  own segment into `tail` or `head`, or by ending the command on a segment that always succeeds
+  (an `_ALWAYS_OK` command such as `echo`, `tail` or `cat`, or a pipeline into `tail`/`head`).
+  Either way the shell returns that command's 0, so a red run reads as green. A pipe after
+  `rc=$?` in a command that ends `exit $rc` is silent, unlike upstream's segment-spanning form. Capture the status and exit with it last:
+  `make <gate> > <log> 2>&1; rc=$?; tail -8 <log>; exit $rc`. The advice until parent #779
+  ended in `tail` and so was itself a swallow.
 - `gh-auth-switch`: `gh auth switch` mutates gh's global active account for every session on the
   machine; scope the account to one command with `GH_TOKEN=$(gh auth token --user s10023)`.
 
