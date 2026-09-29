@@ -74,6 +74,11 @@ class TestEachRuleFires:
         out = _run("make preflight > f 2>&1; rc=$?; tail -20 f")
         assert "exit status is SWALLOWED" in out
 
+    def test_a_trailing_pipeline_into_tail_swallows_the_status(self) -> None:
+        """Positive control for the scoping above: a last-segment pipeline still fires."""
+        out = _run("make preflight > f 2>&1; grep -v x f | tail -3")
+        assert "exit status is SWALLOWED" in out
+
     def test_any_always_ok_trailer_counts(self) -> None:
         out = _run("poetry run pytest tests/ -q > f; cat f")
         assert "exit status is SWALLOWED" in out
@@ -111,6 +116,18 @@ class TestTheThingsItMustNotSayAnythingAbout:
         """The end-of-string anchor: only the LAST segment decides the status."""
         out = _run('make test > f 2>&1; rc=$?; echo "rc=$rc" >> f; exit $rc')
         assert out.strip() == "", f"mid-chain echo tripped: {out}"
+
+    def test_a_pipe_after_the_status_is_captured_is_silent(self) -> None:
+        """The pipe half is scoped to the gate's own segment.
+
+        This exact shape fired the hook live on 2026-09-29: the status was
+        captured and exited with, but a later `| head` matched the old
+        segment-spanning pattern.
+        """
+        out = _run(
+            "make post-branch-checks > f 2>&1; rc=$?; grep -v x f | head -80; exit $rc"
+        )
+        assert out.strip() == "", f"a preserved status tripped the hook: {out}"
 
     def test_a_non_gate_with_a_trailing_echo_is_silent(self) -> None:
         out = _run("git status --short; echo done")

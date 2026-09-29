@@ -87,10 +87,14 @@ RULES: list[tuple[str, str, str]] = [
     ),
     (
         "piped-gate",
-        # The `[^\n;]*$` tail scopes the `;` half to the LAST segment: an
+        # Pipe half: the gate's OWN segment piped into a truncator. It stops at
+        # `;`, since a later `grep f | head` after `rc=$?` loses nothing (the
+        # upstream form spanned segments and flagged `...; exit $rc` commands).
+        # `;` half: the LAST segment decides the status, so it fires when that
+        # segment is an always-ok command or a pipeline into tail/head, and an
         # always-ok command mid-chain is fine when the status is exited with.
-        rf"{_GATE}(?:[^\n|]*\|\s*{_TRUNCATOR}"
-        rf"|[\s\S]*[;\n]\s*{_ALWAYS_OK}[^\n;]*$)",
+        rf"{_GATE}(?:[^\n|;]*\|\s*{_TRUNCATOR}"
+        rf"|[\s\S]*[;\n]\s*(?:{_ALWAYS_OK}[^\n;]*|[^\n;|]*\|\s*{_TRUNCATOR}[^\n;]*)$)",
         "a gate whose exit status is SWALLOWED. A pipeline exits with its LAST "
         "command's status and a `;`-sequence with its last segment's, so `| tail`, "
         '`; echo "exit=$?"` and `; tail -8 f` all turn a red gate green -- the '
