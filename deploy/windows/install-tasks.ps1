@@ -14,9 +14,12 @@
     which lets a task run when the user is not logged in) cannot be registered otherwise.
 
 .EXAMPLE
-    pwsh -File deploy/windows/install-tasks.ps1
-    pwsh -File deploy/windows/install-tasks.ps1 -WhatIf
-    pwsh -File deploy/windows/install-tasks.ps1 -Only wifey-signal-watch
+    powershell -ExecutionPolicy Bypass -File deploy/windows/install-tasks.ps1
+    powershell -ExecutionPolicy Bypass -File deploy/windows/install-tasks.ps1 -WhatIf
+    powershell -ExecutionPolicy Bypass -File deploy/windows/install-tasks.ps1 -Only wifey-signal-watch
+
+    `powershell` is Windows PowerShell 5.1, which ships with Windows; `pwsh` (7.x) is a
+    separate install and absent on the personal laptop.
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
