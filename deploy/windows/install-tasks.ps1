@@ -14,20 +14,30 @@
     which lets a task run when the user is not logged in) cannot be registered otherwise.
 
 .EXAMPLE
-    pwsh -File deploy/windows/install-tasks.ps1
-    pwsh -File deploy/windows/install-tasks.ps1 -WhatIf
-    pwsh -File deploy/windows/install-tasks.ps1 -Only wifey-signal-watch
+    powershell -ExecutionPolicy Bypass -File deploy/windows/install-tasks.ps1
+    powershell -ExecutionPolicy Bypass -File deploy/windows/install-tasks.ps1 -WhatIf
+    powershell -ExecutionPolicy Bypass -File deploy/windows/install-tasks.ps1 -Only wifey-signal-watch
+
+    `powershell` is Windows PowerShell 5.1, which ships with Windows; `pwsh` (7.x) is a
+    separate install and absent on the personal laptop.
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [string[]] $Only,
     [string]   $TaskPath = '\wifey\',
-    [string]   $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
+    [string]   $RepoRoot,
     [string]   $BashExe  = 'C:\Program Files\Git\bin\bash.exe'
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Resolved here, not as a param() default: Windows PowerShell 5.1 leaves $PSScriptRoot
+# empty while evaluating param() defaults under `-File`, so a default built from it
+# fails with "Cannot bind argument to parameter 'Path' because it is an empty string".
+if (-not $RepoRoot) {
+    $RepoRoot = (Resolve-Path (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) '..\..')).Path
+}
 
 # ---------------------------------------------------------------------------------
 # The jobs. Mirrors `deploy/systemd/user/`, and the UTC times are copied from the

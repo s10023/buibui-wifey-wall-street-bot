@@ -372,6 +372,19 @@ class TestInstallerMirrorsTheUnits:
         not run, or stops mid-flight, and the stop is recorded as the job's own verdict."""
         assert setting in INSTALLER.read_text(encoding="utf-8")
 
+    def test_no_param_default_reads_the_script_location(self) -> None:
+        """Windows PowerShell 5.1 leaves `$PSScriptRoot` empty while evaluating `param()`
+        defaults under `-File`, so a default built from it dies in `Join-Path` before any
+        task registers — unless the operator happens to pass `-RepoRoot`."""
+        param = re.search(
+            r"^param\((.*?)^\)", _installer_code(), re.DOTALL | re.MULTILINE
+        )
+        assert param, "could not locate the installer's param() block"
+        assert "$RepoRoot" in param.group(1)
+        assert "$PSScriptRoot" not in param.group(1)
+        assert "$MyInvocation" not in param.group(1)
+        assert "$MyInvocation.MyCommand.Path" in _installer_code()
+
 
 class TestWindowsTimerProbe:
     """`universe_timer_enabled` on a Windows host.
