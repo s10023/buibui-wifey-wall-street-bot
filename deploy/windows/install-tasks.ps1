@@ -22,12 +22,19 @@
 param(
     [string[]] $Only,
     [string]   $TaskPath = '\wifey\',
-    [string]   $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
+    [string]   $RepoRoot,
     [string]   $BashExe  = 'C:\Program Files\Git\bin\bash.exe'
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Resolved here, not as a param() default: Windows PowerShell 5.1 leaves $PSScriptRoot
+# empty while evaluating param() defaults under `-File`, so a default built from it
+# fails with "Cannot bind argument to parameter 'Path' because it is an empty string".
+if (-not $RepoRoot) {
+    $RepoRoot = (Resolve-Path (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) '..\..')).Path
+}
 
 # ---------------------------------------------------------------------------------
 # The jobs. Mirrors `deploy/systemd/user/`, and the UTC times are copied from the
