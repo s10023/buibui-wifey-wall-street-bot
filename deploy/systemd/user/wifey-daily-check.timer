@@ -1,0 +1,13 @@
+[Unit]
+Description=Push the wifey daily check once a day
+
+[Timer]
+# 09:15 UTC = 17:15 MYT: after wifey-signal-watch (08:30, 15-min ceiling) and the
+# 08:10 backup, so the check grades the morning's runs rather than yesterday's.
+# Daily, weekends included: the backup and scheduler legs do not follow sessions.
+OnCalendar=*-*-* 09:15:00 UTC
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

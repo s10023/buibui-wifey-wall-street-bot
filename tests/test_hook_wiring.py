@@ -84,7 +84,12 @@ class TestEveryConfiguredHookCanActuallyRun:
 
     @pytest.mark.parametrize(
         "script",
-        ["guard-destructive.py", "advise-foreground-run.py", "guard-shell-hygiene.py"],
+        [
+            "guard-destructive.py",
+            "advise-foreground-run.py",
+            "guard-shell-hygiene.py",
+            "advise-lifecycle.py",
+        ],
     )
     def test_the_interpreter_starts(self, script: str) -> None:
         proc = _drive(_wrapper_for(script), "echo hello")
@@ -95,7 +100,12 @@ class TestEveryConfiguredHookCanActuallyRun:
 
     @pytest.mark.parametrize(
         "script",
-        ["guard-destructive.py", "advise-foreground-run.py", "guard-shell-hygiene.py"],
+        [
+            "guard-destructive.py",
+            "advise-foreground-run.py",
+            "guard-shell-hygiene.py",
+            "advise-lifecycle.py",
+        ],
     )
     def test_the_hook_file_exists(self, script: str) -> None:
         assert (REPO_ROOT / ".claude" / "hooks" / script).is_file()
@@ -132,7 +142,12 @@ class TestTheInterpreterOrderIsLoadBearing:
 
     @pytest.mark.parametrize(
         "script",
-        ["guard-destructive.py", "advise-foreground-run.py", "guard-shell-hygiene.py"],
+        [
+            "guard-destructive.py",
+            "advise-foreground-run.py",
+            "guard-shell-hygiene.py",
+            "advise-lifecycle.py",
+        ],
     )
     def test_the_venv_is_tried_before_python3(self, script: str) -> None:
         w = _wrapper_for(script)
@@ -147,7 +162,12 @@ class TestTheInterpreterOrderIsLoadBearing:
 
     @pytest.mark.parametrize(
         "script",
-        ["guard-destructive.py", "advise-foreground-run.py", "guard-shell-hygiene.py"],
+        [
+            "guard-destructive.py",
+            "advise-foreground-run.py",
+            "guard-shell-hygiene.py",
+            "advise-lifecycle.py",
+        ],
     )
     def test_a_missing_hook_file_still_fails_open(self, script: str) -> None:
         """A missing file must exit 0, never 2 -- CLAUDE.md's standing rule."""
@@ -166,3 +186,44 @@ class TestTheInterpreterOrderIsLoadBearing:
             f"{script}: a missing hook file must fail OPEN (exit 0), "
             f"got {proc.returncode}"
         )
+
+
+def _event_hook_commands(event: str) -> list[str]:
+    cfg = json.loads(SETTINGS.read_text(encoding="utf-8"))
+    return [h["command"] for e in cfg["hooks"][event] for h in e.get("hooks", [])]
+
+
+class TestNoHookDependsOnJq:
+    """This Windows host has no `jq`. The inline `jq | grep` post-branch reminder
+    failed there, `|| true` swallowed it, and it never fired: the same fail-open
+    shape as the interpreter stub above. Every hook goes through a Python file."""
+
+    def test_no_configured_command_calls_jq(self) -> None:
+        assert "jq " not in SETTINGS.read_text(encoding="utf-8")
+
+
+class TestSessionStartDigestWiring:
+    """The digest's wrapper must never fail a session start: exit 0 always."""
+
+    def test_the_wrapper_names_the_digest_and_tries_the_venv_first(self) -> None:
+        (cmd,) = _event_hook_commands("SessionStart")
+        assert "tools/session_digest.py" in cmd
+        assert cmd.find(".venv") < cmd.find("python3")
+
+    def test_a_missing_digest_fails_open(self) -> None:
+        (cmd,) = _event_hook_commands("SessionStart")
+        proc = subprocess.run(
+            ["sh", "-c", cmd],
+            input="{}",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            cwd=REPO_ROOT,
+            env={"CLAUDE_PROJECT_DIR": "/nonexistent-dir", "PATH": _path()},
+            timeout=30,
+        )
+        assert proc.returncode == 0
+
+    @pytest.mark.parametrize("event", ["UserPromptSubmit", "PostToolUse"])
+    def test_lifecycle_events_route_through_the_python_hook(self, event: str) -> None:
+        assert all("advise-lifecycle.py" in c for c in _event_hook_commands(event))

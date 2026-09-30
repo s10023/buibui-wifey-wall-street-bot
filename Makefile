@@ -34,7 +34,7 @@ DOCKER_IMAGE = wifey-bot
 # `make status` print `?` for a file that was present all along. It now comes
 # from `tools/claude_home.py` via `post_branch_checks`, the one derivation.
 
-.PHONY: status wait-ci wait-ci-main lint lint-md lint-md-fix docs-index docs-index-check lint-py-check lint-py typecheck test test-cov test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-pundit-sync wifey-pundit-backfill wifey-universe-backfill wifey-universe-sync universe-coverage universe-stamp-listed wifey-forecast-audit wifey-xsmom-audit wifey-xsmom-residual-audit wifey-lowvol-audit wifey-xasset-audit wifey-xasset-backfill wifey-pead-audit wifey-pead-backfill wifey-insider-backfill wifey-insider-cohort wifey-insider-audit wifey-velocity-audit wifey-exit-audit wifey-exit-replay wifey-warning-value-audit wifey-n-eff wifey-pundit-score wifey-check-levels wifey-route-dedup-seed wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep backup backup-check freshness-check backup-dry-run backup-offsite backup-offsite-dry-run wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent check-dead-surfaces check-orphan-tests post-branch-checks post-branch-text sanity-checks preflight cadence-check cadence-stamp wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
+.PHONY: status wait-ci wait-ci-main lint lint-md lint-md-fix docs-index docs-index-check lint-py-check lint-py typecheck test test-cov test-regression regression-update poetry-install poetry-update docker-build docker-analytics-backfill docker-analytics-sync docker-backtest docker-signal-watch wifey-open-trades wifey-analytics-backfill wifey-analytics-sync wifey-pundit-sync wifey-pundit-backfill wifey-universe-backfill wifey-universe-sync universe-coverage universe-stamp-listed wifey-forecast-audit wifey-xsmom-audit wifey-xsmom-residual-audit wifey-lowvol-audit wifey-xasset-audit wifey-xasset-backfill wifey-pead-audit wifey-pead-backfill wifey-insider-backfill wifey-insider-cohort wifey-insider-audit wifey-velocity-audit wifey-exit-audit wifey-exit-replay wifey-warning-value-audit wifey-n-eff wifey-pundit-score wifey-check-levels wifey-route-dedup-seed wifey-backtest wifey-combo-backtest wifey-cross-tf-backtest wifey-signal-watch go-live go-live-prep backup backup-check freshness-check session-digest backup-dry-run backup-offsite backup-offsite-dry-run wifey-param-audit wifey-param-sweep wifey-recalibrate wifey-sync-parent check-dead-surfaces check-orphan-tests post-branch-checks post-branch-text sanity-checks preflight cadence-check cadence-stamp wifey-digest wifey-web web-install web-dev web-build web-preview web-full clean-db clean
 
 lint: lint-md lint-py
 
@@ -630,6 +630,15 @@ backup-check:
 ## `--exit-nonzero` opts in for a human who wants a shell condition.
 freshness-check:
 	@PYTHONPATH=. poetry run python tools/freshness_check.py
+
+## One-screen digest: signal-watch scheduled?, watchlist OHLCV, backup, cadence, open
+## Issues, the handoff's first move. The SessionStart hook runs it at every session
+## start; `wifey-daily-check` runs it with TELEGRAM=1, which sends to the PERSONAL
+## channel every day, green included, so a missing message means the scheduler died.
+## Always exits 0 (a digest must never block); `EXIT_NONZERO=1` opts into exit 1 on RED.
+session-digest:
+	@PYTHONPATH=. poetry run python tools/session_digest.py \
+		$(if $(TELEGRAM),--telegram) $(if $(EXIT_NONZERO),--exit-nonzero)
 
 # Off-machine leg: rclone sync of $WIFEY_BACKUP_ROOT to $WIFEY_BACKUP_REMOTE.
 # This is the one that survives disk death or a lost laptop. It syncs whatever

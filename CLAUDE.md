@@ -48,8 +48,9 @@ metric and rubric inline and no SoT or memory re-reads. Confirm background work 
 (`ps`, `git status`) rather than from the agent's own report. At most two subagents run at once
 and a third launch is refused, so pipeline wider fan-outs in pairs.
 
-**Guardrails.** Four `PreToolUse` hooks on `Bash` are registered in `.claude/settings.json`;
-three are files in `.claude/hooks/` and the `gh pr create` reminder is inline. All are tracked.
+**Guardrails.** `.claude/settings.json` registers hooks on `SessionStart` (the session digest,
+below), `UserPromptSubmit`, `PreToolUse` and `PostToolUse`; every one is a tracked Python file,
+because this host has no `jq`. Three `PreToolUse` hooks on `Bash` are files in `.claude/hooks/`.
 `guard-destructive.py` blocks `rm -rf`, `git reset --hard`, force-push and DB wipes; if it
 blocks you, say so rather than working around it. Each hook wrapper exits 0 when its script is
 missing (Python's own exit 2 would read as a block), then tries `.venv/Scripts/python.exe`,
@@ -148,6 +149,11 @@ make test           # full pytest suite (make test-cov for coverage)
   `tests/test_sanity_checks.py` runs it inside `make test`, and CI's `markdownlint` job runs it
   on every PR, because the pytest job is path-filtered and skips docs-only PRs. Legs that need
   project imports or the gitignored watchlist report `SKIPPED` rather than a finding.
+- `make session-digest` prints one screen: is `wifey-signal-watch` scheduled on this box,
+  watchlist OHLCV, backup and cadence reds, open GitHub Issues (the planning queue since
+  2026-09-30), and the handoff's first move. The `SessionStart` hook runs it at every session start;
+  `wifey-daily-check` runs `TELEGRAM=1`, which sends to the personal channel every day, green
+  included, so a missing message means the scheduler stopped. It always exits 0.
 - `make cadence-check` reports overdue recurring tasks from `docs/plans/task-marks/`, one file
   per task holding an ISO-8601 UTC timestamp; stamp one with `make cadence-stamp TASK=<slug>`.
   The file's content is authoritative, not its mtime, and a missing mark reads as overdue. It is
@@ -341,9 +347,9 @@ they guard against re-litigating settled research.
 | `trade/` | Empty placeholder (both files are 0 bytes); `make wifey-open-trades` fails loudly. An order layer would land here in Phase B | — |
 | `tests/` | pytest suite; tests import from lib modules and pass mock dependencies directly | — |
 | `migrations/` | Seven one-shot scripts, run by hand, each refusing to start without a `.bak`. 001/002 rewrite `run_id` and cascade to `backtest_trades`; 003–005 update `signal_alert_outcomes` in place (its key carries no measured value); 006/007 delete from `ohlcv`, and 007's rows cannot be recovered by refetch. Check what the target table's key is made of before choosing a shape. Routine schema changes go through `analytics/store/schema.py`'s migration list | `context/migrations.md` |
-| `.claude/hooks/` | `PreToolUse` hooks on `Bash`: destructive-command guard, foreground-run advisory, shell-hygiene advisory, and the inline `gh pr create` reminder in `.claude/settings.json`. Covered by ruff and mypy | `context/hooks.md` |
+| `.claude/hooks/` | Destructive-command guard, foreground-run and shell-hygiene advisories, the branch guard on edits, and `advise-lifecycle.py` (PR create/merge, session close-out). `SessionStart` runs `tools/session_digest.py`. Covered by ruff and mypy | `context/hooks.md` |
 | `config/` | `stocks.json` (gitignored 13-symbol live watchlist), `universe.json` (committed 505-member research universe), `strategy_params.toml` (shared base inherited via `extends`), `youtube_channels.toml` (gitignored; `.example` committed) | `context/config.md` |
-| `deploy/` | `backup-analytics.sh` (local leg), `backup-offsite.sh` (rclone leg), `notify-failure.sh`, and opt-in `wifey-*` systemd user units (backup ×2, templated alert, signal-watch, universe-sync). `deploy/windows/` is the Windows half of the same jobs: `job.sh`, `load-env.sh` (strips CR) and `install-tasks.ps1`. Do not re-sync `job.sh` from the parent: that one shims `deploy/run-job.sh`, which wifey does not have. Every job is one-shot | `deploy/README.md` |
+| `deploy/` | `backup-analytics.sh` (local leg), `backup-offsite.sh` (rclone leg), `notify-failure.sh`, and opt-in `wifey-*` systemd user units (backup ×2, templated alert, signal-watch, universe-sync, daily-check). `deploy/windows/` is the Windows half of the same jobs: `job.sh`, `load-env.sh` (strips CR) and `install-tasks.ps1`. Do not re-sync `job.sh` from the parent: that one shims `deploy/run-job.sh`, which wifey does not have. Every job is one-shot | `deploy/README.md` |
 
 ### Sleeve verdicts
 
@@ -738,7 +744,7 @@ Invoke `/post-branch` before `gh pr create`, while the branch is still local-onl
 "Documentation updates" section into the initial `--body`. Actions minutes are a hard budget on
 these private free-tier repos, and a doc-sync commit pushed to an open PR re-runs the whole
 5-check matrix. Phase 6's zero-commit tail still runs last: re-verify PR state, then stamp the
-handoff. The inline `PreToolUse` hook on `gh pr create` prints a reminder; it has to be
+handoff. The `PreToolUse` hook on `gh pr create` (`advise-lifecycle.py`) prints a reminder; it has to be
 `PreToolUse`, because a `PostToolUse` hook fires after the PR already exists.
 
 ### CI quota

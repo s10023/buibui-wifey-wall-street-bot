@@ -1,8 +1,9 @@
-# `.claude/hooks/` — PreToolUse guards and advisories
+# `.claude/hooks/` — guards, advisories and the session digest
 
-Four `PreToolUse` hooks fire on `Bash`. Three are files in this directory; the fourth is inline
-jq in `.claude/settings.json`, which is what registers all four, so the file count here is not
-the hook count.
+`.claude/settings.json` registers every hook, on four events: `SessionStart` (the session digest),
+`UserPromptSubmit` and `PostToolUse` on `Bash` (lifecycle advisories), and `PreToolUse` on `Bash`
+(two guards, three advisories) and on `Edit|Write|NotebookEdit|MultiEdit` (the branch guard).
+Every hook is a Python file run through the same wrapper; none is inline shell.
 
 ## Wrapper interpreter order
 
@@ -64,11 +65,37 @@ and a background run are byte-identical as commands and no string match could se
 is head-anchored so it does not fire on its own documentation. Run `--selftest` after any edit;
 it pins both discriminators.
 
-## The inline `gh pr create` advisory (in settings.json)
+## advise-lifecycle.py — advises, never blocks
 
-Greps the command for `gh pr create` and emits a `/post-branch` reminder. This has to be
-`PreToolUse`: a `PostToolUse` hook fires after the PR already exists, so it could not enforce
-"sweep while the branch is still local-only" at all.
+One file, three events, keyed on `hook_event_name`:
+
+- `PreToolUse` on `gh pr create`: the `/post-branch` reminder. It has to be `PreToolUse`: a
+  `PostToolUse` hook fires after the PR already exists, so it could not enforce "sweep while the
+  branch is still local-only".
+- `PostToolUse` on `gh pr merge`: wait for `make wait-ci-main`, flip back private, close resolved
+  Issues, prune the branch, append the handoff.
+- `UserPromptSubmit` on "deleting sesh": the close-out checklist (to-dos become Issues, handoff,
+  MEMORY.md).
+
+It replaced an inline `jq -r … | grep -q …` one-liner. This host has no `jq`, so that pipe failed,
+`|| true` swallowed it, and the reminder never fired here; `TestNoHookDependsOnJq` pins the
+absence. Matching is head-anchored (start of the first line, after a shell separator, or after a
+`VAR=value` prefix such as `GH_TOKEN=$(…)`), and quoted strings are blanked first, so a
+`grep -E "a|gh pr create"` does not read the regex `|` as a pipe. `tests/test_advise_lifecycle.py`
+pins both directions.
+
+## guard-branch.py — advises, never blocks
+
+`PreToolUse` on `Edit|Write|NotebookEdit|MultiEdit`: the first edit of a tracked file while on
+`main` gets a "branch off latest main" reminder, once per session per branch, never for gitignored
+paths. Ported from the parent with only its rationale pointer changed.
+
+## The SessionStart digest (`tools/session_digest.py`)
+
+Not a file here, but registered here: `SessionStart` (`startup|resume|clear`) runs
+`tools/session_digest.py`, whose stdout reaches the model, not the operator's screen, so the
+digest tells the model to lead its first reply with any RED line. Its wrapper exits 0 on every
+path; a digest must never block a session. Narrative: `.claude/context/tools.md`.
 
 ## Changing a hook
 
@@ -83,7 +110,7 @@ Test the wiring, not just the module. `tests/test_hook_wiring.py` reads the wrap
 passes whether or not the wrapper string in `settings.json` is correct — the wrapper string is a
 surface of its own, separate from the module it invokes.
 
-`tests/test_hook_wiring.py` and `tests/test_guard_shell_hygiene.py` live in `tests/`, so
+`tests/test_hook_wiring.py`, `tests/test_guard_shell_hygiene.py` and `tests/test_advise_lifecycle.py` live in `tests/`, so
 `make test` and CI's `lint-typecheck-test` job both run them; `make lint-py` and `make typecheck`
 cover the hook sources like any other tracked `.py` module.
 

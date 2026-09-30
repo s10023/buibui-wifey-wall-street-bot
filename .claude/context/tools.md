@@ -653,6 +653,31 @@ a stale scheduled series at wifey's real 2026-06-18 freeze date and asserts it i
 fresh one is not. `--exit-nonzero` opts in for a shell condition, and the unscheduled tier
 deliberately cannot make it fire.
 
+`collect()` is the I/O half `main` and `session_digest.py` share, and `timer_enabled(timer)` is the
+generic form of `universe_timer_enabled`, so the digest can ask the same question of
+`wifey-signal-watch.timer`.
+
+## session_digest.py — what is broken, overdue and open, in one screen
+
+`make session-digest` runs `tools/session_digest.py`, which replaces asking "what's next" at session
+start. It composes the probes above rather than re-implementing them — `freshness_check.collect`,
+`backup_check.evaluate`, `cadence_check.evaluate` — and adds the one question none of them asks
+directly: is `wifey-signal-watch` scheduled on this box at all? The 2026-09-18 outage was exactly
+that: the laptop move left no `\wifey\` tasks, the watchlist froze for 7 sessions, and
+`freshness-check` said so only to whoever ran it. It also lists open GitHub Issues (via
+`gh auth token --user s10023`, since the gh default account may be another) sorted p1→p3 with
+untriaged last, and the handoff's `## ▶` headings.
+
+Two consumers. The `SessionStart` hook prints it into the model's context with a banner telling the
+model to lead with every RED line. The `wifey-daily-check` job (09:15 UTC, after signal-watch and the
+08:10 backup) runs `TELEGRAM=1` and sends to the personal channel every day, green included: the
+send is the heartbeat, so a missing message means the scheduler stopped. It cannot report "the tasks
+were never installed", being one of them; the hook covers that case.
+
+Two properties are load-bearing: it exits 0 unless `EXIT_NONZERO=1` (a probe that raises becomes a
+`BROKE` line, never a traceback), and a failed Issue fetch prints `BROKE could not fetch open Issues`
+rather than an empty list. The pure half is tested in `tests/test_session_digest.py`.
+
 ## host_platform.py — which scheduler this box actually has
 
 `tools/host_platform.py` is one predicate, `is_windows()`, wrapping `os.name` (not `sys.platform`).
@@ -660,7 +685,7 @@ It exists so the host test has a single name rather than that comparison re-spel
 site, and so a test can monkeypatch one symbol instead of the interpreter's own attribute — patching
 `os.name` also repoints `pathlib`, and every `Path(...)` under that patch raises.
 
-Its consumers are `freshness_check.universe_timer_enabled`, which reads systemd on Linux and Task
+Its consumers are `freshness_check.timer_enabled` (behind `universe_timer_enabled` and the session digest), which reads systemd on Linux and Task
 Scheduler on Windows (see that section), and `venv_bootstrap`, which picks between
 `.venv/Scripts/python.exe` and `.venv/bin/python` and between two swap mechanisms. A platform test
 belongs behind a named predicate like this one only once the platforms genuinely differ in answer

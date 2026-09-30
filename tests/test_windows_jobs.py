@@ -297,6 +297,7 @@ class TestInstallerMirrorsTheUnits:
         "wifey-backup",
         "wifey-backup-offsite",
         "wifey-universe-sync",
+        "wifey-daily-check",
     )
 
     def test_every_unit_has_a_job_row(self) -> None:
