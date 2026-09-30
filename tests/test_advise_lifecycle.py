@@ -44,7 +44,12 @@ class TestPrCreate:
 
     @pytest.mark.parametrize(
         "command",
-        ["grep 'gh pr create' CLAUDE.md", "echo gh pr create", "gh pr view 5"],
+        [
+            "grep 'gh pr create' CLAUDE.md",
+            "echo gh pr create",
+            "gh pr view 5",
+            'grep -nE "^#|jq|gh pr create" hooks.md',
+        ],
     )
     def test_a_command_that_only_QUOTES_it_is_silent(self, command: str) -> None:
         assert mod.advise(_bash("PreToolUse", command)) is None

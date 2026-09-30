@@ -33,6 +33,7 @@ _ENV = r"(?:[A-Za-z_][A-Za-z0-9_]*=(?:\$\([^)]*\)|\S*)\s+)*"
 _SEP = r"(?:^|[;&|()]|&&)\s*" + _ENV
 PR_CREATE = re.compile(_SEP + r"gh\s+pr\s+create\b")
 PR_MERGE = re.compile(_SEP + r"gh\s+pr\s+merge\b")
+_QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"")
 CLOSE_OUT = re.compile(r"\bdelet(?:e|ing)\s+(?:the\s+|this\s+)?ses", re.IGNORECASE)
 
 POST_BRANCH = (
@@ -74,7 +75,9 @@ def advise(payload: dict[str, object]) -> str | None:
     if not isinstance(tool_input, dict):
         return None
     lines = str(tool_input.get("command") or "").splitlines()
-    first = lines[0] if lines else ""
+    # Blank quoted strings first: a `|` inside `grep -E "a|gh pr create"` is regex
+    # alternation, not a pipe, and must not read as a head position.
+    first = _QUOTED.sub("''", lines[0]) if lines else ""
     if event == "PreToolUse" and PR_CREATE.search(first):
         return POST_BRANCH
     if event == "PostToolUse" and PR_MERGE.search(first):

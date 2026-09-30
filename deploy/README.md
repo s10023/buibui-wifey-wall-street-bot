@@ -8,7 +8,7 @@ There is no signal-watch daemon: dispatch is a single `make go-live` cycle. On t
 hand; the unit is `Type=oneshot`, so nothing is held open between fires. It is opt-in like every
 other unit here — nothing installs it automatically — and installing it is an operator decision
 because Telegram goes out. On Windows, every job in this directory (signal scan, both backup
-legs, universe sync) runs only by hand until `deploy/windows/install-tasks.ps1`, run from an
+legs, universe sync, daily check) runs only by hand until `deploy/windows/install-tasks.ps1`, run from an
 elevated shell, registers it under `\wifey\` — also an operator decision. Judge coverage by snapshot age
 (`make backup-check`), never by a timer's or task's state. See
 [Scheduled signal run](#scheduled-signal-run) and
@@ -259,6 +259,8 @@ until the `/post-branch` presence check caught it:
 | `wifey-signal-watch.timer` | Mon–Fri 08:30 UTC | once each trading morning, pre-open, `Persistent=true` |
 | `wifey-universe-sync.service` | by `wifey-universe-sync.timer` | one `make wifey-universe-sync` — incremental 4h/1d/1wk refresh of the 505 research members |
 | `wifey-universe-sync.timer` | Sat 10:00 UTC | once a week, `Persistent=true` |
+| `wifey-daily-check.service` | by `wifey-daily-check.timer` | one `make session-digest TELEGRAM=1` — the daily digest to the personal Telegram channel |
+| `wifey-daily-check.timer` | 09:15 UTC | once daily, after signal-watch and the 08:10 backup, `Persistent=true` |
 | `wifey-alert@.service` | `OnFailure=wifey-alert@%N.service` on any service above | Telegrams the last 25 journal lines of the unit that actually failed |
 
 Use the `wifey-*` glob below, not `wifey-backup*`: the narrower glob never matches
@@ -306,9 +308,12 @@ failing the alert on precisely the crash it exists to report. `utils/telegram.py
 `parse_mode` and retries as plain text on a 400, which is what prevents that.
 
 Failure is the only signal this channel gives, which makes it unfalsifiable in the other
-direction: nothing here emits a heartbeat, so a timer that silently stopped firing and a timer
-with nothing to report look identical from the Telegram side. The parent closes this with a
-`daily_check.py` off-site freshness line; wifey has no `daily_check.py` at all.
+direction: a timer that silently stopped firing and a timer with nothing to report look identical
+from the alert side. `wifey-daily-check` is the heartbeat that closes it: it sends
+`tools/session_digest.py` (scheduler, OHLCV, backup and cadence reds, open Issues) to the personal
+channel every day, green included, so a day with no message means this box's scheduler stopped. It
+cannot report tasks that were never registered, being one of them; the `SessionStart` hook in
+`.claude/settings.json` runs the same digest at every session start for that case.
 
 `make backup-check` is wifey's answer, and it closes the observation half only. It reports the age
 of the newest verified snapshot, read from `captured_at_utc` inside `MANIFEST.json` rather than
@@ -321,11 +326,10 @@ scheduled, never whether its output is current.
 
 ## Windows: Task Scheduler instead of systemd
 
-The units above describe four jobs a Windows host cannot run. `deploy/windows/` is their other
-half: `install-tasks.ps1` registers the same four on wifey's own schedules — once a day pre-open,
+The units above describe five jobs a Windows host cannot run. `deploy/windows/` is their other
+half: `install-tasks.ps1` registers the same five on wifey's own schedules — at most twice a day,
 never the crypto parent's every-15-minutes. Nothing installs these either; registration needs an
-elevated shell, and on the current host none of the four are registered (see the note at the top
-of this file).
+elevated shell (see the note at the top of this file).
 
 | Task | Trigger (UTC) | systemd equivalent |
 | --- | --- | --- |
@@ -333,6 +337,7 @@ of this file).
 | `wifey-backup` | 08:10 and 13:10 | `wifey-backup.timer` |
 | `wifey-backup-offsite` | 13:55, registered Disabled | `wifey-backup-offsite.timer` |
 | `wifey-universe-sync` | Sat 10:00 | `wifey-universe-sync.timer` |
+| `wifey-daily-check` | 09:15 | `wifey-daily-check.timer` |
 
 Names carry no type suffix — `freshness_check.task_name_for_unit` is the one transform
 (`wifey-universe-sync.timer` → `wifey-universe-sync`), shared with the installer and pinned by a

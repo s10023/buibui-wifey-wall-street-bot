@@ -177,7 +177,7 @@ each module does, because a second copy of the module map is what rotted the fir
 | `tests/` | pytest suite; tests import from lib modules and pass mock dependencies directly | — |
 | `migrations/` | One-shot DB migration scripts, run by hand — routine schema changes go through `analytics/store/schema.py` instead | — |
 | `trade/` | Empty placeholder package marking the Phase B seam (both files are 0 bytes) — the fork's Binance order opener was stripped. Phase B fills it with an equities broker adapter | — |
-| `deploy/` | Verified local backup of `analytics.db`, the gitignored `docs/plans/` research tree and the memory tree (which lives outside the repo), plus **opt-in** `wifey-*` systemd user units and, in `deploy/windows/`, the same four jobs' Task Scheduler half (nothing installs either) | `deploy/README.md` |
+| `deploy/` | Verified local backup of `analytics.db`, the gitignored `docs/plans/` research tree and the memory tree (which lives outside the repo), plus **opt-in** `wifey-*` systemd user units and, in `deploy/windows/`, the same five jobs' Task Scheduler half (nothing installs either) | `deploy/README.md` |
 
 Repo-root files: `Makefile` (dev & run commands), `Dockerfile` / `docker-compose.yml`,
 `pyproject.toml` (Poetry), `.env.example`, and `.github/workflows/` (`lint.yaml` CI,
@@ -1078,6 +1078,7 @@ make poetry-update
 make backup          # Verified snapshot of analytics.db + docs/plans + memory → ~/backups/wifey
 make backup-dry-run  # Report what would be captured; writes nothing
 make backup-check    # Age of the newest verified snapshot; advisory, never gates CI
+make session-digest  # One screen: scheduler, OHLCV, backup, cadence reds + open Issues (TELEGRAM=1 sends it)
 ```
 
 **Analytics:**
