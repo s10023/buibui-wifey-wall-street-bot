@@ -1,19 +1,21 @@
-# Per-TF directional `tp_r` keys — 32 declared, none applied
+# Per-TF directional `tp_r` keys — 32 declared, none applied, all removed
 
 **Date:** 2026-10-01
 **Audit:** this file. Owner: Issue #317.
 
 ## Verdict
 
-FOUND — all 32 per-timeframe directional `tp_r` keys (`tp_r_long_<tf>` / `tp_r_short_<tf>`) in the
-two live configs are parsed and applied by nothing. The live alert and the sweep both resolve each
+FOUND and FIXED — all 32 per-timeframe directional `tp_r` keys (`tp_r_long_<tf>` / `tp_r_short_<tf>`) in the
+two live configs are parsed and applied by nothing in production. The live alert and the sweep both resolve each
 of them to a different value from the one declared, and 31 of the 32 sit on a declared cell. The
 alert, the live EV-gate book and the ratings sweep agree with one another on every one, so there
-is no gate/alert split; the calibrations just never run. The operator chooses between two
-remedies. Deleting the keys changes nothing live. Wiring them in moves live targets on up to 31
-cells, which is a `tp_r` change under the TA freeze and needs `db-update`. Deletion is recommended,
-because no sweep has ever executed these values, so wiring them in would ship parameters that
-were never tested on this tape. This file fixes the doc half only.
+is no gate/alert split; the calibrations just never run. The operator chose deletion on
+2026-10-01, which changes nothing live: every key is demoted to a `# … dropped (#317)` comment
+that keeps its value and provenance, all 531 live resolutions are identical before and after, and
+a test now refuses a re-declared key while nothing applies it. Wiring them in instead would have
+moved live targets on up to 31 cells, a `tp_r` change under the TA freeze. The one consumer
+that did apply them was the regression harness, so the goldens pinned metrics for targets
+production never ran; they are regenerated here against the unchanged fixtures.
 
 ## The defect
 
@@ -30,8 +32,11 @@ Two consumers could apply them, and neither does:
   the per-TF directional steps, but only behind `direction == "long"` / `"short"`, so from this
   call site they never fire.
 
-`effective_tp_r` on both config classes is therefore the only code that honours the keys, and no
-caller passes it a direction. `check-dead-surfaces` cannot see this: it works at the
+No production caller passes `effective_tp_r` a direction. One test does:
+`tests/test_regression.py::test_golden_metrics` resolves `tp_r_long` and `tp_r_short` through
+`effective_tp_r(..., "long" | "short")` and hands them to the engine. The regression gate was
+therefore the only code that applied these keys, and the goldens recorded metrics at targets
+neither alerts nor ratings ever used. The gate guarded a configuration production does not run. `check-dead-surfaces` cannot see this: it works at the
 `(strategy × timeframe)` cell level, and every affected cell is live and rated.
 
 ## Measurement
@@ -102,13 +107,44 @@ split this audit found absent for the per-TF keys. Wiring in the per-TF keys has
 | Delete the 32 keys (and, optionally, the `*_per_tf` directional fields and their parse) | none: every cell already resolves without them | a config-only PR; the parse can stay as dead code or go with its tests |
 | Wire them in: add the per-TF directional step to `_resolve_tp_r`, pass `direction` from the sweep, and forward `tp_r_long` / `tp_r_short` there | targets move on up to 31 live cells | an explicit lift of the TA freeze for these cells, then `db-update`, which re-rates them |
 
-Wiring in is also a provenance problem. The declared values were never executed by the sweep that
-produces `confidence_ratings`, so nothing on this tape supports them; they are inherited or
-hand-set picks. Shipping them would commit an untested parameter.
+Wiring in is also a provenance problem. Each value's comment says it was picked from the
+directional split of an earlier resweep ("Phase 2 resweep", "candle-resweep", "live-parity
+re-derive"), so each is an in-sample argmax over a `tp_r` grid, several on thin samples (n=10,
+n=15). The sweep that produces `confidence_ratings` never executed any of them, so no rating
+reflects them. Shipping them would commit selected-but-unrated parameters.
+
+**Decision (operator, 2026-10-01): delete.** Each key line became a comment of the form
+`# tp_r_long_1d = 5.0 dropped 2026-10-01 (#317): no consumer ever applied it — <original note>`,
+following the files' existing `# tp_r_long_1d dropped — …` convention, so the value and its
+provenance stay where a reader of the cell looks. The parser and the `*_per_tf` directional fields
+stay: removing them is a code change with its own tests, and the guard below makes them inert.
+
+**Verification.** A dump of every live resolution (both configs × every strategy × each declared
+timeframe × symbols `-`, `NVDA`, `AAPL` × directions `-`, `long`, `short`, through both
+`_resolve_tp_r` and the sweep's `effective_tp_r`) gives 531 lines, identical before and after. The
+positive control: setting one `tp_r_4h` to 9.9 moves 9 of those lines, so the dump sees a real
+`tp_r` change. `tests/test_signal_config.py::TestNoUnappliedDirectionalPerTfTpR` asserts that
+neither shipped config declares a per-TF directional key, and it fails on the pre-deletion configs.
+Its own positive control asserts that the key still parses into the field, so the guard cannot
+pass vacuously. The two `*_strategy_params_parsed` tests pinned all 32 declared directional values;
+their 32 asserts now pin the combined value each cell resolves to, which is the "alert" column
+above.
+
+**The goldens moved, by design.** With the keys gone the regression harness resolves the same
+targets production does, so `make test-regression` failed on 23 `(strategy × timeframe)` cells:
+9 in `golden_signal_watch.json` and 14 in `golden_weekdays.json`. Every moved cell is one that
+lost a key; no other cell moved. Three cells that lost a key did not move, each for a stated
+reason. `bos` 4h in `signal_watch.toml` is not a declared cell and has no golden. `eqh_eql` 1d has
+no long trades on the fixture symbol. `morning_evening_star` 1wk long averages −1.02R, so every
+long stopped out before any target. The goldens were regenerated with
+`pytest tests/test_regression.py --update-golden` against the committed fixture parquets, not with
+`make regression-update`, which re-extracts the parquets from `analytics.db`. This rules out data
+drift by construction: only the two JSON files changed, and within them only those 23 cells and
+`generated_at`.
 
 ## The doc half
 
-This branch corrects the prose that claimed the keys take effect: the `tp_r_long_per_tf` comment
+The same branch corrects the prose that claimed the keys take effect: the `tp_r_long_per_tf` comment
 on both `StrategyOverride` classes, the `effective_tp_r` docstrings (which describe the method
 correctly but not its callers), and README's `[strategy_params]` resolution order, which omitted
 the directional steps entirely.

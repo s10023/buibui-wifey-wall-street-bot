@@ -482,7 +482,7 @@ class SignalWatchConfig:
           7. strategy-wide (override.tp_r)
           8. global (self.tp_r)
 
-        Steps 1, 4 and 6 need ``direction``, and no caller passes one: the sweep
+        Steps 1, 4 and 6 need ``direction``, and no production caller passes one: the sweep
         calls this direction-less and the live path resolves through
         ``analytics/signal/resolvers.py::_resolve_tp_r`` instead, which has steps
         2, 3, 5, 6, 7 and 8 only. Audit:

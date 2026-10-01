@@ -618,7 +618,8 @@ fee_pct = 0.0005        # flat fee applied to inline backtest (falls back to top
 **`[strategy_params]`** overrides `tp_r`, `sl_pct`, and volume/ADR gates per strategy, per TF, and per symbol.
 Resolution order: **symbol+TF → symbol → TF → strategy direction (`tp_r_long` / `tp_r_short`) →
 strategy → global**. Per-TF directional keys (`tp_r_long_4h`, `tp_r_short_1d`) are parsed but
-applied by nothing, live or in the sweep; see `docs/audits/2026-10-01-dead-directional-tp-r-keys.md`.
+applied by nothing, live or in the sweep, so the shipped configs declare none (a test enforces it);
+see `docs/audits/2026-10-01-dead-directional-tp-r-keys.md`.
 
 ```toml
 [strategy_params.engulfing]
