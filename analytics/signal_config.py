@@ -101,8 +101,11 @@ class StrategyOverride:
     atr_sl_multiplier: float | None = None
     atr_sl_floor: bool | None = None
     tp_r_per_tf: dict[str, float] = field(default_factory=dict)
-    # Per-TF directional overrides. Precedence: these win over tp_r_per_tf for
-    # their direction. Example TOML key: `tp_r_long_4h = 3.5`.
+    # Per-TF directional overrides (TOML key: `tp_r_long_4h = 3.5`). Parsed, and
+    # honoured by `effective_tp_r` when it is given a direction, but no consumer
+    # applies them: `_resolve_tp_r` has no per-TF directional step and the sweep
+    # calls `effective_tp_r` without a direction. Audit:
+    # docs/audits/2026-10-01-dead-directional-tp-r-keys.md (Issue #317).
     tp_r_long_per_tf: dict[str, float] = field(default_factory=dict)
     tp_r_short_per_tf: dict[str, float] = field(default_factory=dict)
     sl_pct_per_tf: dict[str, float] = field(default_factory=dict)
@@ -478,6 +481,12 @@ class SignalWatchConfig:
           6. strategy + direction (override.tp_r_long / override.tp_r_short)
           7. strategy-wide (override.tp_r)
           8. global (self.tp_r)
+
+        Steps 1, 4 and 6 need ``direction``, and no caller passes one: the sweep
+        calls this direction-less and the live path resolves through
+        ``analytics/signal/resolvers.py::_resolve_tp_r`` instead, which has steps
+        2, 3, 5, 6, 7 and 8 only. Audit:
+        docs/audits/2026-10-01-dead-directional-tp-r-keys.md.
         """
         override = self.strategy_params.get(strategy)
         if override is not None:
