@@ -54,3 +54,6 @@ skills-lock.json
 
 # X-post ingest (and research-ingestion) caches
 .cache/
+
+# Windows scheduled-job logs (deploy/windows/job.sh, WIFEY_LOG_DIR default)
+/logs/
