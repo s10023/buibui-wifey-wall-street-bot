@@ -479,15 +479,18 @@ clears it — and the reason each rejected candidate fails one (`make backup`, `
 `/db-update`, `/ingest-feed`) live beside `TASKS` in the module, so the table cannot grow into noise
 without someone stating which rule the new line satisfies.
 
-The audit-verdict to SoT ownership join rides in the same report, ported from the parent's
-`daily_check.py`. An audit whose verdict recommends action and that no SoT row names is a finding
+The audit-verdict to owner join rides in the same report, ported from the parent's
+`daily_check.py`. An audit whose verdict recommends action and that nothing names is a finding
 with no owner: a research chain of audits has an owner at every link except the last, since each
 link's owner is the next audit and the terminal recommendation is owned by nobody. It reads
 `docs/audits/INDEX.md`, never the audit bodies — that index's currency is already gated by
-`tests/test_docs_index.py`. Ownership means a SoT row naming the audit's filename, open or closed;
-green is reachable two ways (do the work, or record where it was already done). It is not a `Task`:
-no mark, no cadence — an observed-state join, hosted here because the audits are in the repo, the
-SoT is in `~/.claude-personal`, and no pytest can see both.
+`tests/test_docs_index.py`. Ownership means a GitHub Issue (open or closed) or a SoT row naming the
+audit's filename; green is reachable two ways (do the work, or record where it was already done).
+Issues are read over REST through `session_digest.fetch_issue_items`, which pages by hand because
+the cloud proxy refuses both GraphQL and `--paginate`'s `repositories/{id}` links; the SoT is read
+when this machine has one, and the report names the sources it read. It is not a `Task`: no mark,
+no cadence — an observed-state join, hosted here because the audits are in the repo, their owners
+are not, and no pytest can see both.
 
 Three divergences from the parent's join. The predicates are re-derived against wifey's FOUND /
 BOUNDED / EXCLUDED / BLOCKED taxonomy rather than the parent's BUILD / NO-EDGE; `INSUFFICIENT` is

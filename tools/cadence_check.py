@@ -47,15 +47,19 @@ skipped. All four must hold:
   3. the check is one cheap field, and
   4. exactly one action clears it.
 
-**The audit-verdict → SoT ownership join rides along here** (ported from the
+**The audit-verdict → owner join rides along here** (ported from the
 parent's `daily_check.py` § 6b, the other half of parent #641). An audit whose
-verdict recommends action and that NO SoT row names is a finding with no owner —
+verdict recommends action and that NOTHING names is a finding with no owner —
 the parent measured a BUILD verdict sitting unowned for seven weeks in a
 test-enforced index, because a research chain of audits has an owner at every
-link except the last. This is the only check that joins the two trees (audits in
-the repo, SoT in ``~/.claude-personal``), which is why it lives in an advisory
-tool: no pytest can see both. It is NOT a :class:`Task` — it reads observed
-state, not a mark, so the four inclusion rules above do not apply to it.
+link except the last. Owners are GitHub Issues, open or closed, since planning
+moved there on 2026-09-30 (#379); the memory-tree SoT is still read when this
+machine has it, because its closed-verdict rows record where earlier work was
+done. Either source alone is enough, and the report names which ones it read.
+This is the only check that joins the audits to their owners, which live outside
+the tree, so it sits in an advisory tool: no pytest can see both. It is NOT a
+:class:`Task` — it reads observed state, not a mark, so the four inclusion rules
+above do not apply to it.
 Divergences from the parent, each because its reason does not hold here: the
 predicates are re-derived against wifey's FOUND / BOUNDED / EXCLUDED / BLOCKED
 verdict taxonomy (the parent's key on BUILD / NO-EDGE, which wifey audits never
@@ -63,11 +67,12 @@ say), rows are matched by date *shape* rather than the parent's ``| 2026-``
 prefix (which goes silently blind at the new year, in the direction of green),
 and because this file is tracked and importable the predicates are tested in
 ``make test`` (`tests/test_cadence_check.py`) instead of by a hand-run sibling
-that duplicates them. Ownership = a SoT row naming the audit's FILENAME, open or
-closed — green is reachable two ways (do the work, or record where it was
-already done), so this cannot become an amber nobody believes. The coverage
-bracket is printed because the grandfathered audits state their verdict where
-the index cannot parse it — a green line is a claim about the READABLE rows only.
+that duplicates them. Ownership = an Issue or SoT row naming the audit's
+FILENAME, open or closed — green is reachable two ways (do the work, or record
+where it was already done), so this cannot become an amber nobody believes. The
+coverage bracket is printed because the grandfathered audits state their verdict
+where the index cannot parse it — a green line is a claim about the READABLE
+rows only.
 
 Usage::
 
@@ -82,8 +87,10 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from tools.claude_home import memory_dir
+from tools.session_digest import fetch_issue_items
 
 MARKS = Path("docs/plans/task-marks")
 AUDIT_INDEX = Path("docs/audits/INDEX.md")
@@ -161,13 +168,16 @@ _INDEX_ROW = re.compile(r"^\| \d{4}-\d{2}-\d{2} \|")
 class VerdictJoin:
     """The join's three facts: who is unowned, and the coverage bracket."""
 
-    unowned: tuple[str, ...]  #: actionable audit stems no SoT row names
+    unowned: tuple[str, ...]  #: actionable audit stems no owner names
     blind: int  #: rows whose verdict the index could not read (`—`)
     total: int  #: all audit rows parsed — 0 means the parser drifted, not "clean"
 
 
-def join_verdicts(index_text: str, sot_text: str) -> VerdictJoin:
-    """Actionable audit verdicts that no SoT row names.
+def join_verdicts(index_text: str, owner_text: str) -> VerdictJoin:
+    """Actionable audit verdicts that no owner names.
+
+    ``owner_text`` is every owner source concatenated: Issue titles and bodies,
+    plus the SoT when this machine has it. A stem found anywhere in it is owned.
 
     Reads the generated ``docs/audits/INDEX.md`` rather than the audit bodies —
     the index's currency is already gated by ``tests/test_docs_index.py``, so
@@ -189,7 +199,7 @@ def join_verdicts(index_text: str, sot_text: str) -> VerdictJoin:
         if not _ACTIONABLE.search(verdict) or _SETTLED.search(verdict):
             continue
         stem = link.partition("](")[2].rstrip(")").removesuffix(".md")
-        if stem and stem not in sot_text:
+        if stem and stem not in owner_text:
             unowned.append(stem)
     return VerdictJoin(tuple(unowned), blind, total)
 
@@ -207,6 +217,24 @@ def sot_path(repo_root: Path) -> Path:
     drive-absolute path.
     """
     return memory_dir(repo_root) / "project_todo_master.md"
+
+
+def issue_text(items: list[dict[str, Any]]) -> str:
+    """Number, title and body of each Issue, one block per Issue."""
+    return "\n".join(
+        f"#{it.get('number')} {it.get('title') or ''}\n{it.get('body') or ''}"
+        for it in items
+    )
+
+
+def fetch_issue_text() -> tuple[str | None, str]:
+    """Every Issue, open and closed, as one text (see :func:`issue_text`).
+
+    Returns ``(None, reason)`` on any failure, so the caller can say the Issues
+    were not read rather than treating an unread source as one naming nothing.
+    """
+    items, err = fetch_issue_items("all")
+    return (None, err) if items is None else (issue_text(items), "")
 
 
 def parse_mark(text: str) -> datetime | None:
@@ -290,29 +318,42 @@ def main() -> None:
             print(f"       → why it matters: {st.task.consequence}")
 
     unowned = 0
-    print("\n  audit verdicts → SoT ownership (the join no pytest can make)")
+    print("\n  audit verdicts → owners (the join no pytest can make)")
+    sources: list[str] = []
+    owner_parts: list[str] = []
+    issues, issues_error = fetch_issue_text()
+    if issues is None:
+        print(f"  i Issues not read: {issues_error}")
+    else:
+        sources.append("Issues")
+        owner_parts.append(issues)
     sot = sot_path(Path(__file__).resolve().parents[1])
+    if sot.exists():
+        sources.append("SoT")
+        owner_parts.append(sot.read_text(encoding="utf-8"))
     if not AUDIT_INDEX.exists():
         print("  i docs/audits/INDEX.md absent — run: make docs-index")
-    elif not sot.exists():
-        print(f"  i SoT not on this machine ({sot})")
+    elif not sources:
+        print(f"  i no owner source readable (Issues failed; no SoT at {sot})")
     else:
         j = join_verdicts(
-            AUDIT_INDEX.read_text(encoding="utf-8"),
-            sot.read_text(encoding="utf-8"),
+            AUDIT_INDEX.read_text(encoding="utf-8"), "\n".join(owner_parts)
         )
-        cov = f"{j.total - j.blind}/{j.total} readable, {j.blind} state it in a table"
+        cov = (
+            f"{j.total - j.blind}/{j.total} readable, {j.blind} state it in a table;"
+            f" owners read: {' + '.join(sources)}"
+        )
         if j.total == 0:
             print("  ! 0 index rows parsed — the parser drifted, this is NOT clean")
         elif j.unowned:
             unowned = len(j.unowned)
             print(
-                f"  ! {unowned} actionable verdict(s) no SoT row names: "
+                f"  ! {unowned} actionable verdict(s) no owner names: "
                 f"{', '.join(j.unowned)}  [{cov}]"
             )
             print(
-                "       → file a SoT row naming the audit filename — or, if already"
-                " satisfied, record WHERE in the row that owns it"
+                "       → file an Issue naming the audit filename — or, if already"
+                " satisfied, record WHERE in an Issue and close it"
             )
         else:
             print(f"  + every actionable verdict is owned  [{cov}]")

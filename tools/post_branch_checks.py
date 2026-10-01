@@ -1423,9 +1423,9 @@ UNCOVERED_STEPS: tuple[tuple[str, str], ...] = (
     ),
     (
         "Phase 4",
-        "the SoT reconcile and the BLOCKED re-read — naming each blocked item's "
-        "unblocking condition. An item whose blocker you cannot restate is "
-        "unexamined, not blocked.",
+        "the Issue reconcile (close what shipped, file what was found) and the "
+        "BLOCKED re-read — naming each blocked Issue's unblocking condition. An "
+        "item whose blocker you cannot restate is unexamined, not blocked.",
     ),
     (
         "Phase 5",

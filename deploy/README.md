@@ -22,7 +22,7 @@ Three trees are single-copy and unreachable by git:
 | --- | --- | --- |
 | `analytics.db` | ~153MB | `signal_alert_outcomes` is the live out-of-sample ledger. yfinance will not re-serve a historical signal fire, and restarting the ledger yields a differently-*biased* sample, not an equivalent one. |
 | `docs/plans/` | ~1MB | The whole research pipeline's output: the pundit ledger, the routing watermark, Streams A/B, the video notes, the parent-sync triage, the measurement scripts, the handoff. |
-| the memory tree | ~1MB | `project_todo_master.md` (the single source of truth to-do, carrying the north star and gates G1–G4), `MEMORY.md` and ~70 topic files. It records *intent* — what was ruled out and why — which is the one thing no re-run reconstructs. |
+| the memory tree | ~1MB | `project_todo_master.md` (reference material: the north star, gates G1–G4 and closed verdicts; the queue is GitHub Issues), `MEMORY.md` and ~70 topic files. It records *intent* — what was ruled out and why — which is the one thing no re-run reconstructs. |
 
 The memory tree lives outside the repo, at `<config-root>/projects/<repo-path-slug>/memory`
 (`~/.claude` on Windows, `~/.claude-personal` on the old Linux box; `tools/claude_home.py`

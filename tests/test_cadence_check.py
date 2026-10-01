@@ -12,15 +12,21 @@ any test noticing. This asserts the writer and the reader agree on the same fiel
 
 from __future__ import annotations
 
+import json
+import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from tools import session_digest
 from tools.cadence_check import (
     TASKS,
     Task,
     evaluate,
+    fetch_issue_text,
+    issue_text,
     join_verdicts,
     parse_mark,
     sot_path,
@@ -233,3 +239,93 @@ class TestVerdictJoin:
         repo = Path("/srv/demo")
         assert sot_path(repo) == memory_dir(repo) / "project_todo_master.md"
         assert sot_path(repo).parent.parent.name == project_slug(repo)
+
+
+def _issue(number: int, body: str | None = "", **extra: Any) -> dict[str, Any]:
+    return {"number": number, "title": f"issue {number}", "body": body, **extra}
+
+
+class TestIssueOwners:
+    """Issues own audit verdicts since planning moved there (#379)."""
+
+    STEM = "2026-08-20-audit-guard-cross-sectional-clustering"
+
+    def test_an_issue_body_naming_the_audit_owns_it(self) -> None:
+        """Decisive mutation with an Issue as owner: drop the Issue, and it reds."""
+        idx = _row("2026-08-20", "FOUND — the CI is too narrow", self.STEM)
+        owner = issue_text([_issue(400, f"see docs/audits/{self.STEM}.md")])
+        assert join_verdicts(idx, owner).unowned == ()
+        assert join_verdicts(idx, issue_text([_issue(401)])).unowned == (self.STEM,)
+
+    def test_a_null_body_reads_as_empty(self) -> None:
+        assert issue_text([_issue(403, None)]) == "#403 issue 403\n"
+
+
+class _FakeGh:
+    """Stands in for `subprocess.run`, serving one JSON page per `gh api` call."""
+
+    def __init__(self, pages: list[list[dict[str, Any]]], rc: int = 0) -> None:
+        self.pages, self.rc = pages, rc
+        self.calls: list[list[str]] = []
+
+    def __call__(self, cmd: list[str], **_: Any) -> subprocess.CompletedProcess[str]:
+        self.calls.append(cmd)
+        if cmd[:3] == ["gh", "auth", "token"]:
+            return subprocess.CompletedProcess(cmd, 0, "tok\n", "")
+        page = self.pages[len([c for c in self.calls if c[1] == "api"]) - 1]
+        return subprocess.CompletedProcess(cmd, self.rc, json.dumps(page), "denied")
+
+
+class TestFetchIssueText:
+    """The REST pager lives in `session_digest` and serves both tools."""
+
+    def test_a_pull_request_never_owns(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The issues endpoint returns PRs too; only an Issue is an owner."""
+        stem = TestIssueOwners.STEM
+        pr = _issue(402, f"fixes {stem}", pull_request={"url": "x"})
+        fake = _FakeGh([[pr, _issue(403, "an Issue")]])
+        monkeypatch.setattr(session_digest.subprocess, "run", fake)
+        text, _ = fetch_issue_text()
+        assert text is not None and "an Issue" in text and stem not in text
+
+    def test_ownership_reads_every_state_and_the_digest_reads_open(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A closed Issue still owns (it records where the work was done)."""
+        fake = _FakeGh([[], []])
+        monkeypatch.setattr(session_digest.subprocess, "run", fake)
+        fetch_issue_text()
+        session_digest.fetch_issues()
+        api = [c[2] for c in fake.calls if c[1] == "api"]
+        assert "state=all" in api[0] and "state=open" in api[1]
+
+    def test_pages_are_walked_until_a_short_page(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        full = [_issue(n) for n in range(100)]
+        fake = _FakeGh([full, [_issue(500, "the last page")]])
+        monkeypatch.setattr(session_digest.subprocess, "run", fake)
+        text, err = fetch_issue_text()
+        assert err == "" and text is not None
+        assert "#0 issue 0" in text and "the last page" in text
+        api = [c for c in fake.calls if c[1] == "api"]
+        assert [c[2].rsplit("page=", 1)[1] for c in api] == ["1", "2"]
+
+    def test_the_command_is_REST_and_never_follows_link_headers(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`gh issue list` is GraphQL and `--paginate` follows `repositories/{id}`
+        Link URLs; the cloud proxy refuses both, so neither may come back."""
+        fake = _FakeGh([[]])
+        monkeypatch.setattr(session_digest.subprocess, "run", fake)
+        fetch_issue_text()
+        (api,) = [c for c in fake.calls if c[1] == "api"]
+        assert api[2].startswith("repos/") and "--paginate" not in api
+
+    def test_a_gh_failure_is_None_never_an_empty_owner(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An unread source must not read as one that names nothing."""
+        monkeypatch.setattr(session_digest.subprocess, "run", _FakeGh([[]], rc=1))
+        text, err = fetch_issue_text()
+        assert text is None and err == "denied"

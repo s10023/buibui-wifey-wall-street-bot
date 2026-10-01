@@ -368,7 +368,7 @@ recalibrate combined 10 / directional 5. Always name the surface.
 
 ## 8. Open questions
 
-The live list is `memory/project_open_questions.md`; these are the ones an outside reviewer is
+The live list is the repo's GitHub Issues labelled `question` or `decision`; these are the ones an outside reviewer is
 best placed to challenge.
 
 1. **Is a free-data equity edge findable at all, or is the honest conclusion that the data is

@@ -79,11 +79,21 @@ history, F8/F9/T2 work, sweep findings, gate architecture) live in `MEMORY.md` i
 feature exists in both repos. Skip its Current State and its crypto-specific findings
 (`smt_pairs`, `funding_reversion`, BTC/ETH/SOL cells, CME gap).
 
+**Planning lives in GitHub Issues.** Every to-do, open question, decision and future plan is
+an Issue in this repo, never a memory note, a handoff line or a markdown to-do. File it the
+moment it surfaces, including work found mid-branch that this branch will not do. Labels: one
+priority (`p1`–`p3`), one kind (`build`, `mechanics`, `audit`, `hypothesis`, `ops`,
+`decision`, `question`), plus `blocked` when it waits on something named in its body, and
+`cloud-ok` when a cloud session can finish it with tracked files alone (no `analytics.db`, no
+memory tree, no Windows host). A cloud session picks from `cloud-ok`. Over REST:
+`gh api 'repos/s10023/buibui-wifey-wall-street-bot/issues?state=open&per_page=100'`, because
+`gh issue list` goes through GraphQL, which cloud sessions are refused.
+
 **Master to-do.** `project_todo_master.md` in this checkout's memory tree
-(`memory_dir(<this repo>)`; `make cadence-check` prints the resolved path) is the single source
-of truth for active work: the north star, acceptance gates G1–G4 and the queue. XS-momentum and
-ETF-TSMOM were built and failed (Sleeve verdicts, below) and gate G1 is not live, so paper
-sizing has nothing to size. Phase B (order layer, broker pick) stays gated G3→G4.
+(`memory_dir(<this repo>)`) is reference material, not a queue: the north star, acceptance gates
+G1–G4, the frozen list and closed verdicts. XS-momentum and ETF-TSMOM were built and failed
+(Sleeve verdicts, below) and gate G1 is not live, so paper sizing has nothing to size. Phase B
+(order layer, broker pick) stays gated G3→G4.
 
 **TA detector and sweep work is frozen**: no new boolean detectors and no `tp_r`, gate or
 threshold sweeps. The freeze covers the equity signal engine's `DETECTOR_REGISTRY` book at
@@ -160,8 +170,9 @@ make test           # full pytest suite (make test-cov for coverage)
   advisory and stays out of CI: the marks are gitignored, so a fresh clone sees every task
   overdue. Two tasks are declared (`/sanity-check` and `/sync-parent`, both 7d); the inclusion
   rules live beside `TASKS` in `tools/cadence_check.py`. It records runs and triggers nothing.
-  Its second section joins audit verdicts to SoT owners: an actionable verdict in
-  `docs/audits/INDEX.md` that no SoT row names is a finding.
+  Its second section joins audit verdicts to owners: an actionable verdict in
+  `docs/audits/INDEX.md` that no Issue (open or closed) and no SoT row names is a finding. It
+  reads Issues over REST and the SoT when this machine has one, and says which it read.
 - `make preflight` runs the suite against a fresh clone of HEAD and replaces that branch's
   `make test` (it mirrors that recipe's argv, pinned by a test). The loop is targeted
   `pytest <files>`, commit, then `make preflight`; running `make test` as well wastes about four
@@ -238,8 +249,8 @@ make test           # full pytest suite (make test-cov for coverage)
   pre-2026-08-21 audits are grandfathered in a frozen set that can only shrink; remove an
   entry when you fix or delete its audit. The ownership half is `make cadence-check`'s
   verdict→owner join: an actionable verdict (FOUND / CANDIDATE / EXIT-FIXABLE / UNBLOCKED,
-  unless settled) that no SoT row names is a finding. Clear it by doing the work or by recording
-  in the SoT where it was already done.
+  unless settled) that no Issue or SoT row names is a finding. Clear it by filing an Issue that
+  names the audit filename, or by recording in a closed Issue where the work was already done.
 - UI or API changes: `make web-build` for a production bundle, `make web-dev` for the Vite dev
   server, `make web-check` for `svelte-check` types without a build.
 
@@ -664,10 +675,11 @@ be content whose absence causes silent damage.
 | Surface | Loaded | Committed? | Holds |
 | --- | --- | --- | --- |
 | `CLAUDE.md` | always | yes | Rules binding on any session here regardless of task: commands, conventions, footguns, sleeve verdicts. No personal preferences |
-| `MEMORY.md` index | always | no | A routing table — one line per memory, plus Current State. Enough to decide whether to open a file, never the content |
+| GitHub Issues | session start (digest) | n/a | All planning: to-dos, open questions, decisions, future plans. The `SessionStart` digest lists the open ones |
+| `MEMORY.md` index | always | no | A routing table — one line per memory, plus Current State (last session and pointers). Enough to decide whether to open a file, never the content |
 | `memory/*.md` topics | on demand | no | The detail behind an index line: user preferences, feedback and its reason, project history, references |
 | `.claude/context/*.md` | on demand | yes | Long-form module references and footgun narratives, reached via the Project structure pointers |
-| `docs/plans/next-conversation-prompt.md` | session start | no (gitignored, in-repo) | Live state: what is in flight, queued, or just decided. Pruned every run |
+| `docs/plans/next-conversation-prompt.md` | session start | no (gitignored, in-repo) | Sequencing only: an ordered list of Issue numbers, host state and standing hazards. Never a to-do of its own. Pruned every run |
 
 The index is a router, not a store: content that grows without bound belongs in a topic file
 with a one-line pointer.
@@ -676,7 +688,8 @@ with a one-line pointer.
 
 At the end of every session where anything changed, update the Current State section of
 `MEMORY.md` in this checkout's memory tree (see Fork lineage for the path) without being asked:
-a one-line summary of what changed, and the open questions or "none". Keep each update O(1):
+a one-line summary of what changed, plus pointers (Issue numbers, PRs). Open work goes to an
+Issue, never into Current State. Keep each update O(1):
 
 - Current State holds at most 6 bullets. Before adding a 7th, roll the oldest, verbatim, into
   `memory/project_session_log_<month>.md`, then grep the log to confirm it landed.
@@ -684,8 +697,8 @@ a one-line summary of what changed, and the open questions or "none". Keep each 
   no hook does. `make status` measures the file with `wc -c`.
 - "Last session" is at most 2 lines; every other bullet is exactly 1 line.
 - Session logs have no size limit. Prune by moving, never by deleting.
-- Open questions live in `memory/project_open_questions.md`, because they are live state that
-  cannot be rolled into a dated log. The index carries a one-line pointer plus the count.
+- Open questions are Issues labelled `question` or `decision`. `project_open_questions.md` was
+  migrated on 2026-09-30 and takes no new entries.
 
 ## Agent skills
 

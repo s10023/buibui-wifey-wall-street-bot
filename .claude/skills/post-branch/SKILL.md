@@ -43,12 +43,13 @@ fix one of these: name the single field that lands later, and the phase that fil
 | **1** | `make post-branch-checks` — every mechanical check | no |
 | **2** | Behaviour gate — is this PR user-facing? | no |
 | **3** | Doc walk — judgement, keyed off the diff | no |
-| **4** | Always-run: MEMORY.md, SoT reconcile, claims audit | no |
+| **4** | Always-run: MEMORY.md, Issue reconcile, claims audit | no |
 | **5** | Commit + push, then compose the PR body, then `gh pr create` | one run |
 | **6** | Pre-merge check, handoff, **re-verify PR state last** | no |
 
-Phases 1 and 4 run **regardless** of the phase-2 gate. MEMORY.md and the SoT live
-outside the repo and the handoff is gitignored, so none of them ever costs CI.
+Phases 1 and 4 run **regardless** of the phase-2 gate. MEMORY.md lives outside the
+repo, the handoff is gitignored and Issues are not commits, so none of them ever costs
+CI.
 
 ---
 
@@ -167,7 +168,7 @@ covered. Check what a proposed addition would newly mark covered before adding i
 ### What the sweep deliberately does NOT cover
 
 Judgement, all of it: the behaviour gate, the doc walk, the discovered-fact
-sweep, the claims audit, the SoT reconcile, and everything touching `gh`. Those
+sweep, the claims audit, the Issue reconcile, and everything touching `gh`. Those
 are phases 2–6. A green sweep is not a green branch.
 
 ---
@@ -400,7 +401,8 @@ verbatim into `memory/project_session_log_<month>.md`. With no `Prior session` b
 in the index — its current shape — that is a two-way roll; don't add one to match an
 older description of this step, since the cap is 6 bullets / ~17KB. Grep the log
 afterwards to confirm the rolled bullet landed. Convert relative dates to absolute.
-Update `memory/project_open_questions.md`.
+Current State carries pointers (Issue and PR numbers), never open work: an open
+question or a next step is an Issue, filed in the reconcile below.
 
 **The `#NNN` is the one field this phase cannot know** — phase 5 creates the PR. Do the
 roll here regardless: it needs nothing from the PR. Write the bullet with the number
@@ -423,27 +425,38 @@ already owns every detail it is carrying.
 **Check the live file rather than the last person's description of it.** CLAUDE.md's
 Session Memory Protocol is the authority.
 
-### SoT reconcile
+### Issue reconcile
 
-Ask: **does this branch close, change or contradict a row in the SoT**
-(`memory/project_todo_master.md`)? If yes, reconcile it now — move the row to
-Closed with a one-line verdict, per that file's own rule ("never delete").
+Planning lives in GitHub Issues (CLAUDE.md, Fork lineage), so this step reconciles
+them, and it is the only place this skill files open work.
 
-Nothing auto-updates the SoT; the session-memory wiring all touches MEMORY.md.
-**A stale row is worse than a missing one**, because it reads as current
-evidence — three stale rows once described shipped code as remaining work, and a
-session picking up from them would have rebuilt it. **Reconcile to what you
-verified, not to what is tidy**: a row that shipped with a known residual gap
-gets the gap written down, not a blanket close.
+1. **Close what the branch finishes.** Put `Closes #N` in the phase-5 PR body for
+   each Issue the branch completes. A branch that finishes only part of an Issue
+   says which part in a comment on it, and the Issue stays open with the remainder
+   restated. **Reconcile to what you verified, not to what is tidy**: a shipped
+   change with a known residual gap gets the gap written down, not a blanket close.
+2. **File what the branch found.** Every to-do, open question, defect or follow-up
+   the branch surfaced and will not do becomes an Issue now, labelled per CLAUDE.md
+   (one priority, one kind, `blocked` and `cloud-ok` where they apply). Never park
+   one in the handoff as "not filed yet", in MEMORY.md's Current State, or in a
+   markdown to-do under `docs/plans/`. Over REST, with the body in a file:
+   `gh api repos/s10023/buibui-wifey-wall-street-bot/issues -f title='…' -F body=@<file> -f 'labels[]=p3' -f 'labels[]=mechanics'`.
+   `gh issue create` and `gh issue list` go through GraphQL, which cloud sessions are
+   refused.
+3. **Touch the SoT only for reference material.** `memory/project_todo_master.md`
+   holds the north star, gates G1–G4, the frozen list and closed verdicts. Edit it
+   only when the branch changes one of those; it takes no queue rows.
 
-**Re-read every item filed as blocked and name what would unblock it.** A blocker
-that has since been written down does not announce itself, and a blocked item is
-precisely the one nobody re-reads *because* it is blocked — often on the SoT's own
-design work, filed elsewhere and never linked back. This covers the handoff's queues
-as well as SoT rows — the blocker and the blocked item usually sit on different
-surfaces, which is why neither notices. **Naming the unblocking condition is the
-deliverable**; an item whose blocker you cannot restate is not blocked, it is
-unexamined.
+**A stale Issue is worse than a missing one**, because it reads as current
+evidence: three stale SoT rows once described shipped code as remaining work, and a
+session picking up from them would have rebuilt it.
+
+**Re-read every Issue labelled `blocked` that the branch touches, and name what would
+unblock it.** A blocker that has since been written down does not announce itself,
+and a blocked item is precisely the one nobody re-reads *because* it is blocked. The
+blocker and the blocked item usually sit in different Issues, which is why neither
+notices, so link them. **Naming the unblocking condition is the deliverable**; an
+item whose blocker you cannot restate is not blocked, it is unexamined.
 
 ### Claims audit — run whenever the branch adds prose
 
@@ -684,18 +697,20 @@ Offer — don't auto-write — a fresh-conversation prompt at
 a session delete. Keep updating that same file.
 
 **Update with targeted `Edit`s — never `Write` the whole file.** Its standing back
-half — the four groups, the queue, the NOT-queued list — is exactly what a
+half — the four groups and the NOT-queued list — is exactly what a
 template does not reproduce, so an overwrite destroys it silently and the loss is
 invisible until a session re-litigates something already ruled out.
 
 Front-half shape: one-line context · PR-state table (a **snapshot**, with
-"re-verify first") · just shipped · state of the world · reference · 1–3
-suggested next tasks with file paths.
+"re-verify first") · just shipped · state of the world · reference · the next
+1–3 Issue numbers, in order. The handoff sequences Issues; it never holds a
+to-do of its own, so anything that would be a new task is filed in phase 4 first.
 
 **Carry the standing blocks forward verbatim**, refreshing only their dated "state
 at" lines: the free-data-arc honest exit, the TA freeze, the `gh` rules (never
-`gh auth switch`; `--repo` always), the daily operator check, the accumulated
-findings list, the skill-fix queue, and open questions.
+`gh auth switch`; `--repo` always), the daily operator check, and the accumulated
+findings list. The skill-fix queue and open questions are Issues now: if an older
+handoff still carries either, file each entry as an Issue and drop the block.
 
 Keep them in **four labelled groups**, ordered by when they are needed — flattened
 into one blockquote they reached ~90 lines and a reader could no longer tell a
@@ -787,7 +802,7 @@ behaviour gate     — walked | skipped (<reason>)
 CLAUDE.md          — updated: <what> | no change needed: <reason>
 README.md          — …
 MEMORY.md          — Current State rolled N-way per the live index  (never committed)
-SoT reconcile      — <row> closed | no SoT row affected  (never committed)
+Issue reconcile    — #<n> closed, #<n> filed | no Issue affected
 claims audit       — <n> claims, each with its reproducing query | no new prose
 Makefile / compose — no change needed: <reason>
 .claude/context/*  — …
