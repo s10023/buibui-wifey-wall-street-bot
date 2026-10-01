@@ -229,62 +229,85 @@ def render(
 # --- I/O --------------------------------------------------------------------
 
 
-def fetch_issues() -> tuple[list[dict[str, Any]] | None, str]:
-    """Open Issues via `gh`, as the repo owner's account.
+def owner_env() -> dict[str, str]:
+    """The environment with ``GH_TOKEN`` set to the repo owner's token.
 
     The owner's token is fetched explicitly because the gh default account on this
-    box may be a different one (memory `feedback_gh_account_stay_s10023`).
+    box may be a different one (memory `feedback_gh_account_stay_s10023`). A gh that
+    cannot answer leaves the environment as it was; the caller's own gh call then
+    fails loudly, so nothing is swallowed here. `cadence_check` shares this.
     """
     env = dict(os.environ)
-    if not env.get("GH_TOKEN"):
-        owner = REPO_SLUG.split("/", 1)[0]
-        try:
-            tok = subprocess.run(
-                ["gh", "auth", "token", "--user", owner],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=GH_TIMEOUT_S,
-                check=False,
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            return None, f"gh unavailable ({exc})"
-        if tok.returncode == 0 and tok.stdout.strip():
-            env["GH_TOKEN"] = tok.stdout.strip()
-    cmd = [
-        "gh",
-        "issue",
-        "list",
-        "--repo",
-        REPO_SLUG,
-        "--state",
-        "open",
-        "--limit",
-        "100",
-        "--json",
-        "number,title,labels",
-    ]
+    if env.get("GH_TOKEN"):
+        return env
+    owner = REPO_SLUG.split("/", 1)[0]
     try:
-        proc = subprocess.run(
-            cmd,
+        tok = subprocess.run(
+            ["gh", "auth", "token", "--user", owner],
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
             timeout=GH_TIMEOUT_S,
             check=False,
-            env=env,
         )
-    except (OSError, subprocess.SubprocessError) as exc:
-        return None, f"gh unavailable ({exc})"
-    if proc.returncode != 0:
-        return None, (proc.stderr or "").strip()[:200] or f"gh exit {proc.returncode}"
-    try:
-        data = json.loads(proc.stdout or "[]")
-    except json.JSONDecodeError as exc:
-        return None, f"unparseable gh output ({exc})"
-    return list(data), ""
+    except (OSError, subprocess.SubprocessError):
+        return env
+    if tok.returncode == 0 and tok.stdout.strip():
+        env["GH_TOKEN"] = tok.stdout.strip()
+    return env
+
+
+#: REST, not ``gh issue list``: that command goes through GraphQL, which cloud
+#: sessions are refused, while ``gh api`` on a ``repos/{owner}/{repo}`` path works
+#: on every host. Pages are walked here rather than with ``--paginate``, which
+#: follows GitHub's ``repositories/{id}`` Link URLs, and the cloud proxy refuses
+#: those too.
+ISSUES_PATH = f"repos/{REPO_SLUG}/issues?state={{state}}&per_page=100&page={{page}}"
+#: A runaway guard, not a limit anyone should reach: 50 pages is 5,000 items.
+MAX_ISSUE_PAGES = 50
+
+
+def fetch_issue_items(state: str) -> tuple[list[dict[str, Any]] | None, str]:
+    """Issues in ``state`` (``open``, ``closed`` or ``all``) via `gh api`.
+
+    The issues endpoint also returns pull requests, and they are dropped here, so
+    every consumer sees Issues only. Returns ``(None, reason)`` on any failure.
+    """
+    env = owner_env()
+    items: list[dict[str, Any]] = []
+    for page in range(1, MAX_ISSUE_PAGES + 1):
+        try:
+            proc = subprocess.run(
+                ["gh", "api", ISSUES_PATH.format(state=state, page=page)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=GH_TIMEOUT_S,
+                check=False,
+                env=env,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return None, f"gh unavailable ({exc})"
+        if proc.returncode != 0:
+            err = (proc.stderr or "").strip()[:200]
+            return None, err or f"gh exit {proc.returncode}"
+        try:
+            batch = json.loads(proc.stdout or "[]")
+        except json.JSONDecodeError as exc:
+            return None, f"unparseable gh output ({exc})"
+        if not isinstance(batch, list):
+            return None, f"unexpected gh output on page {page}"
+        items.extend(it for it in batch if "pull_request" not in it)
+        if len(batch) < 100:
+            return items, ""
+    return None, f"more than {MAX_ISSUE_PAGES} pages of Issues; refusing a partial read"
+
+
+def fetch_issues() -> tuple[list[dict[str, Any]] | None, str]:
+    """Open Issues, as the repo owner's account."""
+    return fetch_issue_items("open")
 
 
 def _guarded(label: str, probe: Callable[[], list[Finding]]) -> list[Finding]:

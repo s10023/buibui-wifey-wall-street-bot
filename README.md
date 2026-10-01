@@ -880,8 +880,9 @@ Three trees are single-copy and unreachable by git, so git protects none of them
   differently-*biased* sample rather than an equivalent one.
 - `docs/plans/` (~1MB) holds the entire research pipeline's output — pundit ledger, routing
   watermark, Streams A/B, video notes, parent-sync triage, measurement scripts, the handoff.
-- The **memory tree** (~1MB) holds `project_todo_master.md` — the single source of truth
-  to-do, carrying the north star and gates G1–G4 — plus `MEMORY.md` and ~70 topic files.
+- The **memory tree** (~1MB) holds `project_todo_master.md` — reference material carrying
+  the north star, gates G1–G4 and closed verdicts (the queue is GitHub Issues) — plus
+  `MEMORY.md` and ~70 topic files.
   It lives outside the repo, at `<config-root>/projects/<repo-path-slug>/memory` (resolved by
   `tools/claude_home.py`). The backup's tree and file lists resolve against the repo root, so
   the script's `EXTERNAL_ROOTS` section carries it.

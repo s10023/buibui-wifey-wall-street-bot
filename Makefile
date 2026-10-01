@@ -578,7 +578,7 @@ go-live:
 
 ## --- Backup (verified local snapshot) — see deploy/README.md ---
 # Snapshots analytics.db, the whole gitignored docs/plans research tree, and the
-# memory tree (which lives OUTSIDE the repo and holds the SoT to-do) to
+# memory tree (which lives OUTSIDE the repo and holds the SoT) to
 # $WIFEY_BACKUP_ROOT (default ~/backups/wifey). Verified and atomically
 # published, so a snapshot at the final path is always restorable.
 # This is the LIKELY-failure leg only — it does not survive disk loss.
