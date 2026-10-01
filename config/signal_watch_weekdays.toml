@@ -157,10 +157,10 @@ atr_sl_multiplier_1wk = 0.5   # Task C-followup 13-sym: -0.01R least-bad, n=118
 [strategy_params.pin_bar]
 tp_r = 3.5                    # fallback
 tp_r_4h = 2.0                 # candle-resweep 13-sym (under ATR floor 1.5×): combined 2.0@+0.142R, n=351 (was 3.5; ATR floor pulled SL wider → tighter tp_r wins; short=combined → no override)
-tp_r_long_4h = 3.0            # candle-resweep 13-sym directional: longs +0.053R, n=190 at 3.0 (confirms pin_bar audit; differs from combined 2.0)
+# tp_r_long_4h = 3.0 dropped 2026-10-01 (#317): no consumer ever applied it — candle-resweep 13-sym directional: longs +0.053R, n=190 at 3.0 (confirms pin_bar audit; differs from combined 2.0)
 tp_r_1d = 2.5                 # candle-resweep 13-sym (under ATR floor 0.5×): combined 2.5@+0.185R, n=262 (confirms pin_bar audit; long winner=combined → drop tp_r_long_1d; short=combined)
 tp_r_1wk = 4.5                # candle-resweep 13-sym (under ATR floor 2.5×): combined no_edge — keep pin_bar audit commit (only long has thin positive edge)
-tp_r_long_1wk = 3.5           # candle-resweep 13-sym directional: longs +0.800R, n=10 at 3.5 (was 3.0; thin sample but positive under ATR floor); short dropped — candle-resweep short no_edge
+# tp_r_long_1wk = 3.5 dropped 2026-10-01 (#317): no consumer ever applied it — candle-resweep 13-sym directional: longs +0.800R, n=10 at 3.5 (was 3.0; thin sample but positive under ATR floor); short dropped — candle-resweep short no_edge
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 1.5    # Task C-followup 13-sym: +0.17R, n=1183
 atr_sl_multiplier_1d = 0.5    # Task C-followup 13-sym: +0.22R, n=920
@@ -170,7 +170,7 @@ atr_sl_multiplier_1wk = 2.5   # Task C-followup 13-sym: +0.44R, n=181
 tp_r = 4.0                    # fallback (also covers 1wk weekdays — no_edge under ATR floor: best -0.143R@5.0, n=21)
 tp_r_4h = 3.5                 # Phase 2 resweep 13-sym (under ATR floor 1.0×): combined 3.5@+0.042R, n=192 (was 3.0@+0.010R; ATR floor pulled winner 0.5 step wider)
 tp_r_1d = 2.0                 # Phase 2 resweep 13-sym (under ATR floor 1.0×): combined 2.0@+0.142R, n=155 (NEW commit; was fallback 4.0@+0.026R — short-driven edge under floor)
-tp_r_long_1d = 2.5            # Phase 2 resweep 13-sym directional: longs +0.127R, n=59 at 2.5 (NEW commit)
+# tp_r_long_1d = 2.5 dropped 2026-10-01 (#317): no consumer ever applied it — Phase 2 resweep 13-sym directional: longs +0.127R, n=59 at 2.5 (NEW commit)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 1.0    # Task C-followup 13-sym: -0.03R least-bad, n=661
 atr_sl_multiplier_1d = 1.0    # Task C-followup 13-sym: +0.06R, n=516
@@ -204,7 +204,7 @@ atr_sl_multiplier_1wk = 2.5   # Task C-followup 13-sym: +0.54R (monotonic ascent
 
 [strategy_params.eqh_eql]
 tp_r_4h = 2.0                 # Phase 2 resweep 13-sym (under ATR floor 1.5×): combined no_edge (best -0.037R@2.0, n=81) — keep current T14 commit
-tp_r_short_4h = 5.0           # Phase 2 resweep 13-sym directional: shorts +0.463R, n=41 at 5.0 (NEW commit; short rescues 4h cell from no_edge — long no_edge so combined stays net-neg)
+# tp_r_short_4h = 5.0 dropped 2026-10-01 (#317): no consumer ever applied it — Phase 2 resweep 13-sym directional: shorts +0.463R, n=41 at 5.0 (NEW commit; short rescues 4h cell from no_edge — long no_edge so combined stays net-neg)
 tp_r_1d = 5.0                 # Phase 2 resweep 13-sym (under ATR floor 1.5×): combined 5.0@+0.882R, n=51 (confirms T-A; both directions agree at 5.0)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 1.5    # Task C-followup 13-sym: -0.01R least-bad, n=154
@@ -214,7 +214,7 @@ atr_sl_multiplier_1d = 1.5    # Task C-followup 13-sym: +0.43R (tied 0.5/1.0/1.5
 [strategy_params.bos]
 tp_r = 3.0                    # fallback (4h no_edge under ATR floor: best -0.270R@1.0, n=211; 1wk no_edge: best -0.306R@1.5, n=18 — keep current)
 tp_r_1d = 2.5                 # Phase 2 resweep 13-sym (under ATR floor 2.0×): combined no_edge (best -0.020R@2.0, n=152) — keep Task E commit; long carries the only directional edge
-tp_r_long_1d = 4.0            # Phase 2 resweep 13-sym directional: longs +0.169R, n=77 at 4.0 (NEW commit; long edge dominates on 1d weekdays)
+# tp_r_long_1d = 4.0 dropped 2026-10-01 (#317): no consumer ever applied it — Phase 2 resweep 13-sym directional: longs +0.169R, n=77 at 4.0 (NEW commit; long edge dominates on 1d weekdays)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 2.0    # Task C-followup 13-sym: -0.32R least-bad, n=287
 atr_sl_multiplier_1d = 2.0    # Task C-followup 13-sym: -0.09R least-bad, n=158
@@ -224,11 +224,11 @@ atr_sl_multiplier_1wk = 2.5   # Task C-followup 13-sym: +0.27R (tied 2.0/2.5), n
 tp_r_4h = 3.0                 # Phase 2 resweep 13-sym (under ATR floor 1.0×): combined 3.0@+0.144R, n=759 (confirms Task E)
                               # tp_r_short_4h dropped — short winner (3.0) = combined → falls back to tp_r_4h
 tp_r_1d = 3.5                 # Phase 2 resweep 13-sym (under ATR floor 2.5×): combined 3.5@+0.124R, n=580 (was 5.0@+0.073R; long-driven edge so combined shifts tighter)
-tp_r_long_1d = 5.0            # Phase 2 resweep 13-sym directional: longs +0.613R, n=279 at 5.0 (NEW commit; long edge dominates strongly)
+# tp_r_long_1d = 5.0 dropped 2026-10-01 (#317): no consumer ever applied it — Phase 2 resweep 13-sym directional: longs +0.613R, n=279 at 5.0 (NEW commit; long edge dominates strongly)
                               # tp_r_short_1d dropped — short no_edge under ATR floor (best -0.096R@1.0, n=314)
 tp_r_1wk = 3.0                # Phase 2 resweep 13-sym (under ATR floor 1.0×): combined 3.0@+0.448R, n=105 (NEW commit; was fallback 2.0@+0.364R — uplift +0.084R)
-tp_r_long_1wk = 4.5           # Phase 2 resweep 13-sym directional: longs +0.742R, n=60 at 4.5 (was 4.0; ATR floor pulled winner 0.5 step wider)
-tp_r_short_1wk = 1.5          # Phase 2 resweep 13-sym directional: shorts +0.111R, n=45 at 1.5 (confirms Task E)
+# tp_r_long_1wk = 4.5 dropped 2026-10-01 (#317): no consumer ever applied it — Phase 2 resweep 13-sym directional: longs +0.742R, n=60 at 4.5 (was 4.0; ATR floor pulled winner 0.5 step wider)
+# tp_r_short_1wk = 1.5 dropped 2026-10-01 (#317): no consumer ever applied it — Phase 2 resweep 13-sym directional: shorts +0.111R, n=45 at 1.5 (confirms Task E)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 1.0    # Task C-followup 13-sym: +0.14R, n=2568
 atr_sl_multiplier_1d = 2.5    # Task C-followup 13-sym: +0.26R, n=2255
@@ -236,7 +236,7 @@ atr_sl_multiplier_1wk = 1.0   # Task C-followup 13-sym: +0.30R (tied 0.5/1.0), n
 
 [strategy_params.orb]
 tp_r_4h = 3.0                 # live-parity re-derive (2026-06-03): combined 3.0@+0.444R, n=54 (was 2.5; raw n=484 inflated 9×; long n=29→3.0 = combined → tp_r_long_4h dropped)
-tp_r_short_4h = 2.0           # live-parity re-derive (2026-06-03): shorts 2.0@+0.280R, n=25 (was 1.5; differs from combined 3.0)
+# tp_r_short_4h = 2.0 dropped 2026-10-01 (#317): no consumer ever applied it — live-parity re-derive (2026-06-03): shorts 2.0@+0.280R, n=25 (was 1.5; differs from combined 3.0)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 2.5    # Task C-followup 13-sym: +0.06R, n=125
 
@@ -246,22 +246,22 @@ atr_sl_multiplier_4h = 2.5    # Task C-followup 13-sym: +0.06R, n=125
 
 [strategy_params.morning_evening_star]
 tp_r_4h = 1.5                 # Phase 2 resweep 13-sym (under ATR floor 2.5×): combined 1.5@+0.047R, n=379 (was 3.0@-0.030R; ATR floor inverts edge — tightest tp_r wins)
-tp_r_short_4h = 1.0           # Phase 2 resweep 13-sym directional: shorts +0.174R, n=172 at 1.0 (was 3.5; ATR floor pulled winner 2.5 steps tighter)
+# tp_r_short_4h = 1.0 dropped 2026-10-01 (#317): no consumer ever applied it — Phase 2 resweep 13-sym directional: shorts +0.174R, n=172 at 1.0 (was 3.5; ATR floor pulled winner 2.5 steps tighter)
 tp_r_1d = 2.0                 # Phase 2 resweep 13-sym (under ATR floor 1.0×): combined 2.0@+0.155R, n=329 (confirms Task E)
-tp_r_long_1d = 3.5            # Phase 2 resweep 13-sym directional: longs +0.346R, n=172 at 3.5 (was 3.0; ATR floor pulled winner 0.5 step wider)
-tp_r_short_1d = 1.5           # Phase 2 resweep 13-sym directional: shorts +0.168R, n=155 at 1.5 (confirms Task E)
+# tp_r_long_1d = 3.5 dropped 2026-10-01 (#317): no consumer ever applied it — Phase 2 resweep 13-sym directional: longs +0.346R, n=172 at 3.5 (was 3.0; ATR floor pulled winner 0.5 step wider)
+# tp_r_short_1d = 1.5 dropped 2026-10-01 (#317): no consumer ever applied it — Phase 2 resweep 13-sym directional: shorts +0.168R, n=155 at 1.5 (confirms Task E)
 tp_r_1wk = 1.0                # Phase 2 resweep 13-sym (under ATR floor 1.0×): combined 1.0@+0.219R, n=64 (NEW combined commit; was no commit + fallback)
-tp_r_long_1wk = 3.5           # Phase 2 resweep 13-sym directional: longs +0.397R, n=29 at 3.5 (confirms Task E)
+# tp_r_long_1wk = 3.5 dropped 2026-10-01 (#317): no consumer ever applied it — Phase 2 resweep 13-sym directional: longs +0.397R, n=29 at 3.5 (confirms Task E)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 2.5    # Task C-followup 13-sym: +0.04R (tied 2.0/2.5), n=1329
 atr_sl_multiplier_1d = 1.0    # Task C-followup 13-sym: +0.12R, n=1074
 atr_sl_multiplier_1wk = 1.0   # Task C-followup 13-sym: +0.02R, n=184
 
 [strategy_params.order_block]
-tp_r_short_4h = 1.5           # Phase 2 resweep 13-sym directional: shorts +0.087R, n=207 at 1.5 (NEW commit; long no_edge + combined no_edge — short carries the only 4h edge)
+# tp_r_short_4h = 1.5 dropped 2026-10-01 (#317): no consumer ever applied it — Phase 2 resweep 13-sym directional: shorts +0.087R, n=207 at 1.5 (NEW commit; long no_edge + combined no_edge — short carries the only 4h edge)
 tp_r_1d = 3.0                 # Phase 2 resweep 13-sym (under ATR floor 0.5×): combined 3.0@+0.131R, n=352 (confirms T14 AAPL)
-tp_r_short_1d = 2.5           # Phase 2 resweep 13-sym directional: shorts +0.130R, n=173 at 2.5 (NEW commit)
-tp_r_long_1wk = 2.5           # Phase 2 resweep 13-sym directional: longs +0.296R, n=27 at 2.5 (NEW commit; combined 1wk no_edge so long-only)
+# tp_r_short_1d = 2.5 dropped 2026-10-01 (#317): no consumer ever applied it — Phase 2 resweep 13-sym directional: shorts +0.130R, n=173 at 2.5 (NEW commit)
+# tp_r_long_1wk = 2.5 dropped 2026-10-01 (#317): no consumer ever applied it — Phase 2 resweep 13-sym directional: longs +0.296R, n=27 at 2.5 (NEW commit; combined 1wk no_edge so long-only)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 2.5    # Task C-followup 13-sym: +0.02R (tied 2.0/2.5), n=1339
 atr_sl_multiplier_1d = 0.5    # Task C-followup 13-sym: +0.09R, n=1224
@@ -270,8 +270,8 @@ atr_sl_multiplier_1wk = 2.0   # Task C-followup 13-sym: +0.16R, n=240
 [strategy_params.ema]
 tp_r = 3.0                    # spec §6 default (also covers 1wk weekdays — no_edge under ATR floor: best -0.037R@1.0, n=27)
 tp_r_4h = 3.0                 # live-parity re-derive (2026-06-03): combined 3.0@+0.333R, n=45 (was 1.5; raw n=128 inflated)
-tp_r_long_4h = 3.5            # live-parity re-derive (2026-06-03): longs 3.5@+0.800R, n=20 (differs from combined 3.0)
-tp_r_short_4h = 1.0           # live-parity re-derive (2026-06-03): shorts 1.0@+0.120R, n=25 (differs from combined 3.0)
+# tp_r_long_4h = 3.5 dropped 2026-10-01 (#317): no consumer ever applied it — live-parity re-derive (2026-06-03): longs 3.5@+0.800R, n=20 (differs from combined 3.0)
+# tp_r_short_4h = 1.0 dropped 2026-10-01 (#317): no consumer ever applied it — live-parity re-derive (2026-06-03): shorts 1.0@+0.120R, n=25 (differs from combined 3.0)
 tp_r_1d = 4.5                 # live-parity re-derive (2026-06-03): combined 4.5@+1.200R, n=20 (was 4.0; long n=15 <20, short n<10 → tp_r_long_1d / tp_r_short_1d dropped)
 atr_sl_floor = true           # Task C-followup 13-sym: ATR floor on
 atr_sl_multiplier_4h = 2.5    # Task C-followup 13-sym: +0.28R, n=428

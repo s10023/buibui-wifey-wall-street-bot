@@ -4,13 +4,14 @@
 `make docs-index-check` (and `tests/test_docs_index.py`) fails when this file
 drifts from the corpus.
 
-**44 audits.** A verdict line is shown only where one could be read
-out of a Verdict heading as prose — that is **34 of 44**.
+**45 audits.** A verdict line is shown only where one could be read
+out of a Verdict heading as prose — that is **35 of 45**.
 An em dash means the doc states its verdict in a table, a blockquote or the body,
 **not** that it lacks one; open the file. Nothing here is keyword-guessed.
 
 | Date | Audit | Verdict (as written) | File |
 | --- | --- | --- | --- |
+| 2026-10-01 | Per-TF directional `tp_r` keys — 32 declared, none applied, all removed | FOUND and FIXED — all 32 per-timeframe directional `tp_r` keys (`tp_r_long_<tf>` / `tp_r_short_<tf>`) in the two live configs are… | [2026-10-01-dead-directional-tp-r-keys.md](2026-10-01-dead-directional-tp-r-keys.md) |
 | 2026-09-27 | `distil_power` units — the G3 bar priced two footings as one | BLOCKED — H-023 stays blocked at G3 on consistent units, and the 2026-08-27 REACHABLE is retracted. The tool defect that produced… | [2026-09-27-distil-power-units-retraction.md](2026-09-27-distil-power-units-retraction.md) |
 | 2026-09-20 | H-024 — insider routine-vs-opportunistic sleeve, phase 3 | EXCLUDED as a deployable sleeve — and, separately, the paper's routine/opportunistic distinction is NOT refuted here, because the… | [2026-09-20-h024-insider-phase3.md](2026-09-20-h024-insider-phase3.md) |
 | 2026-09-04 | Split-adjustment seams — the refresh that creates the defect | FOUND and FIXED — four contaminated names, a guard at the ingest seam, and one wrong-instrument tape that no refetch can repair. | [2026-09-04-split-adjustment-seams.md](2026-09-04-split-adjustment-seams.md) |
