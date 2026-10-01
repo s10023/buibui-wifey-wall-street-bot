@@ -19,6 +19,11 @@ from analytics.store.market_data import upsert_ohlcv
 from analytics.store.schema import init_schema
 from tests.test_pead_replay import _earnings_rows, _ohlcv_rows
 
+# The module fixture evaluates 4 books at ~3s each, so setup and call each take
+# ~25s against the suite-wide 30s cap (measured twice, 2026-09-20/21). The cost is
+# structural and the sleeve is shelved, so widen this module's cap instead (#325).
+pytestmark = pytest.mark.timeout(60)
+
 
 def _seeded_conn() -> duckdb.DuckDBPyConnection:
     conn = duckdb.connect(":memory:")
