@@ -39,6 +39,7 @@
 # Env: WIFEY_BACKUP_REMOTE  (REQUIRED, e.g. "gdrive-wifey:snapshots")
 #      WIFEY_BACKUP_ROOT    (default ~/backups/wifey -- same default as the local leg)
 #      WIFEY_RCLONE_FLAGS   (optional extra flags, e.g. --bwlimit 2M)
+#      WIFEY_OFFSITE_MAX_SNAPSHOT_DELETES (default 4; guard 4's per-run cap)
 #
 # WHAT STOPS THIS TOUCHING ANYTHING ELSE ON THE DRIVE
 # ---------------------------------------------------
@@ -64,7 +65,8 @@
 #   3. a rejection here of a destination holding entries the local root does
 #      not have, which catches a well-formed remote aimed somewhere unintended.
 # Guards 2 and 3 are tracked code and survive a reclone; guard 1 does not. Keep
-# all three -- each covers a failure the others do not see.
+# all three -- each covers a failure the others do not see. They vet WHERE the
+# sync goes; guard 4 (at the sync) caps HOW MUCH one run may delete.
 #
 # ⚠ WHAT GUARD 3 DOES *NOT* COVER, measured 2026-08-15 in the parent repo.
 # It compares TOP-LEVEL entries only, so it cannot tell a SAME-SHAPED sibling
@@ -251,12 +253,73 @@ if [ -n "$unexpected" ]; then
     exit 1
 fi
 
+# Guard 4: cap what one run may delete, so deletions cannot run unattended.
+#
+# Guards 2-3 vet WHERE the sync goes; none vets HOW MUCH it removes. The first
+# dry run after the host migration planned to delete 19 remote snapshots (the
+# old laptop's history) and still printed "off-site backup OK".
+#
+# The unit is SNAPSHOTS TOUCHED, not files: a snapshot is ~300 files and grows
+# with the memory tree, so a file cap would drift. Retention prunes by count, so
+# a routine run touches at most 3 (one rotated daily, one rotated weekly, and
+# today's snapshot when the local leg re-ran). The default of 4 adds one missed
+# run of slack. Above the cap this refuses in --dry-run too, listing what would
+# go, so a human reads the plan; a deliberate prune sets the override once.
+#
+# The plan is remote files minus local files. WIFEY_RCLONE_FLAGS filters can
+# only shrink what sync deletes, so the count errs high. `--max-delete` then
+# binds the real sync to the count vetted here: if rclone ever plans more than
+# this diff saw, it stops at that many deletes and exits 7 rather than going on.
+MAX_SNAPSHOT_DELETES="${WIFEY_OFFSITE_MAX_SNAPSHOT_DELETES:-4}"
+case "$MAX_SNAPSHOT_DELETES" in
+    ''|*[!0-9]*)
+        echo "ERROR: WIFEY_OFFSITE_MAX_SNAPSHOT_DELETES='$MAX_SNAPSHOT_DELETES' is not a" >&2
+        echo "  non-negative integer -- refusing rather than guessing a cap." >&2
+        exit 1
+        ;;
+esac
+lsf_err="$(mktemp)"
+remote_files="$(rclone lsf -R --files-only "$REMOTE" 2>"$lsf_err" | tr -d '\r')"
+lsf_rc=$?  # pipefail: tr exits 0, so this is rclone's rc
+if [ "$lsf_rc" -ne 0 ] && [ "$lsf_rc" -ne 3 ]; then
+    echo "ERROR: could not list $REMOTE recursively (rclone lsf rc=$lsf_rc), so the" >&2
+    echo "  deletion cap cannot count the plan -- refusing to sync. rclone said:" >&2
+    tail -n 3 "$lsf_err" | sed 's/^/    /' >&2
+    rm -f "$lsf_err"
+    exit 1
+fi
+rm -f "$lsf_err"
+doomed="$(LC_ALL=C comm -23 \
+    <(printf '%s\n' "$remote_files" | grep -v '^$' | LC_ALL=C sort -u) \
+    <(cd "$BACKUP_ROOT" && find . -type f | sed 's|^\./||' | LC_ALL=C sort -u))"
+doomed_files=0
+doomed_snapshots=""
+if [ -n "$doomed" ]; then
+    doomed_files=$(printf '%s\n' "$doomed" | wc -l)
+    # A snapshot is the first two path components (daily/2026-09-30); a file
+    # shallower than that counts as its own unit.
+    doomed_snapshots="$(printf '%s\n' "$doomed" \
+        | awk -F/ '{ print (NF >= 3 ? $1 "/" $2 : $0) }' | LC_ALL=C sort -u)"
+fi
+n_doomed_snapshots=0
+[ -n "$doomed_snapshots" ] && n_doomed_snapshots=$(printf '%s\n' "$doomed_snapshots" | wc -l)
+if [ "$n_doomed_snapshots" -gt "$MAX_SNAPSHOT_DELETES" ]; then
+    echo "ERROR: this sync would delete $doomed_files remote file(s) across" >&2
+    echo "  $n_doomed_snapshots snapshot(s), above the cap of $MAX_SNAPSHOT_DELETES:" >&2
+    printf '%s\n' "$doomed_snapshots" | head -n 25 | sed 's/^/    /' >&2
+    echo "  Refusing -- sync MIRRORS DELETIONS and Drive's trash is bypassed." >&2
+    echo "  If this prune is intended, re-run once with" >&2
+    echo "  WIFEY_OFFSITE_MAX_SNAPSHOT_DELETES=$n_doomed_snapshots." >&2
+    exit 1
+fi
+
 echo "off-site backup: $BACKUP_ROOT -> $REMOTE  ($manifests verified snapshot(s))"
+echo "  plan deletes $doomed_files file(s) across $n_doomed_snapshots snapshot(s) (cap $MAX_SNAPSHOT_DELETES)"
 
 # --checksum, not size+mtime: these are large immutable snapshot files, and an
 # rclone re-upload triggered by clock skew alone would cost real bandwidth.
 # --transfers 2 keeps a laptop's uplink usable while it runs.
-flags=(--checksum --transfers 2 --stats-one-line --stats 30s)
+flags=(--checksum --transfers 2 --stats-one-line --stats 30s --max-delete "$doomed_files")
 [ "$DRY" -eq 1 ] && flags+=(--dry-run)
 # shellcheck disable=SC2086  # WIFEY_RCLONE_FLAGS is intentionally word-split
 rclone sync "$BACKUP_ROOT" "$REMOTE" "${flags[@]}" ${WIFEY_RCLONE_FLAGS:-}

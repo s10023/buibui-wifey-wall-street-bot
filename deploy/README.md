@@ -344,8 +344,9 @@ Names carry no type suffix — `freshness_check.task_name_for_unit` is the one t
 test so the probe and the registrar cannot drift.
 
 Offsite is registered disabled on purpose: `rclone sync` mirrors deletions, so until a host has
-its own remote, a scheduled run could mirror an empty local tree over the snapshots. Enabling it
-is an operator decision, after the remote exists.
+its own remote, a scheduled run could mirror an empty local tree over the snapshots. Guard 4 (the
+per-run deletion cap, below) bounds what an unattended run can remove; enabling the task is still
+an operator decision, after `make backup-offsite-dry-run` reads clean on that host.
 
 The installer sets four Task Scheduler options explicitly, because their defaults would kill the
 bot silently: `DisallowStartIfOnBatteries` (stops the moment the charger is out),
@@ -717,9 +718,19 @@ Three guards, deliberately at different layers:
    an intruder. Reject a destination it cannot list at all, too: a failed `rclone lsf` lists
    nothing and would pass. Only exit 3 (directory not found) counts as empty, which keeps the
    first-ever sync possible.
+4. Cap what one run may delete. Guards 1–3 vet where the sync goes; this one vets how much it
+   removes. The plan is the remote's recursive file listing minus the local root's, counted in
+   snapshots touched (`daily/<date>`), because a file cap would drift as snapshots grow. A
+   routine run touches at most 3 (a rotated daily, a rotated weekly, a same-day re-run), and the
+   default cap `WIFEY_OFFSITE_MAX_SNAPSHOT_DELETES=4` adds one missed run of slack. Above it the
+   script refuses, `--dry-run` included, and lists the snapshots; a deliberate prune re-runs once
+   with the override. The vetted file count is passed to `rclone sync --max-delete`, so if rclone
+   ever plans more than the guard counted it stops at that many and exits 7. The first dry run
+   after the host migration planned to delete 19 snapshots while printing `off-site backup OK`;
+   on 2026-10-01 the guard's count matched rclone's dry run exactly (523 files, 2 snapshots).
 
-Guards 2 and 3 are tracked code and survive a reclone; guard 1 does not. That is why they
-duplicate it rather than trusting it.
+Guards 2–4 are tracked code and survive a reclone; guard 1 does not. That is why they duplicate
+it rather than trusting it.
 
 Guard 3 compares top-level entries only, so it cannot catch a same-shaped sibling. The parent's
 tree is `daily/` + `weekly/` exactly like this one; a dry-run aimed at it passed every guard and
@@ -774,7 +785,7 @@ is answerable in ten seconds. Never paste config output anywhere; `rclone lsf <r
 ### Testing
 
 The tests are the only gate: no shellcheck runs here and no CI step reads `deploy/`.
-`tests/test_backup_offsite_guards.py` holds 9 cases, and three choices keep them from going
+`tests/test_backup_offsite_guards.py` covers all four guards, and four choices keep it from going
 vacuous:
 
 - Every rejection asserts `sync` was never invoked, not merely that the exit was 1 — a script
@@ -784,6 +795,10 @@ vacuous:
   the first.
 - One test asserts a hole rather than a guard (`test_same_shaped_sibling_is_NOT_caught`), so guard
   3's top-level-only reach is pinned rather than assumed.
+- Guard 4's controls read `--max-delete` off the sync argv, so a pass proves the plan was counted.
+  `test_remote_matching_local_plans_zero_deletes` pins the diff's path format against rclone's;
+  if the two drifted, every remote file would read as doomed. Disabling the cap fails exactly its
+  three refusal tests (checked 2026-10-01).
 
 Mutation-tested on 2026-08-15, not merely green: disabling each of the four guards in turn fails
 exactly its own test and nothing else. Re-run that after any edit here — a fixture that could
