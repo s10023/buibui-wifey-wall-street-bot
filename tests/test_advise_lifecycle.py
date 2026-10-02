@@ -57,6 +57,74 @@ class TestPrCreate:
     def test_it_is_a_PRE_tool_advisory_only(self) -> None:
         assert mod.advise(_bash("PostToolUse", "gh pr create")) is None
 
+    def test_a_backslash_continued_chain_is_one_logical_line(self) -> None:
+        cmd = "make post-branch-text FILE=b.md \\\n  && gh pr create --body x"
+        assert mod.advise(_bash("PreToolUse", cmd)) == mod.POST_BRANCH
+
+
+class TestPostBranchAlreadyRan:
+    """#381: the reminder is silent once the body file proves /post-branch ran."""
+
+    BODY = "## Summary\n\n- x\n\n## Documentation updates\n\n- `CLAUDE.md`: no change\n"
+
+    def _pre(self, command: str, cwd: Path) -> str | None:
+        payload = _bash("PreToolUse", command)
+        payload["cwd"] = str(cwd)
+        result: str | None = mod.advise(payload)
+        return result
+
+    @pytest.mark.parametrize(
+        "flag",
+        ["--body-file body.md", "-F body.md", "--body-file=body.md", "-F 'body.md'"],
+    )
+    def test_silent_when_the_body_file_carries_the_section(
+        self, tmp_path: Path, flag: str
+    ) -> None:
+        (tmp_path / "body.md").write_text(self.BODY, encoding="utf-8")
+        cmd = f"GH_TOKEN=$(gh auth token --user s10023) gh pr create --repo x {flag}"
+        assert self._pre(cmd, tmp_path) is None
+
+    def test_silent_for_the_phase_5_chain(self, tmp_path: Path) -> None:
+        (tmp_path / "body.md").write_text(self.BODY, encoding="utf-8")
+        cmd = (
+            "make post-branch-text FILE=body.md \\\n"
+            '  && gh pr create --title "$T" --body-file body.md'
+        )
+        assert self._pre(cmd, tmp_path) is None
+
+    def test_an_absolute_body_path_ignores_cwd(self, tmp_path: Path) -> None:
+        body = tmp_path / "body.md"
+        body.write_text(self.BODY, encoding="utf-8")
+        cmd = f"gh pr create --body-file {body}"
+        assert self._pre(cmd, tmp_path / "elsewhere") is None
+
+    def test_fires_on_an_inline_body(self, tmp_path: Path) -> None:
+        assert self._pre('gh pr create --body "x"', tmp_path) == mod.POST_BRANCH
+
+    def test_fires_when_the_section_is_absent(self, tmp_path: Path) -> None:
+        (tmp_path / "body.md").write_text("## Summary\n\n- x\n", encoding="utf-8")
+        cmd = "gh pr create --body-file body.md"
+        assert self._pre(cmd, tmp_path) == mod.POST_BRANCH
+
+    def test_a_mention_in_prose_is_not_the_heading(self, tmp_path: Path) -> None:
+        text = "Run /post-branch and fold its ## Documentation updates in.\n"
+        (tmp_path / "body.md").write_text(text, encoding="utf-8")
+        cmd = "gh pr create --body-file body.md"
+        assert self._pre(cmd, tmp_path) == mod.POST_BRANCH
+
+    @pytest.mark.parametrize("flag", ["--body-file missing.md", "--body-file -"])
+    def test_fires_on_an_unreadable_or_stdin_body(
+        self, tmp_path: Path, flag: str
+    ) -> None:
+        assert self._pre(f"gh pr create {flag}", tmp_path) == mod.POST_BRANCH
+
+    def test_a_chained_commit_message_cannot_vouch_for_the_body(
+        self, tmp_path: Path
+    ) -> None:
+        (tmp_path / "msg.md").write_text(self.BODY, encoding="utf-8")
+        cmd = "git commit -F msg.md && gh pr create --body x"
+        assert self._pre(cmd, tmp_path) == mod.POST_BRANCH
+
 
 class TestPrMerge:
     def test_fires_after_merge_with_the_token_prefix(self) -> None:
