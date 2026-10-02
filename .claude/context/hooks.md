@@ -81,8 +81,12 @@ It replaced an inline `jq -r … | grep -q …` one-liner. This host has no `jq`
 `|| true` swallowed it, and the reminder never fired here; `TestNoHookDependsOnJq` pins the
 absence. Matching is head-anchored (start of the first line, after a shell separator, or after a
 `VAR=value` prefix such as `GH_TOKEN=$(…)`), and quoted strings are blanked first, so a
-`grep -E "a|gh pr create"` does not read the regex `|` as a pipe. `tests/test_advise_lifecycle.py`
-pins both directions.
+`grep -E "a|gh pr create"` does not read the regex `|` as a pipe. A `\`-continued chain counts as
+one logical line, so `/post-branch`'s phase-5 recipe, which puts `gh pr create` on a continuation
+line, still matches. The `gh pr create` reminder stays silent when that segment's `--body-file` /
+`-F` file carries a `## Documentation updates` heading, the evidence the skill already ran (#381).
+An inline `--body`, stdin, an unreadable file or a chained `git commit -F` still fire.
+`tests/test_advise_lifecycle.py` pins both directions.
 
 ## guard-branch.py — advises, never blocks
 

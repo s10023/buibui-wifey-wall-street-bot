@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 
 from analytics.backtest.cost_model import CostModel
+from analytics.backtest_config import load_backtest_config
+from analytics.signal.resolvers import _resolve_tp_r
 from analytics.signal_config import (
     SignalWatchConfig,
     StrategyOverride,
@@ -1583,3 +1585,49 @@ class TestNoUnappliedDirectionalPerTfTpR:
                 for sym, so in ov.per_symbol.items():
                     assert not so.tp_r_long_per_tf, (path, name, sym)
                     assert not so.tp_r_short_per_tf, (path, name, sym)
+
+
+class TestNoUnforwardedStrategyWideDirectionalTpR:
+    """Strategy-wide `tp_r_long` / `tp_r_short` would split alerts from ratings.
+
+    `_resolve_tp_r` applies them to the live alert target and the EV-gate book,
+    but the ratings sweep (`analytics/backtest_runner.py`) calls
+    `effective_tp_r` without a direction and never forwards them to
+    `run_backtest`. The first config to declare one would silently grade
+    `confidence_ratings` on a different target than the alert walks (Issue
+    #385; audit `docs/audits/2026-10-01-dead-directional-tp-r-keys.md`).
+    Wiring the sweep to forward them is a TA-freeze `tp_r` change, and the
+    change that does it replaces this guard with a sweep == alert pin.
+    """
+
+    def test_the_key_still_reaches_the_parsed_field(self, tmp_path: Path) -> None:
+        """Positive control: without it the shipped-config check below passes
+        vacuously if the parser ever stops filling these fields."""
+        p = _write_toml(
+            tmp_path, "[strategy_params.bos]\ntp_r_long = 3.5\ntp_r_short = 1.5\n"
+        )
+        ov = load_signal_config(p).strategy_params["bos"]
+        assert (ov.tp_r_long, ov.tp_r_short) == (3.5, 1.5)
+
+    def test_the_live_resolver_applies_what_the_sweep_drops(
+        self, tmp_path: Path
+    ) -> None:
+        """The split this guard prevents, observed on both loaders.
+
+        The sweep side mirrors `backtest_runner`'s call: the sweep's own config
+        type, resolved direction-less.
+        """
+        p = _write_toml(
+            tmp_path, "tp_r = 2.0\n[strategy_params.bos]\ntp_r_long = 3.5\n"
+        )
+        live = _resolve_tp_r(
+            load_signal_config(p).strategy_params, "bos", "SPY", "1d", 2.0, "long"
+        )
+        sweep = load_backtest_config(p).effective_tp_r("bos", "SPY", "1d")
+        assert (live, sweep) == (3.5, 2.0)
+
+    def test_shipped_configs_declare_none(self) -> None:
+        for path in ("config/signal_watch.toml", "config/signal_watch_weekdays.toml"):
+            for name, ov in load_signal_config(path).strategy_params.items():
+                assert ov.tp_r_long is None, (path, name)
+                assert ov.tp_r_short is None, (path, name)

@@ -975,6 +975,76 @@ def check_negative_claims(
     return findings, suppressed, exempted, soft
 
 
+#: A doc whose added lines reach this fraction of its current length is treated
+#: as rewritten: its untouched claims come back as ``+`` lines and scope in on
+#: their own re-added text, which is how #307 produced 39 findings, every one
+#: an unchanged absence claim (#344).
+REWRITE_FRACTION = 0.5
+
+
+def rewritten_files(diff: str) -> set[str]:
+    """Files whose added lines are at least ``REWRITE_FRACTION`` of their length."""
+    added: dict[str, int] = {}
+    current: str | None = None
+    for line in diff.splitlines():
+        if line.startswith("diff --git "):
+            current = line.rsplit(" b/", 1)[-1]
+            added.setdefault(current, 0)
+        elif current and line.startswith("+") and not line.startswith("+++"):
+            added[current] += 1
+    out = set()
+    for path, n in added.items():
+        try:
+            total = len(Path(path).read_text(encoding="utf-8").splitlines())
+        except (OSError, UnicodeDecodeError):
+            continue
+        if total and n >= REWRITE_FRACTION * total:
+            out.add(path)
+    return out
+
+
+def _squash(text: str) -> str:
+    return " ".join(text.split())
+
+
+def demote_unchanged_in_rewrites(
+    findings: list[Finding], diff: str, runner: Runner
+) -> tuple[list[Finding], list[str]]:
+    """Split off findings that a rewrite merely re-added. Returns ``(kept, demoted)``.
+
+    A claim in a rewritten doc whose text already sits in ``main``'s version of
+    that file is not new prose. Whitespace is squashed on both sides, so a
+    rewrapped line still matches. Demoted, never dropped: the caller names each
+    one in the note. A claim in a lightly edited doc, in a new file, or edited
+    in any word stays a finding.
+    """
+    rewritten = rewritten_files(diff)
+    if not rewritten:
+        return findings, []
+    main_text: dict[str, str] = {}
+    kept: list[Finding] = []
+    demoted: list[str] = []
+    for f in findings:
+        path, _, rest = f.detail.partition(":")
+        ln, _, _ = rest.partition(":")
+        if path not in rewritten or not ln.isdigit():
+            kept.append(f)
+            continue
+        try:
+            claim = Path(path).read_text(encoding="utf-8").splitlines()[int(ln) - 1]
+        except (OSError, UnicodeDecodeError, IndexError):
+            kept.append(f)
+            continue
+        if path not in main_text:
+            main_text[path] = _squash(runner(["git", "show", f"main:{path}"]))
+        squashed = _squash(claim)
+        if squashed and squashed in main_text[path]:
+            demoted.append(f"{path}:{ln}")
+        else:
+            kept.append(f)
+    return kept, demoted
+
+
 # ------------------------------------------------------------------ execution
 
 
@@ -987,6 +1057,7 @@ def _negative_claims_result(runner: Runner, diff: str, diff_names: str) -> Check
     findings, suppressed, exempted, soft = check_negative_claims(
         runner, diff, diff_names
     )
+    findings, unchanged = demote_unchanged_in_rewrites(findings, diff, runner)
     parts = []
     if suppressed:
         parts.append(
@@ -1007,6 +1078,13 @@ def _negative_claims_result(runner: Runner, diff: str, diff_names: str) -> Check
             "on, in files this branch touched — RE-READ, do not assume: "
             + ", ".join(soft[:8])
             + (f" (+{len(soft) - 8} more)" if len(soft) > 8 else "")
+        )
+    if unchanged:
+        parts.append(
+            f"{len(unchanged)} claim(s) in rewritten docs are unchanged from main "
+            "(re-added by the rewrite, not new prose): "
+            + ", ".join(unchanged[:8])
+            + (f" (+{len(unchanged) - 8} more)" if len(unchanged) > 8 else "")
         )
     return CheckResult("negative-claims", findings, note="; ".join(parts) or None)
 
@@ -1368,6 +1446,13 @@ def _check_stale_anchors() -> list[Finding]:
 #: reported while it is still cheap to prune.
 HANDOFF_MAX_LINES = 240
 
+#: The warning band below the cap (#346). Sitting AT the cap was silent, so the
+#: reflex was to shuffle text until it fit, and shuffling is not pruning: one
+#: session breached the cap three times before moving a cluster to a durable home.
+#: 20 lines puts the band (221-240) above the steady state, so a normal run stays
+#: silent and the first append into the band speaks.
+HANDOFF_WARN_MARGIN = 20
+
 
 def _check_handoff_size(handoff: str) -> list[Finding]:
     """Is the handoff past the size where it stops being read?
@@ -1393,6 +1478,15 @@ def _check_handoff_size(handoff: str) -> list[Finding]:
                 "handoff-size",
                 f"handoff is {lines} lines (cap {HANDOFF_MAX_LINES}) — "
                 "prune before adding",
+            )
+        ]
+    if lines > HANDOFF_MAX_LINES - HANDOFF_WARN_MARGIN:
+        return [
+            Finding(
+                "handoff-size",
+                f"handoff is {lines} lines, within {HANDOFF_MAX_LINES - lines} of "
+                f"the cap ({HANDOFF_MAX_LINES}) — re-home a cluster to its durable "
+                "home now; shuffling text to fit is not pruning",
             )
         ]
     return []

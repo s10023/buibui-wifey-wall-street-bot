@@ -51,6 +51,14 @@ Phases 1 and 4 run **regardless** of the phase-2 gate. MEMORY.md lives outside t
 repo, the handoff is gitignored and Issues are not commits, so none of them ever costs
 CI.
 
+**If phase 1 and the doc edits already ran on this HEAD, do not re-walk them.** A build
+session often runs the sweep and the doc walk as it goes, and re-confirming phases 1–3
+from scratch then costs a full pass for no new signal. Re-run only the legs a later
+edit touches, by name (`PYTHONPATH=. poetry run python tools/post_branch_checks.py
+--check <leg>`, repeatable), and say in the output block which phases were inherited and
+from which commit. Phases 4–6 still run in full, and so does the post-phase-6
+`memory-cap` / `handoff-size` re-run below.
+
 ---
 
 ## Phase 1 — Run the mechanical sweep
@@ -78,7 +86,7 @@ doesn't read as a complete walk. This note is suppressed for `--text` and for an
 | `doc-indexes` | Is a generated `INDEX.md` stale? (a red suite, not a lint nit) |
 | `md-atx` | Did a wrapped `#123` land in column 1 and become an MD018 heading? |
 | `memory-cap` | Is MEMORY.md over 6 Current State bullets or ~17KB? **Phase 6 reading** |
-| `handoff-size` | Is the handoff past `HANDOFF_MAX_LINES` (240)? **SKIPPED when the handoff is absent — never clean.** **Phase 6 reading** |
+| `handoff-size` | Is the handoff past `HANDOFF_MAX_LINES` (240), or within `HANDOFF_WARN_MARGIN` (20) of it? **SKIPPED when the handoff is absent — never clean.** **Phase 6 reading** |
 | `stale-anchors` | Does a doc cite a numbered section (`Step 3`, `§4a`) its target no longer has? |
 | `sensitive-terms` | Would a visibility flip publish a work identifier? Tracked tree · this branch's commit **content** · this branch's commit **messages**. The PR title/body is a **fourth** surface none of these reach — `--text`, below |
 
@@ -107,6 +115,13 @@ then:
 make post-branch-text FILE=docs/plans/pr-<branch>.md
 printf '%s' "$TITLE" | make post-branch-text FILE=-
 ```
+
+**Pass a repo-relative `FILE=`, or pipe with `FILE=-`; never an absolute Windows
+path.** The recipe hands `$(FILE)` to the shell unquoted, so `C:\Users\…\iss.md` arrives
+with its backslashes stripped, the screen exits 2 on a file that does not exist, and
+whatever runs next posts unscreened. **Chain the post behind the screen with `&&`**
+(`make post-branch-text FILE=… && gh …`): make's exit 2 then stops the post, whereas
+`;` or a separate tool call posts regardless of the screen's verdict.
 
 `FILE=-` reads stdin, and the flag is repeatable on a direct invocation. Unlike the
 sweep it gates — exit 1 on a hit, though through `make` you see make's own 2, so read
@@ -153,14 +168,17 @@ covered. Check what a proposed addition would newly mark covered before adding i
   placeholder, both files 0 bytes.
 - **Renames are not covered.** The checks key on additions; swap in
   `git diff main --diff-filter=R --name-only` and check the new path by hand.
-- **`negative-claims` prints a `note:` line with three remainders, and one of them is
-  work.** Claims *scoped out* are absence sentences elsewhere in the tree this diff does not
+- **`negative-claims` prints a `note:` line with up to four remainders, and one of them
+  is work.** Claims *scoped out* are absence sentences elsewhere in the tree this diff does not
   touch — not dismissed, just not yours. Claims *exempt* carry a reason inline in
   `NEGATIVE_CLAIM_EXEMPT`. The note also names claims whose only diff hit was a bare
   English word — **those say "re-read, do not assume"**, and they are listed by
   `path:line` precisely so you open the paragraph rather than trust the matched clause
   alone. A claim it cannot scope at all is still **reported**, so
   `(no token to scope on)` means "could not rule this out", not "certainly stale".
+  In a doc this branch rewrote (added lines at least half its length), a claim whose
+  text is already on `main` is named as *unchanged from main* rather than reported:
+  the rewrite re-added it, and it scoped in on its own text.
 - **`docker-compose.yml` is not covered either.** Check by hand that a new
   daemon got `restart: unless-stopped` and a new one-shot tool got
   `profiles: [tools]`, plus its `docker-up` / `docker-down` lines.
@@ -511,6 +529,12 @@ Six shapes to hunt:
 
 ## Phase 5 — Commit, push, then open the PR
 
+**Run phase 6's re-home pass before this commit, not after the push.** When the handoff
+prune moves a rule into a tracked file (CLAUDE.md, a skill, `.claude/context/`), that
+edit belongs in this phase's commit. Made after the push, it is a second push to an open
+PR, which re-runs the whole matrix and moves the head off the SHA you verified. The prune
+itself, which only touches the gitignored handoff, still runs in phase 6.
+
 ```bash
 git add <files>
 git commit -F <file>      # -F, never a heredoc: quoting a hazard trips the guard
@@ -597,9 +621,15 @@ surface and the only indexable one, and the sweep's three git legs cannot see ei
 (phase 1). Do it while the text is still a local file:
 
 ```bash
-make post-branch-text FILE=<body-file>
-printf '%s' "$TITLE" | make post-branch-text FILE=-
+make post-branch-text FILE=docs/plans/pr-<branch>.md \
+  && printf '%s' "$TITLE" | make post-branch-text FILE=- \
+  && GH_TOKEN=$(gh auth token --user s10023) gh pr create \
+       --repo s10023/buibui-wifey-wall-street-bot --title "$TITLE" \
+       --body-file docs/plans/pr-<branch>.md
 ```
+
+One chain, so a hit or a missing file (both non-zero through `make`) stops the post. The
+body path is repo-relative for the reason phase 1 gives.
 
 ```markdown
 ## Documentation updates
@@ -733,11 +763,16 @@ the file above `HANDOFF_MAX_LINES` (240) — a real threshold, checked against `
 not against a number the file carries about itself. If you want to know the size, run
 `wc -l` or `make status`; don't have the file track its own line count, since a
 self-describing stamp needs its own maintenance cycle and reads clean when merely
-absent rather than when accurate.
+absent rather than when accurate. It also warns inside the last `HANDOFF_WARN_MARGIN`
+(20) lines below the cap. Treat that warning as the cue to re-home a cluster now. Do not
+shuffle text until the file fits: that is not pruning, and the cap gets breached again
+on the next append.
 
 **Re-homing is a separate pass and it runs first**: move the rule to its durable home,
 `grep` the destination to confirm it landed, and only then cut the narrative. A prune
-that drops a guard is a regression disguised as hygiene.
+that drops a guard is a regression disguised as hygiene. A re-home into a tracked file
+should already be in phase 5's commit (see there). If you find one only now, it is a
+new commit, so say so rather than folding it silently into the PR.
 
 Delete every run: merged PRs beyond the most recent one or two · completed tasks and
 closed findings · "what #N found" narratives once the lesson is in group C · shipped

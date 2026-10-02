@@ -1,9 +1,10 @@
 ---
 name: pr-summary
 description: >
-  Write a PR title, summary, and test plan to `docs/plans/pr-<branch>.md` — slashes
-  in the branch name flattened to `-` — after a branch is complete
-  (lint/typecheck/tests green, commit done). Never returns the content inline.
+  Write a PR body (summary and test plan) to `docs/plans/pr-<branch>.md` — slashes
+  in the branch name flattened to `-` — and return the PR title beside the path,
+  after a branch is complete (lint/typecheck/tests green, commit done). Never
+  returns the body inline.
   Invoke automatically when a branch finishes — do not wait. Also triggers on
   the user saying "/pr-summary", "PR summary", "write a PR", or "finish up
   the branch".
@@ -13,8 +14,12 @@ allowed-tools: Bash, Write, Read
 # PR Summary
 
 Write a PR title, summary and test plan once a branch is complete (lint/typecheck/tests
-pass, commit done) — do not wait to be asked. Write it to `docs/plans/pr-<branch>.md`
-(slashes flattened to `-`); never return the content inline.
+pass, commit done) — do not wait to be asked. Write the body to `docs/plans/pr-<branch>.md`
+(slashes flattened to `-`); never return the body inline.
+
+**The title is not in the file.** The file is passed verbatim as `--body-file`, so a
+title section there lands in the PR body as a `## PR Title` heading. Return the title
+on its own line beside the path instead, ready for `--title`.
 
 ## Output location
 
@@ -41,10 +46,6 @@ per paragraph or bullet. GitHub renders a single newline in a PR or Issue body a
 break, so hard-wrapped text renders ragged.
 
 ```md
-## PR Title
-
-`<type>(scope): short imperative description under 70 chars`
-
 ## Background
 
 <1-2 sentences: what problem or gap this addresses, why it matters now, and any relevant context (e.g. strategy source, prior limitation, user-facing impact)>
@@ -119,7 +120,8 @@ collaborator permission to lack. Write the file at the flattened
 ## Task: write a PR summary
 
 Gather `git branch --show-current`, `git log main..HEAD --oneline` and
-`git diff main..HEAD --stat`, then fill in the template above: title, background,
-3–5 summary bullets, an implementation walkthrough, params/config if any were added, and
-the test plan with CI items pre-ticked. Write the result to
-`docs/plans/pr-<branch-name>.md` (slashes flattened to `-`) and return only the file path.
+`git diff main..HEAD --stat`, then fill in the template above: background, 3–5 summary
+bullets, an implementation walkthrough, params/config if any were added, and the test
+plan with CI items pre-ticked. Write the result to `docs/plans/pr-<branch-name>.md`
+(slashes flattened to `-`). Return exactly two lines and nothing else: the file path,
+then the title (`<type>(scope): short imperative description under 70 chars`).

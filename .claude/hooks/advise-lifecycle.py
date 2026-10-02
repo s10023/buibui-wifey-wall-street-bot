@@ -17,6 +17,12 @@ Head-anchored, like `advise-foreground-run.py`: a command merely QUOTING
 `gh pr create` (a grep over CLAUDE.md, this docstring) must not trip it, so the
 match is at the start of the first line or after a shell separator.
 
+The reminder stays silent once its precondition is met: a `--body-file` / `-F`
+whose file carries `/post-branch`'s `## Documentation updates` heading is the
+evidence the skill already ran (#381). An advisory that fires when its
+precondition holds teaches sessions to skim it. An inline `--body`, stdin (`-`)
+or an unreadable file is no evidence, so those still fire.
+
 Protocol: Claude Code pipes {"hook_event_name", "tool_input" | "prompt", ...} on
 stdin. Exit 0 always; advice is JSON on stdout.
 """
@@ -26,6 +32,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from pathlib import Path
 
 # A leading `GH_TOKEN=$(gh auth token --user s10023) ` prefix is still a head
 # position — it is how every gh call in this repo is written (CLAUDE.md > CI quota).
@@ -34,6 +41,11 @@ _SEP = r"(?:^|[;&|()]|&&)\s*" + _ENV
 PR_CREATE = re.compile(_SEP + r"gh\s+pr\s+create\b")
 PR_MERGE = re.compile(_SEP + r"gh\s+pr\s+merge\b")
 _QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"")
+_SEGMENT_END = re.compile(r"[;&|]")
+_BODY_FILE = re.compile(
+    r"(?:^|\s)(?:--body-file|-F)(?:=|\s+)(?:'([^']*)'|\"([^\"]*)\"|(\S+))"
+)
+DOC_UPDATES = re.compile(r"^##\s+Documentation updates\b", re.MULTILINE)
 CLOSE_OUT = re.compile(r"\bdelet(?:e|ing)\s+(?:the\s+|this\s+)?ses", re.IGNORECASE)
 
 POST_BRANCH = (
@@ -57,12 +69,48 @@ POST_MERGE = (
 CLOSE_OUT_ADVICE = (
     "close-out: the operator is about to delete this session. Before answering, write"
     " every surface: (1) new or changed to-dos become GitHub Issues on"
-    " s10023/buibui-wifey-wall-street-bot (screen the text with make post-branch-text"
-    " first), never memory-only; (2) prune and rewrite"
+    " s10023/buibui-wifey-wall-street-bot, never memory-only. Screen each body first"
+    " and chain the post behind it: make post-branch-text FILE=<repo-relative path>"
+    " && gh issue create ... (FILE=- for stdin; an absolute Windows path loses its"
+    " backslashes, the screen exits 2, and an unchained post goes out unscreened);"
+    " (2) prune and rewrite"
     " docs/plans/next-conversation-prompt.md; (3) update MEMORY.md Current State"
     " (6-bullet cap). Then ask the two close-out questions from the global CLAUDE.md."
     " Advisory only."
 )
+
+
+def _blank_quotes(line: str) -> str:
+    """Blank quoted strings, keeping every offset where it was."""
+    return _QUOTED.sub(lambda m: m[0][0] + " " * (len(m[0]) - 2) + m[0][-1], line)
+
+
+def _post_branch_ran(line: str, cwd: str) -> bool:
+    """True when this `gh pr create`'s body file holds the Documentation updates.
+
+    The flag is read only inside the `gh pr create` segment, so a chained
+    `git commit -F <file>` cannot vouch for the PR body.
+    """
+    blank = _blank_quotes(line)
+    head = PR_CREATE.search(blank)
+    if head is None:
+        return False
+    end = _SEGMENT_END.search(blank, head.end())
+    segment = line[head.end() : end.start() if end else len(line)]
+    flag = _BODY_FILE.search(segment)
+    if flag is None:
+        return False
+    raw = next(g for g in flag.groups() if g is not None)
+    if raw == "-":
+        return False
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        path = Path(cwd) / path
+    try:
+        body = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    return DOC_UPDATES.search(body) is not None
 
 
 def advise(payload: dict[str, object]) -> str | None:
@@ -74,12 +122,16 @@ def advise(payload: dict[str, object]) -> str | None:
     tool_input = payload.get("tool_input")
     if not isinstance(tool_input, dict):
         return None
-    lines = str(tool_input.get("command") or "").splitlines()
+    # A `\`-continued chain is one logical line: `make post-branch-text ... \`
+    # followed by `&& gh pr create` on a later line is still a PR create.
+    command = str(tool_input.get("command") or "").replace("\\\n", " ")
+    lines = command.splitlines()
     # Blank quoted strings first: a `|` inside `grep -E "a|gh pr create"` is regex
     # alternation, not a pipe, and must not read as a head position.
-    first = _QUOTED.sub("''", lines[0]) if lines else ""
+    first = _blank_quotes(lines[0]) if lines else ""
     if event == "PreToolUse" and PR_CREATE.search(first):
-        return POST_BRANCH
+        cwd = str(payload.get("cwd") or Path.cwd())
+        return None if _post_branch_ran(lines[0], cwd) else POST_BRANCH
     if event == "PostToolUse" and PR_MERGE.search(first):
         return POST_MERGE
     return None
