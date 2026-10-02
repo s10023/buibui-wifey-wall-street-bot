@@ -170,6 +170,36 @@ class TestJobWrapper:
         self._run(tmp_path, "sh -c 'echo utf8=$PYTHONUTF8'")
         assert "utf8=1" in (tmp_path / "testjob.log").read_text(encoding="utf-8")
 
+    def test_a_leading_assignment_is_EXPORTED_not_run(self, tmp_path: Path) -> None:
+        """`install-tasks.ps1` writes `job.sh <label> -- CATCH_UP=1 make go-live`.
+        Running `"$@"` verbatim died with `CATCH_UP=1: command not found`, so every
+        scheduled signal-watch run failed before syncing a bar."""
+        res = self._run(tmp_path, "CATCH_UP=1 A_B=x sh -c 'echo got=$CATCH_UP$A_B'")
+        log = (tmp_path / "testjob.log").read_text(encoding="utf-8")
+        assert res.returncode == 0, log
+        assert "got=1x" in log
+        assert "CATCH_UP=1 A_B=x sh" in log  # the header still records the prefix
+
+    def test_an_assignment_ARGUMENT_is_passed_through(self, tmp_path: Path) -> None:
+        """Only LEADING words are env: `make session-digest TELEGRAM=1` hands
+        `TELEGRAM=1` to make as an argument, and must keep doing so."""
+        self._run(tmp_path, "sh -c 'echo args=$1' _ TELEGRAM=1")
+        assert "args=TELEGRAM=1" in (tmp_path / "testjob.log").read_text(
+            encoding="utf-8"
+        )
+
+    def test_every_installer_command_starts_like_the_wrapper_expects(self) -> None:
+        """The two halves of the contract: each `Command` is optional `NAME=value`
+        words, then an executable. Pinned so a new job cannot reintroduce a shape the
+        wrapper's peel does not understand (a quoted or `export`-prefixed env)."""
+        text = INSTALLER.read_text(encoding="utf-8")
+        commands = re.findall(r"^\s*Command\s*=\s*'([^']*)'", text, re.M)
+        assert commands, "no Command rows parsed from install-tasks.ps1"
+        for cmd in commands:
+            words = cmd.split()
+            first = next(w for w in words if not re.match(r"^[A-Za-z_]\w*=", w))
+            assert first in {"make"} or first.startswith("deploy/"), cmd
+
     def test_it_runs_from_the_REPO_ROOT_whatever_the_cwd(self, tmp_path: Path) -> None:
         """An off-by-one in the `cd` runs the whole job somewhere else and still reports
         success, because every command it wraps is happy to find nothing to do."""
