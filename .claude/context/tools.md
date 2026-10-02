@@ -166,6 +166,10 @@ gitignored. One `_handoff_leg` carries the decision for all three, because "no f
 handoff" are different states and only one of them is green — a leg reporting a plain clean result
 while its siblings skip would be invisibly wrong on exactly that case.
 
+`handoff-size` speaks twice: over `HANDOFF_MAX_LINES` (240) it says prune before adding, and inside
+the `HANDOFF_WARN_MARGIN` (20) band below the cap it warns that the next append breaches it (#346).
+A cap that is silent while the file sits on it invites shuffling text to fit instead of re-homing.
+
 ### The `--text` surface
 
 `--text <file>` (`make post-branch-text FILE=<path>`) is a fourth surface for the sensitive-terms
@@ -203,6 +207,13 @@ KB paragraphs, and scoping to a window suppressed the leg's only true positive i
 the regex match sat roughly 1,400 characters after the sentence a branch had actually falsified.
 The line is the unit for this reason, and `attribution` stays off the allowlist because on two
 lines it is the claim's own subject.
+
+A rewrite re-adds every claim it keeps, and each one then scopes in on its own re-added text: #307
+reported 39 findings, every one an unchanged absence claim. `demote_unchanged_in_rewrites` moves a
+finding into the note when its file's added lines reach `REWRITE_FRACTION` (0.5) of the file and
+its whitespace-squashed text already sits in `git show main:<path>` (#344). A lightly edited doc, a
+new file or a reworded claim still reports. The line is still the unit, so a claim rewrapped across
+a line boundary demotes only when the whole current line was already contiguous on `main`.
 
 The phrasing allowlist is the leg's main blind spot. Measured 2026-08-26: of eight absence claims
 one branch falsified, the leg caught none — all eight named the missing thing directly, in a bare

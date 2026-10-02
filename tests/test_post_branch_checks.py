@@ -16,6 +16,7 @@ import pytest
 
 from tools.post_branch_checks import (
     HANDOFF_MAX_LINES,
+    HANDOFF_WARN_MARGIN,
     NEGATIVE_CLAIM_EXEMPT,
     NEGATIVE_CLAIM_PATHS,
     NEGATIVE_CLAIM_RE,
@@ -24,6 +25,7 @@ from tools.post_branch_checks import (
     Runner,
     _check_handoff_size,
     _handoff_leg,
+    _negative_claims_result,
     _read_each,
     _run,
     added_paths,
@@ -38,6 +40,7 @@ from tools.post_branch_checks import (
     check_queue_items,
     claim_subject_tokens,
     current_state_bullets,
+    demote_unchanged_in_rewrites,
     enumerated_members,
     extract_tokens,
     load_sensitive_terms,
@@ -46,6 +49,7 @@ from tools.post_branch_checks import (
     numbered_items,
     probe_names,
     render,
+    rewritten_files,
     scan_text_for_terms,
     sensitive_terms_result,
     sensitive_text_result,
@@ -662,8 +666,25 @@ class TestHandoffSize:
         assert len(found) == 1
         assert "prune before adding" in found[0].detail
 
-    def test_handoff_at_the_cap_is_clean(self) -> None:
+    def test_handoff_at_the_cap_warns_without_reading_as_over_it(self) -> None:
+        """#346: sitting AT the cap used to be silent, which invited shuffling."""
         handoff = "\n".join(f"line {i}" for i in range(HANDOFF_MAX_LINES))
+        found = _check_handoff_size(handoff)
+        assert len(found) == 1
+        assert "within 0 of the cap" in found[0].detail
+        assert "prune before adding" not in found[0].detail
+
+    def test_the_first_line_into_the_band_warns(self) -> None:
+        floor = HANDOFF_MAX_LINES - HANDOFF_WARN_MARGIN
+        handoff = "\n".join(f"line {i}" for i in range(floor + 1))
+        found = _check_handoff_size(handoff)
+        assert len(found) == 1
+        assert f"within {HANDOFF_WARN_MARGIN - 1} of the cap" in found[0].detail
+
+    def test_below_the_band_is_clean(self) -> None:
+        """The control for the band: without it, a leg that always warned passes."""
+        floor = HANDOFF_MAX_LINES - HANDOFF_WARN_MARGIN
+        handoff = "\n".join(f"line {i}" for i in range(floor))
         assert _check_handoff_size(handoff) == []
 
     def test_absent_handoff_yields_no_finding_here(self) -> None:
@@ -1380,3 +1401,101 @@ class TestReadEachKeysArePosix:
         assert keys, "the directory expanded to nothing"
         assert all("\\" not in k for k in keys), keys
         assert keys[0].endswith("context/tools.md")
+
+
+class TestRewrittenDocClaims:
+    """#344: a rewrite re-adds every unchanged claim, and each one scoped in on
+    its own re-added text (39 findings on #307, none of them new)."""
+
+    MAIN = (
+        "# Doc\n\nThe `pead_wiring` module is not yet wired,\n"
+        "so nothing reads it today.\n"
+    )
+    # The same sentence rewrapped, plus rewritten neighbours.
+    REWRITE = (
+        "# Doc, rewritten\n\nThe `pead_wiring` module is not yet wired, so nothing\n"
+        "reads it today.\nA new intro line.\n"
+    )
+
+    @staticmethod
+    def _diff(path: str, text: str, added: int | None = None) -> str:
+        lines = text.splitlines()
+        n = len(lines) if added is None else added
+        body = "".join(f"+{ln}\n" for ln in lines[:n])
+        return f"diff --git a/{path} b/{path}\n+++ b/{path}\n{body}"
+
+    @staticmethod
+    def _runner(main_text: str, grep_out: str) -> Runner:
+        def run(argv: Sequence[str]) -> str:
+            return main_text if list(argv[:2]) == ["git", "show"] else grep_out
+
+        return run
+
+    def _write(self, tmp_path: Path, text: str) -> None:
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "x.md").write_text(text, encoding="utf-8")
+
+    def test_an_unchanged_claim_in_a_rewrite_is_demoted_and_NAMED(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        self._write(tmp_path, self.REWRITE)
+        claim = "docs/x.md:3:The `pead_wiring` module is not yet wired, so nothing"
+        diff = self._diff("docs/x.md", self.REWRITE)
+        result = _negative_claims_result(
+            self._runner(self.MAIN, claim), diff, "docs/x.md"
+        )
+        assert result.findings == []
+        assert result.note is not None
+        assert "unchanged from main" in result.note
+        assert "docs/x.md:3" in result.note
+
+    def test_a_NEW_claim_in_the_same_rewrite_still_reports(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Positive control: the demotion keys on main's text, not on the file."""
+        monkeypatch.chdir(tmp_path)
+        text = self.REWRITE.replace("is not yet wired", "is not implemented")
+        self._write(tmp_path, text)
+        claim = "docs/x.md:3:The `pead_wiring` module is not implemented, so nothing"
+        diff = self._diff("docs/x.md", text)
+        result = _negative_claims_result(self._runner(self.MAIN, claim), diff, "")
+        assert len(result.findings) == 1
+        assert "docs/x.md:3" in result.findings[0].detail
+
+    def test_a_lightly_edited_doc_keeps_its_unchanged_claims(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The threshold control: outside a rewrite, an unchanged claim that a
+        branch contradicts elsewhere is exactly what the leg exists to report."""
+        monkeypatch.chdir(tmp_path)
+        text = self.MAIN + "".join(f"filler {i}\n" for i in range(20))
+        self._write(tmp_path, text)
+        findings = [Finding("negative-claims", "docs/x.md:3:not yet (matched x)")]
+        diff = self._diff("docs/x.md", "+def pead_wiring\n", added=1)
+        kept, demoted = demote_unchanged_in_rewrites(
+            findings, diff, self._runner(self.MAIN, "")
+        )
+        assert (kept, demoted) == (findings, [])
+
+    def test_a_new_file_has_nothing_on_main_to_be_unchanged_from(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        self._write(tmp_path, self.REWRITE)
+        findings = [Finding("negative-claims", "docs/x.md:3:not yet (matched x)")]
+        diff = self._diff("docs/x.md", self.REWRITE)
+        kept, demoted = demote_unchanged_in_rewrites(
+            findings, diff, self._runner("", "")
+        )
+        assert (kept, demoted) == (findings, [])
+
+    def test_rewritten_files_applies_the_fraction(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        self._write(tmp_path, "".join(f"l{i}\n" for i in range(10)))
+        heavy = self._diff("docs/x.md", "".join(f"l{i}\n" for i in range(5)))
+        light = self._diff("docs/x.md", "".join(f"l{i}\n" for i in range(4)))
+        assert rewritten_files(heavy) == {"docs/x.md"}
+        assert rewritten_files(light) == set()
