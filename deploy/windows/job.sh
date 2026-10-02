@@ -20,8 +20,10 @@
 # Usage (from a Task Scheduler action, via Git Bash):
 #   bash.exe -lc "deploy/windows/job.sh <unit-label> -- <command...>"
 #
-# Per-job `Environment=` lines become an ordinary env prefix on that command line:
-#   bash.exe -lc "CATCH_UP=1 deploy/windows/job.sh wifey-signal-watch -- make go-live"
+# Per-job `Environment=` lines become leading `NAME=value` words after the `--`, which is
+# the shape `install-tasks.ps1` writes:
+#   bash.exe -lc "deploy/windows/job.sh wifey-signal-watch -- CATCH_UP=1 make go-live"
+# Section 5 exports them; see there for why `"$@"` cannot take them as-is.
 
 set -uo pipefail
 
@@ -101,6 +103,16 @@ mkdir -p "$LOG_DIR"
 logfile="$LOG_DIR/$label.log"
 
 printf '=== %s | %s | %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$label" "$*" >>"$logfile"
+
+# Leading `NAME=value` words are the job's `Environment=` lines. `"$@"` expands AFTER the
+# shell has looked for assignment words, so it would run `CATCH_UP=1` as a command: that
+# is how every scheduled signal-watch run died with "command not found" before syncing a
+# bar. Export them here instead. Stop at the first other word, so an assignment that is
+# an ARGUMENT (`make session-digest TELEGRAM=1`) is passed through untouched.
+while [[ "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; do
+    export "$1"
+    shift
+done
 
 # NOT `exec`: the pipeline's left-hand status has to be read back, and an exec'd process
 # has no shell left to read it.
