@@ -7,6 +7,7 @@ description: >
   "fired", "missed", or "didn't fire", or mentions "signal test", "replay",
   "investigate", "diagnose", or "debug strategy".
 allowed-tools: "*"
+effort: high
 ---
 
 # Investigate Strategy — Signal Test Reference

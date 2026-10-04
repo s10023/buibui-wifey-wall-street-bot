@@ -10,6 +10,7 @@ description: >
   "port upstream changes", "what changed in the parent", or after a known parent
   refactor.
 allowed-tools: Bash, Read
+effort: high
 ---
 
 # Sync from parent repo

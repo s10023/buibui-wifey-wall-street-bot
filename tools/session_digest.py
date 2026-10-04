@@ -47,6 +47,10 @@ GH_TIMEOUT_S = 20
 #: Ordered best-first. An Issue carrying none is untriaged and sorts last, visibly.
 PRIORITIES = ("p1", "p2", "p3")
 
+#: Effort labels name the /effort level an Issue wants. Unset prints ``effort:?``
+#: so an unlabelled row is visible rather than silently defaulted.
+EFFORT_PREFIX = "effort:"
+
 #: Telegram's hard cap is 4096 characters; leave room for the header.
 TELEGRAM_MAX_CHARS = 3800
 TELEGRAM_MAX_ISSUES = 10
@@ -168,8 +172,9 @@ def sort_issues(issues: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def format_issue(issue: dict[str, Any]) -> str:
     names = [lb["name"] for lb in issue.get("labels", [])]
     prio = next((p for p in PRIORITIES if p in names), "untriaged")
-    rest = [n for n in names if n not in PRIORITIES]
-    tags = " ".join([prio, *rest])
+    effort = next((n for n in names if n.startswith(EFFORT_PREFIX)), "effort:?")
+    rest = [n for n in names if n not in PRIORITIES and not n.startswith(EFFORT_PREFIX)]
+    tags = " ".join([prio, effort, *rest])
     return f"#{issue['number']} [{tags}] {issue['title']}"
 
 

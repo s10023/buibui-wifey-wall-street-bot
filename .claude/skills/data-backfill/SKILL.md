@@ -8,6 +8,7 @@ description: >
   Invoke when the user says "/data-backfill", asks to "backfill", "ingest
   OHLCV", "fill the data gap", "add a new symbol", or after `clean-db`.
 allowed-tools: Bash, Read
+effort: low
 ---
 
 # Data Backfill — OHLCV Ingestion

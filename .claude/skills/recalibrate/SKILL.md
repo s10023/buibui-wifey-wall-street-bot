@@ -8,6 +8,7 @@ description: >
   the user saying "/recalibrate", asking about "star ratings", "confidence
   score", or "strategy quality".
 allowed-tools: Bash
+effort: low
 ---
 
 # Recalibrate Strategy Star Ratings

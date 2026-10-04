@@ -12,6 +12,7 @@ description: >
   (entry/sl/tp + reasoning). Also use to fill in the outcome after a logged
   trade closes.
 allowed-tools: Bash, Write, Read, Edit
+effort: low
 ---
 
 # Journal Trade

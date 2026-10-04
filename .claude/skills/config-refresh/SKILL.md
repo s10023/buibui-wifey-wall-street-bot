@@ -7,6 +7,7 @@ description: >
   asks to "refresh the config", "fix the timeframes", or after a detector rewrite
   or new strategy add.
 allowed-tools: Bash, Read, Edit, Write
+effort: high
 ---
 
 # Config Refresh — Non-tp_r TOML Update

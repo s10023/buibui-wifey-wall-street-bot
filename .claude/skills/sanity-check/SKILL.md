@@ -8,6 +8,7 @@ description: >
   "/sanity-check", or asks "is everything wired up", "do the docs match",
   or "anything stale".
 allowed-tools: Bash, Read, Edit
+effort: high
 ---
 
 # Sanity Check Skill

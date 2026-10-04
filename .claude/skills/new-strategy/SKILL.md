@@ -8,6 +8,7 @@ description: >
   strategy", "implement strategy X", or starts wiring a fresh detector — even
   before any code is written.
 allowed-tools: "*"
+effort: high
 ---
 
 # New Strategy Wiring Checklist

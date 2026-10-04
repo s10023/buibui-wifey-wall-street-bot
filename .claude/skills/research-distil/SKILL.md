@@ -11,6 +11,7 @@ description: >
   points at a book-to-skill slug, names a repo or paper to mine, asks "what
   should we test from this book", or wants research turned into a testable
   hypothesis.
+effort: high
 ---
 
 # Research distil

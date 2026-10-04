@@ -9,6 +9,7 @@ description: >
   validated `tp_r` values. This is the trusted production path for tp_r
   (`/config-refresh` covers non-tp_r dimensions only).
 allowed-tools: Bash, Read, Edit, Write
+effort: high
 ---
 
 # WFO Sweep — Full Automated Parameter Refresh

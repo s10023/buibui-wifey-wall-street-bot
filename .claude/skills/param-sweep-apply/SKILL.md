@@ -8,6 +8,7 @@ description: >
   `param-audit` table, or asks "apply these sweep results to the TOML".
   Complement to `/wfo-sweep` — use this for manual / out-of-chain sweep runs.
 allowed-tools: Bash, Read, Edit, Write
+effort: high
 ---
 
 # Param Sweep Apply — Auto-apply WFO findings to TOML
