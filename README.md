@@ -979,12 +979,13 @@ poetry run python wifey.py web
 # Pass a signal-watch TOML so the UI auto-populates defaults from it
 poetry run python wifey.py web --config config/signal_watch.toml
 
-# Custom host/port with auto-reload for development
-poetry run python wifey.py web --host 0.0.0.0 --port 8000 --reload
+# Custom port with auto-reload for development (binds loopback; pass --host 0.0.0.0 only to expose on the LAN)
+poetry run python wifey.py web --port 8000 --reload
 
-# Or via Makefile (override PORT and/or CONFIG)
+# Or via Makefile (override HOST, PORT and/or CONFIG; HOST defaults to 127.0.0.1)
 make wifey-web
 make wifey-web PORT=8080
+make wifey-web HOST=0.0.0.0     # opt in to LAN exposure
 make wifey-web CONFIG=config/signal_watch.toml
 make web-full CONFIG=config/signal_watch.toml   # build UI then start server
 ```
