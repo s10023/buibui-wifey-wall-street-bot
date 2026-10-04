@@ -8,6 +8,7 @@ description: >
   a sweep table translated into a TOML decision — even when they only want it
   read aloud.
 allowed-tools: Bash, Read, Edit
+effort: high
 ---
 
 # Backtest Findings — Interpreting Sweep Output

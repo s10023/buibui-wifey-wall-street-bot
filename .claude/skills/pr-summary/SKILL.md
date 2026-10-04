@@ -9,6 +9,7 @@ description: >
   the user saying "/pr-summary", "PR summary", "write a PR", or "finish up
   the branch".
 allowed-tools: Bash, Write, Read
+effort: low
 ---
 
 # PR Summary

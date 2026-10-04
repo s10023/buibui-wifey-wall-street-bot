@@ -9,6 +9,7 @@ description: >
   backtests", "update star ratings", or after any detector / strategy / config
   change that should be reflected in the live ratings and golden fixtures.
 allowed-tools: Bash, Read
+effort: high
 ---
 
 # DB Update — Routine Pipeline

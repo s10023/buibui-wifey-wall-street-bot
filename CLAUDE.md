@@ -35,6 +35,29 @@ regenerating.
 and stop to ask if a step stops serving it. Before killing or demoting a strategy, require
 evidence on the right panel rather than one pooled number, and prefer demotion to deletion.
 
+**Keep going.** Take every step that does not need the user, and put a status note in the
+same message as the next action rather than pausing to report. Stop only when blocked on a
+user decision or before anything destructive or outward-facing: deleting data, force-push,
+publishing (a PR, an Issue comment, a visibility flip, a Telegram send) or changes outside the
+repo. The specific stops elsewhere in this file still bind: the anti-drift stop above, a
+repo-visibility flip, `go-live`, `/post-branch`'s confirm-each-edit, and anything
+`guard-destructive.py` blocks. End a long run with three parts in this order: what is blocked
+on the user, what changed, what was found. Mark anything unconfirmed as unconfirmed.
+
+**Effort.** Effort sets how much a run verifies, tests edge cases and decides alone; raising it
+fixes missed edge cases, not a wrong approach. Rule of thumb: `low` for in-the-loop sketches
+and mechanical edits, `medium` for feature work, `high` where verification or edge cases decide
+the result (brownfield fixes, audits, statistical gates, research), `max` for fully autonomous
+hard problems. A feature loop is spec, implement on `low`, review, verify on `high`. Skills pin
+their level with an `effort:` frontmatter key, which overrides the session for that turn:
+`high` on `research-distil`, `sanity-check`, `post-branch`, `sync-parent`,
+`investigate-strategy`, `new-strategy`, `db-update` and the sweep skills (`backtest-findings`,
+`wfo-sweep`, `param-sweep-apply`, `config-refresh`, `atr-sweep`, `volume-sweep`); `low` on
+`backtest-run`, `pr-summary`, `journal-trade`, `data-backfill` and `recalibrate`; the rest
+inherit. A session cannot change its own effort, so when starting an Issue, name its
+`effort:<level>` label (the digest shows `effort:?` when unset) and suggest `/effort <level>`.
+Issues carry one of `effort:low`, `effort:medium`, `effort:high`, `effort:max`.
+
 **Token efficiency.** Skills stay dormant until invoked. Redirect any command output over roughly
 20 lines to a file and read the part you need, and `/compact` at a logical boundary. Delegate a
 heavy read to a subagent when the context it saves outweighs its startup cost.
@@ -83,9 +106,9 @@ feature exists in both repos. Skip its Current State and its crypto-specific fin
 an Issue in this repo, never a memory note, a handoff line or a markdown to-do. File it the
 moment it surfaces, including work found mid-branch that this branch will not do. Labels: one
 priority (`p1`–`p3`), one kind (`build`, `mechanics`, `audit`, `hypothesis`, `ops`,
-`decision`, `question`), plus `blocked` when it waits on something named in its body, and
-`cloud-ok` when a cloud session can finish it with tracked files alone (no `analytics.db`, no
-memory tree, no Windows host). A cloud session picks from `cloud-ok`. Over REST:
+`decision`, `question`), one `effort:` level (see Effort, above), plus `blocked` when it waits
+on something named in its body, and `cloud-ok` when a cloud session can finish it with
+tracked files alone (no `analytics.db`, no memory tree, no Windows host). A cloud session picks from `cloud-ok`. Over REST:
 `gh api 'repos/s10023/buibui-wifey-wall-street-bot/issues?state=open&per_page=100'`, because
 `gh issue list` goes through GraphQL, which cloud sessions are refused.
 

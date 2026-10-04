@@ -8,6 +8,7 @@ description: >
   logic, or asks about "volume_suppress", "volume spike boost", or
   "low-volume signals".
 allowed-tools: Bash, Read, Edit, Write
+effort: high
 ---
 
 # Volume Suppression Testing

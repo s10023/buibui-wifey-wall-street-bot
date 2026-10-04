@@ -15,6 +15,7 @@ description: >
   user saying "/post-branch", "wrap up the branch", "docs check",
   "pre-merge check", or "next conversation prompt".
 allowed-tools: Bash, Read, Edit, Write
+effort: high
 ---
 
 # Post-Branch Docs Sweep
@@ -455,7 +456,8 @@ them, and it is the only place this skill files open work.
    change with a known residual gap gets the gap written down, not a blanket close.
 2. **File what the branch found.** Every to-do, open question, defect or follow-up
    the branch surfaced and will not do becomes an Issue now, labelled per CLAUDE.md
-   (one priority, one kind, `blocked` and `cloud-ok` where they apply). Never park
+   (one priority, one kind, one `effort:` level, `blocked` and `cloud-ok` where
+   they apply). Never park
    one in the handoff as "not filed yet", in MEMORY.md's Current State, or in a
    markdown to-do under `docs/plans/`. Over REST, with the body in a file:
    `gh api repos/s10023/buibui-wifey-wall-street-bot/issues -f title='…' -F body=@<file> -f 'labels[]=p3' -f 'labels[]=mechanics'`.

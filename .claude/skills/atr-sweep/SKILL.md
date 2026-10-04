@@ -7,6 +7,7 @@ description: >
   "ATR-based stops", "fee drag", or any stop-loss sizing tune — and after
   any SL-related code change.
 allowed-tools: Bash, Read, Edit, Write
+effort: high
 ---
 
 # ATR SL Multiplier Sweep

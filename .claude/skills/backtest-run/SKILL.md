@@ -6,6 +6,7 @@ description: >
   Invoke when the user says "/backtest-run", asks to "run a backtest",
   "what's the flag for X", or wants to plan a sweep / combo / cross-TF run.
 allowed-tools: Bash, Read
+effort: low
 ---
 
 # Backtest Run — Quick Reference

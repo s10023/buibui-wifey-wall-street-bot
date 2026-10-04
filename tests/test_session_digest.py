@@ -88,10 +88,17 @@ class TestIssues:
 
     def test_format_shows_priority_first_then_other_labels(self) -> None:
         line = sd.format_issue(_issue(3, "ops", "p1", title="Fix it"))
-        assert line == "#3 [p1 ops] Fix it"
+        assert line == "#3 [p1 effort:? ops] Fix it"
+
+    def test_the_effort_label_follows_the_priority(self) -> None:
+        line = sd.format_issue(_issue(4, "ops", "effort:high", "p2", title="Do"))
+        assert line == "#4 [p2 effort:high ops] Do"
+
+    def test_an_unset_effort_reads_effort_question_mark(self) -> None:
+        assert "[untriaged effort:?]" in sd.format_issue(_issue(1))
 
     def test_an_unlabelled_issue_reads_untriaged(self) -> None:
-        assert "[untriaged]" in sd.format_issue(_issue(1))
+        assert "[untriaged " in sd.format_issue(_issue(1))
 
 
 class TestHandoff:
