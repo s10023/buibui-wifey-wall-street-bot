@@ -23,6 +23,7 @@ INTERVAL ?= 4h
 DAYS ?= 90
 SAVE ?=
 PORT ?= 8000
+HOST ?= 127.0.0.1
 DEV_PORT ?= 5173
 # Makefile — Lint Markdown and Python
 
@@ -692,7 +693,7 @@ wifey-signal-test:
 
 wifey-web:
 	@echo "Starting web backend..."
-	poetry run python wifey.py web --host 0.0.0.0 --port $(PORT) \
+	poetry run python wifey.py web --host $(HOST) --port $(PORT) \
 		$(if $(CONFIG),--config $(CONFIG),)
 
 web-install:
