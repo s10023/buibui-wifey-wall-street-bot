@@ -46,7 +46,6 @@
     showEMA200 = false,
     showRSI = false,
     showRangeLevels = false,
-    showCMEGaps = false,
     zones = null,
     showFVG = false,
     showOB = false,
@@ -65,7 +64,6 @@
     showEMA200?: boolean;
     showRSI?: boolean;
     showRangeLevels?: boolean;
-    showCMEGaps?: boolean;
     zones?: ZonesResponse | null;
     showFVG?: boolean;
     showOB?: boolean;
@@ -93,11 +91,6 @@
   let rangeLabelContainer: HTMLDivElement;
   let rangeLabelPrices: number[] = [];
   let rangeLabelEndTimes: number[] = [];
-
-  // CME gap overlay
-  let cmeGapContainer: HTMLDivElement;
-  let cmeGapDiv: HTMLDivElement | null = null;
-  let cmeGapData: CMEGap | null = null;
 
   // Structural zone overlay (C6)
   let zonesContainer: HTMLDivElement;
@@ -182,8 +175,8 @@
     const DAY = 86400;
     const nowSec = Date.now() / 1000;
 
-    // All boundaries align to UTC midnight — Binance candles open on UTC boundaries.
-    // (Monday 00:00 UTC = Monday 08:00 MYT, daily candle opens 08:00 MYT, etc.)
+    // Boundaries align to UTC midnight. yfinance stamps 1d bars at 04:00/05:00 UTC
+    // (NY midnight), so each bar still falls inside its own UTC day.
     const todayUTC = Math.floor(nowSec / DAY) * DAY;
     const ydayUTC  = todayUTC - DAY;
 
@@ -321,159 +314,6 @@
     rangeLabelEndTimes = [];
     rangeLabelContainer?.replaceChildren();
     chart?.timeScale().unsubscribeVisibleLogicalRangeChange(updateRangeLabelPositions);
-  }
-
-  // ── CME gap overlay ──────────────────────────────────────────────────────────
-
-  interface CMEGap {
-    startSec: number;        // fridayCandle.open_time/1000 — aligns to actual candle for reliable timeToCoordinate
-    endSec: number;          // mondayCandle.open_time/1000 (or nowSec if partial)
-    displayEndSec: number;   // extended right edge for chart visualisation
-    top: number;             // max(fridayClose, mondayOpen)
-    bottom: number;          // min(fridayClose, mondayOpen)
-    gapUp: boolean;
-    partial: boolean;
-  }
-
-  function computeCMEGap(data: CandleRow[]): CMEGap | null {
-    if (data.length < 2) return null;
-
-    const nowSec = Date.now() / 1000;
-    const DAY = 86400;
-    const WEEK = 7 * DAY;
-
-    // Most recent Friday 21:00 UTC (CME close = Sat 05:00 MYT)
-    const utcDow = new Date(nowSec * 1000).getUTCDay(); // 0=Sun
-    const todayUTC = Math.floor(nowSec / DAY) * DAY;
-    const daysSinceFri = (utcDow + 7 - 5) % 7; // Fri=0, Sat=1, Sun=2, Mon=3…
-    const lastFriUTC = todayUTC - daysSinceFri * DAY;
-    let cmeCloseSec = lastFriUTC + 21 * 3600;
-    if (cmeCloseSec > nowSec) cmeCloseSec -= WEEK; // haven't hit this Friday yet
-
-    const cmeOpenSec = cmeCloseSec + 49 * 3600; // +49h = Sun 22:00 UTC (Mon 06:00 MYT)
-
-    // Last candle whose open_time is before CME close → Friday close price
-    const fridayCandle = [...data].reverse().find(c => c.open_time / 1000 < cmeCloseSec);
-    if (!fridayCandle) return null;
-
-    // First candle at/after CME open → Monday open price
-    const mondayCandle = data.find(c => c.open_time / 1000 >= cmeOpenSec);
-
-    const fridayClose = fridayCandle.close;
-
-    if (!mondayCandle) {
-      // Currently inside CME closure window — show band up to now
-      return {
-        startSec: fridayCandle.open_time / 1000,
-        endSec: Math.min(nowSec, cmeOpenSec),
-        displayEndSec: 0,
-        top: fridayClose,
-        bottom: fridayClose,
-        gapUp: false,
-        partial: true,
-      };
-    }
-
-    const mondayOpen = mondayCandle.open;
-    return {
-      startSec: fridayCandle.open_time / 1000,
-      endSec: mondayCandle.open_time / 1000,
-      displayEndSec: 0,
-      top: Math.max(fridayClose, mondayOpen),
-      bottom: Math.min(fridayClose, mondayOpen),
-      gapUp: mondayOpen > fridayClose,
-      partial: false,
-    };
-  }
-
-  function updateCMEGapPosition(): void {
-    if (!cmeGapDiv || !chart || !candleSeries) return;
-    const gap = cmeGapData;
-    if (!gap) return;
-
-    const containerWidth = cmeGapContainer.clientWidth;
-    const rawX1 = chart.timeScale().timeToCoordinate(gap.startSec as Time);
-    // Start off-screen left → don't render; box must begin at origin candle
-    if (rawX1 === null) { cmeGapDiv.style.display = "none"; return; }
-    const rawX2 = chart.timeScale().timeToCoordinate(gap.displayEndSec as Time);
-    // End off-screen right → clamp to container edge
-    const clampedX1 = rawX1;
-    const clampedX2 = Math.min(containerWidth, rawX2 ?? containerWidth);
-    if (clampedX2 <= clampedX1) {
-      cmeGapDiv.style.display = "none";
-      return;
-    }
-
-    let y1: number, y2: number;
-    if (gap.partial || gap.top === gap.bottom) {
-      // Just a vertical band — full height of chart (500px)
-      y1 = 0;
-      y2 = 500;
-    } else {
-      const py1 = candleSeries.priceToCoordinate(gap.top);
-      const py2 = candleSeries.priceToCoordinate(gap.bottom);
-      if (py1 === null || py2 === null) { cmeGapDiv.style.display = "none"; return; }
-      y1 = Math.min(py1, py2);
-      y2 = Math.max(py1, py2);
-    }
-
-    const minHeight = 2;
-    const boxHeight = Math.max(minHeight, y2 - y1);
-
-    cmeGapDiv.style.display  = "block";
-    cmeGapDiv.style.left     = `${clampedX1}px`;
-    cmeGapDiv.style.width    = `${clampedX2 - clampedX1}px`;
-    cmeGapDiv.style.top      = `${y1}px`;
-    cmeGapDiv.style.height   = `${boxHeight}px`;
-  }
-
-  function drawCMEGap(): void {
-    clearCMEGap();
-    if (!chart || !cmeGapContainer) return;
-
-    const gap = computeCMEGap(candles);
-    if (!gap) return;
-
-    // Extend right edge past the gap window so it stays visible against recent candles
-    const last = candles[candles.length - 1];
-    const prev = candles[candles.length - 2];
-    const intervalMs = last.open_time - prev.open_time;
-    gap.displayEndSec = Math.max(gap.endSec, (last.open_time + 200 * intervalMs) / 1000);
-
-    const div = document.createElement("div");
-    div.className = gap.partial
-      ? "cme-gap-box cme-gap-partial"
-      : gap.gapUp ? "cme-gap-box cme-gap-up" : "cme-gap-box cme-gap-down";
-
-    cmeGapData = gap;
-
-    // Label inside box
-    const label = document.createElement("span");
-    label.className = "cme-gap-label";
-    if (gap.partial) {
-      label.textContent = "CME closed";
-    } else {
-      const pct = gap.top !== 0
-        ? (((gap.gapUp ? gap.top : gap.bottom) - (gap.gapUp ? gap.bottom : gap.top)) / (gap.gapUp ? gap.bottom : gap.top) * 100).toFixed(2)
-        : "0.00";
-      label.textContent = `CME Gap ${gap.gapUp ? "▲" : "▼"} ${pct}%`;
-    }
-    div.appendChild(label);
-    cmeGapContainer.appendChild(div);
-    cmeGapDiv = div;
-
-    requestAnimationFrame(updateCMEGapPosition);
-    chart.timeScale().subscribeVisibleLogicalRangeChange(updateCMEGapPosition);
-  }
-
-  function clearCMEGap(): void {
-    if (cmeGapDiv) {
-      cmeGapDiv.remove();
-      cmeGapDiv = null;
-    }
-    cmeGapData = null;
-    chart?.timeScale().unsubscribeVisibleLogicalRangeChange(updateCMEGapPosition);
-    cmeGapContainer?.replaceChildren();
   }
 
   // ── Structural zone overlay (C6) ─────────────────────────────────────────────
@@ -864,18 +704,6 @@
     }
   });
 
-  // ── CME gap effect ───────────────────────────────────────────────────────────
-
-  $effect(() => {
-    if (!candleSeries) return;
-    void candles;
-    if (showCMEGaps) {
-      drawCMEGap();
-    } else {
-      clearCMEGap();
-    }
-  });
-
   // ── Structural zone overlay effect (C6) ──────────────────────────────────────
 
   $effect(() => {
@@ -898,7 +726,6 @@
 
 <div class="chart-wrap">
   <div bind:this={container} class="chart-container"></div>
-  <div bind:this={cmeGapContainer} class="cme-gap-overlay"></div>
   <div bind:this={zonesContainer} class="zones-overlay"></div>
   <div bind:this={rangeLabelContainer} class="range-label-overlay"></div>
   <img src="/buibui-logo.svg" alt="buibui" class="chart-logo" />
@@ -942,55 +769,6 @@
   /* Hide the injected TradingView attribution */
   :global(.chart-container a) {
     display: none !important;
-  }
-
-  .cme-gap-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: calc(100% - 70px);
-    height: 100%;
-    pointer-events: none;
-    overflow: hidden;
-    z-index: 3;
-  }
-
-  :global(.cme-gap-box) {
-    position: absolute;
-    pointer-events: none;
-  }
-
-  :global(.cme-gap-up) {
-    background: rgba(86, 211, 100, 0.08);
-    border-top: 1px solid rgba(86, 211, 100, 0.35);
-    border-bottom: 1px solid rgba(86, 211, 100, 0.35);
-    border-left: 1px solid rgba(86, 211, 100, 0.20);
-    border-right: 1px solid rgba(86, 211, 100, 0.20);
-  }
-
-  :global(.cme-gap-down) {
-    background: rgba(248, 81, 73, 0.08);
-    border-top: 1px solid rgba(248, 81, 73, 0.35);
-    border-bottom: 1px solid rgba(248, 81, 73, 0.35);
-    border-left: 1px solid rgba(248, 81, 73, 0.20);
-    border-right: 1px solid rgba(248, 81, 73, 0.20);
-  }
-
-  :global(.cme-gap-partial) {
-    background: rgba(88, 166, 255, 0.05);
-    border-left: 1px solid rgba(88, 166, 255, 0.25);
-    border-right: 1px dashed rgba(88, 166, 255, 0.20);
-  }
-
-  :global(.cme-gap-label) {
-    position: absolute;
-    top: 4px;
-    left: 4px;
-    font-size: 9px;
-    font-family: monospace;
-    letter-spacing: 0.04em;
-    white-space: nowrap;
-    color: rgba(201, 209, 217, 0.55);
   }
 
   /* ── Structural zone overlay (C6) ── */
