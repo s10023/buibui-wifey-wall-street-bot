@@ -10,7 +10,7 @@
   } from "../api";
   import { symbols } from "../stores/config";
   import { strategiesStore, strategyNames } from "../stores/strategies";
-  import { activeConfigStore } from "../stores/activeConfig";
+  import { activeConfigStore, configDefaultSymbol } from "../stores/activeConfig";
   import BacktestResultCmp from "../components/BacktestResult.svelte";
   import ErrorBanner from "../components/ErrorBanner.svelte";
   import AnalysisCard from "../components/AnalysisCard.svelte";
@@ -107,7 +107,7 @@
   type FilterToken = { label: string; clear: () => void };
   const activeFilterTokens = $derived.by((): FilterToken[] => {
     const tokens: FilterToken[] = [];
-    selSymbols.forEach(s => tokens.push({ label: s.replace("USDT", ""), clear: () => { selSymbols = tog(selSymbols, s); } }));
+    selSymbols.forEach(s => tokens.push({ label: s, clear: () => { selSymbols = tog(selSymbols, s); } }));
     selTfs.forEach(tf => tokens.push({ label: tf, clear: () => { selTfs = tog(selTfs, tf); } }));
     selStrategies.forEach(s => tokens.push({ label: s, clear: () => { selStrategies = tog(selStrategies, s); } }));
     selDayFilters.forEach(df => tokens.push({ label: `day:${df}`, clear: () => { selDayFilters = tog(selDayFilters, df); } }));
@@ -282,7 +282,7 @@
 
   // ── Run form ──────────────────────────────────────────────────────────────────
   let showForm = $state(false);
-  let symbol = $state("BTCUSDT");
+  let symbol = $state($configDefaultSymbol ?? $symbols[0] ?? "SPY");
   let timeframe = $state("4h");
   let strategy = $state("bos");
   let days = $state(200);
@@ -411,7 +411,7 @@
       <div class="chips">
         {#each $symbols as s}
           <button class="chip" class:on={selSymbols.has(s)}
-            onclick={() => { selSymbols = tog(selSymbols, s); }}>{s.replace("USDT", "")}</button>
+            onclick={() => { selSymbols = tog(selSymbols, s); }}>{s}</button>
         {/each}
       </div>
 
@@ -644,7 +644,7 @@
         {:else}
           {#each filteredRuns as run (run.run_id)}
             <tr>
-              <td class="sym">{run.symbol.replace("USDT", "")}</td>
+              <td class="sym">{run.symbol}</td>
               <td class="muted">{run.timeframe}</td>
               <td class="strat-name">{run.strategy}</td>
               <td class="stars">{renderStars(starsFor(run))}</td>

@@ -64,8 +64,6 @@
   // Range levels toggle (C11)
   let showRangeLevels = $state(false);
 
-  // CME gap toggle
-  let showCMEGaps = $state(false);
 
   // C6: Structural zone toggles
   let showFVG = $state(false);
@@ -150,7 +148,7 @@
         class="watchlist-item"
         class:active={symbol === sym}
         onclick={() => handleSymbolClick(sym)}
-      >{sym.replace("USDT", "")}</button>
+      >{sym}</button>
     {/each}
   </aside>
 
@@ -161,7 +159,7 @@
     <div class="controls">
       <div class="form-row">
         <label>Timeframe
-          <select bind:value={timeframe} onchange={() => { if (timeframe !== "1h") showCMEGaps = false; void load(); }}>
+          <select bind:value={timeframe} onchange={() => void load()}>
             {#each TIMEFRAMES as tf}<option>{tf}</option>{/each}
           </select>
         </label>
@@ -178,9 +176,6 @@
         <button class="pill" class:active={showEMA200} onclick={() => showEMA200 = !showEMA200}>EMA 200</button>
         <button class="pill" class:active={showRSI} onclick={() => showRSI = !showRSI}>RSI 14</button>
         <button class="pill" class:active={showRangeLevels} onclick={() => showRangeLevels = !showRangeLevels}>Range Levels</button>
-        {#if timeframe === "1h"}
-          <button class="pill" class:active={showCMEGaps} onclick={() => showCMEGaps = !showCMEGaps}>CME Gap</button>
-        {/if}
       </div>
 
       <!-- C6: Structural zone overlays -->
@@ -243,7 +238,6 @@
           {showEMA200}
           {showRSI}
           {showRangeLevels}
-          {showCMEGaps}
           {zones}
           {showFVG}
           {showOB}

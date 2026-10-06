@@ -63,7 +63,7 @@ Build: `make web-build` → `web/ui/dist/` served by FastAPI StaticFiles.
   - Active zones extend to right edge; inactive end at `close_ms` (dimmed)
   - Colors: bull=`#56d364`, bear=`#f85149`, fib=`#e3b341`, ote=`#f0883e`
 - **Range Levels** — MO, DO, PDH/PDL, WO, PWH/PWL, Mon H/L; solid lines from origin to right edge; HTML labels
-- **CME Gap** — semi-transparent box for most recent Fri 21:00–Sun 22:00 UTC window; shown on 1h only (pill hidden on 4h/1d/1wk, because `timeToCoordinate` returns null for inter-candle timestamps on coarser TFs). `15m` is excluded too — it is not a fetchable interval
+- **CME Gap** — removed (#329). It was a crypto overlay keyed to CME futures hours (Fri 21:00–Sun 22:00 UTC) and labelled "CME"; on equities it reduced to the Friday-close-to-Monday-open gap, and the `gapfill/` sleeve refuted the fill premise (gaps continue rather than revert), so a gap-magnet box points the wrong way
 - Time axis + crosshair: **MYT (UTC+8)** via `localization.timeFormatter`
 - Signal markers + Fib overlay. (T16-full removed funding/OI sub-panels + the SSE / `/api/ohlcv/live` live-candle seed — yfinance has no realtime equivalent; the UI now seeds the current candle from the last DB row.)
 

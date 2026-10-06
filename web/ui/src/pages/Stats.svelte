@@ -12,7 +12,7 @@
   const TIMEFRAMES_DAYS = [30, 90, 180, 365];
   const DOW_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-  let symbol = $state($configDefaultSymbol ?? "BTCUSDT");
+  let symbol = $state($configDefaultSymbol ?? $symbols[0] ?? "SPY");
   let days = $state(365);
   let stats = $state<StatsResponse | null>(null);
   let loading = $state(false);
