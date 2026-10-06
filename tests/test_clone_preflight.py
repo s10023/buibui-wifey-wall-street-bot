@@ -18,8 +18,15 @@ import os
 import re
 import subprocess
 from pathlib import Path
+from typing import Any
 
+import pytest
+
+from tools import clone_preflight
 from tools.clone_preflight import (
+    FAILED,
+    INFRA,
+    OK,
     PYTEST_ARGS,
     REFUSED,
     clone_argv,
@@ -158,9 +165,67 @@ class TestSubprocessEnv:
         """
         src = (REPO_ROOT / "tools/clone_preflight.py").read_text(encoding="utf-8")
         runs = re.findall(r"subprocess\.run\((\w+_argv)\(\), cwd=dest([^)]*)\)", src)
-        assert {name for name, _ in runs} == {"install_argv", "pytest_argv"}
+        assert {name for name, _ in runs} == {
+            "install_argv",
+            "probe_argv",
+            "pytest_argv",
+        }
         for name, rest in runs:
             assert "env=env" in rest, name
+
+
+def _run_with_fake_steps(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    probe_rc: int,
+    pytest_rc: int,
+) -> tuple[int, list[str]]:
+    """Run `main` on a real clone with install/probe/pytest faked by argv."""
+    repo = _make_repo(tmp_path)
+    real_run = subprocess.run
+    calls: list[str] = []
+
+    def fake_run(argv: list[str], *args: Any, **kwargs: Any) -> Any:
+        if argv == clone_preflight.install_argv():
+            calls.append("install")
+            return subprocess.CompletedProcess(argv, 0)
+        if argv == clone_preflight.probe_argv():
+            calls.append("probe")
+            return subprocess.CompletedProcess(argv, probe_rc)
+        if argv == clone_preflight.pytest_argv():
+            calls.append("pytest")
+            return subprocess.CompletedProcess(argv, pytest_rc)
+        return real_run(argv, *args, **kwargs)
+
+    monkeypatch.setattr(clone_preflight.subprocess, "run", fake_run)
+    rc = main(["--repo", str(repo), "--dest", str(tmp_path / "clone")])
+    return rc, calls
+
+
+class TestInterpreterProbe:
+    """A `poetry run` that cannot start Python is INFRA, never a red suite."""
+
+    def test_failing_probe_is_infra_and_skips_the_suite(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        rc, calls = _run_with_fake_steps(tmp_path, monkeypatch, probe_rc=1, pytest_rc=1)
+        assert rc == INFRA
+        assert calls == ["install", "probe"]
+
+    def test_passing_probe_then_failing_suite_is_still_failed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Positive control: the probe must not swallow a genuine test failure."""
+        rc, calls = _run_with_fake_steps(tmp_path, monkeypatch, probe_rc=0, pytest_rc=1)
+        assert rc == FAILED
+        assert calls == ["install", "probe", "pytest"]
+
+    def test_passing_probe_and_suite_is_ok(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        rc, _ = _run_with_fake_steps(tmp_path, monkeypatch, probe_rc=0, pytest_rc=0)
+        assert rc == OK
 
 
 class TestWiredIntoTheWorkflow:

@@ -122,6 +122,17 @@ def subprocess_env() -> dict[str, str]:
     return {**os.environ, "POETRY_VIRTUALENVS_IN_PROJECT": "1"}
 
 
+def probe_argv() -> list[str]:
+    """Prove the clone's interpreter starts before trusting pytest's exit code.
+
+    `poetry run pytest` exits 1 both when a test fails and when Poetry cannot
+    start Python at all (measured 2026-10-02: a ``-py3.13`` venv built on 3.11
+    refused with "Current Python version (3.11.15) is not allowed"). Without
+    this probe the second case banners as a red suite, which is a vacuous red.
+    """
+    return ["poetry", "run", "python", "-c", "import sys; print(sys.version_info[:2])"]
+
+
 def pytest_argv() -> list[str]:
     return ["poetry", "run", "pytest", *PYTEST_ARGS]
 
@@ -216,6 +227,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         if subprocess.run(install_argv(), cwd=dest, env=env).returncode != 0:  # noqa: S603
             print(
                 "⚠ dependency install failed — infrastructure, not a finding.",
+                flush=True,
+            )
+            return INFRA
+
+        if subprocess.run(probe_argv(), cwd=dest, env=env).returncode != 0:  # noqa: S603
+            print(
+                "⚠ the clone's interpreter did not start under `poetry run` —"
+                " infrastructure, not a finding. No test ran.",
                 flush=True,
             )
             return INFRA
