@@ -180,7 +180,7 @@ A zero from the first line counts only if the control printed a hit, since a pat
 the grep engine cannot parse also returns nothing.
 
 Duplicated helpers have one cheap probe: a second copy of the `gh` auth lookup or the repo
-slug. `tools/session_digest.py::gh_env` and `REPO_SLUG` are the single home; any other hit
+slug. `tools/session_digest.py::owner_env` and `REPO_SLUG` are the single home; any other hit
 is a restated helper (`CODING_STANDARDS.md`).
 
 ```bash

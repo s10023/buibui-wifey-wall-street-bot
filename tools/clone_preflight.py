@@ -87,6 +87,27 @@ def clone_argv(root: Path, dest: Path) -> list[str]:
     return ["git", "clone", "--no-hardlinks", "--quiet", str(root), str(dest)]
 
 
+def seed_venv_argv() -> list[str] | None:
+    """Argv that pre-creates the clone's ``.venv`` on THIS interpreter, or None.
+
+    ``make preflight`` runs this script on the project's ``.venv`` python, which
+    is by construction an interpreter the suite runs on. Poetry, left to itself,
+    builds the clone's virtualenv on whatever python POETRY runs under. On the
+    cloud host that is 3.11 while the project needs 3.13 (#397), and
+    :func:`probe_argv` can only report that as INFRA. Poetry adopts an existing
+    in-project ``.venv`` (:func:`subprocess_env` puts it there), so creating one
+    first pins the interpreter without depending on poetry's own selection.
+    Ported from parent #880.
+
+    Only from inside a virtualenv: a bare system ``python3`` fallback carries no
+    such guarantee, and seeding from it could pin the wrong version where
+    poetry would have found the right one.
+    """
+    if sys.prefix == sys.base_prefix:
+        return None
+    return [sys.executable, "-m", "venv", ".venv"]
+
+
 def install_argv() -> list[str]:
     """Dependencies come from the clone's own lock, not the dev box's venv.
 
@@ -219,9 +240,20 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         if args.dry_run:
             print("   dry run: skipping the install and the suite. Would run:")
+            seed = seed_venv_argv()
+            if seed is not None:
+                print(f"     {' '.join(seed)}")
             print(f"     {' '.join(install_argv())}")
             print(f"     {' '.join(pytest_argv())}")
             return OK
+
+        seed = seed_venv_argv()
+        if seed is not None and subprocess.run(seed, cwd=dest).returncode != 0:  # noqa: S603
+            print(
+                "⚠ could not create the clone's .venv — infrastructure, not a finding.",
+                flush=True,
+            )
+            return INFRA
 
         env = subprocess_env()
         if subprocess.run(install_argv(), cwd=dest, env=env).returncode != 0:  # noqa: S603

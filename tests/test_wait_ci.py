@@ -17,10 +17,12 @@ they cover was absent or wrong in a shipped version:
 from __future__ import annotations
 
 import subprocess
+import time
 from typing import Any
 
 import pytest
 
+from tools.session_digest import owner_env
 from tools.wait_ci import (
     EXIT_BILLING,
     EXIT_FAILED,
@@ -29,9 +31,11 @@ from tools.wait_ci import (
     EXIT_UNOBSERVED,
     GhError,
     JobRow,
+    check_runs,
     fmt_steps,
     gh,
     gh_json,
+    is_permanent_failure,
     is_settled,
     jobs_for_sha,
     main,
@@ -40,6 +44,7 @@ from tools.wait_ci import (
     step_counts,
     verdict,
     wait_branch,
+    wait_pr,
 )
 
 
@@ -226,6 +231,7 @@ class TestGhRaises:
     def test_non_zero_exit_raises_rather_than_returning_empty(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        monkeypatch.delenv("GH_TOKEN", raising=False)
         calls = {"n": 0}
 
         def fake_run(argv: Any, **kw: Any) -> Any:
@@ -397,3 +403,316 @@ class TestCli:
 
         monkeypatch.setattr("tools.wait_ci.wait_branch", boom)
         assert main(["--branch", "main"]) == EXIT_FAILED
+
+
+class TestGhAuthFallback:
+    """Parent #887: a failed token lookup falls back to ambient auth, never raises.
+
+    ``gh`` takes its environment from ``session_digest.owner_env``, the one auth
+    helper the digest and ``cadence_check`` already share.
+    """
+
+    def test_failed_token_lookup_runs_with_ambient_auth(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("GH_TOKEN", raising=False)
+        envs: list[Any] = []
+
+        def fake_run(argv: Any, **kw: Any) -> Any:
+            if argv[:3] == ["gh", "auth", "token"]:
+                return subprocess.CompletedProcess(argv, 1, stdout="", stderr="no")
+            envs.append(kw.get("env"))
+            return subprocess.CompletedProcess(argv, 0, stdout="ok", stderr="")
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        assert gh("api", "whatever") == "ok"
+        assert len(envs) == 1 and "GH_TOKEN" not in envs[0]
+
+    def test_missing_gh_binary_on_lookup_does_not_raise(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("GH_TOKEN", raising=False)
+
+        def fake_run(argv: Any, **kw: Any) -> Any:
+            raise FileNotFoundError("gh")
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        assert "GH_TOKEN" not in owner_env()
+
+    def test_explicit_gh_token_wins_and_skips_the_lookup(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("GH_TOKEN", "mine")
+        argvs: list[Any] = []
+
+        def fake_run(argv: Any, **kw: Any) -> Any:
+            argvs.append(argv)
+            return subprocess.CompletedProcess(argv, 0, stdout="ok", stderr="")
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        gh("api", "x")
+        assert argvs == [["gh", "api", "x"]]
+
+    def test_successful_lookup_sets_the_token(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("GH_TOKEN", raising=False)
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "tok\n", ""),
+        )
+        assert owner_env()["GH_TOKEN"] == "tok"
+
+
+class TestSupersededRun:
+    """Parent #880: a run cancelled by a newer push on the gated branch is not a failure.
+
+    The parent's 2026-10-01 shape: the gate pinned one SHA, two merges moved main,
+    GitHub cancelled the pinned run while it was still PENDING (so it created no
+    jobs at all), and the run on the new head was green. This repo's workflows
+    share the same per-ref concurrency groups, so the shape applies here.
+    """
+
+    OLD, NEW = "6a55fcf" + "0" * 33, "afba967" + "0" * 33
+
+    @staticmethod
+    def _cancelled(n: int, *, steps: int) -> list[dict]:
+        return [
+            {
+                "name": f"job{i}",
+                "status": "completed",
+                "conclusion": "cancelled",
+                "steps": [{}] * steps,
+            }
+            for i in range(n)
+        ]
+
+    @staticmethod
+    def _green(n: int) -> list[dict]:
+        return [
+            {
+                "name": f"job{i}",
+                "status": "completed",
+                "conclusion": "success",
+                "steps": [{}] * 9,
+            }
+            for i in range(n)
+        ]
+
+    def test_follows_the_new_head_and_reports_it_green(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        heads = [self.OLD, self.NEW, self.NEW]
+        monkeypatch.setattr("tools.wait_ci.branch_head_sha", lambda b: heads.pop(0))
+        by_sha = {self.OLD: self._cancelled(3, steps=0), self.NEW: self._green(5)}
+        seen: list[str] = []
+
+        def jobs(sha: str, **_: Any) -> list[dict]:
+            seen.append(sha)
+            return by_sha[sha]
+
+        monkeypatch.setattr("tools.wait_ci.jobs_for_sha", jobs)
+
+        assert wait_branch("main", 5, _soon(), 0) == EXIT_OK
+        out = capsys.readouterr().out
+        assert "SUPERSEDED" in out
+        assert "afba967" in out
+        assert "safe to flip the repo back to private." in out
+        assert seen == [self.OLD, self.NEW]
+
+    def test_a_superseded_zero_step_run_is_never_called_billing(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A cancelled job can execute nothing; read as billing it says go public."""
+        heads = [self.OLD, self.NEW, self.NEW]
+        monkeypatch.setattr("tools.wait_ci.branch_head_sha", lambda b: heads.pop(0))
+        by_sha = {self.OLD: self._cancelled(5, steps=0), self.NEW: self._green(5)}
+        monkeypatch.setattr("tools.wait_ci.jobs_for_sha", lambda s, **k: by_sha[s])
+
+        assert wait_branch("main", 5, _soon(), 0) == EXIT_OK
+        assert "BILLING" not in capsys.readouterr().out
+
+    def test_a_cancel_with_the_head_unmoved_is_cancelled_not_billing(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setattr("tools.wait_ci.branch_head_sha", lambda b: self.OLD)
+        monkeypatch.setattr(
+            "tools.wait_ci.jobs_for_sha", lambda s, **k: self._cancelled(5, steps=0)
+        )
+
+        assert wait_branch("main", 5, _soon(), 0) == EXIT_FAILED
+        out = capsys.readouterr().out
+        assert "CANCELLED" in out
+        assert "SUPERSEDED" not in out
+        assert "BILLING" not in out
+
+    def test_a_run_cancelled_before_creating_jobs_is_followed(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """CI `cancelled` with ZERO jobs, beside one green Trivy job. No job carries
+        the cancel, so only the RUN shows it; a job-level check sat under the floor
+        until the timeout."""
+        heads = [self.OLD, self.NEW]
+        monkeypatch.setattr("tools.wait_ci.branch_head_sha", lambda b: heads.pop(0))
+        by_sha = {self.OLD: self._green(1), self.NEW: self._green(5)}
+        monkeypatch.setattr("tools.wait_ci.jobs_for_sha", lambda s, **k: by_sha[s])
+        runs = {
+            self.OLD: [{"conclusion": "success"}, {"conclusion": "cancelled"}],
+            self.NEW: [{"conclusion": None}],
+        }
+        monkeypatch.setattr("tools.wait_ci.runs_for_sha", lambda s, **k: runs[s])
+
+        assert wait_branch("main", 5, time.time() + 3, 0) == EXIT_OK
+        out = capsys.readouterr().out
+        assert "SUPERSEDED" in out
+        assert "safe to flip the repo back to private." in out
+
+    def test_a_pending_run_cancelled_by_hand_ends_at_once(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Head unmoved, no jobs coming: report CANCELLED, never wait for a timeout."""
+        monkeypatch.setattr("tools.wait_ci.branch_head_sha", lambda b: self.OLD)
+        monkeypatch.setattr("tools.wait_ci.jobs_for_sha", lambda s, **k: self._green(1))
+        monkeypatch.setattr(
+            "tools.wait_ci.runs_for_sha", lambda s, **k: [{"conclusion": "cancelled"}]
+        )
+
+        assert wait_branch("main", 5, time.time() + 3, 0) == EXIT_FAILED
+        out = capsys.readouterr().out
+        assert "CANCELLED" in out
+        assert "SUPERSEDED" not in out
+        assert "BILLING" not in out
+
+    def test_a_settled_gate_never_lists_runs(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def boom(s: str, **k: Any) -> list[dict]:
+            raise AssertionError("listed runs for a gate whose jobs had settled")
+
+        monkeypatch.setattr("tools.wait_ci.branch_head_sha", lambda b: self.OLD)
+        monkeypatch.setattr("tools.wait_ci.jobs_for_sha", lambda s, **k: self._green(5))
+        monkeypatch.setattr("tools.wait_ci.runs_for_sha", boom)
+
+        assert wait_branch("main", 5, _soon(), 0) == EXIT_OK
+
+    def test_verdict_does_not_read_a_cancelled_row_as_billing(self) -> None:
+        code, lines = verdict([JobRow("lint", "CANCELLED", 0, 0)])
+        assert code == EXIT_FAILED
+        assert "BILLING" not in "\n".join(lines)
+
+
+class TestPermanentFailure:
+    """Parent #893: a 403 from the cloud proxy was retried as transient forever."""
+
+    GRAPHQL_403 = (
+        "HTTP 403: GitHub GraphQL is not available from Claude Code sessions; "
+        "use the REST API"
+    )
+
+    @pytest.mark.parametrize("code", [400, 401, 403, 404, 422])
+    def test_a_named_4xx_is_permanent(self, code: int) -> None:
+        assert is_permanent_failure(f"HTTP {code}: nope")
+
+    @pytest.mark.parametrize(
+        "stderr", ["HTTP 429: slow down", "HTTP 408: timeout", "HTTP 502: bad", "eof"]
+    )
+    def test_rate_limit_server_and_network_errors_stay_transient(
+        self, stderr: str
+    ) -> None:
+        assert not is_permanent_failure(stderr)
+
+    def test_gh_marks_the_graphql_403_permanent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("GH_TOKEN", "x")
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda argv, **kw: subprocess.CompletedProcess(
+                argv, 1, "", self.GRAPHQL_403
+            ),
+        )
+        with pytest.raises(GhError) as info:
+            gh("pr", "view", "1")
+        assert info.value.permanent
+
+    def test_poll_propagates_a_permanent_failure_at_once(self) -> None:
+        calls = {"n": 0}
+
+        def probe() -> bool:
+            calls["n"] += 1
+            raise GhError("HTTP 403", permanent=True)
+
+        with pytest.raises(GhError):
+            poll(probe, deadline=_soon(), poll_sec=0, label="t")
+        assert calls["n"] == 1
+
+    def test_main_reaches_its_failure_banner(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        def denied(pr: str) -> str:
+            raise GhError(self.GRAPHQL_403, permanent=True)
+
+        monkeypatch.setattr("tools.wait_ci.pr_head_sha", denied)
+        assert main(["--pr", "887", "--poll-sec", "0"]) == EXIT_FAILED
+        assert "gh failed unrecoverably" in capsys.readouterr().err
+
+
+class TestPrPathIsRest:
+    """Parent #893: the PR path must never shell out to GraphQL (`gh pr view --json`)."""
+
+    SHA = "d" * 40
+
+    @staticmethod
+    def _runs(*rows: tuple[str, str, str | None]) -> dict:
+        return {
+            "check_runs": [
+                {"name": n, "status": st, "conclusion": c} for n, st, c in rows
+            ]
+        }
+
+    def test_check_runs_maps_unfinished_to_pending(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        payload = self._runs(
+            ("a", "completed", "success"),
+            ("b", "in_progress", None),
+            ("c", "queued", None),
+        )
+        monkeypatch.setattr("tools.wait_ci.gh_json", lambda *a: payload)
+        checks = check_runs(self.SHA)
+        assert [c["conclusion"] for c in checks] == ["success", "", ""]
+        assert len(pending(checks)) == 2
+
+    def test_wait_pr_settles_over_rest_only(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        names = ["j1", "j2", "j3", "j4", "j5"]
+        states = [
+            self._runs(*[(n, "in_progress", None) for n in names[:4]]),
+            self._runs(*[(n, "completed", "success") for n in names]),
+        ]
+        argvs: list[tuple[str, ...]] = []
+
+        def fake(*args: str) -> Any:
+            argvs.append(args)
+            path = args[1]
+            if path.endswith("/pulls/887"):
+                return {"head": {"sha": self.SHA}}
+            if "/check-runs" in path:
+                return states.pop(0) if len(states) > 1 else states[0]
+            if "actions/runs?" in path:
+                return {"workflow_runs": [{"id": 1, "event": "pull_request"}]}
+            if path.endswith("/runs/1/jobs"):
+                return {
+                    "jobs": [
+                        {"name": n, "steps": [{"conclusion": "success"}]} for n in names
+                    ]
+                }
+            raise AssertionError(f"unexpected gh call {args}")
+
+        monkeypatch.setattr("tools.wait_ci.gh_json", fake)
+        assert wait_pr("887", 5, _soon(), 0) == EXIT_OK
+        assert all(a[0] == "api" for a in argvs), argvs
+        assert f"checks on {self.SHA[:8]}" in capsys.readouterr().out

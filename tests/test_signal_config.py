@@ -1287,14 +1287,18 @@ min_avg_r_short = 0.2
 
         assert BacktestFilterConfig(cache_enabled=False).cache_enabled is False
 
-    def test_toml_cache_enabled_false_reaches_the_loaded_config(self, tmp_path: Path) -> None:
+    def test_toml_cache_enabled_false_reaches_the_loaded_config(
+        self, tmp_path: Path
+    ) -> None:
         """The TOML kill switch must survive `load_signal_config` (parent #788).
 
         The two tests above build the dataclass directly, so they stayed green
         while the loader dropped the key and `cache_enabled = false` loaded as True.
         """
         p = tmp_path / "w.toml"
-        p.write_text('[backtest]\nmode = "soft"\ncache_enabled = false\n', encoding="utf-8")
+        p.write_text(
+            '[backtest]\nmode = "soft"\ncache_enabled = false\n', encoding="utf-8"
+        )
         assert load_signal_config(p).backtest.cache_enabled is False
 
     def test_toml_without_cache_enabled_keeps_the_default(self, tmp_path: Path) -> None:

@@ -338,7 +338,20 @@ before (one reported `jobs=0` against a live `total_count=2`).
 - A `gh` failure raises; it is never turned into data. Returning `""` on a non-zero exit left an
   unreadable `actions/runs` response with every step count `None` and printed a false green
   asserting exactly what it had failed to observe. That state is now exit 4. Transient failures
-  are retried inside the poll loop; an unrecoverable one propagates.
+  are retried inside the poll loop; an unrecoverable one propagates, and so does a named 4xx
+  other than 408/429 (`GhError.permanent`), which no retry fixes.
+- Every read is REST, never GraphQL: the PR path resolves its head over `pulls/<n>` (re-read each
+  poll, so a mid-wait push gates the new commit) and lists `commits/<sha>/check-runs`, because a
+  cloud session's proxy refuses `gh pr view --json` with a 403. Auth comes from
+  `session_digest.owner_env`: an explicit `GH_TOKEN` wins, else the s10023 lookup, else ambient
+  auth, and the lookup never raises. Ported from parent #887 and #893.
+
+A run CANCELLED by a newer push is SUPERSEDED, not failed. A concurrency group holds one running
+and one pending run, and a newer push cancels the pending one before it creates any jobs, so the
+cancel shows on the RUN only; `was_cancelled` checks jobs, then runs. On a cancel the branch gate
+re-reads the head: moved means it prints SUPERSEDED and gates on the new SHA inside the same
+deadline; unmoved and short of the floor means CANCELLED, exit 1, at once. A cancelled row is never
+billing. Ported from parent #880.
 
 The branch gate counts `push`-event runs only. A `main` SHA also carries a GitHub-managed `dynamic`
 run ("Configured Graph Update: pip in /.") created several minutes after the push runs finish;
@@ -784,8 +797,15 @@ clone — `EXTERNAL_ROOTS` in `deploy/backup-analytics.sh` is exactly that shape
 a production-code-loads-a-local-file defect where a test exercises the path; neither mechanism sees
 an untested CLI branch.
 
+The clone's interpreter is pinned before the install: when preflight runs from a virtualenv (as
+`make preflight` does), `seed_venv_argv` creates `<clone>/.venv` on that same python, and Poetry
+adopts it. Left alone, Poetry builds the venv on whatever python Poetry runs under, which on the
+cloud host is 3.11 against the 3.13 floor (#397, ported from parent #880). The interpreter probe
+stays as the backstop: a clone whose `poetry run` still cannot start Python reports INFRA, never a
+red suite.
+
 Exit codes: `0` pass, `1` the suite failed (a real finding), `2` REFUSED (dirty tree), `3` INFRA (the
-clone or install died). `make` collapses all of them to its own 2, so branch on the printed banner or
+clone, venv seed, install or interpreter probe died). `make` collapses all of them to its own 2, so branch on the printed banner or
 call the module directly.
 
 First run, 2026-08-20: passed, 3,123 passed / 4 skipped in the clone against 3,124 / 3 locally, so
