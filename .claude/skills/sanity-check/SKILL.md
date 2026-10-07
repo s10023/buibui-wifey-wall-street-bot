@@ -93,11 +93,16 @@ The sweep proves lists agree. It cannot read intent.
   prefix-strip (`backtest_config.py:343`) and `live_parity` as a sub-table (`:475`).
   `[backtest]` has **two** consumers: of its 10 keys, `mode`, `min_avg_r` and
   `cache_enabled` belong to `BacktestFilterConfig` in `signal_config.py` — the live EV
-  gate, read at `:658`/`:663` and `scanner.py:687` — not to the sweep. Diff each key
+  gate, built from `raw_bt` in `load_signal_config` and read by `scanner.py` — not to the
+  sweep. A field the dataclass declares is not a key the loader reads: check the
+  `raw_bt.get("<key>"` line exists, since tests that build the dataclass directly stay
+  green while the loader drops the key (`cache_enabled` until 2026-10-07). Diff each key
   against both before calling one unmapped.
-- **Pydantic models**: is every model in `web/api/models/` used by a router?
-- **Data pipeline**: is `data_sync.py` wired into `analytics_runner.py` and
-  `signal_runner.py`? Is `upsert_signals` in `data_store.py` called from
+- **Pydantic models**: is every model in `web/api/models/` referenced by a router **or by
+  another model**? Most are nested response fields, so a routers-only grep reports false
+  "unused" models.
+- **Data pipeline**: is `data_sync.py` wired into `analytics/analytics_runner.py` and
+  `analytics/signal_runner.py`? (The runners live under `analytics/`, not the repo root.) Is `upsert_signals` in `data_store.py` called from
   `signal_lib.py:run_scan_cycle()`? Are `upsert_backtest_run` /
   `upsert_backtest_trades` called from `backtest_runner.py` when `SAVE=1`? Two of those
   paths resolve only through a star-import shim, so a literal `grep` returns a false
@@ -173,6 +178,14 @@ git grep -cE '\bdef\b' -- '*.py' | head -1   # positive control: must print a hi
 
 A zero from the first line counts only if the control printed a hit, since a pattern
 the grep engine cannot parse also returns nothing.
+
+Duplicated helpers have one cheap probe: a second copy of the `gh` auth lookup or the repo
+slug. `tools/session_digest.py::gh_env` and `REPO_SLUG` are the single home; any other hit
+is a restated helper (`CODING_STANDARDS.md`).
+
+```bash
+git grep -nE 'auth", "token"|"s10023/buibui-wifey-wall-street-bot"' -- '*.py' ':!tests'
+```
 
 Shallow modules and missing seams need a deeper survey than this sweep should run. If the diff
 since the last run shows friction (one concept spread over many small modules, logic untestable
