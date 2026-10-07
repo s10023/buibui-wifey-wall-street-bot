@@ -216,7 +216,8 @@ flow once over the whole set.
 ## Inline classification rubric (self-contained — paste into the subagent prompt)
 
 > A distilled snapshot of the SoT's Frozen / Closed / Parked state so the subagent classifies from
-> the prompt alone. Refresh from `project_todo_master.md` periodically — treat as a de-biasing
+> the prompt alone. Refresh from `docs/north-star.md` (Frozen) and
+> `project_todo_master.md` (Closed) periodically — treat as a de-biasing
 > prior, not gospel; NOVEL still passes the human gate. This block is shared verbatim with
 > `/ingest-video`'s rubric — keep the two in sync when either is refreshed. `content_type`:
 > **setup** = a specific symbol+direction+levels trade call → Stream C; **mechanic** = an

@@ -463,9 +463,10 @@ them, and it is the only place this skill files open work.
    `gh api repos/s10023/buibui-wifey-wall-street-bot/issues -f title='…' -F body=@<file> -f 'labels[]=p3' -f 'labels[]=mechanics'`.
    `gh issue create` and `gh issue list` go through GraphQL, which cloud sessions are
    refused.
-3. **Touch the SoT only for reference material.** `memory/project_todo_master.md`
-   holds the north star, gates G1–G4, the frozen list and closed verdicts. Edit it
-   only when the branch changes one of those; it takes no queue rows.
+3. **Touch the reference surfaces only when the branch changes them.**
+   `docs/north-star.md` holds the north star, gates G1–G4, the data-cost policy and the
+   frozen list; `memory/project_todo_master.md` holds closed verdicts and the
+   deliberately-not-queued list. Neither takes queue rows.
 
 **A stale Issue is worse than a missing one**, because it reads as current
 evidence: three stale SoT rows once described shipped code as remaining work, and a

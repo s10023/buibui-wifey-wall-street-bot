@@ -14,8 +14,8 @@
 #                  the routing watermark, Streams A/B, the video notes, the
 #                  parent-sync triage, the measurement scripts, the handoff.
 #   memory/        ~1MB, and the only one that lives OUTSIDE the repo. Holds
-#                  `project_todo_master.md` -- the single source of truth to-do,
-#                  carrying the north star and gates G1-G4 -- plus MEMORY.md and
+#                  `project_todo_master.md` -- closed verdicts and the ruled-out
+#                  list, the record of intent -- plus MEMORY.md and
 #                  ~70 topic files. `git clean` cannot reach it, but until the
 #                  EXTERNAL ROOTS section below neither could this script: every
 #                  BACKUP_DIRS/BACKUP_FILES entry is resolved against $REPO, so
@@ -197,7 +197,7 @@ BACKUP_FILES=(
 # reasoning above -- "default to COVERED" -- only ever applied WITHIN the repo.
 # Anything above it was uncovered not by judgement but by construction, which is
 # the same structural blind spot the parent's allowlist was rejected for, one
-# level up. The memory tree is the member that matters: it holds the SoT to-do,
+# level up. The memory tree is the member that matters: it holds the closed-verdict record,
 # and the script's own comments show the author reasoning about exactly this
 # class ("single-copy gitignored files that live OUTSIDE docs/plans") and taking
 # the two smaller members while the largest sat one directory further out.

@@ -112,11 +112,12 @@ tracked files alone (no `analytics.db`, no memory tree, no Windows host). A clou
 `gh api 'repos/s10023/buibui-wifey-wall-street-bot/issues?state=open&per_page=100'`, because
 `gh issue list` goes through GraphQL, which cloud sessions are refused.
 
-**Master to-do.** `project_todo_master.md` in this checkout's memory tree
-(`memory_dir(<this repo>)`) is reference material, not a queue: the north star, acceptance gates
-G1–G4, the frozen list and closed verdicts. XS-momentum and ETF-TSMOM were built and failed
-(Sleeve verdicts, below) and gate G1 is not live, so paper sizing has nothing to size. Phase B
-(order layer, broker pick) stays gated G3→G4.
+**North star.** `docs/north-star.md` holds the north star, acceptance gates G1–G4, the
+data-cost policy and the frozen list; it is tracked so a cloud session can read it.
+`project_todo_master.md` in this checkout's memory tree (`memory_dir(<this repo>)`) keeps only
+closed verdicts and the deliberately-not-queued list, as anti-re-litigation evidence. Neither is a
+queue. Gate G1 is not live, so paper sizing has nothing to size, and Phase B (order layer,
+broker pick) stays gated G3→G4.
 
 **TA detector and sweep work is frozen**: no new boolean detectors and no `tp_r`, gate or
 threshold sweeps. The freeze covers the equity signal engine's `DETECTOR_REGISTRY` book at
