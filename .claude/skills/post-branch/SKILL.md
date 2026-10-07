@@ -728,6 +728,9 @@ Offer — don't auto-write — a fresh-conversation prompt at
 `docs/plans/next-conversation-prompt.md`. Gitignored but in-repo, so it survives
 a session delete. Keep updating that same file.
 
+This is the STANDING handoff, and mattpocock's `/handoff` does not replace it: that skill writes a
+one-off portable doc to `%TEMP%` for forking a side task, and the operator invokes it.
+
 **Update with targeted `Edit`s — never `Write` the whole file.** Its standing back
 half — the four groups and the NOT-queued list — is exactly what a
 template does not reproduce, so an overwrite destroys it silently and the loss is
@@ -880,7 +883,8 @@ The PR is closed or merged (open a follow-up `docs:` PR instead) · the user sai
 
 ## PR summary
 
-Follows `.claude/skills/pr-summary/SKILL.md` exactly — read it rather than composing
-from scratch. **The path flattens `/` to `-`**: every branch here is `docs/…`,
+Write it through `/pr-summary`; do not compose it from scratch. It takes the body shape from
+mattpocock's `pr` skill (Summary visual, Evidence, Merge Danger) and adds this repo's title
+rules, the honest-tick gate checklist under Evidence, `Closes #n`, and the Claude Code footer. **The path flattens `/` to `-`**: every branch here is `docs/…`,
 `feat/…`, `fix/…` or `chore/…`, so a literal `docs/plans/pr-<branch>.md` names a
 directory that does not exist and the write fails.

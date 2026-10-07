@@ -369,14 +369,8 @@ NEGATIVE_CLAIM_EXEMPT: dict[tuple[str, str], str] = {
         "falsify it. ⚠ Adding an installer to the repo does, so strike this "
         "entry then rather than re-scoping the line"
     ),
-    # The two below are also keyed on a matched marker. Each is a sentence no
+    # The one below is also keyed on a matched marker. It is a sentence no
     # branch can settle, so without an entry the leg would never report clean.
-    (".claude/skills/pr-summary/SKILL.md", "there is no"): (
-        "'there is no collaborator permission to lack' is a claim about "
-        "GitHub's permission model on a single-owner fork, not about anything "
-        "this repo could grow. Its subject also wraps to the next line, so no "
-        "line-unit scoping can reach it"
-    ),
     ("deploy/README.md", "nothing installs"): (
         "the one claim here that is TRUE and meant to stay true: nothing in the "
         "repo installs the systemd units, because installing one dispatches "
