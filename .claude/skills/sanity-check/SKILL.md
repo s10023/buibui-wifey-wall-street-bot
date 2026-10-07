@@ -126,7 +126,7 @@ can exist and mean something else.
 | `recalibrate` | `wifey recalibrate` wired; `--config` + `--apply` present; `confidence_ratings` exists |
 | `new-strategy` | The 4-file checklist; `_REGISTRY_EXCLUDED` still names the real opt-outs. It lives in `tests/test_signal_registry.py`, not in `analytics/strategies/` — currently `{"seasonality"}`, consistent with 17 `KNOWN_STRATEGIES` and 16 in `DETECTOR_REGISTRY` |
 | `signal-watch` | TOML field names match `signal_config.py`; `min_avg_r`, not `filter_threshold`. `filter_threshold` does appear in `signal_config.py` and that is not drift — the loader *raises* on it as a dead key, so presence is the guard, not the defect |
-| `pr-summary` | Template sections match the skill body |
+| `pr-summary` | Still loads `mattpocock-skills:pr` for the body shape; its output-path derivation matches the path `/post-branch` screens |
 | `backtest-run` | Flags listed match `wifey backtest --help` |
 | `stats-dashboard` | **Inventory**, never the count: does every card rendered in `Stats.svelte` appear in the tables, and does every listed row correspond to a real card? Plus the live vs cached split. Not every row is a `card-title` — `Weekly Current State` renders as a live banner (`web/ui/src/pages/Stats.svelte`, keyed on `stats.weekly_current_state`), so extracting card titles alone under-counts and manufactures a finding |
 | `investigate-strategy` | `make wifey-signal-test` exists; `--at` UTC interpretation |
@@ -173,6 +173,11 @@ git grep -cE '\bdef\b' -- '*.py' | head -1   # positive control: must print a hi
 
 A zero from the first line counts only if the control printed a hit, since a pattern
 the grep engine cannot parse also returns nothing.
+
+Shallow modules and missing seams need a deeper survey than this sweep should run. If the diff
+since the last run shows friction (one concept spread over many small modules, logic untestable
+through its interface), recommend the operator run `/improve-codebase-architecture`; it is
+user-invoked, so this skill cannot call it.
 
 ## Two traps, both live
 

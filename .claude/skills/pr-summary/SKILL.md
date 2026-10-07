@@ -1,128 +1,93 @@
 ---
 name: pr-summary
 description: >
-  Write a PR body (summary and test plan) to `docs/plans/pr-<branch>.md` — slashes
-  in the branch name flattened to `-` — and return the PR title beside the path,
-  after a branch is complete (lint/typecheck/tests green, commit done). Never
-  returns the body inline.
-  Invoke automatically when a branch finishes — do not wait. Also triggers on
-  the user saying "/pr-summary", "PR summary", "write a PR", or "finish up
-  the branch".
-allowed-tools: Bash, Write, Read
+  Write a PR body to `docs/plans/pr-<branch>.md` — slashes in the branch name flattened to
+  `-` — and return the PR title beside the path, after a branch is complete
+  (lint/typecheck/tests green, commit done). The body takes the shape of mattpocock's `pr`
+  skill (Summary visual, Evidence, Merge Danger); this skill adds the repo's title, test-plan
+  and output rules. Never returns the body inline. Invoke automatically when a branch
+  finishes — do not wait. Also triggers on the user saying "/pr-summary", "PR summary",
+  "write a PR", or "finish up the branch".
+allowed-tools: Bash, Write, Read, Skill
 effort: low
 ---
 
 # PR Summary
 
-Write a PR title, summary and test plan once a branch is complete (lint/typecheck/tests
-pass, commit done) — do not wait to be asked. Write the body to `docs/plans/pr-<branch>.md`
-(slashes flattened to `-`); never return the body inline.
+The body's **shape** comes from mattpocock's `pr` skill. This skill owns what that one cannot
+know: where the file goes, how the title is written, which gates the body may claim, and how
+`gh` is called here.
 
-**The title is not in the file.** The file is passed verbatim as `--body-file`, so a
-title section there lands in the PR body as a `## PR Title` heading. Return the title
-on its own line beside the path instead, ready for `--title`.
+## Steps
+
+1. Call the Skill tool with `mattpocock-skills:pr` for the body shape and its section guidance.
+2. Gather the facts: `git branch --show-current`, `git log main..HEAD --oneline`,
+   `git diff main..HEAD --stat`, and the Issue(s) the branch closes.
+3. Write the title (rules below).
+4. Write the body in the `pr` shape, with this repo's additions (below).
+5. Screen it: `make post-branch-text FILE=<path>` and fix every finding. It gates; through
+   `make`, read the banner rather than the exit code.
+6. Write it to the output path. Return exactly two lines and nothing else: the file path, then
+   the title.
 
 ## Output location
 
-**Not `/tmp`:** the user deletes conversations and reboots clear `/tmp`, so a summary
-parked there would evaporate exactly when a fresh session wants it. `docs/plans/` is
-gitignored but inside the repo, so it survives both.
-
-**Flatten every `/` in the branch name to `-` first.** This repo's branch convention is
-`docs/`, `feat/`, `fix/`, `chore/`, so a raw `docs/plans/pr-<branch>.md` is
-`docs/plans/pr-fix/outcome-resolution-closed-bars.md` — a path under a directory that
-does not exist. Derive it exactly this way, so every session picks the same name:
+`docs/plans/pr-<flattened-branch-name>.md`, where every `/` in the branch name is flattened to
+`-`. The branch convention is `feat/`, `fix/`, `docs/`, `chore/`, so an unflattened name points
+into a directory that does not exist, and a path the next session cannot predict defeats the
+"return only the path" contract. `docs/plans/` is gitignored but in-repo, so it survives a
+session delete and a reboot, unlike `/tmp`.
 
 ```bash
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 OUT="docs/plans/pr-$(printf '%s' "$BRANCH" | tr '/' '-').md"
 ```
 
-`fix/outcome-resolution-closed-bars` ⇒ `docs/plans/pr-fix-outcome-resolution-closed-bars.md`.
+## Title
 
-## Template
+**The title is not in the file.** The file is passed verbatim as `--body-file`, so a title
+section there lands in the PR body as a heading. Return it beside the path, ready for `--title`.
 
-Write PR and Issue bodies without hard line breaks inside a paragraph or bullet: one line
-per paragraph or bullet. GitHub renders a single newline in a PR or Issue body as a line
-break, so hard-wrapped text renders ragged.
+- Conventional commit, under 70 characters: `feat` · `fix` · `refactor` · `test` · `docs` ·
+  `build` · `chore`, with a scope.
+- **Name the mechanism you changed, not the symptom.** Squash-merge makes the title the
+  permanent commit message.
+- **No derived number** (line counts, file counts, sizes). A later commit moves it, and
+  correcting a title means rewriting `main`; the body is one edit away from correct.
 
-```md
-## Background
+## Body additions to the `pr` shape
 
-<1-2 sentences: what problem or gap this addresses, why it matters now, and any relevant context (e.g. strategy source, prior limitation, user-facing impact)>
+- **Summary** opens with one sentence of why, then `Closes #<n>` for each Issue the branch
+  finishes, so the merge closes it.
+- **Evidence** carries the gate checklist. **Tick only a command that has already returned:**
+  a gate still running gets `[ ]` plus a note, and is ticked when it finishes. **Name the gate
+  you ran:** `make preflight` replaces `make test` at the final gate, so ticking `make test`
+  after running the preflight claims a command you did not run. Say whether
+  `make test-regression` applied (the diff touches CI's regression filter in `CLAUDE.md`) or
+  was skipped, and why.
 
-Reviewers should understand the motivation before the mechanics.
+  ```markdown
+  - [x] `make preflight` — <N> passed on a clean clone
+  - [x] `make lint-py` · `make typecheck` · `make lint-md`
+  - [ ] Manual: <item>
+  ```
 
-## Summary
+- **Merge Danger** names the live surfaces at risk when they apply: the scheduled `go-live`
+  runs `make go-live` from this checkout, so a config TOML or schema change is live at its next
+  run once `main` is pulled here.
+- One line per paragraph or bullet, no hard wraps: GitHub renders a single newline as a break.
+- End with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+- `/post-branch` later appends a `## Documentation updates` section; leave room for it.
 
-- <bullet 1>
-- <bullet 2>
-- <bullet 3>
+## Calling `gh` here
 
-## How it works
+The active `gh` account is the work one and the `gh` default repo is the parent, so prefix the
+token inline and always pass the repo (never `export …;`, never `gh auth switch`, never
+`gh repo set-default`):
 
-<1-3 paragraphs or bullets explaining the implementation — keep it readable for someone who hasn't seen the code>
-
-## Params / Config
-
-<table or bullets of new params, defaults, where configured — omit if none>
-
-## Test plan
-
-Items already verified by CI at commit time are pre-ticked. Manual items remain unchecked.
-
-**Only tick a command that has already returned.** "Verified at commit time" means the
-result is in hand — not that the command is running and expected to pass. A gate still
-in flight gets `[ ]` plus a note, and is ticked once it finishes. A PR body is durable
-and gets read as a claim about what was checked, so a hopeful tick is a false statement
-even when the run later goes green.
-
-- [x] `make test` — <N> passed
-- [x] `make lint-py` — ruff clean
-- [x] `make typecheck` — mypy clean
-- [x] `make lint-md` — markdownlint clean (only if MD files changed)
-- [ ] Manual: <item 1>
-- [ ] Manual: <item 2>
-
-## Stats
-
-- Tests: <N> total (<+N> new)
-- Files changed: <list>
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+```bash
+GH_TOKEN=$(gh auth token --user s10023) gh pr create --repo s10023/buibui-wifey-wall-street-bot --title "<title>" --body-file "$OUT"
 ```
 
-## Note on GitHub CLI
-
-`gh` works for this project: this repo is the user's own fork, so there is no
-collaborator permission to lack. Write the file at the flattened
-`docs/plans/pr-<branch>.md` regardless (it is this skill's deliverable, and doubles as a
-`--body-file`).
-
-- **Always pass `--repo s10023/buibui-wifey-wall-street-bot`.** The user's `gh`
-  default repo points at the crypto parent, so a bare `gh pr create` targets the wrong
-  repo. This is a preference, not a bug — never "fix" it with `gh repo set-default`.
-- **Never run `gh auth switch`.** The active account stays on the work account
-  permanently; reach s10023 by prefixing the token instead:
-  `GH_TOKEN=$(gh auth token --user s10023) gh <cmd> --repo s10023/buibui-wifey-wall-street-bot`.
-  If `gh` fails with "Could not resolve to a Repository", that is the account — add the
-  `GH_TOKEN` prefix rather than switching.
-
-## Conventional commit types for PR titles
-
-- `feat(scope):` — new feature or behavior
-- `fix(scope):` — bug fix
-- `refactor(scope):` — code restructure, no behavior change
-- `test(scope):` — new or updated tests only
-- `docs(scope):` — documentation only
-- `build(scope):` — build system / dependencies
-- `chore(scope):` — maintenance (cleanup, config)
-
-## Task: write a PR summary
-
-Gather `git branch --show-current`, `git log main..HEAD --oneline` and
-`git diff main..HEAD --stat`, then fill in the template above: background, 3–5 summary
-bullets, an implementation walkthrough, params/config if any were added, and the test
-plan with CI items pre-ticked. Write the result to `docs/plans/pr-<branch-name>.md`
-(slashes flattened to `-`). Return exactly two lines and nothing else: the file path,
-then the title (`<type>(scope): short imperative description under 70 chars`).
+If `gh pr create` fails with `must be a collaborator` straight after a visibility flip, retry
+once before touching auth: GitHub re-evaluates permissions asynchronously after a flip.
