@@ -685,6 +685,7 @@ def load_signal_config(path: str | Path) -> SignalWatchConfig:
         # stayed off for ~2.5 months (#149). A behaviour change ships on.
         min_avg_r_z=float(raw_bt.get("min_avg_r_z", 1.64)),
         save_results=bool(raw_bt.get("save_results", True)),
+        cache_enabled=bool(raw_bt.get("cache_enabled", True)),
         # [backtest].fee_pct takes precedence; falls back to top-level fee_pct
         fee_pct=float(raw_bt.get("fee_pct", data.get("fee_pct", 0.0))),
         # [backtest].min_sl_pct takes precedence; falls back to top-level min_sl_pct

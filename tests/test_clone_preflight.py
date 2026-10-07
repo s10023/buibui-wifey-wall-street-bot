@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,7 @@ from tools.clone_preflight import (
     clone_argv,
     dirty_paths,
     main,
+    seed_venv_argv,
     subprocess_env,
 )
 
@@ -187,6 +189,10 @@ def _run_with_fake_steps(
     calls: list[str] = []
 
     def fake_run(argv: list[str], *args: Any, **kwargs: Any) -> Any:
+        if argv == clone_preflight.seed_venv_argv():
+            # Not recorded: whether a seed runs depends on the interpreter the
+            # suite itself runs under. TestSeedVenv covers it directly.
+            return subprocess.CompletedProcess(argv, 0)
         if argv == clone_preflight.install_argv():
             calls.append("install")
             return subprocess.CompletedProcess(argv, 0)
@@ -226,6 +232,53 @@ class TestInterpreterProbe:
     ) -> None:
         rc, _ = _run_with_fake_steps(tmp_path, monkeypatch, probe_rc=0, pytest_rc=0)
         assert rc == OK
+
+
+class TestSeedVenv:
+    """Parent #880: the clone's venv is built on preflight's own interpreter.
+
+    Poetry otherwise builds it on the python POETRY runs under, which on the
+    cloud host is 3.11 against a project pinned to 3.13 (#397). The probe above
+    reports that state as INFRA; the seed prevents it.
+    """
+
+    def test_inside_a_venv_it_seeds_from_this_interpreter(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(sys, "prefix", "/proj/.venv")
+        monkeypatch.setattr(sys, "base_prefix", "/usr")
+        assert seed_venv_argv() == [sys.executable, "-m", "venv", ".venv"]
+
+    def test_a_bare_system_python_seeds_nothing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No guarantee it is the right version, so leave poetry to choose."""
+        monkeypatch.setattr(sys, "prefix", "/usr")
+        monkeypatch.setattr(sys, "base_prefix", "/usr")
+        assert seed_venv_argv() is None
+
+    def test_a_failed_seed_is_infra_and_installs_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        repo = _make_repo(tmp_path)
+        real_run = subprocess.run
+        seed = ["python-for-test", "-m", "venv", ".venv"]
+        calls: list[str] = []
+
+        def fake_run(argv: list[str], *args: Any, **kwargs: Any) -> Any:
+            if argv == seed:
+                calls.append("seed")
+                return subprocess.CompletedProcess(argv, 1)
+            if argv == clone_preflight.install_argv():
+                calls.append("install")
+                return subprocess.CompletedProcess(argv, 0)
+            return real_run(argv, *args, **kwargs)
+
+        monkeypatch.setattr(clone_preflight, "seed_venv_argv", lambda: seed)
+        monkeypatch.setattr(clone_preflight.subprocess, "run", fake_run)
+        rc = main(["--repo", str(repo), "--dest", str(tmp_path / "clone")])
+        assert rc == INFRA
+        assert calls == ["seed"]
 
 
 class TestWiredIntoTheWorkflow:
