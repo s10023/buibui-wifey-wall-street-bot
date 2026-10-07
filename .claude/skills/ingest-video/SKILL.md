@@ -832,7 +832,8 @@ PY
 ## Inline classification rubric (self-contained — paste into BOTH the pass-1 and pass-2 subagent prompts)
 
 > A distilled snapshot of the SoT's Frozen / Closed / Parked state so each subagent
-> classifies from the prompt alone. Refresh from `project_todo_master.md` periodically —
+> classifies from the prompt alone. Refresh from `docs/north-star.md` (Frozen) and
+> `project_todo_master.md` (Closed) periodically —
 > treat as a de-biasing prior, not gospel; NOVEL still passes the human gate. This block is
 > shared verbatim with `/ingest-x`'s rubric — keep the two in sync when either is refreshed.
 > `content_type`: **setup** = a specific symbol+direction+levels trade call → Stream C;
