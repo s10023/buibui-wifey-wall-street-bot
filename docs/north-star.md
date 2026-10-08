@@ -6,13 +6,24 @@ not done. Open work lives in GitHub Issues, never here. Built-and-measured verdi
 
 ## North star
 
-> A vol-targeted, multi-sleeve paper portfolio on US equities, long-only on the wife sleeve,
-> with Sharpe ≥ 1.0 net of honest costs over ≥ 3 consecutive months and max drawdown inside
-> budget (~15% at a 10–15% vol target), with per-sleeve attribution. Then, and only then,
-> Phase B (broker and automation) at the smallest viable size, one sleeve at a time.
+> A two-track paper portfolio on US equities, long-only on the wife sleeve, at a 10–15% vol
+> target. The **core** holds the market premium under a risk overlay and is judged on survival:
+> P(a drawdown of at least 20% within 5 years) ≤ 20%. The **alpha track** admits a sleeve only
+> once it clears G2, judged on net-of-cost Sharpe with per-sleeve attribution. Then, and only
+> then, Phase B (broker and automation) at the smallest viable size, one sleeve at a time.
 
-- The number to manage is paper-book Sharpe net of costs, never win rate. Win rate and RR are
-  sleeve personalities, not goals.
+Ruled 2026-10-08 (#419) on OV-1's verdict
+(`docs/audits/2026-10-08-ov1-ma-overlay-total-return.md`).
+
+- The core is a drawdown reducer at about market Sharpe, not a Sharpe source. OV-1's Sharpe
+  advantage is front-loaded (ΔSR +0.402 to 1975, +0.097 after, +0.039 on SPY from 1993), so never
+  quote the century figure as the core's expected Sharpe.
+- The drawdown budget is a probability because a flat cap is out of reach for an unlevered
+  long-only core: OV-1's overlay still fell −44.6% (1929–2026). Measured the way OV-1 measures it
+  (paired stationary bootstrap, 1,260-session paths, French total-return frame), the overlay
+  scores 18.8% against the 20% budget and buy-and-hold 79.8%.
+- On the alpha track the number to manage is paper-book Sharpe net of costs, never win rate.
+  Win rate and RR are sleeve personalities, not goals.
 - The TA detector book is low-weight confirmation at most. The live alert loop keeps running as
   the out-of-sample ledger generator: data collection, not a tuning target.
 - The wife channel is long-only by sleeve design; shorts go to the personal channel only.
@@ -22,7 +33,7 @@ not done. Open work lives in GitHub Issues, never here. Built-and-measured verdi
 | Gate | Criterion | Decides |
 | --- | --- | --- |
 | G1 | First sized paper book, honest costs, paper Sharpe > 0 | Whether the sizing playbook transplants to equities |
-| G2 | Core sleeve OOS Sharpe ≥ ~1 on the breadth universe, costs in, DSR/PBO-gated | That sleeve becomes the core. Any threshold revision is pre-registered before looking at results |
+| G2 | Core sleeve OOS Sharpe ≥ ~1 on the breadth universe, costs in, DSR/PBO-gated | That sleeve enters the alpha track. Any threshold revision is pre-registered before looking at results |
 | G3 | Multi-sleeve paper book tracks its backtest-implied returns within a tracking tolerance declared before it starts, for ≥ 3 consecutive months, drawdown inside budget | Permission to spec Phase B: risk layer (kill-switch, drawdown governor) first, executor after |
 | G4 | Live tracks paper within tolerance for ≥ 4 weeks at minimum size | Permission to scale size |
 
@@ -35,9 +46,10 @@ is not available either: the 505-member universe carries `n_eff` ≈ 2.96 at `1d
 G3 is a tracking gate, not a Sharpe test (ruled 2026-10-08, #378). Three months of daily returns
 put a 95% interval of about ±3.9 on an annualized Sharpe (`sqrt(252/63)` ≈ 2.0 standard errors;
 Lo, 2002), so they cannot tell 1.0 from 0, and no practical window can. Evidence of edge comes from
-G2's out-of-sample panel; G3 checks that paper behaves as that evidence predicts. The north-star
-quote above still reads "Sharpe ≥ 1.0 … over ≥ 3 consecutive months" until the two-track decision
-(#419, after OV-1 reports) rewrites it.
+G2's out-of-sample panel; G3 checks that paper behaves as that evidence predicts. For the same
+reason the north-star quote carries no Sharpe-over-3-months clause (#419). Three months cannot
+test the quote's 5-year drawdown probability either, so G3's "drawdown inside budget" clause
+still awaits a restatement in a form a 3-month window can check.
 
 ## Two yardsticks
 
