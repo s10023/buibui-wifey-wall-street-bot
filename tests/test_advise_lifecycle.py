@@ -11,6 +11,8 @@ from typing import Any
 
 import pytest
 
+from tools.child_env import python_child_env
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HOOK = REPO_ROOT / ".claude" / "hooks" / "advise-lifecycle.py"
 
@@ -157,6 +159,7 @@ class TestProtocol:
             capture_output=True,
             text=True,
             encoding="utf-8",
+            env=python_child_env(),
             timeout=30,
             check=False,
         )

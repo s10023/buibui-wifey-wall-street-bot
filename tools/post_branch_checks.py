@@ -37,6 +37,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from tools.child_env import python_child_env
 from tools.claude_home import memory_dir
 from tools.stale_anchors import default_resolver, describe, scan
 
@@ -446,7 +447,12 @@ def _run_rc(argv: Sequence[str]) -> int:
     """Exit code of a fixed-argv command; 0 if it cannot be launched."""
     try:
         return subprocess.run(  # noqa: S603 - fixed argv, shell=False
-            list(argv), capture_output=True, text=True, check=False, encoding="utf-8"
+            list(argv),
+            capture_output=True,
+            text=True,
+            check=False,
+            encoding="utf-8",
+            env=python_child_env(),  # its one caller runs `poetry run python ...`
         ).returncode
     except OSError:
         return 0

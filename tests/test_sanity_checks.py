@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 
+from tools.child_env import python_child_env
 from tools.sanity_checks import (
     CheckResult,
     Finding,
@@ -540,6 +541,7 @@ class TestBareInvocationRunsEveryLeg:
                 text=True,
                 check=False,
                 encoding="utf-8",
+                env=python_child_env(),  # a prefix path can be non-ASCII
             )
             if probe.returncode != 0 or not probe.stdout.strip():
                 continue
@@ -549,13 +551,12 @@ class TestBareInvocationRunsEveryLeg:
 
     @staticmethod
     def _run_bare(repo: Path, interpreter: str, *, sentinel: str | None) -> str:
-        import os
         import subprocess
 
         from tools.venv_bootstrap import SENTINEL
 
-        env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
-        env["PYTHONUTF8"] = "1"  # cp1252 would fail this tree on the read, not the swap
+        # cp1252 would fail this tree on the read, not the swap
+        env = python_child_env(drop=("PYTHONPATH",))
         env.pop(SENTINEL, None)
         if sentinel is not None:
             env[SENTINEL] = sentinel

@@ -24,6 +24,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from tools.child_env import python_child_env
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HOOK = REPO_ROOT / ".claude" / "hooks" / "guard-shell-hygiene.py"
 
@@ -51,6 +53,7 @@ def _run(command: str, tool_name: str = "Bash", hook: Path = HOOK) -> str:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        env=python_child_env(),
         timeout=20,
     )
     assert proc.returncode == 0, f"hook must always exit 0, got {proc.returncode}"
