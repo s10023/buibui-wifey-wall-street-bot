@@ -11,6 +11,7 @@ import duckdb
 from analytics.data_store import DEFAULT_DB_PATH, init_schema
 from analytics.data_sync import backfill, sync
 from analytics.db_retry import connect_with_retry
+from analytics.overlay.live import CORE_SYMBOL
 from utils.config_validation import (
     load_pundit_ledger_symbols,
     load_research_universe,
@@ -24,9 +25,13 @@ def _resolve_symbols(
     *,
     use_universe: bool = False,
     use_pundit: bool = False,
+    use_core: bool = False,
 ) -> list[str]:
     if symbols:
         return symbols
+    if use_core:
+        logging.info("Universe: survival-core signal index (%s)", CORE_SYMBOL)
+        return [CORE_SYMBOL]
     if use_universe:
         try:
             universe = load_research_universe()
@@ -81,9 +86,10 @@ def run_backfill(
     *,
     use_universe: bool = False,
     use_pundit: bool = False,
+    use_core: bool = False,
 ) -> None:
     resolved = _resolve_symbols(
-        symbols, use_universe=use_universe, use_pundit=use_pundit
+        symbols, use_universe=use_universe, use_pundit=use_pundit, use_core=use_core
     )
     with _open_session(db_path) as conn:
         for symbol in resolved:
@@ -102,9 +108,10 @@ def run_sync(
     *,
     use_universe: bool = False,
     use_pundit: bool = False,
+    use_core: bool = False,
 ) -> None:
     resolved = _resolve_symbols(
-        symbols, use_universe=use_universe, use_pundit=use_pundit
+        symbols, use_universe=use_universe, use_pundit=use_pundit, use_core=use_core
     )
     with _open_session(db_path) as conn:
         for symbol in resolved:

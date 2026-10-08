@@ -62,6 +62,24 @@ class TestResolveSymbols:
         mock_stocks.assert_not_called()
 
 
+class TestCoreFlag:
+    @patch("analytics.analytics_runner.load_stocks_config")
+    def test_core_resolves_to_the_caret_symbol_without_argv(
+        self, mock_stocks: MagicMock
+    ) -> None:
+        assert analytics_runner._resolve_symbols(None, use_core=True) == ["^GSPC"]
+        mock_stocks.assert_not_called()
+
+    def test_core_is_exclusive_with_the_other_sources(self) -> None:
+        from cli.main import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["analytics", "sync", "--core"])
+        assert args.core and not args.pundit and not args.universe
+        with pytest.raises(SystemExit):
+            parser.parse_args(["analytics", "sync", "--core", "--pundit"])
+
+
 class TestLoadPunditLedgerSymbols:
     def _write(self, tmp_path: Path, rows: list[object]) -> Path:
         p = tmp_path / "pundit-calls.jsonl"

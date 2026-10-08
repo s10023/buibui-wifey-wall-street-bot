@@ -67,6 +67,15 @@ def realized_vol(returns: pd.Series, window: int = VOL_WINDOW) -> pd.Series:
     return returns.rolling(window).std(ddof=1)
 
 
+def weight_from_sigma(sigma: pd.Series, target: float | pd.Series) -> pd.Series:
+    """VM's weight ``min(1, target / σ̂)``; a zero ``σ̂`` gives full weight.
+
+    The one formula, shared by :func:`vol_weight` (the replay) and
+    :mod:`analytics.overlay.live` (the daily core state).
+    """
+    return (target / sigma).clip(upper=1.0)
+
+
 def vol_weight(
     returns: pd.Series,
     target: float | pd.Series,
@@ -88,6 +97,5 @@ def vol_weight(
     """
     if lag < 0:
         raise ValueError("lag must be >= 0")
-    sigma = realized_vol(returns, window)
-    w = (target / sigma).clip(upper=1.0)
+    w = weight_from_sigma(realized_vol(returns, window), target)
     return w.shift(lag).rename("w")
