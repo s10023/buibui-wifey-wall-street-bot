@@ -42,7 +42,7 @@ Telegram show the core's state each day (#423).
 | --- | --- | --- |
 | G1 | First sized paper book, honest costs, paper Sharpe > 0 | Whether the sizing playbook transplants to equities |
 | G2 | Core sleeve OOS Sharpe ≥ ~1 on the breadth universe, costs in, DSR/PBO-gated | That sleeve enters the alpha track. Any threshold revision is pre-registered before looking at results |
-| G3 | Multi-sleeve paper book tracks its backtest-implied returns within a tracking tolerance declared before it starts, for ≥ 3 consecutive months, drawdown inside budget | Permission to spec Phase B: risk layer (kill-switch, drawdown governor) first, executor after |
+| G3 | Multi-sleeve paper book tracks its backtest-implied returns within a tracking tolerance declared before it starts, for ≥ 3 consecutive months, and its drawdown stays inside the backtest-implied drawdown band for the same window | Permission to spec Phase B: risk layer (kill-switch, drawdown governor) first, executor after |
 | G4 | Live tracks paper within tolerance for ≥ 4 weeks at minimum size | Permission to scale size |
 
 G1 is not live: it was scoped to the parent's paper book, which never re-evaluated it, and no
@@ -56,8 +56,11 @@ put a 95% interval of about ±3.9 on an annualized Sharpe (`sqrt(252/63)` ≈ 2.
 Lo, 2002), so they cannot tell 1.0 from 0, and no practical window can. Evidence of edge comes from
 G2's out-of-sample panel; G3 checks that paper behaves as that evidence predicts. For the same
 reason the north-star quote carries no Sharpe-over-3-months clause (#419). Three months cannot
-test the quote's 5-year drawdown probability either, so G3's "drawdown inside budget" clause
-still awaits a restatement in a form a 3-month window can check.
+test the quote's 5-year drawdown probability either, so G3's drawdown clause mirrors its return
+clause (ruled 2026-10-08, #427): paper drawdown over the window must stay inside the band the
+backtest implies for a window of that length, declared with the tracking tolerance before the
+book starts. The 5-year budget stays a property of the backtest, judged by G2 and the overlay
+yardstick, never by three months of paper.
 
 ## Two yardsticks
 
@@ -91,7 +94,9 @@ Free first; pay only when a gate needs it.
 - New boolean TA detectors. Inherited category verdict (parent: 0/123 DSR); the equity null is
   stronger. Unfreeze post-G2 only, as confirmation features, never standalone.
 - TA-book parameter sweeps (`tp_r`, gates, thresholds). Guard maintenance is excepted.
-- UI work, except an eventual advisory trade card.
+- UI work, except an eventual advisory trade card. A read-only survival-core panel counts as part
+  of that exception (ruled 2026-10-08, #430): it reads `analytics/overlay/live.py::core_state`
+  and adds no rule of its own.
 - Carry, funding and basis: not applicable to cash equities; never rebuild.
 - Phase B and automation: gated G3 → G4, risk layer first, however good one month looks.
 - LLM-as-signal experiments: never.
