@@ -226,4 +226,126 @@ class TestSessionStartDigestWiring:
 
     @pytest.mark.parametrize("event", ["UserPromptSubmit", "PostToolUse"])
     def test_lifecycle_events_route_through_the_python_hook(self, event: str) -> None:
-        assert all("advise-lifecycle.py" in c for c in _event_hook_commands(event))
+        cmds = _event_hook_commands(event)
+        assert any("advise-lifecycle.py" in c for c in cmds)
+        assert all(".claude/hooks/" in c and ".py" in c for c in cmds)
+
+
+def _skill_log_wrappers() -> list[str]:
+    return [
+        c
+        for event in ("PreToolUse", "UserPromptSubmit")
+        for c in _event_hook_commands(event)
+        if "log-skill-usage.py" in c
+    ]
+
+
+class TestSkillUsageLogWiring:
+    """#395: the log runs end to end through its real wrappers and can never block."""
+
+    def test_it_is_wired_on_the_skill_matcher_and_on_prompts(self) -> None:
+        cfg = json.loads(SETTINGS.read_text(encoding="utf-8"))
+        skill = [
+            h["command"]
+            for e in cfg["hooks"]["PreToolUse"]
+            if e.get("matcher") == "Skill"
+            for h in e.get("hooks", [])
+        ]
+        assert len(skill) == 1 and "log-skill-usage.py" in skill[0]
+        assert len(_skill_log_wrappers()) == 2
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {
+                "hook_event_name": "PreToolUse",
+                "tool_name": "Skill",
+                "tool_input": {"skill": "post-branch", "args": "x"},
+            },
+            {"hook_event_name": "UserPromptSubmit", "prompt": "/sanity-check now"},
+        ],
+    )
+    def test_an_invocation_appends_a_line(
+        self, payload: dict[str, object], tmp_path: Path
+    ) -> None:
+        log = tmp_path / "skill-usage.log"
+        for wrapper in _skill_log_wrappers():
+            proc = subprocess.run(
+                ["sh", "-c", wrapper],
+                input=json.dumps(payload),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                cwd=REPO_ROOT,
+                env={
+                    "CLAUDE_PROJECT_DIR": str(REPO_ROOT),
+                    "PATH": _path(),
+                    "WIFEY_SKILL_LOG": str(log),
+                },
+                timeout=30,
+            )
+            assert proc.returncode == 0, proc.stderr
+        # Positive control: the line arrived, so exit 0 is not a hook that never ran.
+        lines = log.read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 2
+        assert all(len(line.split("\t")) == 4 for line in lines)
+
+    @pytest.mark.parametrize("stdin", ["", "not json", "{}", "[1, 2]"])
+    def test_garbage_input_exits_zero(self, stdin: str, tmp_path: Path) -> None:
+        for wrapper in _skill_log_wrappers():
+            proc = subprocess.run(
+                ["sh", "-c", wrapper],
+                input=stdin,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                cwd=REPO_ROOT,
+                env={
+                    "CLAUDE_PROJECT_DIR": str(REPO_ROOT),
+                    "PATH": _path(),
+                    "WIFEY_SKILL_LOG": str(tmp_path / "log"),
+                },
+                timeout=30,
+            )
+            assert proc.returncode == 0, proc.stderr
+
+    def test_an_unwritable_log_still_exits_zero(self, tmp_path: Path) -> None:
+        """The log path is a directory, so the append raises inside the hook."""
+        payload = {"hook_event_name": "UserPromptSubmit", "prompt": "/post-branch"}
+        for wrapper in _skill_log_wrappers():
+            proc = subprocess.run(
+                ["sh", "-c", wrapper],
+                input=json.dumps(payload),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                cwd=REPO_ROOT,
+                env={
+                    "CLAUDE_PROJECT_DIR": str(REPO_ROOT),
+                    "PATH": _path(),
+                    "WIFEY_SKILL_LOG": str(tmp_path),
+                },
+                timeout=30,
+            )
+            assert proc.returncode == 0, proc.stderr
+
+    def test_the_venv_is_tried_before_python3_and_missing_fails_open(self) -> None:
+        for wrapper in _skill_log_wrappers():
+            assert -1 < wrapper.find(".venv") < wrapper.find("python3")
+            proc = subprocess.run(
+                ["sh", "-c", wrapper],
+                input="{}",
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                cwd=REPO_ROOT,
+                env={"CLAUDE_PROJECT_DIR": "/nonexistent-dir", "PATH": _path()},
+                timeout=30,
+            )
+            assert proc.returncode == 0
+
+    def test_the_wrapper_does_not_exec_so_its_own_exit_0_is_final(self) -> None:
+        """`exec` would hand the exit code to Python; a crash there could read as a
+        block. Ending on `exit 0` makes "cannot block" a property of the wrapper."""
+        for wrapper in _skill_log_wrappers():
+            assert "exec " not in wrapper

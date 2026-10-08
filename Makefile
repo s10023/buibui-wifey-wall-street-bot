@@ -438,6 +438,7 @@ status:
 	@printf '  skills            %s\n' "$$(ls -d .claude/skills/*/ | wc -l)"
 	@printf '  context docs      %s\n' "$$(ls .claude/context/*.md | wc -l)"
 	@printf '  tools             %s\n' "$$(ls tools/*.py | wc -l)"
+	@printf '  skill usage       %s\n' "$$(poetry run python .claude/hooks/log-skill-usage.py --status-line 2>/dev/null || echo '?')"
 
 ## Reports Test* classes that NAME a unit but never CALL it (#150: five TestEvGate
 ## tests never invoked the EV gate — it was a closure, so they re-implemented the

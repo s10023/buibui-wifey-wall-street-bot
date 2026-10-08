@@ -18,6 +18,10 @@
           {
             "type": "command",
             "command": "d=\"${CLAUDE_PROJECT_DIR:-.}\"; f=\"$d/.claude/hooks/advise-lifecycle.py\"; [ -f \"$f\" ] || exit 0; for p in \"$d/.venv/Scripts/python.exe\" \"$d/.venv/bin/python\" python3 python; do command -v \"$p\" >/dev/null 2>&1 && exec \"$p\" \"$f\"; done; exit 0"
+          },
+          {
+            "type": "command",
+            "command": "d=\"${CLAUDE_PROJECT_DIR:-.}\"; f=\"$d/.claude/hooks/log-skill-usage.py\"; [ -f \"$f\" ] || exit 0; for p in \"$d/.venv/Scripts/python.exe\" \"$d/.venv/bin/python\" python3 python; do command -v \"$p\" >/dev/null 2>&1 && { PYTHONUTF8=1 \"$p\" \"$f\"; exit 0; }; done; exit 0"
           }
         ]
       }
@@ -50,6 +54,15 @@
           {
             "type": "command",
             "command": "d=\"${CLAUDE_PROJECT_DIR:-.}\"; f=\"$d/.claude/hooks/guard-branch.py\"; [ -f \"$f\" ] || exit 0; for p in \"$d/.venv/Scripts/python.exe\" \"$d/.venv/bin/python\" python3 python; do command -v \"$p\" >/dev/null 2>&1 && exec \"$p\" \"$f\"; done; exit 0"
+          }
+        ]
+      },
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=\"${CLAUDE_PROJECT_DIR:-.}\"; f=\"$d/.claude/hooks/log-skill-usage.py\"; [ -f \"$f\" ] || exit 0; for p in \"$d/.venv/Scripts/python.exe\" \"$d/.venv/bin/python\" python3 python; do command -v \"$p\" >/dev/null 2>&1 && { PYTHONUTF8=1 \"$p\" \"$f\"; exit 0; }; done; exit 0"
           }
         ]
       }
