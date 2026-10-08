@@ -8,7 +8,7 @@ closes, so the two series are close substitutes, not one index.
 
 The return calendar is the market series' own. The signal is mapped onto it with
 :func:`analytics.overlay.rules.position_on`, never inner-joined: an inner join
-with ``^GSPC`` would drop 1,085 pre-1952 Saturday sessions the French file
+with ``^GSPC`` would drop the 1,039 pre-1952 Saturday sessions the French file
 carries. This is the only module in ``analytics/overlay/`` that reads the DB,
 and it never writes.
 """

@@ -116,6 +116,30 @@ def _print_arms(arms: pd.DataFrame, bps: float) -> None:
         )
 
 
+def _print_alignment(frame: pd.DataFrame, close: pd.Series) -> None:
+    """Return-free of the arms: does ^GSPC's date line up with French's?
+
+    A one-day mislabel is how a timing rule acquires look-ahead, so the
+    same-dated correlation must dominate the +/-1-day shifts in every era. A
+    Monday after a Saturday session spans two French returns but one ^GSPC
+    return, which dilutes the pre-1953 figure without shifting it.
+    """
+    g = close.pct_change()
+    print("  alignment, corr(French mkt_t, ^GSPC return_t+k):")
+    for lo, hi in (
+        ("1929", "1951"),
+        ("1953", "1975"),
+        ("1976", "2026"),
+        ("1953", "2026"),
+    ):
+        m = frame["mkt"].loc[pd.Timestamp(lo) : pd.Timestamp(f"{hi}-12-31")]
+        cells = []
+        for k in (-1, 0, 1):
+            d = pd.DataFrame({"m": m, "g": g.shift(-k).reindex(m.index)}).dropna()
+            cells.append(f"k={k:+d} {float(np.corrcoef(d['m'], d['g'])[0, 1]):+.4f}")
+        print(f"    {lo}-{hi}  " + "  ".join(cells))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH)
@@ -149,6 +173,7 @@ def main() -> int:
     print(
         f"  return calendar = French; {sats:,} Saturday sessions kept (no ^GSPC close)"
     )
+    _print_alignment(frame, close)
     print(
         f"  bootstrap: stationary, mean block {BLOCK}, {N_BOOT:,} resamples, seed {SEED}; "
         f"cost {PRIMARY_BPS:g} bps per unit |Δpos| ({REPORT_BPS:g} reported)"
@@ -232,12 +257,6 @@ def main() -> int:
             f"  SPY panel {spy.index[0].date()} → {spy.index[-1].date()} "
             f"({len(spy):,} sessions); ΔSR half-width {_half(g.d_sr.lo, g.d_sr.hi):.3f}"
         )
-    # Shared sessions only: a Monday after a Saturday session spans two French
-    # returns but one ^GSPC return, so post-1952 is the clean overlap.
-    both = pd.DataFrame({"ff": frame["mkt"], "gspc": close.pct_change()}).dropna()
-    both = both.loc[both.index >= pd.Timestamp("1953-01-01")]
-    corr = float(np.corrcoef(both["ff"], both["gspc"])[0, 1])
-    print(f"  frame limit: corr(French mkt, ^GSPC price return), 1953→ = {corr:.4f}")
     return 0
 
 

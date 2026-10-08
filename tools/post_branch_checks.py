@@ -722,7 +722,10 @@ def check_new_modules(
         pkg = root / Path(path).parent
         documented = enumerated_members(pkg, context_blob)
         if len(documented - {name}) >= ENUMERATION_QUORUM:
-            if name not in documented:
+            # An inventory never lists `__init__.py` (`enumerated_members` skips
+            # it), so asking whether it is IN one fires on every new package;
+            # a package whose members are inventoried has its init covered.
+            if name != "__init__.py" and name not in documented:
                 present = {m.name for m in pkg.glob("*.py") if m.name != "__init__.py"}
                 missing = ", ".join(sorted(present - documented))
                 findings.append(

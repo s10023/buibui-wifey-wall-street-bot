@@ -35,8 +35,9 @@ frame, and the frame fix was the new information.
   one session and still causal.
 - Alignment was checked, not assumed. The correlation of the French market return with the
   same-dated `^GSPC` price return is +0.923 (1929–51), +0.969 (1953–75) and +0.991 (1976–2026),
-  against at most +0.225 at a one-day shift either way. The 1953–75 shoulders are symmetric,
-  which is CRSP's stale-price autocorrelation, not a mislabel.
+  against at most +0.225 at a one-day shift either way (+0.9869 same-day over 1953–2026). The
+  1953–75 shoulders are symmetric, which is CRSP's stale-price autocorrelation, not a mislabel.
+  The tool prints this table in its header, `--precheck` included.
 - Sharpe is on returns in excess of French `RF`, annualised by √252. The Saturday sessions make
   the panel average ~262 sessions a year, which would move a paired ΔSR by about 2%; annual
   return and switches per year use calendar years for the same reason.

@@ -1045,7 +1045,8 @@ quarters).
 
 Not a sleeve: an overlay is judged against buy-and-hold on the overlay yardstick in
 `docs/north-star.md` § Two yardsticks (ulcer index with Sharpe non-inferiority), never on
-`GATE_SHARPE`. The frozen pre-registration is the edge-pillars spec § Phase 2.
+`GATE_SHARPE`. The frozen pre-registration is the edge-pillars spec § Phase 2. `__init__.py`
+re-exports the public names below.
 
 - `rules.py` — `ma_signal` (H1's `ma200d` unchanged; NaN through the warm-up so it never reads
   as flat) and `position_on`, the one place the signal calendar meets the return calendar. With
