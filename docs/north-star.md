@@ -28,6 +28,14 @@ Ruled 2026-10-08 (#419) on OV-1's verdict
   the out-of-sample ledger generator: data collection, not a tuning target.
 - The wife channel is long-only by sleeve design; shorts go to the personal channel only.
 
+Ruled 2026-10-08 (#429): **the core is OV-1 × VM**, market exposure `pos × min(1, σ_target / σ̂_20d)`,
+on VM's increment verdict (`docs/audits/2026-10-08-vm-overlay-increment.md`). It cut max drawdown
+from −44.6% to −19.7% and P(DD ≥ 20% in 5 y) from 18.8% to 1.2%, for about 1pp of CAGR. Carry
+the thin leg with the ruling: the ulcer ratio is 0.722 against a 0.75 floor, 0.762 (BOUNDED) under
+a one-session lag, and the Sharpe gain is not significant. Live, the book would band the daily
+fractional weight, which adds a parameter no audit has priced. `make session-digest` and the daily
+Telegram show the core's state each day (#423).
+
 ## Acceptance gates
 
 | Gate | Criterion | Decides |

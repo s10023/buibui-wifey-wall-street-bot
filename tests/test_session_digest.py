@@ -4,7 +4,7 @@ own modules; the I/O (gh, Task Scheduler, analytics.db) is not exercised here.""
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -131,6 +131,51 @@ class TestRender:
         assert "… and 3 more" in out
 
 
+def _weekdays(start: date, end: date) -> list[date]:
+    days = (start + timedelta(days=i) for i in range((end - start).days + 1))
+    return [d for d in days if d.weekday() < 5]
+
+
+class TestCore:
+    def test_pre_open_expects_yesterdays_close_only(self) -> None:
+        now = datetime(2026, 10, 8, 9, 15, tzinfo=UTC)  # Thursday, pre-open
+        assert sd.core_findings(date(2026, 10, 7), now, _weekdays) == []
+
+    def test_a_missed_session_is_amber(self) -> None:
+        now = datetime(2026, 10, 8, 9, 15, tzinfo=UTC)
+        (f,) = sd.core_findings(date(2026, 10, 6), now, _weekdays)
+        assert (f.level, f.label, f.action) == ("AMBER", "core stale", "make core-sync")
+        assert "1 closed session(s) missing" in f.detail
+
+    def test_todays_bar_is_owed_once_the_session_has_closed(self) -> None:
+        now = datetime(2026, 10, 8, 21, 30, tzinfo=UTC)
+        assert sd.core_findings(date(2026, 10, 7), now, _weekdays)
+        assert sd.core_findings(date(2026, 10, 8), now, _weekdays) == []
+
+    def test_a_weekend_owes_nothing(self) -> None:
+        now = datetime(2026, 10, 11, 12, 0, tzinfo=UTC)  # Sunday
+        assert sd.core_findings(date(2026, 10, 9), now, _weekdays) == []
+
+    def test_render_places_the_core_line_and_omits_it_when_empty(self) -> None:
+        out = sd.render([], [], "", [], for_model=False, core="Core OV-1×VM: x")
+        assert out.splitlines()[2] == "Core OV-1×VM: x"
+        assert "Core" not in sd.render([], [], "", [], for_model=False)
+
+    def test_main_sends_the_core_line_to_telegram(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        sent: list[str] = []
+        monkeypatch.setattr(sd, "collect_findings", list)
+        monkeypatch.setattr(sd, "fetch_issues", lambda: ([], ""))
+        monkeypatch.setattr(sd, "collect_core", lambda: ("Core OV-1×VM: x", []))
+        monkeypatch.setattr("utils.telegram.send_telegram_message", sent.append)
+        monkeypatch.setattr("dotenv.load_dotenv", lambda: None)
+        monkeypatch.setattr("sys.argv", ["session_digest.py", "--telegram"])
+        sd.main()
+        assert len(sent) == 1
+        assert "Core OV-1×VM: x" in sent[0]
+
+
 class TestNeverCrashes:
     def test_a_raising_probe_becomes_a_BROKE_line(self) -> None:
         def boom() -> list[sd.Finding]:
@@ -147,6 +192,7 @@ class TestNeverCrashes:
             sd, "collect_findings", lambda: [sd.Finding("RED", "x", "y")]
         )
         monkeypatch.setattr(sd, "fetch_issues", lambda: (None, "offline"))
+        monkeypatch.setattr(sd, "collect_core", lambda: ("", []))
         monkeypatch.setattr("sys.argv", ["session_digest.py"])
         sd.main()  # would raise SystemExit on a non-zero exit
         assert "RED   x: y" in capsys.readouterr().out
@@ -156,6 +202,7 @@ class TestNeverCrashes:
             sd, "collect_findings", lambda: [sd.Finding("RED", "x", "y")]
         )
         monkeypatch.setattr(sd, "fetch_issues", lambda: ([], ""))
+        monkeypatch.setattr(sd, "collect_core", lambda: ("", []))
         monkeypatch.setattr("sys.argv", ["session_digest.py", "--exit-nonzero"])
         with pytest.raises(SystemExit) as exc:
             sd.main()

@@ -15,6 +15,7 @@ def run_analytics_backfill(args: argparse.Namespace) -> None:
         since_ms=parse_since_to_ms(args.since),
         use_universe=args.universe,
         use_pundit=args.pundit,
+        use_core=args.core,
     )
 
 
@@ -24,11 +25,12 @@ def run_analytics_sync(args: argparse.Namespace) -> None:
         timeframes=args.timeframes,
         use_universe=args.universe,
         use_pundit=args.pundit,
+        use_core=args.core,
     )
 
 
 def _add_universe_flags(parser: argparse.ArgumentParser, verb: str) -> None:
-    """Attach the two alternate symbol-source flags; at most one may be given.
+    """Attach the three alternate symbol-source flags; at most one may be given.
 
     Mutually exclusive at PARSE time rather than resolved by precedence inside
     ``_resolve_symbols``: under a silent precedence order ``--universe --pundit``
@@ -49,6 +51,13 @@ def _add_universe_flags(parser: argparse.ArgumentParser, verb: str) -> None:
         f"(docs/plans/pundit-calls.jsonl) instead of the stocks.json live "
         f"watchlist. The ledger records index and futures UNDERLYINGS "
         f"(^GSPC, GC=F) that no watchlist carries, so nothing else {verb}s them.",
+    )
+    group.add_argument(
+        "--core",
+        action="store_true",
+        help=f"Resolve to the survival core's signal index (^GSPC), which no "
+        f"watchlist carries. A flag rather than --symbols because poetry.exe on "
+        f"Windows strips the caret from argv, so `--symbols ^GSPC` {verb}s GSPC.",
     )
 
 

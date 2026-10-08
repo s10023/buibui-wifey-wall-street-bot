@@ -34,7 +34,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -156,6 +156,35 @@ def cadence_findings(statuses: list[Any]) -> list[Finding]:
     ]
 
 
+def core_findings(
+    as_of: date, now: datetime, sessions_fn: Callable[[date, date], list[date]]
+) -> list[Finding]:
+    """AMBER when ``^GSPC`` misses a session that has closed by ``now`` (UTC).
+
+    A bar dated today counts as closed from 21:00 UTC, the later of the two
+    DST close times, so a pre-open run expects yesterday's close.
+    """
+    from analytics.overlay.live import SESSION_CLOSED_UTC_HOUR
+
+    today = now.date()
+    closed = [
+        d
+        for d in sessions_fn(as_of + timedelta(days=1), today)
+        if d < today or now.hour >= SESSION_CLOSED_UTC_HOUR
+    ]
+    if not closed:
+        return []
+    return [
+        Finding(
+            "AMBER",
+            "core stale",
+            f"^GSPC last close {as_of}, {len(closed)} closed session(s) missing,"
+            " so the core line describes an old position",
+            "make core-sync",
+        )
+    ]
+
+
 def sort_issues(issues: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Priority first, then number. Untriaged sorts after every priority."""
 
@@ -195,6 +224,7 @@ def render(
     *,
     for_model: bool,
     max_issues: int | None = None,
+    core: str = "",
 ) -> str:
     reds = [f for f in findings if f.level in ("RED", "BROKE")]
     lines: list[str] = []
@@ -212,6 +242,8 @@ def render(
             lines.append(f"      → {f.action}")
     if not findings:
         lines.append("OK    scheduler, watchlist OHLCV, backup, cadence")
+    if core:
+        lines.append(core)
 
     if issues is None:
         lines.append(f"BROKE could not fetch open Issues: {issues_error}")
@@ -360,6 +392,48 @@ def _scheduler() -> list[Finding]:
     return scheduler_findings(freshness_check.timer_enabled(SIGNAL_TIMER))
 
 
+def collect_core() -> tuple[str, list[Finding]]:
+    """The core line and its staleness finding, read-only from ``analytics.db``.
+
+    An unreadable DB (a go-live holding the lock, or no file) is AMBER, as in
+    the freshness probe; any other raise becomes BROKE through ``_guarded``.
+    """
+    line = ""
+
+    def probe() -> list[Finding]:
+        nonlocal line
+        import duckdb
+
+        from analytics.overlay.frame import load_gspc_close
+        from analytics.overlay.live import completed_closes, core_state, format_core
+        from analytics.store import DEFAULT_DB_PATH
+        from analytics.trading_calendar import nyse_sessions
+
+        unreadable = Finding(
+            "AMBER",
+            "core unreadable",
+            "analytics.db is absent or locked (a go-live may be running)",
+            "re-run `make session-digest` once the writer exits",
+        )
+        if not Path(DEFAULT_DB_PATH).exists():
+            return [unreadable]
+        try:
+            conn = duckdb.connect(str(DEFAULT_DB_PATH), read_only=True)
+        except duckdb.Error:
+            return [unreadable]
+        try:
+            close = load_gspc_close(conn)
+        finally:
+            conn.close()
+        now = datetime.now(UTC)
+        state = core_state(completed_closes(close, now))
+        line = format_core(state)
+        return core_findings(state.as_of, now, nyse_sessions)
+
+    findings = _guarded("core probe", probe)
+    return line, findings
+
+
 def collect_findings() -> list[Finding]:
     findings: list[Finding] = []
     findings += _guarded("scheduler probe", _scheduler)
@@ -389,6 +463,8 @@ def main() -> None:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     findings = collect_findings()
+    core, core_extra = collect_core()
+    findings += core_extra
     issues, issues_error = fetch_issues()
     handoff = (
         handoff_first_moves(HANDOFF.read_text(encoding="utf-8"))
@@ -396,7 +472,16 @@ def main() -> None:
         else None
     )
 
-    print(render(findings, issues, issues_error, handoff, for_model=not args.telegram))
+    print(
+        render(
+            findings,
+            issues,
+            issues_error,
+            handoff,
+            for_model=not args.telegram,
+            core=core,
+        )
+    )
 
     if args.telegram:
         from dotenv import load_dotenv
@@ -413,6 +498,7 @@ def main() -> None:
             handoff,
             for_model=False,
             max_issues=TELEGRAM_MAX_ISSUES,
+            core=core,
         )
         send_telegram_message(text[:TELEGRAM_MAX_CHARS])
 
