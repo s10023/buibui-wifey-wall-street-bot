@@ -224,7 +224,7 @@ make test           # full pytest suite (make test-cov for coverage)
   `needs: lint-typecheck-test` after any test failure — so the failing row decides the verdict
   and skips never do. A `gh` failure raises rather than becoming data. Through `make` any
   failure is make's exit 2, so read the banner, or call
-  `poetry run python tools/wait_ci.py --pr <n>` / `--branch main` for the code.
+  `PYTHONPATH=. poetry run python tools/wait_ci.py --pr <n>` / `--branch main` for the code.
 - Run `make test`, `make test-regression` and every CI wait in the background
   (`run_in_background: true`) and wait for the task notification. `.claude/settings.local.json`
   allowlists these targets, and `.claude/hooks/advise-foreground-run.py` nudges when a run is in

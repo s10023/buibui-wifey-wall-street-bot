@@ -335,7 +335,7 @@ Flag, do not fix: uncommitted changes, unpushed commits, `CONFLICTING` /
 `DIRTY`, failing required checks, `CHANGES_REQUESTED`.
 
 ```bash
-poetry run python tools/wait_ci.py --pr <n>     # resolves the SHA, prints steps=
+PYTHONPATH=. poetry run python tools/wait_ci.py --pr <n>     # resolves the SHA, prints steps=
 ```
 
 ### The post-merge flip-back gate
