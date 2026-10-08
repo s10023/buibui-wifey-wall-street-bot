@@ -83,10 +83,16 @@ from __future__ import annotations
 
 import argparse
 import re
+import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+# A bare `python tools/<name>.py` puts tools/ on sys.path rather than the repo root,
+# so the repo imports below died with ModuleNotFoundError and exit 1 (#436). The
+# guarantee is `tests/test_tools_bare_invocation.py`, never this line.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools.claude_home import memory_dir
 from tools.session_digest import fetch_issue_items

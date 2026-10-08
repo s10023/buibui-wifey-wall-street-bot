@@ -319,8 +319,8 @@ wants no step list) and for any `--check` run, a deliberate partial invocation.
 it exit 1 on findings. `--check` is repeatable (`action="append"`) — without it,
 `--check memory-cap --check handoff-size` would run `handoff-size` alone and print a
 complete-looking clean sweep. An unknown check name aborts the whole run rather than silently
-shortening it. `PYTHONPATH=.` is required: a direct invocation without it dies
-`ModuleNotFoundError: No module named 'tools'`.
+shortening it. A bare call without `PYTHONPATH=.` works since #436; before that it died
+`ModuleNotFoundError: No module named 'tools'` with exit 1, the same code as "findings".
 
 ## wait_ci.py — did CI settle, and did it actually RUN?
 
@@ -976,8 +976,8 @@ PYTHONPATH=. poetry run python tools/distil_power.py \
   [--n-series S --n-eff E] [--sd SD] [--bar R] [--corpus-best C]
 ```
 
-`PYTHONPATH=.` is required — the bare invocation dies on `ModuleNotFoundError`, the same shape as
-`route_dedup.py`. Exit 2 on a declared-error argument combination.
+A bare invocation without `PYTHONPATH=.` works since #436 (see `route_dedup.py` below for the
+bootstrap). Exit 2 on a declared-error argument combination.
 
 Trial count dominates n, and by a wide margin. Re-derived against wifey's own `required_sharpe`:
 holding the trial family at 20, a 21x range of n (100 to 2,100) moves the bar 1.17x; holding n at the
@@ -1967,6 +1967,15 @@ that does not it would be dead code masking the breakage the moment the first im
 guarantee is `test_bare_invocation_works`, which runs the module with `PYTHONPATH` stripped from
 the environment and was mutation-checked, never a comment beside the bootstrap line. The parent
 hits the same class on `analytics.*`; the rule ports even though the failing module name differs.
+
+Since #436 the rule covers every `tools/*.py` with a `__main__`, and
+`tests/test_tools_bare_invocation.py` is the one guarantee, with two legs. The runtime leg runs each
+entry point's `--help` with `PYTHONPATH` dropped and requires exit 0, behind a positive control: a
+probe with no bootstrap, run through the same harness, must die, or `PYTHONPATH` leaked and every pass
+is vacuous. The static leg requires a `sys.path.insert` call in any entry point that imports from a
+repo package at any depth, because `--help` exercises module-level imports only:
+`session_digest.py` imports from the repo only inside functions, so it passed `--help` bare while
+every probe read BROKE. A new tool is discovered by the glob, so it needs no registration.
 
 ### Seven divergences from the parent
 

@@ -40,6 +40,12 @@ import argparse
 import math
 import sys
 from collections.abc import Sequence
+from pathlib import Path
+
+# A bare `python tools/<name>.py` puts tools/ on sys.path rather than the repo root,
+# so the repo imports below died with ModuleNotFoundError and exit 1 (#436). The
+# guarantee is `tests/test_tools_bare_invocation.py`, never this line.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from analytics.audit_guard import powered_null
 from analytics.research_guards import GATE_DSR, required_sharpe

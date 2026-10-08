@@ -89,6 +89,11 @@ import duckdb
 import numpy as np
 import pandas as pd
 
+# A bare `python tools/<name>.py` puts tools/ on sys.path rather than the repo root,
+# so the repo imports below died with ModuleNotFoundError and exit 1 (#436). The
+# guarantee is `tests/test_tools_bare_invocation.py`, never this line.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from analytics.backtest.engine import _compute_atr14
 from analytics.pundit_authors import normalize_author
 from analytics.pundit_direction import normalize_direction

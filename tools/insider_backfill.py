@@ -34,10 +34,17 @@ Requires ``EDGAR_CONTACT_EMAIL`` (SEC 403s any other User-Agent shape).
 from __future__ import annotations
 
 import argparse
+import sys
+from pathlib import Path
 from typing import Any
 
 import duckdb
 from dotenv import load_dotenv
+
+# A bare `python tools/<name>.py` puts tools/ on sys.path rather than the repo root,
+# so the repo imports below died with ModuleNotFoundError and exit 1 (#436). The
+# guarantee is `tests/test_tools_bare_invocation.py`, never this line.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from analytics.insider.form4 import (
     Form4Filing,
