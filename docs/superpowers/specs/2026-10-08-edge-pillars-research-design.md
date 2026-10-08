@@ -2,7 +2,7 @@
 
 **Status: DESIGN, phase 1 (no data read). Issue #378. OV-1 pre-registration FROZEN 2026-10-08
 on the operator's go; build is #418. VM pre-registration FROZEN 2026-10-08 as Amendment 1;
-build is #421.** Written without `analytics.db`; every
+build is #421, which reported FOUND as an increment (`docs/audits/2026-10-08-vm-overlay-increment.md`).** Written without `analytics.db`; every
 repo figure below is quoted from a tracked audit, and every power figure is a
 `tools/distil_power.py` run reproduced inline. Literature claims carry their source and are kept
 apart from what this repo measured.
