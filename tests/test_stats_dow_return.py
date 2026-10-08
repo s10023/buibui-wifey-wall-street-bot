@@ -1,4 +1,4 @@
-"""DOW medians + the standard error the Stats tab dims on (parent #598/#593 ports).
+"""DOW medians + the standard error the Stats tab dims on (ported from parent #598/#593).
 
 Covers both medians on the card: `median_return_pct` + `return_stderr_pct` (#598)
 and `median_range_pct` (#593). They share one deliberately-skewed fixture, which is
@@ -7,11 +7,11 @@ why the range tests live in a module named for the return work.
 Why the error bar exists at all: at the n this card runs (~48-52 weekdays in a 1y
 window), SE measured **0.08-0.32%** across SPY/QQQ/NVDA/AAPL/MSFT at 365d against
 cell means of 0.02-0.52% — comparable to or larger than the value it qualifies. The
-column was rendering that in green and red with the same visual weight as the range
-column, which is real signal.
+column renders that in green and red with the same visual weight as the range
+column, which is real signal, hence the dimming.
 
 **On equity data no cell survives the bar.** All **25 of 25** fall inside it and the
-largest |t| anywhere is **1.76** (SPY Tue); mean and median disagree on SIGN in
+largest |t| anywhere is **1.76** (SPY Tue); mean and median disagree on sign in
 **5 of 25**. Script: `docs/plans/scripts/dow_return_noise.py`, which calls
 `compute_dow_patterns` rather than reading 1d bars — the two sources disagree, so
 quote the function.
@@ -98,7 +98,7 @@ def test_median_return_ignores_the_crash_the_mean_cannot() -> None:
 
 
 def test_median_range_ignores_the_wide_day_the_mean_cannot() -> None:
-    """`median_range_pct` (parent #593) — lives here because it needs the SAME
+    """`median_range_pct` (parent #593) — lives here because it needs the same
     deliberately-skewed fixture: a symmetric one makes mean == median and would
     pass against an implementation that computed AVG twice.
 

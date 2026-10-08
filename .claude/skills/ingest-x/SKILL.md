@@ -1,20 +1,13 @@
 ---
 name: ingest-x
 description: >
-  Ingest one OR MORE X/Twitter post URLs into the research pipeline in a single
-  call. Fetches each post's text + chart image with NO login/scraping via the
-  public syndication endpoint (tools/x_fetch.py) — batched with a randomized
-  cooldown + a dedup cache so re-runs hit zero network — reads each chart with
-  vision in a per-post subagent, classifies it (content-type gate -> the research
-  pipeline's 4-bucket verdict taxonomy), and routes it (after ONE human review
-  gate for the whole batch) into one of three streams: A hypotheses ->
-  docs/plans/thesis-inbox.md, B mechanics -> docs/plans/mechanics-backlog.md,
-  C daily setups -> docs/plans/pundit-calls.jsonl. Iteration 2 = text + still
-  images + quoted-tweet; a post in a thread is recovered upward to its root
-  (bookmark the LAST post), and video is handed off to /ingest-video rather than
-  skipped. Invoke when the user says
-  "/ingest-x", pastes one or more x.com / twitter.com status URLs, or says
-  "ingest this/these X post(s)".
+  Ingest one or more X/Twitter post URLs into the research pipeline: each post's
+  text, quoted post and still images are fetched without login, a thread is
+  recovered upward to its root, charts are read with vision, and after one human
+  review gate for the whole batch each item is routed to the thesis inbox, the
+  mechanics backlog or the pundit-calls ledger. Video is handed to /ingest-video.
+  Invoke when the user says "/ingest-x", pastes x.com or twitter.com status URLs,
+  or asks to ingest an X post.
 allowed-tools: Bash, Read, Write, Edit, Task
 ---
 

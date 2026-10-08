@@ -14,10 +14,10 @@
 # `4` as a command. systemd's EnvironmentFile is not shell and never behaved that way, so
 # a `.env` that works on the Linux box has to keep working here.
 #
-# ⚠ THE CARRIAGE RETURN IS THE DANGEROUS ONE, AND IT IS WINDOWS-ONLY
+# The carriage return is the dangerous one, and it is Windows-only
 # ------------------------------------------------------------------
-# Git Bash's bash tolerates CRLF in a SCRIPT — a CRLF script runs, its comparisons match,
-# and `bash -n` is clean — but it does NOT strip CR from data a script READS at runtime.
+# Git Bash's bash tolerates CRLF in a script — a CRLF script runs, its comparisons match,
+# and `bash -n` is clean — but it does not strip CR from data a script reads at runtime.
 # Measured on the parent 2026-09-18: a `TELEGRAM_BOT_TOKEN=123:abc` line in a CRLF file
 # yields a value of length 8, not 7.
 #
@@ -25,9 +25,9 @@
 # looks right in any print-out, and it is Telegram that rejects it, so the symptom is "the
 # bot stopped alerting" over a config that looks perfect. `.env` is gitignored, so
 # `.gitattributes` cannot protect it — any Windows editor that writes CRLF (Notepad does,
-# by default) reintroduces this. The strip therefore belongs HERE, not in a checkout rule.
+# by default) reintroduces this. The strip therefore belongs here, not in a checkout rule.
 #
-# ⚠ wifey has TWO bot tokens (`TELEGRAM_BOT_TOKEN` and `_2`, the wife channel), so this
+# wifey has two bot tokens (`TELEGRAM_BOT_TOKEN` and `_2`, the wife channel), so this
 # failure mode has two independent chances to fire and the second one is the channel with
 # a human audience.
 

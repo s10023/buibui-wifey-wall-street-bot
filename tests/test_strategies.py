@@ -200,7 +200,7 @@ class TestDetectOrbBreakout:
     belongs to session N.
 
     _hourly_ts(N) returns 2024-01-01 00:00 UTC + N hours. Offsets 0–23 share
-    one wall-clock day but they ALL precede the 13:30 UTC session open on
+    one wall-clock day but they all precede the 13:30 UTC session open on
     2024-01-01, so they map to the prior session date (2023-12-31). This is
     intentional — the existing tests only care about within-session grouping
     and per-session dedup, not the absolute session label. Offsets 24+ cross

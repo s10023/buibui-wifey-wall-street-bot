@@ -1,4 +1,4 @@
-"""ADR mean/median — `compute_adr` had no unit test before this port (parent #598).
+"""ADR mean/median — `compute_adr` unit tests (ported with parent #598).
 
 The fixture is deliberately SKEWED. A uniform range distribution makes mean and
 median identical, so a test built on one would pass against an implementation that

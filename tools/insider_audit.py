@@ -4,12 +4,12 @@ Runs the frozen four-trial family and its four routine-arm placebos over the
 research universe (1d), prints the cohort split, each cell's headline plus
 DSR / PBO / boot-CI / MinTRL and realized equity-β to SPY, the paired
 trial-minus-placebo reversal test, and the PASS/FAIL on the pre-committed ``T1``
-cell. Books are priced GROSS and NET side by side, because a sleeve that is
+cell. Books are priced gross and net side by side, because a sleeve that is
 negative before costs is a signal failure rather than a cost failure and the two
 verdicts read differently. No writes.
 
-⚠ **The first look at a return in this row happens here.** Everything upstream —
-ingestion, the coverage observable, the classifier, the cohort shape — was built
+**The first look at a return in this row happens here.** Everything upstream —
+ingestion, the coverage observable, the classifier, the cohort shape — is built
 and reported without one, which is what makes this output a test rather than a
 search.
 

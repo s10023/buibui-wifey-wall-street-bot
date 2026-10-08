@@ -1492,7 +1492,7 @@ class TestConflictResolution:
         assert "conflict</code>" not in alerts[0]
 
     def test_no_conflict_no_tag(self, tmp_path: Any) -> None:
-        """Signals without a conflict must NOT have ⚠️ conflict in the alert."""
+        """Signals without a conflict must not have ⚠️ conflict in the alert."""
         conn = duckdb.connect(":memory:")
         init_schema(conn)
         store = CooldownStore(str(tmp_path / "state.json"))

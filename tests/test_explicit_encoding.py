@@ -5,15 +5,15 @@ Ported from the parent's `tests/test_explicit_encoding.py` (parent #792; Issue #
 Windows defaults text I/O to the ANSI codepage (cp1252 on the operator's host), so a
 bare `read_text()` over a file holding CJK or `⚠` raises `UnicodeDecodeError`.
 
-⚠ **`make test` cannot see this class, by design.** `Makefile` exports
+**`make test` cannot see this class, by design.** `Makefile` exports
 `PYTHONUTF8=1`, and UTF-8 mode also flips the default FILE encoding -- so every bare
 call passes under `make` and fails under a bare `pytest`, `python tools/<x>.py` or a
-hook, none of which carry the export. Hence a STATIC gate: it reads the source, so
+hook, none of which carry the export. Hence a static gate: it reads the source, so
 no environment variable can mask it.
 
-⚠ **Name-based on purpose.** ruff's `PLW1514` infers the receiver's type and so
+**Name-based on purpose.** ruff's `PLW1514` infers the receiver's type and so
 misses any `Path` reached through an attribute. This scan flags every `read_text` /
-`write_text` / text-mode `open` call by NAME, and a false positive costs one
+`write_text` / text-mode `open` call by name, and a false positive costs one
 `encoding=` argument.
 
 Subprocess calls are in scope too (Issue #408): `subprocess.run(..., text=True)` (or

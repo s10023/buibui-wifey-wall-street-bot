@@ -6,13 +6,13 @@ nothing to report from a timer that **stopped firing**, so the only honest check
 is to read observed state and date it. `make backup-check` does that for the
 backup tier; this does it for the two the backup probe cannot see:
 
-- **signal** — has a scan actually run, and when did one last DISPATCH? These are
-  two questions and only the first is gradeable. ⚠ **The watermark is a DISPATCH
-  oracle, not a RUN oracle** — it advances when a candle is consumed by an alert,
-  and dispatch is intermittent BY DESIGN: `day_filter = tue_thu` suppresses on
+- **signal** — has a scan actually run, and when did one last dispatch? These are
+  two questions and only the first is gradeable. **The watermark is a dispatch
+  oracle, not a run oracle** — it advances when a candle is consumed by an alert,
+  and dispatch is intermittent by design: `day_filter = tue_thu` suppresses on
   the bar's open weekday, so a Mon run (Fri bars) and a Tue run (Mon bars) can
   never alert. Measured 2026-08-26, the newest watermark sat 4 sessions back
-  with run evidence on TWO OF THE THREE intervening sessions (`fired_at_ms`
+  with run evidence on two of the three intervening sessions (`fired_at_ms`
   rows on 08-24 and 08-25; none on 08-21, which is not evidence of no run —
   a scan that detects nothing new writes nothing).
   Grading it against the timer's daily cadence therefore prints STALE on a
@@ -20,11 +20,11 @@ backup tier; this does it for the two the backup probe cannot see:
   Run-liveness is answered instead by the ohlcv leg: a `go-live` run's first act
   is a watchlist sync, so fresh watchlist bars ARE the evidence a run happened,
   and that quantity does have a declared cadence.
-  ⚠ Skipping a run day DESTROYS that day's alerts rather than deferring them
+  Skipping a run day destroys that day's alerts rather than deferring them
   (the next catch-up consumes the watermark without dispatching), so a late
   detection is not recoverable by running twice tomorrow.
-- **ohlcv** — is what a study would read fresh? Ported from parent #681/#698
-  (`tools/ohlcv_freshness.py`), whose motivating measurement was 22 of 25
+- **ohlcv** — is what a study would read fresh? The parent's
+  `tools/ohlcv_freshness.py` motivated it with a measurement of 22 of 25
   universe symbols frozen for eleven weeks with nothing broken and nothing
   watching. Wifey measured the same shape on 2026-08-26: the 13-symbol watchlist
   ran to the previous session while the bulk of the 505-member research universe
@@ -33,7 +33,7 @@ backup tier; this does it for the two the backup probe cannot see:
 Three properties decide whether a probe of this kind is worth anything, and all
 three are why this is a module rather than a line of SQL in a caller.
 
-- **Age is only meaningful in SESSIONS, never in wall-clock.** This is wifey's
+- **Age is only meaningful in sessions, never in wall-clock.** This is wifey's
   one hard divergence from the parent, which computes `(now - newest) / bar_ms`
   against a 24h tape. On an RTH tape that is wrong in the direction that reds
   everything forever: `4h` is 2 bars/day rather than 6, so a healthy series two
@@ -41,8 +41,8 @@ three are why this is a module rather than a line of SQL in a caller.
   weekend. Age here is NYSE sessions elapsed (`analytics.trading_calendar`)
   multiplied by `cost_model.BARS_PER_DAY` — the single shared table, imported
   rather than forked.
-- **The newest stored bar is normally IN PROGRESS**, and a pre-open scan reads
-  the PREVIOUS session's bars by design. A healthy series therefore always
+- **The newest stored bar is normally in progress**, and a pre-open scan reads
+  the previous session's bars by design. A healthy series therefore always
   trails, which is what `BASE_TOLERANCE_SESSIONS` absorbs; a probe that reads
   "not yet closed" as stale is mute within a week.
 - **Staleness is meaningless without a declared cadence.** Nothing schedules the
@@ -51,7 +51,7 @@ three are why this is a module rather than a line of SQL in a caller.
   Grading it against a cadence it does not have would print ~490 findings every
   run, and a leg that is never green stops being read.
 
-⚠ **ADVISORY, and it must never enter `make test`, `make sanity-checks` or CI.**
+**Advisory, and it must never enter `make test`, `make sanity-checks` or CI.**
 Both legs read machine-local single-copy state (`analytics.db`, the gitignored
 `signal_state.json` and `config/stocks.json`) that no clone has, so CI would
 report a permanent fault. The pure functions below are unit-tested; only the
@@ -115,8 +115,8 @@ WINDOWS_TASK_PATH = "\\wifey\\"
 # tighter floor reds every healthy series every morning.
 BASE_TOLERANCE_SESSIONS: float = 2.0
 
-# ⚠ There is deliberately NO signal-side tolerance constant. The watermark dates
-# the last DISPATCH, whose cadence is a consequence of `day_filter` rather than a
+# There is deliberately no signal-side tolerance constant. The watermark dates
+# the last dispatch, whose cadence is a consequence of `day_filter` rather than a
 # schedule, so no constant here would have an external referent — and a
 # hand-picked one would red a healthy system. See `evaluate_signal`.
 
@@ -146,14 +146,14 @@ class Cadence:
     Two exist. The WATCHLIST cadence is `wifey-signal-watch.timer` refreshing
     `config/stocks.json` on the timeframes the live scan reads; the UNIVERSE
     cadence is `wifey-universe-sync.timer` refreshing the ACTIVE research members
-    (502 of 505 as of 2026-09-02). Not all 505: the sync resolves `--universe`
+    (502 of 505, measured 2026-09-02). Not all 505: the sync resolves `--universe`
     through `active_symbols()`, so a delisted member is refreshed by nothing --
     which is why `read_universe_symbols` excludes it rather than grading it
     against a cadence that does not cover it.
 
-    ⚠ A cadence is a claim that something RUNS, so it must be derived from
+    A cadence is a claim that something runs, so it must be derived from
     observed state rather than asserted here. `resolve_cadences` takes the
-    universe member set as an argument and callers pass an EMPTY one whenever
+    universe member set as an argument and callers pass an empty one whenever
     the timer is not enabled — see `universe_timer_enabled`. Asserting the
     schedule instead would grade ~1,100 series against a timer that may never
     have been installed, printing phantom faults on a healthy box.
@@ -166,10 +166,10 @@ class Cadence:
 
 WATCHLIST_CADENCE = Cadence("watchlist", SCHEDULED_TIMEFRAMES, SCHEDULED_GAP_SESSIONS)
 
-# ⚠ Covers `1wk` where the watchlist cadence does not. The live scan does not
-# read `1wk`, so a watchlist name's weekly bars used to go stale exactly like the
+# Covers `1wk` where the watchlist cadence does not. The live scan does not
+# read `1wk`, so a watchlist name's weekly bars would go stale exactly like the
 # universe's; `make wifey-universe-sync` fetches 4h/1d/1wk, so for a symbol in
-# both sets the weekly series now has a cadence where it previously had none.
+# both sets the weekly series has a cadence through this one.
 UNIVERSE_CADENCE = Cadence(
     "universe", frozenset({"4h", "1d", "1wk"}), UNIVERSE_GAP_SESSIONS
 )
@@ -249,7 +249,7 @@ class SignalReport:
     def ok(self) -> bool:
         """False only when nothing could be read.
 
-        ⚠ Deliberately NOT a staleness verdict. An old watermark on a healthy
+        Deliberately not a staleness verdict. An old watermark on a healthy
         system is the normal state between dispatch days, so grading it here
         would make `--exit-nonzero` fire on most weekdays.
         """
@@ -301,14 +301,14 @@ def tolerance_sessions_for(timeframe: str, cadence: Cadence) -> float | None:
     third is how much longer than a session this timeframe's own bar takes to
     close.
 
-    ⚠ THAT THIRD TERM IS WHY `1wk` CAN BE GRADED AT ALL. A weekly bar stamps on
+    That third term is why `1wk` can be graded at all. A weekly bar stamps on
     the week's Monday open and does not close until Friday, so a perfectly
     refreshed weekly series is routinely four sessions behind a daily one for
     reasons that have nothing to do with staleness. Grading it on the daily
     footing reds every weekly series forever — the same shape as the parent's
     wall-clock age, which this tool's session-based age exists to avoid. It is
     ``max(0, …)`` so 4h and 1d, whose bars close inside a session, keep exactly
-    the tolerance they had before this term existed.
+    the tolerance they have without this term.
 
     ``cadence`` is required rather than defaulted so mypy forces every call site
     to state which schedule it is grading against: the same series has different
@@ -336,7 +336,7 @@ def resolve_cadence(
 ) -> Cadence | None:
     """The cadence covering one series, or None when nothing schedules it.
 
-    ⚠ When both cover it, the TIGHTEST gap wins. A watchlist name is refreshed
+    When both cover it, the tightest gap wins. A watchlist name is refreshed
     daily whether or not the weekly timer also touches it, so the tight bar is
     both achievable and the only one that would notice the daily timer stopping.
     Taking the loose one would let a watchlist series sit four sessions stale and
@@ -380,7 +380,7 @@ def evaluate_ohlcv(
     universe timer syncs on 4h/1d/1wk (502 of 505; a delisted member is synced by
     nothing and so is not graded).
 
-    ⚠ ``universe_symbols`` DEFAULTS TO EMPTY, and that default is the safe one.
+    ``universe_symbols`` defaults to empty, and that default is the safe one.
     The universe timer is opt-in and nothing in the repo installs it, so a caller
     that has not checked whether it is enabled must not get the graded tier by
     accident. `main` passes members only when `universe_timer_enabled` says so.
@@ -506,7 +506,7 @@ def read_universe_symbols(path: Path = DEFAULT_UNIVERSE) -> frozenset[str]:
     `read_scheduled_symbols`' reason: this is a probe, and it must report an
     absent universe rather than crash on one.
 
-    ⚠ DELISTED MEMBERS ARE EXCLUDED, and that is a cadence claim rather than a
+    Delisted members are excluded, and that is a cadence claim rather than a
     tidying one. `analytics_runner` resolves `--universe` through
     `active_symbols()`, so the weekly sync refreshes the active set and nothing
     refreshes a delisted one — by design, since its tape has stopped. Grading it
@@ -544,27 +544,25 @@ def timer_enabled(timer: str) -> bool:
     Generic over the unit so `tools/session_digest.py` can ask the same question of
     `wifey-signal-watch.timer` — a box that never registered it reads False here.
 
-    ⚠ THIS IS THE PROBE'S ONE PIECE OF NON-DB OBSERVED STATE, and it is what
+    This is the probe's one piece of non-DB observed state, and it is what
     keeps the universe tier honest. The units are opt-in and nothing in the repo
     installs them, so "the universe has a cadence" is true on one box and false
     on the next. Deriving it here means the tool reports an ABSENCE where the
-    timer is not installed and GRADES where it is, instead of hardcoding either
-    answer — which is exactly the coupling that made this file assert "nothing
-    refreshes the 505-member research universe" as a constant.
+    timer is not installed and grades where it is, instead of hardcoding either
+    answer (asserting "nothing refreshes the 505-member research universe" as a
+    constant would couple the file to one box).
 
     Every failure degrades to False — no systemd, no `systemctl`, a timeout, a
     permission error. False means "report the absence", which is
     the direction that cannot invent faults; True on a box with no timer would
     grade ~1,100 series against a schedule that never runs.
 
-    ⚠ **A non-Linux box is NOT one of those failures any more.** It used to be:
-    `systemctl` is absent on Windows, the `OSError` branch returned False, and the
-    leg reported the absence — correctly, right up until the host moved and the job
-    was registered with Task Scheduler instead. From that moment the same False
-    would have meant "no cadence" about a job running every Saturday, and the leg
-    would have stayed silent forever on the one host it was now wrong about.
-    Degrading to the safe answer is only safe while the safe answer is also the
-    true one.
+    **A non-Linux box is not one of those failures.** `systemctl` is absent on
+    Windows, so an `OSError` branch returning False would report the absence even
+    when the job is registered with Task Scheduler instead; the same False would
+    then mean "no cadence" about a job running every Saturday, and the leg would
+    stay silent forever on the one host it was wrong about. Degrading to the safe
+    answer is only safe while the safe answer is also the true one.
     """
     if host_platform.is_windows():
         return _scheduled_task_enabled(task_name_for_unit(timer))
@@ -600,8 +598,8 @@ def task_name_for_unit(unit: str) -> str:
 def _scheduled_task_enabled(name: str, task_path: str = WINDOWS_TASK_PATH) -> bool:
     """Whether a Windows scheduled task exists and is enabled.
 
-    ⚠ **`State` is the field, not existence.** `install-tasks.ps1` registers
-    `wifey-backup-offsite` and then DISABLES it on purpose, so "the task is there" and
+    **`State` is the field, not existence.** `install-tasks.ps1` registers
+    `wifey-backup-offsite` and then disables it on purpose, so "the task is there" and
     "the task will fire" are genuinely different answers here, and only the second one
     licenses grading a cadence.
 
@@ -715,7 +713,7 @@ def render_ohlcv(report: OhlcvReport) -> str:
             " unscheduled tier below."
         )
     elif report.ok:
-        # ⚠ No single tolerance to quote any more: the daily and weekly cadences
+        # There is no single tolerance to quote: the daily and weekly cadences
         # carry different ones, and `1wk` adds its own bar-span term on top. A
         # figure here would be right for one tier and wrong for the other, which
         # is worse than naming neither.
@@ -820,7 +818,7 @@ def collect(
     ohlcv = None
     if leg in ("ohlcv", "both"):
         series = read_series(db)
-        # ⚠ Members are passed ONLY when the timer is enabled. Handing them over
+        # Members are passed only when the timer is enabled. Handing them over
         # unconditionally would grade the universe against a schedule that may
         # not exist on this box — see `universe_timer_enabled`.
         members = (

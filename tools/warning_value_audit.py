@@ -17,7 +17,7 @@ keeping the lexicographically-latest run_id — necessary here because
 ``backtest_runs`` has **four** writers and one signal legitimately appears
 under several saved runs. Read-only; no engine/live change.
 
-Ported from parent PR #492. Two fork-specific changes, both load-bearing:
+Two fork-specific changes, both load-bearing:
 timeframe length comes from ``analytics.signal._common.parse_timeframe_secs``
 rather than a local map, because equity timeframes are ``4h`` / ``1d`` /
 **``1wk``** and upstream's literal map spells the weekly one ``1w`` — a silent
@@ -25,9 +25,8 @@ rather than a local map, because equity timeframes are ``4h`` / ``1d`` /
 live substrate is expected to return ``INSUFFICIENT`` almost everywhere
 (267 resolved rows against ``min_n=30`` across 12 cells).
 
-Corrected 2026-08-13 (parent PR #617): COSMETIC now requires
-``audit_guard.CellVerdict.powered_null`` — the CI strictly inside ±bar —
-rather than the old ``n >= min_n`` proxy. A sample-size floor says a test
+COSMETIC requires ``audit_guard.CellVerdict.powered_null`` — the CI strictly
+inside ±bar — rather than an ``n >= min_n`` proxy (parent PR #617, 2026-08-13). A sample-size floor says a test
 *ran*, never that it could have *seen* anything, so the proxy published
 under-powered cells as "this warning carries no information".
 

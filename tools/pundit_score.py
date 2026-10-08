@@ -6,21 +6,18 @@ reports hit-rate + R proxies per author x setup-family x direction, plus a
 machine-readable ``docs/plans/pundit-priors.json`` sidecar. Never writes to the DB;
 no schema change.
 
-**There is NO implemented gate here, and this docstring used to imply one.** It read
-"audit_guard gates come later, only if a cell earns n>=30", which a reader reasonably
-took for a live threshold. The only implemented construct is ``--min-n`` (default 5),
-and it is display-only — it renders a ``⚠`` marker and changes no output. Nothing
-whatsoever happened when a cell crossed 30.
+**There is no implemented gate here.** The parent's phrasing, "audit_guard gates come
+later, only if a cell earns n>=30", reads as a live threshold; it is not. The only
+implemented construct is ``--min-n`` (default 5), and it is display-only — it renders
+a ``⚠`` marker and changes no output. Nothing happens when a cell crosses 30.
 
-**That sentence is wrong in a second, worse way here than upstream**: wifey *does* have
-a wired ``audit_guard`` since PR #183 (``analytics/warning_audit.py``, driven by ``make
-wifey-warning-value-audit``). It scores the W1-W8 signal warnings and has no connection
-to pundit cells — so "gates come later" reads as a forward reference to something that
-has since ARRIVED, inviting the conclusion that pundit cells are now covered. They are
-not; no code path joins the two.
+Wifey does have a wired ``audit_guard`` (``analytics/warning_audit.py``, driven by
+``make wifey-warning-value-audit``), but it scores the W1-W8 signal warnings and has
+no connection to pundit cells. Pundit cells are not covered by it; no code path joins
+the two.
 
 ``AUDIT_ELIGIBLE_N`` below does not restore the gate — deciding what a pundit prior
-should GATE is a research question, not a scoring one. It only makes the crossing
+should gate is a research question, not a scoring one. It only makes the crossing
 visible, so the decision arrives as a printed line rather than as silence.
 
 Parent spec: ``docs/superpowers/specs/2026-07-04-pundit-ledger-scorer-design.md``
@@ -59,11 +56,11 @@ not equity-specific:
 8. **Staleness is measured against the last closed session, not wall-clock now.**
    Otherwise every symbol reports STALE between the closing bell and the next open,
    which on a nightly cron is most of the time it runs.
-9. **The geometry guard covers the target leg, not just the stop** (2026-08-04, and the
-   one divergence here that is *not* equity-forced). The parent's ``_geometry_note``, from
+9. **The geometry guard covers the target leg, not just the stop** (the one
+   divergence here that is *not* equity-forced). The parent's ``_geometry_note``, from
    which this was ported, rejects only a wrong-sided stop. A wrong-sided **target** is the
    more dangerous of the two: it is already in profit at the fill, so the walk books an
-   instant WIN at ~0.00 R — a phantom statistic rather than a visible error. Both legs now
+   instant WIN at ~0.00 R — a phantom statistic rather than a visible error. Both legs
    route through the shared ``tools.x_route.check_level_order``. Since the parent was
    ported from the same code, it likely carries this latent defect too — worth raising on
    the next ``/sync-parent`` rather than assuming it was fixed upstream.
@@ -383,10 +380,10 @@ def load_ledger(path: Path) -> tuple[list[LedgerCall], list[str]]:
                 stop=str(obj.get("stop", "") or ""),
                 target=str(obj.get("target", "") or ""),
                 # The one guard here that fixes a live silent defect. A present
-                # but unrecognised horizon used to buy TWO wrong answers at
+                # but unrecognised horizon would buy two wrong answers at
                 # once — SCORE_TIMEFRAME's fallback (wrong bar timeframe) and
                 # SESSION_WINDOWS' (wrong window length) — with nothing
-                # raising. A MISSING one is still "unspecified": that is a real
+                # raising. A missing one is still "unspecified": that is a real
                 # horizon, not a violation, which is why this is not a copy of
                 # the direction guard (analytics/pundit_horizon.py explains).
                 horizon=normalize_horizon(obj.get("horizon")),
@@ -1072,7 +1069,7 @@ class CellStats:
         ``n`` and ``resolved`` describe the whole cell, and printing them
         adjacent invites reading them as one population.
 
-        Measured on THIS ledger 2026-08-12 (19 calls, 8 resolved):
+        Measured on this ledger 2026-08-12 (19 calls, 8 resolved):
         **WIN r-coverage 1/3 = 33%** against **LOSS 5/5 = 100%** — every loss
         carries an ``r``, a third of wins do. The censoring is severe enough to
         invert the headline: ``@fenggemeigu`` reads ``avg_r`` **-0.41** over

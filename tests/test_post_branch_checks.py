@@ -369,12 +369,13 @@ class TestBadAtxLines:
 
 
 class TestCheckNegativeClaims:
-    """The scope leg. This check had NO test, which is how it ran unscoped.
+    """The scope leg: it reports only claim lines the branch's diff can falsify.
 
-    It greps the tree for absence language and used to report every hit on
-    every branch — the same findings forever, regardless of the diff, while
-    the skill's own table described it as asking about what the branch just
-    added. Code and sentence disagreed and only the sentence was read.
+    It greps the tree for absence language and scopes the hits to the diff.
+    Unscoped, it would report every hit on every branch, the same findings
+    regardless of the diff, while the skill's own table describes it as asking
+    about what the branch just added. Code and sentence must agree, so the
+    scope is tested.
     """
 
     CLAIM = (
@@ -505,7 +506,7 @@ class TestNegativeClaimExempt:
         written for. This asserts each key still names something on a line that
         actually trips the regex.
 
-        ⚠ **Two key KINDS, and the guard has to cover both.** Most entries key on
+        There are two key kinds, and the guard has to cover both. Most entries key on
         a backticked token. A line naming no subject this tool can reach has no
         token to key on, so those key on the matched MARKER instead — and a guard
         that only understood tokens would have to be loosened to admit them,
@@ -651,13 +652,13 @@ class TestSensitiveTextScan:
 
 
 class TestHandoffSize:
-    """The leg measures the file against an EXTERNAL cap, not against itself.
+    """The leg measures the file against an external cap, not against itself.
 
-    It used to compare the handoff to a `Line count:` stamp the handoff carried
-    about itself — a number whose only purpose was to be checked, costing a
-    read / `wc -l` / edit / re-read cycle every run. And the stamp regex missing
-    returned `[]`, so deleting the stamp would have made the leg **vacuously
-    green forever** rather than red. A check that cannot fire is dismissal.
+    A `Line count:` stamp the handoff carried about itself would be a number
+    whose only purpose was to be checked, costing a read / `wc -l` / edit /
+    re-read cycle every run. A missing stamp regex returning `[]` would also make
+    the leg vacuously green forever rather than red. A check that cannot fire is
+    dismissal.
     """
 
     def test_oversized_handoff_fires(self) -> None:
@@ -667,7 +668,7 @@ class TestHandoffSize:
         assert "prune before adding" in found[0].detail
 
     def test_handoff_at_the_cap_warns_without_reading_as_over_it(self) -> None:
-        """#346: sitting AT the cap used to be silent, which invited shuffling."""
+        """#346: sitting at the cap warns, because staying silent there invites shuffling."""
         handoff = "\n".join(f"line {i}" for i in range(HANDOFF_MAX_LINES))
         found = _check_handoff_size(handoff)
         assert len(found) == 1
@@ -712,11 +713,11 @@ class TestHandoffSize:
 class TestHandoffLeg:
     """An absent handoff must read SKIPPED, never clean.
 
-    `handoff-size` used to be built as a plain `CheckResult(...)` while its two
-    siblings already skipped on the same input, so on a worktree — where the
-    handoff is gitignored and therefore absent — the sweep reported the leg
-    green. That is the parent's #699 defect mirrored: upstream fails hard-red
-    there, wifey failed silent-green, which is the worse direction.
+    A `handoff-size` built as a plain `CheckResult(...)` while its two siblings
+    skip on the same input would, on a worktree (where the handoff is gitignored
+    and therefore absent), report the leg green. That is the parent's #699 defect
+    mirrored: upstream fails hard-red there, wifey would fail silent-green, which
+    is the worse direction.
     """
 
     def test_absent_handoff_skips(self) -> None:
@@ -747,13 +748,13 @@ class TestHandoffLeg:
 
 
 class TestSensitiveTerms:
-    """The pre-flip gate (parent #658).
+    """The pre-flip gate (ported from parent #658).
 
-    Ported because the flip publishes the whole HISTORY, not `HEAD`: a
-    working-tree `git grep` agrees with every other review surface while deleted
-    blobs stay reachable. wifey's own 2026-08-19 measurement found identifiers on
-    three of four surfaces, commit MESSAGES among them — the surface no file edit
-    reaches — so the three legs are tested separately, as they fail separately.
+    The flip publishes the whole history, not `HEAD`: a working-tree `git grep`
+    agrees with every other review surface while deleted blobs stay reachable.
+    wifey's own 2026-08-19 measurement found identifiers on three of four
+    surfaces, commit messages among them (the surface no file edit reaches), so
+    the three legs are tested separately, as they fail separately.
     """
 
     TERM = "acmecorp"
@@ -847,7 +848,7 @@ class TestSensitiveTerms:
 class TestUncoveredSteps:
     """The sweep must not be mistakable for the walk (parent #697).
 
-    Upstream found BOTH sessions of one wave substituting the mechanical half,
+    Upstream found both sessions of one wave substituting the mechanical half,
     neither being careless, so the fix is reachability rather than another rule.
     """
 
@@ -897,7 +898,7 @@ class TestUncoveredSteps:
         The step list is noise at the one moment the operator is triaging under
         time pressure, and `--check` is a deliberate single-leg run.
 
-        ⚠ **`--exit-zero` is load-bearing, and `make preflight` is why.** The
+        `--exit-zero` is load-bearing, and `make preflight` is why. The
         `--text` leg reads the gitignored `.claude/sensitive-terms.txt`, which
         exists on a developer box and on NO clean clone, where the leg correctly
         reports `NOT CONFIGURED` and `main` returns 1. Asserting `== 0` therefore
@@ -918,7 +919,7 @@ class TestPlainAbsenceForms:
     signal-timer branch (#261): **8 of 8** claim lines that branch falsified went
     unreported, after 3 misses the run before.
 
-    The fixtures below are those eight lines VERBATIM. A synthetic sentence would
+    The fixtures below are those eight lines verbatim. A synthetic sentence would
     test the regex against the phrasing its author had in mind while widening it,
     which is the loop that produced the hole — the tree's own emphasis convention
     (``has **no daemon at all**``) is exactly what a hand-written fixture omits.
@@ -982,9 +983,9 @@ class TestPlainAbsenceForms:
 
 
 class TestDeployIsInTheAbsenceCorpus:
-    """⚠ **The path and the regex widening ship TOGETHER or neither ships.**
+    """The path and the regex widening ship together or neither ships.
 
-    Against the unwidened regex ``deploy/`` surfaced ZERO hits — this tree's
+    Against the unwidened regex ``deploy/`` surfaced zero hits — this tree's
     ``deploy/`` absence claims are all written in the plain form — so the path
     alone was free and worthless. Two of the eight claims #261 falsified sat
     there, out of reach at any regex, which is the half that made it worth doing.
@@ -1059,9 +1060,9 @@ class TestClaimSubjectScoping:
     and widening the regex to the plain form took that population from **0 lines
     to 11**, which would have made the leg permanently unclean.
 
-    ⚠ **This is not the token list #250 widened.** That knob scopes claim lines
-    IN wholesale; this one gives a previously-unscopable line a way to be scoped
-    OUT, so it can only ever REMOVE a report.
+    This is not the token list #250 widened. That knob scopes claim lines in
+    wholesale; this one gives an unscopable line a way to be scoped out, so it
+    can only ever remove a report.
     """
 
     @staticmethod
@@ -1139,9 +1140,9 @@ class TestTheLegIsCleanOnAnUNRELATEDBranch:
     no matter what the branch did: every one is either scopable, or exempt with a
     reason inline.
 
-    ⚠ This reads the working tree on purpose. The count is a property of the
-    DOCS, not of the code, so a future doc edit is exactly what should fail here
-    — and the fix is then to scope or exempt that one sentence, never to widen
+    This reads the working tree on purpose. The count is a property of the
+    docs, not of the code, so a future doc edit is exactly what should fail here,
+    and the fix is then to scope or exempt that one sentence, never to widen
     ``_SUBJECT_STOP`` until the number goes away.
     """
 
@@ -1154,11 +1155,11 @@ class TestTheLegIsCleanOnAnUNRELATEDBranch:
 
 
 class TestCorpusQueryReachesEveryLine:
-    """⚠ The corpus query is the one part of this leg no test could see.
+    """The corpus query is the one part of this leg a mocked runner cannot see.
 
-    It read ``git grep -nI -e "x"`` from the #218 extraction until 2026-08-26.
-    That is not "every line" — it is *every line containing the letter x*, and
-    it silently cut the declared corpus to **195 of CLAUDE.md's 879 non-blank
+    The query ``git grep -nI -e "x"`` (the #218 extraction's form, used until
+    2026-08-26) is not "every line": it is *every line containing the letter x*,
+    and it silently cut the declared corpus to **195 of CLAUDE.md's 879 non-blank
     lines (22%), and 1,892 of 12,277 tree-wide (15%)**. **46 of the 69
     claim-shaped lines then in the corpus carry no ``x`` at all**,
     ``Makefile``'s "The 505-member research universe has NO scheduled refresher"
@@ -1167,7 +1168,7 @@ class TestCorpusQueryReachesEveryLine:
     Every other test in this file injects a fake runner, which is exactly why
     the defect survived: the leg was measured, tuned and documented against 15%
     of what its own docstring claimed to read, and the suite stayed green
-    throughout. ⚠ **A mocked boundary is not an exercised boundary.**
+    throughout. A mocked boundary is not an exercised boundary.
 
     The two halves fail differently and are asserted separately: the ARGV, where
     a regression is a one-character edit, and the BEHAVIOUR, where the control
@@ -1193,7 +1194,7 @@ class TestCorpusQueryReachesEveryLine:
     def test_a_claim_line_carrying_no_letter_x_is_reachable(self) -> None:
         """Positive control: the exact line the old pattern could not see.
 
-        ⚠ The control is void if the fixture ever gains an ``x``, so that is
+        The control is void if the fixture ever gains an ``x``, so that is
         asserted first rather than assumed.
         """
         text = "## The 505-member research universe has NO scheduled refresher"
@@ -1212,7 +1213,7 @@ class TestCorpusQueryReachesEveryLine:
             diff_names="deploy/systemd/user/wifey-universe-sync.timer",
         )
         # Scoped on `universe`, taken from the subject to the LEFT of "has no"
-        # and matched against the timer this branch added. It lands in the
+        # and matched against the timer the diff adds. It lands in the
         # re-read note rather than the findings list because the line carries no
         # backticked token, so the hit is inferred from prose rather than stated.
         assert soft == ["Makefile:588"], (findings, soft)
@@ -1236,11 +1237,11 @@ class TestCorpusQueryReachesEveryLine:
 class TestCheckIsRepeatable:
     """`--check` runs EVERY name it is given, and refuses one it does not know.
 
-    It was declared without ``action="append"`` until 2026-09-06 while the
-    ``--text`` flag on the next line had it, so ``--check memory-cap --check
-    handoff-size`` ran ``handoff-size`` alone and printed a complete-looking
-    clean sweep. That is emptiness reading as coverage on exactly the two legs
-    `/post-branch` phase 1 tells you to re-read after phase 6.
+    Declared without ``action="append"`` (while the ``--text`` flag on the next
+    line had it), ``--check memory-cap --check handoff-size`` would run
+    ``handoff-size`` alone and print a complete-looking clean sweep. That is
+    emptiness reading as coverage on exactly the two legs `/post-branch` phase 1
+    tells you to re-read after phase 6.
 
     A positive control is what makes this falsifiable rather than a re-statement
     of the implementation: the single-name run must NOT print the second leg, or

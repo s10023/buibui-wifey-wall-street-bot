@@ -200,7 +200,7 @@ class BacktestResult:
     def long_pnl_sd(self) -> float | None:
         """Sample sd of long `pnl_r`. None below 2 trades (no dispersion estimate).
 
-        Added 2026-08-07 for the EV gate's significance test: the gate blocks only
+        Feeds the EV gate's significance test: the gate blocks only
         when a negative `avg_r` is distinguishable from zero, which needs the
         dispersion of the same population `long_avg_r` averages over. Mirrored on
         `BacktestSnapshot` (cached path) as a stored column, since a snapshot has
@@ -680,9 +680,9 @@ def _apply_adr_bias_gate_to_signals(
     Mirrors the live caller pattern: split signals by ``_is_adr_exempt(strategy,
     direction)``, apply the live ADR filter on the non-exempt slice only, then
     concat back. Wifey has only a strategy-wide ``adr_exempt`` flag (per-
-    direction overrides from parent's PR #380 were not ported), so the two
-    sides resolve to the same value — but the split-and-concat scaffold is
-    preserved for forward-compatibility when those fields land.
+    direction overrides from parent PR #380 are not ported), so the two
+    sides resolve to the same value; the split-and-concat scaffold is kept so
+    per-direction fields can slot in.
 
     The engine runs per-strategy, so exemption only varies by direction here —
     a single split into long/short suffices, no per-row lookup needed.
@@ -1035,8 +1035,8 @@ def run_backtest(
                     sl_price = max(sl_price, entry_price + min_dist)
             # F9: ATR as volatility-adaptive minimum on structural SLs. Widens
             # tight structural stops on volatile candles; wider structural SLs
-            # still win. Opt-in via atr_sl_floor — default off preserves prior
-            # behaviour (atr_sl_multiplier is otherwise dead in this branch).
+            # still win. Opt-in via atr_sl_floor; when off, atr_sl_multiplier has no
+            # effect in this branch.
             if atr_sl_floor and atr_sl_multiplier is not None:
                 atr = _compute_atr14(highs_np, lows_np, closes_np, sig_idx)
                 if atr is not None:

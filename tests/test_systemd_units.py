@@ -1,13 +1,13 @@
 """Structural checks on `deploy/systemd/user/*.{service,timer}`.
 
-`wifey-backup.service` shipped with `OnFailure=` in `[Service]` from its
-introduction until 2026-08-15. systemd parses that as an unknown key, logs
-"ignoring" at load, and starts the unit anyway — so the failure alert was never
-armed, which is the exact thing it exists to prevent. `systemctl start` cannot
-catch it, because the unit genuinely works.
+`OnFailure=` placed in `[Service]` (as `wifey-backup.service` had it until
+2026-08-15) is parsed by systemd as an unknown key: it logs "ignoring" at load
+and starts the unit anyway, so the failure alert is never armed, which is the
+exact thing it exists to prevent. `systemctl start` cannot catch it, because the
+unit genuinely works.
 
-`deploy/README.md` had said "verify a unit parses before trusting it" the whole
-time. Prose did not enforce it, so this does. It deliberately re-implements the
+`deploy/README.md` says "verify a unit parses before trusting it". Prose does
+not enforce that, so this test does. It deliberately re-implements the
 section rules rather than shelling out to `systemd-analyze`: that binary is not
 guaranteed in CI, and a test that skips when its tool is missing is green
 without ever having run — the failure mode this repo already calls the
@@ -154,13 +154,13 @@ def test_referenced_repo_paths_exist(path: Path) -> None:
     means "tolerate absence" and is skipped, which is why `.env` — gitignored
     and absent on a fresh clone — does not fail this.
 
-    EVERY token is checked, not just the executable. Under a wrapper form like
+    Every token is checked, not just the executable. Under a wrapper form like
     `ExecStart=.../run-job.sh <label> <VAR> -- .../<script>` the script doing
     the real work sits in the *arguments*, so a first-token-only check would
     miss a rename of exactly the thing the unit exists to run. wifey's units
     call their scripts directly today, which is precisely when this kind of
     scope quietly narrows and nobody notices. Ported from the crypto parent,
-    which uses the wrapper form (2026-08-15).
+    which uses the wrapper form.
 
     Specifiers like `%i` and `%N` are not absolute paths, so they fall out of
     the prefix test without needing a special case.

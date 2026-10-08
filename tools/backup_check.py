@@ -2,17 +2,16 @@
 
 This is the **observed-state probe** that `tools/cadence_check.py`'s exclusion note
 points at. `make backup` fails that tool's inclusion rule (4) — a scheduled
-`wifey-backup.timer` clears it, so no human action does — but its real risk was
-never "a human forgot". It is **the timer stopping silently**, and a mark cannot
+`wifey-backup.timer` clears it, so no human action does — but its real risk is
+not "a human forgot". It is **the timer stopping silently**, and a mark cannot
 see that.
 
-⚠ **A green timer is not a current backup**, and the reason changed once already.
-Until 2026-08-19 only the off-site leg was scheduled, so it mirrored a
-`~/backups/wifey` that only a manual `make backup` filled — it logged
-``off-site backup OK (4 verified snapshot(s))`` while faithfully copying a tree
-frozen two days earlier, and **the log line is byte-identical either way**. Both
-legs are scheduled now, so that specific hole is closed; the residual one is
-narrower and is what this file measures. Alerting is failure-only (`OnFailure=`),
+**A green timer is not a current backup.** With only the off-site leg scheduled
+(the state until 2026-08-19), it mirrors a `~/backups/wifey` that only a manual
+`make backup` fills: it logs ``off-site backup OK (4 verified snapshot(s))`` while
+faithfully copying a tree frozen two days earlier, and **the log line is
+byte-identical either way**. Both legs are scheduled, so that specific hole is
+closed; the residual one is narrower and is what this file measures. Alerting is failure-only (`OnFailure=`),
 which makes the channel unfalsifiable: a timer with nothing to report and a timer
 that stopped firing look the same from the Telegram side.
 
@@ -21,10 +20,10 @@ to the step it performs.** For a green light to mean "the data is current",
 something has to check the *input's* age rather than the copy's exit code. That is
 this probe's whole job — it reads the tree the off-site leg copies FROM.
 
-⚠ **The two tiers are DIFFERENT ARTIFACTS and are graded separately.** `daily/`
+**The two tiers are different artifacts and are graded separately.** `daily/`
 holds verified snapshots, each carrying ``MANIFEST.json``; `weekly/` holds a
 format-independent **parquet export** and carries no manifest at all. Grading them
-together — the first draft did — reports every weekly dir as a malformed snapshot,
+together reports every weekly dir as a malformed snapshot,
 so the banner ships a permanent warning about a directory that is exactly as the
 backup script intended. **A check that is never clean stops being read**, which is
 why the daily tier alone decides the verdict and the archive is reported beside it.
@@ -50,19 +49,19 @@ mistake reports a healthy backup for a machine that has none.
 Collapsing them prints the milder of the two, and they want different actions —
 one is "the timer broke", the other is "this machine never backed up at all".
 
-**4. It is ADVISORY and must never gate CI**, for the same structural reason
+**4. It is advisory and must never gate CI**, for the same structural reason
 `cadence_check` is: ``$WIFEY_BACKUP_ROOT`` is machine-local single-copy state that
 no clone has, so a CI run would report a missing backup forever. A check that can
 only be red in CI is worse than no check. ``--exit-nonzero`` opts in, for a human
 who wants a shell condition.
 
-⚠ **Known hole, named rather than papered over: this measures the LOCAL tree only.**
+**Known hole, named rather than papered over: this measures the local tree only.**
 It cannot see whether the off-site mirror actually received it — that needs a
 network `rclone` call, and a probe that fails when the laptop is offline would
 report a backup problem for a connectivity one. The off-site leg's own success plus
 a fresh source here is the two-part answer; neither half is sufficient alone.
 
-⚠ **It also does not REFUSE anything.** Wiring a staleness refusal into
+**It also does not refuse anything.** Wiring a staleness refusal into
 `deploy/backup-offsite.sh` is the second candidate fix in `deploy/README.md` and
 remains a deliberate user call, because a guard that costs you the backup is worse
 than the gap it closes.

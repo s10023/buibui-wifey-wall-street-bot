@@ -545,12 +545,12 @@ _BT_PARAMS: dict[str, Any] = {
     "day_filter": "off",
     "sweep_id": None,
     "origin": "sweep",
-    # Required since 2026-08-11: the EXECUTED threshold, not the declared one.
+    # Required: the executed threshold, not the declared one.
     # Note mypy cannot enforce this through a `**dict` splat — the 12 call
     # sites below type-checked clean and failed at runtime.
     "adr_suppress_threshold": None,
-    # Required since 2026-08-26, and unenforceable here for the same reason —
-    # the EXECUTED live-parity gate set, not a config's declared block.
+    # Required, and unenforceable here for the same reason —
+    # the executed live-parity gate set, not a config's declared block.
     "live_parity": None,
 }
 
@@ -597,9 +597,9 @@ class TestUpsertBacktestRun:
     def test_tail_columns_land_in_correct_slots(
         self, conn: duckdb.DuckDBPyConnection
     ) -> None:
-        # Regression: the SELECT column order in upsert_backtest_run used to
-        # be misaligned with the table layout starting at long_total_r, so
-        # adr_suppress_threshold ended up holding recovery_factor values and
+        # Regression: a SELECT column order in upsert_backtest_run misaligned
+        # with the table layout starting at long_total_r would leave
+        # adr_suppress_threshold holding recovery_factor values and
         # vice versa. Assert each named column reads back what we passed.
         result = _FakeResult("BTCUSDT", "4h", "bos")
         upsert_backtest_run(
@@ -877,7 +877,7 @@ class TestBacktestCache:
 
         Without this the gate silently degrades to abstain on every cache hit —
         which is the normal steady-state path, so the gate would stop biting
-        without any error. Added with the sd columns, 2026-08-07.
+        without any error.
         """
         result = _make_result()
         put_backtest_cache(conn, "sd_key", "run_sd", 100_000, result)

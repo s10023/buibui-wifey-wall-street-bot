@@ -1,12 +1,12 @@
 """Guard: no contact address or credential literal in tracked source.
 
-This repo went **public** on 2026-08-06. Everything `git ls-files` returns is
+This repo is public (flipped 2026-08-06). Everything `git ls-files` returns is
 world-readable, and git history cannot be un-published — so the only durable
 control is keeping such values out of a commit in the first place.
 
 The concrete case this encodes: `utils/edgar_client.py` carried a work email as
-a module-level `_UA` literal from PR #104. It was correct-by-context while the
-repo was private and became a PII disclosure on the flip, with nothing in CI to
+a module-level `_UA` literal from PR #104. That is correct-by-context while the
+repo is private and a PII disclosure once it is public, with nothing in CI to
 notice. SEC fair-access genuinely requires a contact in the User-Agent, so the
 fix is not "remove the contact" but "read it from the environment"
 (`EDGAR_CONTACT_EMAIL`, `.env` is gitignored).

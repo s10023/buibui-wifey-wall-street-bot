@@ -5,7 +5,7 @@ silent no-op on Windows: ``EXEMPT_CLASSES`` is keyed with forward slashes, while
 ``str(path.relative_to(REPO_ROOT))`` renders backslashes there. Every lookup
 missed, so all four exempt classes reported as findings forever.
 
-⚠ **The bug is PLATFORM-DEPENDENT, which is why a green suite hid it.** On Linux
+**The bug is platform-dependent, which is why a green suite hid it.** On Linux
 ``str()`` and ``as_posix()`` agree, so the defect could only ever appear on the
 host that had no test running against it. ``test_exemption_keys_are_posix``
 therefore pins the *convention* rather than the symptom: it fails on either OS if
@@ -23,13 +23,13 @@ class TestExemptionsAreHonoured:
     """The decisive control: an exempt class must not surface as a finding."""
 
     def test_every_exempt_class_still_exists_in_the_tree(self) -> None:
-        """The perturbation must ARRIVE, or the assertion below is vacuous.
+        """The perturbation must arrive, or the assertion below is vacuous.
 
-        ⚠ Measured: with the separator bug reintroduced, a bare
-        ``reported & set(EXEMPT_CLASSES)`` assertion still PASSES — the reported
+        Measured: with the separator bug reintroduced, a bare
+        ``reported & set(EXEMPT_CLASSES)`` assertion still passes — the reported
         keys carry backslashes, so the intersection is empty whether the lookup
-        works or misses entirely. An exemption naming a class that no longer
-        exists would pass it the same way.
+        works or misses entirely. An exemption naming a class that does not
+        exist would pass it the same way.
         """
         for key in EXEMPT_CLASSES:
             rel, cls = key.split("::")

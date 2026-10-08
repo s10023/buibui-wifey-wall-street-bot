@@ -267,7 +267,7 @@ def test_corpus_best_without_sd_never_reads_as_a_cleared_bar(
     """`--corpus-best` alone cannot be compared, and must not print a bare pass.
 
     Parent #692 (ST76). The comparison needs `--sd` to convert the required
-    Sharpe into effect units; without it this branch used to fall through to the
+    Sharpe into effect units; without it the comparison would fall through to the
     same bare ``VERDICT REACHABLE`` a genuine pass prints. `/research-distil`'s
     G3 gate mandates running this tool, so *did not compare* read as *passed*.
     """

@@ -26,11 +26,11 @@ def test_position_is_causal_no_lookahead() -> None:
     # Perturb a MIDDLE bar: leverage at index k is sized from info <= k-1, so
     # close[k] must not affect leverage[:k+1].
     #
-    # This bumped the LAST bar until 2026-08-13, which made the test VACUOUS:
-    # with the last bar bumped there is no k+1 to observe, so the assertion could
-    # only ever say "earlier values are unchanged" — and that is equally true when
-    # the causal shift is absent. Measured: deleting `forecast = forecast.shift(1)`
-    # in analytics/forecast/book.py left the old assertion PASSING.
+    # Bumping the last bar would make the test vacuous: with the last bar bumped
+    # there is no k+1 to observe, so the assertion could only ever say "earlier
+    # values are unchanged", which is equally true when the causal shift is
+    # absent. Measured (2026-08-13): deleting `forecast = forecast.shift(1)` in
+    # analytics/forecast/book.py left that assertion passing.
     close = _close()
     cfg = ForecastConfig()
     funding = pd.Series(0.0, index=close.index)

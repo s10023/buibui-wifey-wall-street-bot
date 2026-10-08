@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Report test classes that NAME a unit but never CALL it.
+"""Report test classes that name a unit but never call it.
 
 Motivation (#150). ``tests/test_backtest_filter.py::TestEvGate`` held five tests
 that never invoked the EV gate: the gate was ``def _passes_ev_gate`` nested
@@ -10,7 +10,7 @@ another reduced to ``assert None is None``. All five passed against any
 implementation. ``/sanity-check`` and ``/post-branch`` passed over this
 indefinitely: the file exists, the names are apt, and the suite is green.
 
-**Two obvious detectors do not work**, both tried and discarded:
+**Two obvious detectors do not work:**
 
 * *"Flag classes that never reference an importable symbol."* Misses this case
   entirely — those tests build a real ``BacktestFilterConfig`` and a real
@@ -167,10 +167,10 @@ def audit() -> list[Finding]:
     findings: list[Finding] = []
 
     for path in sorted(TESTS_DIR.rglob("test_*.py")):
-        # as_posix(), NEVER str(): EXEMPT_CLASSES is keyed with forward slashes,
-        # and str() renders a Windows path with backslashes -- so every exemption
-        # silently missed on Windows and the four entries below reported as
-        # findings forever. A leg that can never be clean trains dismissal.
+        # as_posix(), never str(): EXEMPT_CLASSES is keyed with forward slashes,
+        # and str() renders a Windows path with backslashes, so every exemption
+        # would silently miss on Windows and the four entries below would report
+        # as findings forever. A leg that can never be clean trains dismissal.
         rel = path.relative_to(REPO_ROOT).as_posix()
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"))

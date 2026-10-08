@@ -664,9 +664,10 @@ class TestComputeDirectionalRatings:
 # `backtest_runs` is a permanent historical record and
 # `upsert_confidence_ratings` only inserts-or-replaces, so without both a read
 # filter and a delete a rating outlives the declaration that produced it.
-# Found 2026-08-06: `fib_golden_zone × 4h` still showed 3★ +0.4688 — the
-# second-highest-rated cell in the `signal_watch` table — 2.5 months after the
-# strategy left the config, refreshed with a new timestamp on every recalibrate.
+# Measured 2026-08-06 before the filter: `fib_golden_zone × 4h` still showed
+# 3★ +0.4688 (the second-highest-rated cell in the `signal_watch` table) 2.5
+# months after the strategy left the config, refreshed with a new timestamp on
+# every recalibrate.
 # ---------------------------------------------------------------------------
 
 
@@ -687,9 +688,9 @@ class TestDeclaredCellFiltering:
     def test_one_timeframe_of_a_declared_strategy_can_be_undeclared(self) -> None:
         """`strategy_timeframes` restricts a live strategy to a subset of TFs.
 
-        This is the shape the sweep ignores: `bos` stayed in `signal_watch`
-        while #143 retired it from 4h, so the sweep kept writing 4h rows and
-        recalibrate kept rating a cell the daemon no longer scans.
+        This is the shape the sweep ignores: `bos` stays in `signal_watch`
+        while #143 retired it from 4h, so the sweep keeps writing 4h rows and
+        recalibrate would keep rating a cell the daemon no longer scans.
         """
         conn = self._make_conn()
         _seed_backtest_runs(conn)
@@ -832,10 +833,10 @@ class TestPruneUndeclaredConfidenceRatings:
 #
 # The live EV gate writes one `backtest_runs` row per direction-leg it
 # evaluates, with no `sweep_id`. Deduplication is "latest per (strategy,
-# timeframe, symbol)" with no notion of provenance, so before this filter a
-# live row superseded the sweep row for that symbol — a different measurement
+# timeframe, symbol)" with no notion of provenance, so without this filter a
+# live row supersedes the sweep row for that symbol — a different measurement
 # (one strategy, no live-parity params, no conflict resolver, its own window)
-# quietly replacing the competed one. Measured 2026-08-06: 42 of 316 rating
+# quietly replacing the competed one. Measured 2026-08-06 before the filter: 42 of 316 rating
 # inputs on `signal_watch`, 15 of 22 declared cells, 5 of them across zero.
 # ---------------------------------------------------------------------------
 
@@ -1058,7 +1059,7 @@ class TestCrossSymbolAggregationIsTradeWeighted:
         unreachable today. Pinned anyway because the alternative — counting n in
         the denominator with nothing in the numerator — silently invents n
         trades at R=0, which is the same bias-toward-a-fiction this whole fix
-        removes. The previous test cannot catch it: there the absent direction's
+        removes. The preceding test cannot catch it: there the absent direction's
         n is 0, so an unmasked denominator adds nothing.
         """
         conn = self._make_conn()

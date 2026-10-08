@@ -38,7 +38,7 @@ def atr_window_bars(bars_per_day: float) -> tuple[int, int]:
     floor was calibrated on intraday counts, where the window is always far
     larger; on a coarse timeframe it can EXCEED the window (`1wk`: floor 50 vs
     an 18-bar window), which `pandas.rolling` rejects outright — hence the
-    clamp. No previously-supported timeframe moves: 4h/1h/1d all keep 50.
+    clamp. The 4h/1h/1d timeframes all keep 50.
     """
     history_window = int(bars_per_day * _ATR_HISTORY_DAYS)
     min_history = min(max(50, int(bars_per_day * _MIN_HISTORY_DAYS)), history_window)

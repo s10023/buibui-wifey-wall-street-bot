@@ -111,17 +111,17 @@ class TestVerdict:
 
 
 class TestSkippedIsNotBilling:
-    """`steps=0` is billing only when the job also FAILED (parent #755).
+    """`steps=0` is billing only when the job also failed (parent #755).
 
     A job GitHub never created settles SKIPPED declaring nothing. This repo wires
     that shape directly: `.github/workflows/lint.yaml` gives `Regression tests`
     `needs: lint-typecheck-test`, so one timed-out test leaves it SKIPPED at zero
-    steps. Reading that as billing told the reader to flip a private repo public
+    steps. Reading that as billing would tell the reader to flip a private repo public
     in order to debug a test failure.
 
-    CLAUDE.md already named the discriminator ("a path-filtered skip reports
-    SKIPPED, an exhausted allowance reports FAILURE, both at steps=0"); the code
-    branched on steps before ever looking at the conclusion.
+    CLAUDE.md names the discriminator ("a path-filtered skip reports
+    SKIPPED, an exhausted allowance reports FAILURE, both at steps=0"), so the
+    code must look at the conclusion before branching on steps.
     """
 
     def test_a_dependency_skip_is_not_billing(self) -> None:
@@ -468,7 +468,7 @@ class TestGhAuthFallback:
 class TestSupersededRun:
     """Parent #880: a run cancelled by a newer push on the gated branch is not a failure.
 
-    The parent's 2026-10-01 shape: the gate pinned one SHA, two merges moved main,
+    The parent's observed shape (2026-10-01): the gate pinned one SHA, two merges moved main,
     GitHub cancelled the pinned run while it was still PENDING (so it created no
     jobs at all), and the run on the new head was green. This repo's workflows
     share the same per-ref concurrency groups, so the shape applies here.

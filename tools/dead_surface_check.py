@@ -4,7 +4,7 @@ The recurring defect class in this repo is a **declared surface that nothing
 executes and nothing asserts about**. Emptiness is indistinguishable from
 coverage: `signal_watch.toml` scanned `1wk` under `tue_thu` for three months
 while `backtest_runs` held 338 rows for it — the surface *looked* covered, and
-every one of those rows had zero closed trades (#139).
+every one of those rows had zero closed trades.
 
 A config declares a cell for every (strategy × timeframe) pair it will scan.
 That set and the set of cells the system carries state for should be the same
@@ -17,10 +17,10 @@ the system cannot honour, costing detector work every scan cycle and returning
 nothing.
 
 **Orphaned ratings** — rated but undeclared, the exact inverse. `recalibrate`
-rebuilds `confidence_ratings` from historical `backtest_runs` and had no notion
+rebuilds `confidence_ratings` from historical `backtest_runs` with no notion
 of what the config currently declares, while `upsert_confidence_ratings` only
-ever inserts-or-replaces. A cell dropped from a config therefore kept its stars
-and collected a *fresh timestamp on a stale value* on every refresh. Found
+ever inserts-or-replaces. A cell dropped from a config therefore keeps its stars
+and collects a *fresh timestamp on a stale value* on every refresh. Found
 2026-08-06: `fib_golden_zone × 4h` sat at 3★ +0.4688 — the second-highest-rated
 cell in the `signal_watch` table — 2.5 months after the strategy was removed.
 Ratings are a displayed surface (Backtest UI stars, the Telegram star line) and
@@ -35,8 +35,8 @@ while the other config still declares it. Both are orphans *for that config* —
 that daemon will never scan the cell — but the fix differs: `declared by another
 config` is a rating filed under the wrong day filter, whereas `undeclared
 anywhere` means nothing scans it at all. The tier only labels a finding; it never
-suppresses one. Ported from the sister repo's PR #608, minus its direction-aware
-half: that exists upstream because all three of its configs carry
+suppresses one. The sister repo's check has a direction-aware half, omitted
+here: it exists upstream because all three of its configs carry
 `strategy_timeframes_long` / `_short` narrowing, and this repo declares no such
 key, so `declared_cells` is direction-agnostic here and a direction-aware check
 would report exactly the same set.
@@ -89,17 +89,17 @@ DEFAULT_CONFIGS = (
 # Keyed (day_filter, strategy, timeframe) because a cell can be dead under one
 # day filter and healthy under another.
 #
-# EMPTY as of 2026-08-06 — every declared cell in both configs now produces
-# signals. The five original entries were resolved, and the diagnosis recorded
-# here for three of them was WRONG, which is worth keeping as a caution:
+# Empty: every declared cell in both configs produces signals. The five
+# original entries were resolved, and the diagnosis first recorded for three of
+# them was wrong, which is worth keeping as a caution:
 #
 #   doji × {1d, 1wk}  — annotated "near-inert everywhere ... worth a detector
 #       review". The detector was fine: it fires 1,247 times on 1d across the 13
 #       live symbols. `volume_suppress` in conjunction with the ADR gate was
 #       discarding ~100% of its output. Removing that flag revived all three
 #       cells. See docs/audits/2026-08-06-adr-volume-gate-conjunction.md.
-#   {eqh_eql, ema} × 1wk — this one held up: genuine bar scarcity under BOTH day
-#       filters, so both were dropped from signal_watch_weekdays.toml.
+#   {eqh_eql, ema} × 1wk — this one held up: genuine bar scarcity under both day
+#       filters, so both are not declared in signal_watch_weekdays.toml.
 #
 # The caution: a zero-signal cell looks identical whatever zeroed it, so the
 # reason recorded beside an entry is a hypothesis until it is traced. This check
@@ -127,7 +127,7 @@ class DeadCell:
 
 @dataclass(frozen=True)
 class OrphanRating:
-    """A `confidence_ratings` row for a cell its own config no longer declares."""
+    """A `confidence_ratings` row for a cell its own config does not declare."""
 
     config: str
     strategy: str

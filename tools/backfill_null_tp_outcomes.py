@@ -1,9 +1,9 @@
 """Retroactively reconstruct SL/TP for NULL-tp `signal_alert_outcomes` rows.
 
-Before the forward fix (specs/2026-06-01-outcome-ledger-sl-tp-fallback-design.md),
-the live outcome-ledger writer persisted NULL `sl_price`/`tp_price` whenever an
-event carried no valid structural SL — leaving ~89% of fired alerts unscoreable
-forever. The structural SL itself was never stored, so it is unrecoverable; this
+Rows written before the forward fix (specs/2026-06-01-outcome-ledger-sl-tp-fallback-design.md)
+carry NULL `sl_price`/`tp_price`: the live outcome-ledger writer persisted NULL
+whenever an event had no valid structural SL, leaving ~89% of fired alerts
+unscoreable. The structural SL itself was never stored, so it is unrecoverable; this
 tool reconstructs the *pct fallback* SL/TP (the same one the forward fix and the
 alert formatter use) from the stored `entry_price` + the per-(strategy, symbol,
 tf, direction) `eff_sl_pct`/`eff_tp_r` resolved from a live config TOML, then
@@ -11,7 +11,7 @@ lets the existing forward-walk resolver (`backfill_outcomes`) score them.
 
 Read-only by default — prints counts + a sample. Pass ``--apply`` to write the
 reconstructed SL/TP and resolve outcomes. Idempotent: once a row carries a
-tp_price it is no longer a NULL candidate.
+tp_price it is not a NULL candidate.
 
 Reconstructed rows always use the pct fallback, so a row whose original event
 *did* have a valid structural SL will get a slightly different R than the alert

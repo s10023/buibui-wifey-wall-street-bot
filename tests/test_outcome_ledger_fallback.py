@@ -242,7 +242,7 @@ class TestWriterNeverNull:
             reason="test",
             open_time=_TS,
             price=100.0,
-            sl_price=0.0,  # no structural SL — previously wrote NULL
+            sl_price=0.0,  # no structural SL — must not write NULL
         )
         row = _run_cycle_with_event(event, tmp_path)
         assert row["sl_price"] is not None

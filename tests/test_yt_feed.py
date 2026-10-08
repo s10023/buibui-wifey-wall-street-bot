@@ -528,7 +528,7 @@ class TestBackfillChannel:
         )
         assert [c.video_id for c in result.candidates] == ["aaaaaaaaaa1"]
         assert result.excluded["below_floor"] == 1  # "older than --since" bucket
-        # page1's last item (2026-07-30) is newer than since, so page2 WAS fetched;
+        # page1's last item (2026-07-30) is newer than since, so page2 was fetched;
         # its item then landed below since. Now verify early-stop: with since after
         # page1's last item, page2 must never be fetched.
         get2 = FakeGet(self._pages())
@@ -1142,10 +1142,10 @@ class TestMainPoll:
 class TestDashLeadingVideoIds:
     """`-mx3UwwJ5P4` is a valid YouTube id and argparse reads it as a flag.
 
-    ⚠ This is the one that matters silently: `mark` is the ONLY writer of
+    This is the one that matters silently: `mark` is the only writer of
     consumption state, so an id argparse swallows is never recorded and the video
-    re-presents forever with no other symptom. Under the old `nargs="*"` these
-    assertions fail — verified by mutation, not assumed.
+    re-presents forever with no other symptom. With `nargs="*"` these
+    assertions fail (verified by mutation, not assumed).
     """
 
     DASH_ID = "-mx3UwwJ5P4"
@@ -1223,7 +1223,7 @@ class TestExampleConfig:
     def test_example_config_parses(self) -> None:
         cfg = load_feed_config(Path("config/youtube_channels.toml.example"))
         assert cfg.cold_start_days == 14
-        # Re-pointed from the parent's "Benjamin Cowen": this is an EQUITIES repo and
+        # The parent's default is "Benjamin Cowen"; this is an equities repo and
         # a crypto channel belongs in the moon parent's follow list. Resolved live
         # 2026-08-12 via `yt_feed.py resolve @fenggemeigu`.
         assert cfg.channels[0].name == "美股峰哥"
@@ -1263,7 +1263,7 @@ class TestChannelHint:
     recap block routed to Stream B on 2026-08-03. `route_target`'s `retrospective`
     drop is setup-only by design, so nothing in code caught it; the rule lived only
     in an operator's head. These tests pin the lookup so it cannot regress the way
-    the /ingest-video attribution filter did (diagnosed round 1, repeated round 7).
+    the /ingest-video attribution filter did (twice).
     """
 
     def _cfg(self) -> FeedConfig:

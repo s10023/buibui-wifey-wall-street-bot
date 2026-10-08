@@ -36,9 +36,9 @@ from analytics.research_guards import (
 # ``research_guards.gate.GATE_DSR``'s, two links agreeing by coincidence with
 # nothing calling the other -- the defect class CLAUDE.md names as "a gate is
 # identified by its full leg set rather than by the constant that carries the
-# name". Ported from parent #776, whose own fix closed a THIRD site;
-# ⚠ wifey has TWO, because ``recalibrate_lib`` carries no such literal here --
-# do not quote the parent's count. The value is unchanged, so no verdict moves.
+# name". The parent repo's equivalent fix closed three sites; wifey has two,
+# because ``recalibrate_lib`` carries no such literal here, so do not quote the
+# parent's count.
 DSR_THRESHOLD = GATE_DSR
 PBO_THRESHOLD = 0.5
 MINTRL_CONFIDENCE = 0.95

@@ -210,7 +210,7 @@ CELLS_TASK_A: list[tuple[str, str, str, float, str]] = [
 # inside_bar audit — full 6-cell directional sweep (3 TFs × 2 day_filters) on
 # the 13-sym cohort. Retires the stale crypto-era directional override
 # (tp_r_long=4.0 / tp_r_short=2.0 in strategy_params.toml — derived from BTC 1h
-# / SOL 1h, 2026-05-14 fork era) that currently leaks into 3 of 6 production
+# / SOL 1h, 2026-05-14 fork era) that leaks into 3 of 6 production
 # cells (1d tue_thu, 1wk tue_thu, 1wk weekdays — no per-TF combined commit yet).
 # Also re-validates the prior single/4-sym commits on the 13-sym cohort:
 #   - tp_r_4h=3.5 (both configs) was T-A 4-sym "no_edge confirmed" at n=68
@@ -249,7 +249,7 @@ CELLS_INSIDE_BAR: list[tuple[str, str, str, float, str]] = [
 # pin_bar audit — full 6-cell directional sweep (3 TFs × 2 day_filters) on the
 # 13-sym cohort. Retires the stale crypto-era directional override
 # (tp_r_long=5.0 / tp_r_short=3.0 in strategy_params.toml — ETH 1h+15m / SOL 1h
-# derived, 2026-05-14 fork era) that currently leaks into 2 of 6 production
+# derived, 2026-05-14 fork era) that leaks into 2 of 6 production
 # cells (1wk tue_thu, 1wk weekdays — no per-TF combined commit). The 4 of 6
 # cells with per-TF combined (`tp_r_4h` / `tp_r_1d` on both signal_watch
 # TOMLs) already shadow the stale override, but those per-TF values are
@@ -286,13 +286,13 @@ CELLS_PIN_BAR: list[tuple[str, str, str, float, str]] = [
     ),  # tp_r=3.5 fallback
 ]
 
-# candle-resweep — tp_r re-sweep at the ATR multipliers committed in PR #33
-# (Task C-followup, 2026-05-20). Phase 1 scope = 3 candle patterns × 3 TFs ×
+# candle-resweep — tp_r re-sweep at the committed ATR multipliers (PR #33,
+# Task C-followup, 2026-05-20). Phase 1 scope = 3 candle patterns × 3 TFs ×
 # 2 day_filters = 18 cells. Run with --fixed-atr so each cell's
 # atr_sl_multiplier_<tf> + atr_sl_floor flow into `run_param_sweep` from the
-# canonical TOML (config_label column) — without that, the sweep would replay
-# the pre-PR-33 SL geometry and the resulting tp_r winners would be the same
-# stale numbers Task C-followup widened SLs to invalidate. current_tp_r
+# canonical TOML (config_label column); without that, the sweep replays the
+# pre-PR-33 SL geometry and the resulting tp_r winners are the stale numbers
+# the widened SLs of Task C-followup invalidate. current_tp_r
 # reflects the *combined* per-TF effective value in each config (per-TF
 # commit where present; fallback tp_r=3.0/3.5 otherwise).
 CELLS_CANDLE_RESWEEP: list[tuple[str, str, str, float, str]] = [
@@ -319,8 +319,8 @@ CELLS_CANDLE_RESWEEP: list[tuple[str, str, str, float, str]] = [
     ("engulfing", "1wk", "weekdays", 3.5, "signal_watch_weekdays.toml"),
 ]
 
-# phase2-resweep — Phase 2 of the candle-resweep follow-up (PR #39 left the
-# remaining 9 atr_sl_floor=true strategies unswept). 8 strategies × 3 TFs ×
+# phase2-resweep — Phase 2 of the candle-resweep follow-up (covers the
+# remaining 9 atr_sl_floor=true strategies that PR #39 left unswept). 8 strategies × 3 TFs ×
 # 2 day_filters + orb × 4h × 2 day_filters = 50 cells. Run with --fixed-atr.
 # current_tp_r reflects the *combined* per-TF effective value in each config
 # (per-TF commit where present; strategy-wide tp_r fallback; global 2.0 when

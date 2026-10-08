@@ -57,15 +57,15 @@ def _parse_stated_date(value: str) -> datetime | None:
     `stated_date_only` flag rather than on the value's shape. Two things make the
     carve-out safe where `_parse_aware`'s blanket rejection is not: a date carries no
     time, so reading it as UTC loses no zone information the caller ever had, and
-    end-of-day normalisation can only move the result LATER than the input — never
+    end-of-day normalisation can only move the result later than the input — never
     into the look-ahead-permitting direction. Any time component is discarded for the
     same reason: the caller has asserted there is none.
 
     Reading a bare date as UTC still credits the call up to a zone-offset earlier than
     the speaker's own end-of-day. That residue is bounded by the caller's `stated >=
     publish` and `max_lead_h` checks, and is the price of the flag doing anything at
-    all — a bare `YYYY-MM-DD` used to fall through to publish, so the branch was
-    unreachable on its own documented input.
+    all — a bare `YYYY-MM-DD` would otherwise fall through to publish, leaving the
+    branch unreachable on its own documented input.
     """
     parsed = _parse(value)
     if parsed is None:

@@ -1,8 +1,8 @@
 """Layering / boundary contract tests.
 
-Rule 1: ``analytics/*`` MUST NOT import from ``signals/*``.
-Rule 2: ``signals/*`` MAY import from ``analytics/*`` (one direction only).
-Rule 3: ``analytics.indicators_lib`` was removed in strat-3 — no file may import
+Rule 1: ``analytics/*`` must not import from ``signals/*``.
+Rule 2: ``signals/*`` may import from ``analytics/*`` (one direction only).
+Rule 3: ``analytics.indicators_lib`` is gone — no file may import
         from it. Strategies, registries, and shared helpers live in
         ``analytics.strategies``.
 
@@ -17,7 +17,7 @@ domain-ownership boundary, not a violation):
   build the Telegram message before dispatch. ``signals/`` owns alerting.
 
 Even when an analytics file imports from one of the allowlisted modules, the
-type dataclasses (``SignalEvent`` / ``StatsContext`` / ``ConfluenceData``) MUST
+type dataclasses (``SignalEvent`` / ``StatsContext`` / ``ConfluenceData``) must
 come from ``analytics.signal.types`` — the second test enforces that.
 """
 
@@ -79,7 +79,7 @@ def _from_imports(path: pathlib.Path, prefix: str) -> list[tuple[str, list[str]]
 
 
 def test_analytics_does_not_import_from_signals() -> None:
-    """``analytics/*`` MUST NOT import from ``signals/*`` (allowlist excepted)."""
+    """``analytics/*`` must not import from ``signals/*`` (allowlist excepted)."""
     violations: list[tuple[str, list[str]]] = []
     for path in _iter_py_files("analytics"):
         hits = [
@@ -96,7 +96,7 @@ def test_analytics_does_not_import_from_signals() -> None:
 
 
 def test_signal_types_come_from_analytics() -> None:
-    """``SignalEvent`` / ``StatsContext`` / ``ConfluenceData`` MUST be imported
+    """``SignalEvent`` / ``StatsContext`` / ``ConfluenceData`` must be imported
     from ``analytics.signal.types`` (or its package re-export), never from
     ``signals.*``. This is the contract signal-1 ratifies.
     """

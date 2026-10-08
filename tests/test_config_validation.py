@@ -614,9 +614,9 @@ class TestShippedUniverseFile:
     def test_shipped_short_history_names_are_tagged(self) -> None:
         """Every post-floor listing carries its first-1d-bar date.
 
-        Stamped from DB ground truth by ``tools/stamp_universe_listed.py``. Until
-        2026-08-13 only **3 of 505** members were tagged (GEV/PLTR/UBER, by hand),
-        so ``min_history_days`` filtered almost nothing — FDXF cleared an 8-year
+        Stamped from DB ground truth by ``tools/stamp_universe_listed.py``. Before
+        the stamps (measured 2026-08-13) only **3 of 505** members were tagged
+        (GEV/PLTR/UBER, by hand), so ``min_history_days`` filtered almost nothing — FDXF cleared an 8-year
         floor on 17 bars, because an absent ``listed`` means "full-history
         survivor". The tool reproduced all three hand-stamped dates exactly and
         added the other 23.
@@ -674,11 +674,11 @@ class TestShippedUniverseFile:
         )
 
     def test_shipped_min_history_filter_drops_recent_listings(self) -> None:
-        """The filter must actually bite — the point of the N3 residual fix.
+        """The filter must actually bite.
 
-        Anchored to ``membership_as_of`` (2026-06-16), not today. Before the
-        2026-08-13 restamp a 1-year floor dropped **nothing** at all; the counts
-        below are the whole reason the seam exists.
+        Anchored to ``membership_as_of`` (2026-06-16), not today. Without the
+        restamp (measured 2026-08-13) a 1-year floor drops **nothing** at all; the
+        counts below are the whole reason the seam exists.
         """
         path = Path("config/universe.json")
         full = load_research_universe(path)
@@ -703,9 +703,9 @@ class TestShippedUniverseFile:
     def test_note_states_the_true_member_counts(self) -> None:
         """The self-description must match the file, or it is provenance fiction.
 
-        This binding is the durable half of the 2026-08-06 fix. The note claimed
-        "~100 liquid US large-caps ... 105 members" for a **508**-member file from
-        2026-06-21 (the S&P 500 expansion, PR #98) until 2026-08-06, because
+        This binding is the durable half of the 2026-08-06 fix. After the S&P 500
+        expansion (PR #98, 2026-06-21) the note claimed "~100 liquid US large-caps
+        ... 105 members" for a **508**-member file, because
         ``tools/expand_universe_sp500.py`` rewrites ``members`` and never touches
         ``universe_policy``. Nothing failed, and nothing could:
         ``test_shipped_universe_loads`` asserts only ``n_active >= 50``, which waves
@@ -770,10 +770,10 @@ class TestShippedUniverseFile:
         issuer would take two slots in any top-N ranking and inject near-collinearity
         into residualisation and beta estimation.
 
-        The S&P 100 selection made this call for GOOG. The 2026-06-21 S&P 500 merge
-        silently re-added it — and FOX and NWS with it — because the expander merges
-        constituents verbatim and nothing de-duplicates issuers on load. All three
-        were removed 2026-08-06. The pair list is checked as data rather than as one
+        The S&P 100 selection made this call for GOOG. The S&P 500 merge
+        (2026-06-21) re-added it silently — and FOX and NWS with it — because the
+        expander merges constituents verbatim and nothing de-duplicates issuers on
+        load; all three were removed 2026-08-06. The pair list is checked as data rather than as one
         hard-coded assertion so that a future expansion re-introducing *any* of them
         fails here, naming the pair.
         """
@@ -847,17 +847,17 @@ class TestShippedStocksExample:
         This is the assertion with teeth: the two previous tests still pass if the
         loader ignores the block entirely.
 
-        ⚠ IT PERTURBS THE BLOCK RATHER THAN COMPARING TO THE DEFAULT, and that is
-        a correctness fix, not a style one. The original asserted
-        `policy != DEFAULT_UNIVERSE_POLICY`, which reads as "the loader returned
+        It perturbs the block rather than comparing to the default, and that is
+        a correctness requirement, not a style one. Asserting
+        `policy != DEFAULT_UNIVERSE_POLICY` reads as "the loader returned
         the declaration" only while the shipped note happens to differ from the
         default's text. It is a proxy, and the sentence above is the claim: an
         input satisfying the claim but failing the guard is a block that IS
         declared and IS returned but whose value coincides with the default —
         legitimate, and exactly what happened on 2026-08-26 when the declared note
-        was restored to the default's fuller bounding wording. The guard was
-        stricter than its own sentence, so it forbade a legal state and would have
-        forced the config to stay divergent just to keep a test green.
+        was restored to the default's fuller bounding wording. That comparison is
+        stricter than the claim, so it forbids a legal state and would force the
+        config to stay divergent just to keep a test green.
 
         Perturbing observes the channel directly: write a copy whose note nothing
         else could produce, and require the loader to hand it back. That stays red

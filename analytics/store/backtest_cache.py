@@ -45,7 +45,7 @@ class BacktestSnapshot:
     h_median: float | None = None
     h_long_median: float | None = None
     h_short_median: float | None = None
-    # Per-direction sd of pnl_r (2026-08-07). NULL on rows cached before the
+    # Per-direction sd of pnl_r. NULL on rows cached before the
     # column existed, and on cells with fewer than 2 directional trades — both
     # mean "no dispersion estimate", which the EV gate treats as abstain. The
     # cache is keyed per candle, so pre-migration rows age out within a bar.

@@ -1,9 +1,9 @@
 """Tests for `analytics/research_guards/gate.py` — the shared sleeve gate.
 
-Every leg is exercised so that flipping it alone flips the verdict. The four
-sleeves previously inlined this expression identically four times, and the one
-test that checked a verdict re-derived the same expression to build its own
-expectation — so it passed against any implementation. See
+Every leg is exercised so that flipping it alone flips the verdict. The
+expression is shared because four sleeves would otherwise inline it
+identically, and a test that checks a verdict by re-deriving the same
+expression to build its own expectation passes against any implementation. See
 `make check-orphan-tests` and CLAUDE.md's note on tests that re-implement their
 subject.
 """
@@ -115,7 +115,7 @@ class TestPassesSleeveGate:
 
 
 class TestMinTrlWasDroppedForTwoDistinctReasons:
-    """Positive control on BOTH halves of the 2026-08-12 decision.
+    """Positive control on both halves of the 2026-08-12 decision.
 
     Neither target for `min_track_record_length` gives a usable gate leg, and
     they fail in opposite directions. If someone re-adds the leg, whichever

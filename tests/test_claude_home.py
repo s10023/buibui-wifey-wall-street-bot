@@ -7,7 +7,7 @@ never by raising. Every consumer treats an unresolvable memory tree as "absent,
 skip with a warning", so a wrong derivation reads as *nothing to back up* and
 *nothing to check*, and a green suite says so too.
 
-⚠ **The platform rules are pinned as TEXT, both of them, on every host.**
+The platform rules are pinned as text, both of them, on every host.
 `slugify_path` takes a `str` rather than a `Path` precisely so that Linux CI
 asserts the Windows rule and a Windows box asserts the POSIX one. Had it taken
 a `Path`, exactly one of the two assertions would be unwritable on any given
@@ -86,11 +86,10 @@ def _make_tree(home: Path, profile: str, repo: Path = REPO) -> Path:
 class TestConfigRootSelection:
     """Which config root wins, and on what evidence.
 
-    ⚠ **The discriminator is `projects/<slug>`, never the root's existence.**
-    The first version of this module probed the root, and that shipped broken
-    within the hour — `.claude-personal` appeared on the dev box while both
-    profiles were in use, the probe took it, and every consumer went back to
-    reading ABSENT against a tree that was present under `.claude` all along.
+    The discriminator is `projects/<slug>`, never the root's existence.
+    A probe of the root fails: `.claude-personal` can appear on a box while both
+    profiles are in use, the probe takes it, and every consumer reads ABSENT
+    against a tree that is present under `.claude`.
     """
 
     def test_env_override_wins(

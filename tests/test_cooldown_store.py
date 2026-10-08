@@ -101,7 +101,7 @@ class TestPerChannelWatermarks:
         )
 
     def test_primary_default_keeps_legacy_key_shape(self, tmp_path: Any) -> None:
-        """Primary keys MUST stay `{sym}:{tf}:{strategy}` so live state files load."""
+        """Primary keys must stay `{sym}:{tf}:{strategy}` so live state files load."""
         path = tmp_path / "state.json"
         store = CooldownStore(str(path))
         store.mark_candle("AAPL", "1d", "engulfing", 1_000)

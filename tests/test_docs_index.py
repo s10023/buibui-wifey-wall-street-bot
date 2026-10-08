@@ -270,11 +270,12 @@ class TestCollectSpecs:
     def test_a_findings_reconciliation_section_is_not_a_spec_reconcile(
         self, tmp_path: Path
     ) -> None:
-        """Regression: the first rule keyed on 'reconcil' anywhere in the body.
+        """Reconcile status must key on the audit's own title, not on 'reconcil'
+        anywhere in the body.
 
-        It mislabelled `2026-06-03-direction-axis-hard-flip.md`, whose body has a
+        Keying on the body mislabels `2026-06-03-direction-axis-hard-flip.md`, whose body has a
         `## Reconciliation` section about two findings, as reconciling the F8 gate
-        spec. Reconcile status must key on the audit's own title.
+        spec.
         """
         specs, audits = self._corpus(tmp_path)
         rows = {r.filename: r for r in collect_specs(specs, audits)}
@@ -416,9 +417,9 @@ class TestTitleTrailingLabel:
         ) == ("D1 — Spot-perp CVD divergence sleeve")
 
 
-# Frozen 2026-08-21. Audits written before the parseable-verdict rule existed;
+# Frozen 2026-08-21: audits written before the parseable-verdict rule existed;
 # each states its verdict in a table, a blockquote or the body, where
-# `verdict_from_markdown` cannot read it. **This set may only SHRINK** — the
+# `verdict_from_markdown` cannot read it. **This set may only shrink** — the
 # ratchet below fails if an entry is fixed or deleted without being removed
 # here, so it cannot quietly re-admit blindness.
 #
@@ -454,12 +455,12 @@ class TestEveryNewAuditExposesItsVerdict:
     audit's verdict in a column, so an unparseable verdict shows up as an empty
     cell that reads exactly like an audit which reached no conclusion.
 
-    ⚠ Ported from the parent's #641 WITHOUT its second half. Upstream pairs this
+    Ported from the parent's #641 without its second half. Upstream pairs this
     with a gitignored `daily_check.py` line joining the index against the SoT to
-    ask whether an actionable verdict has an OWNER. **wifey has no such join** —
-    `cadence_check.py` reads task marks, not verdicts — so this gate buys
-    legibility only, and the ownership question stays with the human running
-    `/post-branch`'s SoT reconcile. Do not describe it as an ownership check.
+    ask whether an actionable verdict has an owner. This gate buys legibility
+    only, and is not an ownership check: `cadence_check.py` holds the
+    verdict-to-owner join (`tests/test_cadence_check.py::TestVerdictJoin`), and
+    the human running `/post-branch`'s SoT reconcile owns the rest.
 
     It deliberately asserts nothing about verdict CONTENT. The only property
     ownable here is that the verdict is legible at all.

@@ -6,17 +6,17 @@ The interesting cases are the POSITIVE ones — delete the swap and
 that fail. The no-op tests exist because this function is called unconditionally at
 import time by a script that must keep working on a clone with no venv at all.
 
-⚠ **Both platform branches are exercised on either host**, by patching
+Both platform branches are exercised on either host, by patching
 `venv_bootstrap.is_windows` rather than `os.name` — patching `os.name` repoints
 `pathlib` and every `Path(...)` under it raises, taking pytest's own failure reporting
 down with it (`tools/host_platform.py` carries that measurement). A seam a test can
 patch is the only way to reach the branch this box does not take, which is the whole
 reason that module exists.
 
-⚠ **The two reachability cases assert through `shutil.which`, never the shape of the
-PATH string.** Asserting that `sys.prefix` moved — or that `PATH` merely contains the
+The two reachability cases assert through `shutil.which`, never the shape of the
+PATH string. Asserting that `sys.prefix` moved — or that `PATH` merely contains the
 venv — is what let the upstream defect ship: the interpreter swapped correctly and a
-subprocess resolved BY NAME still died `FileNotFoundError`, because that resolution is
+subprocess resolved by name still died `FileNotFoundError`, because that resolution is
 the shell's, not Python's. A test that cannot tell those two apart is the blind spot,
 restated. Those two run on the NATIVE branch, because `shutil.which` asks the real
 platform; the prepend/extend SHAPE cases cover both branches directly instead.
@@ -96,7 +96,7 @@ def _executable(path: Path) -> Path:
 def _which(name: str, env: dict[str, str]) -> Path | None:
     """`shutil.which` against the swapped PATH, as a `Path`.
 
-    ⚠ Compared as a path, never as a string: on Windows `which` returns the name with
+    Compared as a path, never as a string: on Windows `which` returns the name with
     the PATHEXT case it matched (`yt-dlp.EXE`), so a string comparison against the file
     the test created fails for a reason that has nothing to do with reachability.
     `PureWindowsPath` equality is case-insensitive and POSIX stays exact, so this asks
@@ -207,7 +207,7 @@ class TestWindowsBranch:
     def test_probes_scripts_python_not_bin_python(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """DIVERGENCE 1, and the reason a verbatim port would be a silent no-op.
+        """Divergence 1, and the reason a verbatim port would be a silent no-op.
 
         Upstream probes `.venv/bin/python` and returns when it is absent. That path does
         not exist in a Windows venv, so the verbatim function would decline to swap
@@ -232,9 +232,9 @@ class TestWindowsBranch:
     def test_swaps_via_subprocess_and_exits_with_the_child_code(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """DIVERGENCE 2, measured 2026-09-22 rather than assumed.
+        """Divergence 2, measured 2026-09-22 rather than assumed.
 
-        `os.execve` with an env dict SEGFAULTS on this host (exit 139), and `os.execv`
+        `os.execve` with an env dict segfaults on this host (exit 139), and `os.execv`
         with an absolute path exits **0** having run nothing the caller can see: the
         child is orphaned, its stdout never reaches the console and its exit code is
         lost. Same from `cmd.exe`, so it is not an MSYS artifact. A swap that returns 0

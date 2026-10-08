@@ -103,11 +103,11 @@ WORKSTREAM_RULES: list[tuple[str, str]] = [
     (r"^build\(deps", "dependency bumps"),
 ]
 
-# In-repo (and gitignored via ``docs/plans/``), deliberately NOT ``/tmp``: the report
-# IS the triage artifact — a reviewer decides PRs against it over days, and the
-# sync-state memory only records what was already decided. On 2026-07-29 a ``/tmp``
-# clear destroyed a 67-PR report with 57 still undecided, and the range had to be
-# re-scanned from scratch. It must outlive a reboot.
+# In-repo (and gitignored via ``docs/plans/``), deliberately not ``/tmp``: the report
+# is the triage artifact — a reviewer decides PRs against it over days, and the
+# sync-state memory only records what was already decided. A ``/tmp`` clear on
+# 2026-07-29 destroyed a 67-PR report with 57 still undecided, and the range had
+# to be re-scanned from scratch. It must outlive a reboot.
 REPORT_DIR = WIFEY_REPO_PATH / "docs" / "plans" / "parent-sync"
 
 PathKind = Literal["direct", "renamed", "removed", "skip", "unmapped"]
@@ -362,8 +362,8 @@ _EVALUATE_PATH_RE = re.compile(
 # CLAUDE.md pointer @-importing a 77 KB AGENTS.md) has no wifey twin, so a diff
 # against wifey's single CLAUDE.md cannot apply as written. They are also the
 # surface a parent PR changes least visibly and most widely, so they must reach
-# a human. Mapping AGENTS.md above would otherwise have demoted it from the
-# EVALUATE that "unmapped" was granting it, to PORT/cherry-pick-with-edits.
+# a human. Mapping AGENTS.md above would otherwise demote it from the
+# EVALUATE that "unmapped" grants to PORT/cherry-pick-with-edits.
 _INSTRUCTION_FILES = frozenset({"AGENTS.md", "CLAUDE.md"})
 
 
@@ -504,12 +504,12 @@ def _match_first(patterns: tuple[re.Pattern[str], ...], line: str) -> str | None
 def extract_symbol_changes(diff_text: str) -> SymbolChanges:
     """Split a unified diff's top-level symbols into added vs modified.
 
-    A symbol touched on BOTH sides (``-def foo`` and ``+def foo``) was modified,
+    A symbol touched on both sides (``-def foo`` and ``+def foo``) was modified,
     not added. Verified against parent #521, whose whole payload was two new
-    kwargs on an existing ``route_target``: the old resolver read
-    ``+def route_target(`` as an addition, grepped the bare name, found wifey's
-    two-arg version and returned HIGH — a false ALREADY-APPLIED on a port that
-    was in fact missing. The removed-side hunk was in the diff the whole time.
+    kwargs on an existing ``route_target``: reading
+    ``+def route_target(`` as an addition greps the bare name, finds wifey's
+    two-arg version and returns HIGH — a false ALREADY-APPLIED on a port that
+    is in fact missing. The removed-side hunk is in the diff.
     """
     added_pats = (_ADDED_DEF_RE, _ADDED_CLASS_RE, _ADDED_CONST_RE)
     removed_pats = (_REMOVED_DEF_RE, _REMOVED_CLASS_RE, _REMOVED_CONST_RE)
@@ -783,7 +783,7 @@ def _detail_block(r: PRReport) -> str:
 #: label is not a ruling; the REPORT did not, and the report is the artifact read
 #: days later, by a session that never opened the skill.
 #:
-#: ⚠ **Do NOT answer a wrong count by trying to fix the classifier.** It resolves
+#: **Do not answer a wrong count by trying to fix the classifier.** It resolves
 #: paths, and a path resolves identically whether the parent wrote the code or
 #: adopted wifey's — so the ALREADY-APPLIED zero is not a tuning failure, it is
 #: outside what a path test can observe. The deliverable is a reader who
@@ -970,12 +970,12 @@ def main(argv: list[str] | None = None) -> int:
         return _fail(
             f"Parent repo not found at {PARENT_REPO_PATH}. Clone it or update PARENT_REPO_PATH."
         )
-    # Deliberately NOT a checked-out-branch guard. Every parent read here is
+    # Deliberately not a checked-out-branch guard. Every parent read here is
     # ref-based against origin/main (cat-file / fetch / log / show / rev-parse) and
     # nothing touches the parent working tree, so which branch happens to be checked
-    # out cannot change a scan's result. Guarding on it blocked a scan outright on
-    # 2026-06-17 (parent parked on feat/xsmom-sleeve) and again on 2026-08-11 — pure
-    # friction, and a blocked scan is how a triage backlog grows.
+    # out cannot change a scan's result. A guard on it would block a scan outright
+    # (it did on 2026-06-17, parent parked on feat/xsmom-sleeve, and on 2026-08-11)
+    # — pure friction, and a blocked scan is how a triage backlog grows.
     if not _hash_exists_in_parent("origin/main"):
         return _fail(
             f"No readable origin/main in {PARENT_REPO_PATH}. Fetch it first: "

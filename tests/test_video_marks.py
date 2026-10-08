@@ -161,7 +161,7 @@ def test_tail_outranks_a_sample_at_the_same_timestamp() -> None:
 def test_select_reaches_the_tail_of_a_long_video() -> None:
     """The regression: sample_marks stops at floor(duration/300)*300.
 
-    Measured across /ingest-feed round 6, the last mark of any kind landed
+    Measured across one /ingest-feed batch of five videos, the last mark of any kind landed
     133.8 / 61.7 / 0.0 / 79.0 / 152.1s before the end — four of five videos blind
     for one to two and a half minutes. A closing summary slide with no narration
     over it produced no trigger of any kind, so pass 2 never saw it.

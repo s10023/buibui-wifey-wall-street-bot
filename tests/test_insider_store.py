@@ -209,7 +209,7 @@ def test_collect_filings_walks_a_shard_that_reaches_the_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # The positive control for the test above: same code path, a shard whose
-    # filingTo lands inside the window, and its filings MUST appear. Without
+    # filingTo lands inside the window, and its filings must appear. Without
     # this, "skips the shard" would also pass if the walk were deleted entirely.
     def _shard(name: str) -> dict[str, Any]:
         return {

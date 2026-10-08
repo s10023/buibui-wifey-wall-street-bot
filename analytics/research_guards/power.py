@@ -1,6 +1,6 @@
 """Required-effect-size inversion — how large a Sharpe the gate demands.
 
-Promoted 2026-08-14 from two independent implementations that agreed to
+Promoted from two independent implementations that agreed to
 0.0000% across a 16-cell grid but were held to it by nothing:
 ``tools/era_power_price.required_sharpe``, which inverted the production
 ``deflated_sharpe_ratio``, and ``tools/multi_regime_power.required_sr``, which

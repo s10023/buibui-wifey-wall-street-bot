@@ -4,20 +4,19 @@ Ported from the parent's `daily_check.py` task-mark block (`docs/plans/task-mark
 with three deliberate divergences — each because the parent's reason does not hold
 here, not because the rule changed.
 
-**1. This file is TRACKED; the parent's is not.** Upstream `daily_check.py` lives
+**1. This file is tracked; the parent's is not.** Upstream `daily_check.py` lives
 under gitignored `docs/plans/`, so it dies on a reclone — its own docstring admits
-this. wifey learned that lesson on 2026-08-20 when the `.claude/` allowlist was
-inverted to a denylist precisely because hooks were silently not surviving a
-reclone. **An enforcement layer that a reclone loses is not an enforcement layer.**
+this. wifey's `.claude/` is a denylist (inverted from an allowlist on 2026-08-20)
+precisely because hooks were silently not surviving a reclone. **An enforcement layer that a reclone loses is not an enforcement layer.**
 The MARKS stay gitignored (they are per-machine state, and `docs/plans/` is already
 covered wholesale by `make backup`); only the checker is committed.
 
-**2. The mark's CONTENT is authoritative, not its mtime.** The parent writes an
+**2. The mark's content is authoritative, not its mtime.** The parent writes an
 ISO-8601 line and then reads `st_mtime`, so the content it carefully writes has no
 consumer — the same self-referential shape that cost the handoff its `Line count:`
 stamp. Worse, mtime moves for reasons that are not runs: opening the file in an
 editor, or a restore that does not preserve times. Here the timestamp inside the
-file is the measurement, and an unparseable one reads as OVERDUE rather than
+file is the measurement, and an unparseable one reads as overdue rather than
 falling back to mtime, because the fallback fails in the direction that reports
 *fresher than reality*.
 
@@ -27,11 +26,11 @@ writes the wrong file and a missing directory fails the write. ``--stamp <task>`
 creates the directory, validates the name against the declared table, and refuses
 an unknown one. Fix the default, not the human.
 
-⚠ **A MISSING mark reads as OVERDUE on purpose.** That is the fail-safe direction:
+**A missing mark reads as overdue on purpose.** That is the fail-safe direction:
 a lost or never-written mark must shout, where the opposite mistake reports "fresh"
 for a task that has never run once.
 
-⚠ **This is ADVISORY and must never gate CI.** It exits 0 even when everything is
+**This is advisory and must never gate CI.** It exits 0 even when everything is
 overdue (``--exit-nonzero`` opts in, for a human who wants a shell condition). Two
 reasons, and the second is structural: overdue housekeeping is not evidence loss,
 and a check that stays red for days until a human runs a skill trains dismissal —
@@ -42,22 +41,22 @@ that can only ever be red in CI is worse than no check.
 Inclusion rule for a task — keep it, or this table rots into noise that gets
 skipped. All four must hold:
 
-  1. it rots SILENTLY (nothing in the normal workflow tells you), and
-  2. staleness has a NAMED consequence, and
+  1. it rots silently (nothing in the normal workflow tells you), and
+  2. staleness has a named consequence, and
   3. the check is one cheap field, and
   4. exactly one action clears it.
 
 **The audit-verdict → owner join rides along here** (ported from the
 parent's `daily_check.py` § 6b, the other half of parent #641). An audit whose
-verdict recommends action and that NOTHING names is a finding with no owner —
+verdict recommends action and that nothing names is a finding with no owner —
 the parent measured a BUILD verdict sitting unowned for seven weeks in a
 test-enforced index, because a research chain of audits has an owner at every
 link except the last. Owners are GitHub Issues, open or closed, since planning
-moved there on 2026-09-30 (#379); the memory-tree SoT is still read when this
+lives there (#379); the memory-tree SoT is still read when this
 machine has it, because its closed-verdict rows record where earlier work was
 done. Either source alone is enough, and the report names which ones it read.
 This is the only check that joins the audits to their owners, which live outside
-the tree, so it sits in an advisory tool: no pytest can see both. It is NOT a
+the tree, so it sits in an advisory tool: no pytest can see both. It is not a
 :class:`Task` — it reads observed state, not a mark, so the four inclusion rules
 above do not apply to it.
 Divergences from the parent, each because its reason does not hold here: the
@@ -106,12 +105,12 @@ class Task:
     consequence: str
 
 
-#: Deliberately SHORT, and every entry satisfies all four inclusion rules above.
+#: Deliberately short, and every entry satisfies all four inclusion rules above.
 #:
 #: Not listed, with the rule each fails — recorded so the next session does not
 #: re-propose them:
-#:   * `make backup`      — a scheduled `wifey-backup.timer` covers it (installed
-#:                          2026-08-19), so no human action clears it: fails (4).
+#:   * `make backup`      — a scheduled `wifey-backup.timer` covers it, so no
+#:                          human action clears it: fails (4).
 #:                          Its real risk is the timer stopping silently, which is
 #:                          an observed-state probe rather than a mark — see
 #:                          `tools/backup_check.py` (`make backup-check`), which
@@ -141,7 +140,7 @@ TASKS: tuple[Task, ...] = (
 
 
 #: A verdict that recommends action someone must own. Re-derived against the live
-#: corpus (41 audits, 2026-08-28), not copied from the parent: `FOUND` is wifey's
+#: corpus (41 audits, measured 2026-08-28), not copied from the parent: `FOUND` is wifey's
 #: defect/edge-found label, `CANDIDATE` covers SUPPRESS-CANDIDATE, `EXIT-FIXABLE`
 #: and `UNBLOCKED` are the two actionable labels CLAUDE.md's verdict tables use,
 #: and the last three are plain actionable English. The parent's `→` marker is
@@ -150,7 +149,7 @@ _ACTIONABLE = re.compile(
     r"\bFOUND\b|CANDIDATE|EXIT-FIXABLE|UNBLOCKED|justified|recommend|next step"
 )
 #: Vetoes a row that matched _ACTIONABLE: the recommendation was already acted on
-#: or ruled. Deliberately NOT a bare negative-verdict list — `INSUFFICIENT` must
+#: or ruled. Deliberately not a bare negative-verdict list — `INSUFFICIENT` must
 #: stay off it, because the one live SUPPRESS-CANDIDATE rides in an
 #: "INSUFFICIENT on 11 of 12 cells" verdict and a global veto would silently
 #: skip exactly the row that carries a recommendation.

@@ -33,7 +33,7 @@ class TestPerPeriodSharpe:
 
     def test_sample_sd_not_population_sd(self) -> None:
         # ddof=1. With ddof=0 the denominator shrinks and the Sharpe inflates,
-        # which is exactly the kind of one-copy change that used to be able to
+        # which is exactly the kind of one-copy change that could
         # desynchronise the sleeves.
         r = _arr(0.01, 0.02, -0.01, 0.03)
         population = float(np.mean(r) / np.std(r, ddof=0))

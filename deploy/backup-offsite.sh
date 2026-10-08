@@ -50,8 +50,8 @@
 # and even a bare `gdrive-wifey:` typo stays inside wifey's tree. The parent's
 # `gdrive` remote is pinned to a different folder and is unreachable from here.
 #
-# ⚠ Do NOT "simplify" this to one shared remote with two paths. `gdrive` is
-# pinned to the parent's folder, so `gdrive:wifey-snapshots` resolves INSIDE it
+# Do not "simplify" this to one shared remote with two paths. `gdrive` is
+# pinned to the parent's folder, so `gdrive:wifey-snapshots` resolves inside it
 # rather than beside it, and one typo of the parent's path still deletes their
 # backup. Two pinned roots turn that from care into cannot.
 #
@@ -68,11 +68,11 @@
 # all three -- each covers a failure the others do not see. They vet WHERE the
 # sync goes; guard 4 (at the sync) caps HOW MUCH one run may delete.
 #
-# ⚠ WHAT GUARD 3 DOES *NOT* COVER, measured 2026-08-15 in the parent repo.
-# It compares TOP-LEVEL entries only, so it cannot tell a SAME-SHAPED sibling
+# What guard 3 does not cover, measured 2026-08-15 in the parent repo.
+# It compares top-level entries only, so it cannot tell a same-shaped sibling
 # from our own data: the parent's tree is `daily/` + `weekly/` exactly like this
 # one, and a dry-run aimed at it passed every guard and reported deletions of
-# the parent's own files. Guard 3 catches an UNRELATED destination (someone's
+# the parent's own files. Guard 3 catches an unrelated destination (someone's
 # Photos/); it does not catch a lookalike. Do not conflate the two.
 #
 # Guard 1 on a wifey-only root is what makes that moot HERE -- the parent's
@@ -84,37 +84,37 @@
 #   2. create wifey's OWN remote, UNPINNED so it can still see the Drive root:
 #        rclone config create gdrive-wifey drive client_id=<ID> \
 #            client_secret=<SECRET> scope=drive
-#      ⚠ ORDER MATTERS. The remote must exist BEFORE its folder, because a
+#      Order matters. The remote must exist before its folder, because a
 #      pinned root cannot be escaped -- `rclone mkdir gdrive:../wifey-backups`
 #      does not work, and that is the whole point of pinning.
 #   3. give it its own folder at the Drive root, then pin it:
 #        rclone mkdir gdrive-wifey:wifey-backups
 #        rclone lsf gdrive-wifey: --dirs-only --format ip | grep wifey-backups
 #        rclone config update gdrive-wifey root_folder_id=<ID> --non-interactive
-#   4. PROVE the pin: `rclone lsf gdrive-wifey:` must list the folder's CONTENTS
+#   4. Prove the pin: `rclone lsf gdrive-wifey:` must list the folder's CONTENTS
 #      (empty on a fresh install), never the Drive root. Not optional, and not
 #      inferable from step 3 -- `config update` on an OAuth remote returns a
 #      token-refresh state machine that LOOKS incomplete even when the write
 #      landed, so lsf is the only thing that settles it.
-#      REDO steps 3-4 after any `rclone config delete` / recreate, which
+#      Redo steps 3-4 after any `rclone config delete` / recreate, which
 #      silently drops the pin. Prefer `rclone config reconnect <remote>:` when
 #      rotating a credential; that one keeps root_folder_id.
 #   5. put WIFEY_BACKUP_REMOTE=gdrive-wifey:snapshots in .env. The path is
-#      RELATIVE to the pinned root, so it is `snapshots`, never `wifey-backups`
+#      relative to the pinned root, so it is `snapshots`, never `wifey-backups`
 #      (which would nest the folder name twice).
 #   6. only THEN enable the timer:
 #      systemctl --user enable --now wifey-backup-offsite.timer
 #
-# ⚠ `rclone config create` DUMPS THE WHOLE REMOTE TO STDOUT on success --
+# `rclone config create` dumps the whole remote to stdout on success --
 # client_secret, access_token and refresh_token -- unasked and unwarned. Always
 # redirect it (`>/dev/null`). Two live credentials reached session transcripts
-# this way on 2026-08-15, the second AFTER everyone involved knew about the
+# this way on 2026-08-15, the second after everyone involved knew about the
 # first, because the mitigation in play was "do not paste the output" rather
 # than "do not print it". A rule that depends on a human noticing is not a
 # control; the redirect is. Verified against a dummy non-OAuth remote, so it is
 # the command's behaviour rather than anything about Drive.
 #
-# The INTERACTIVE `rclone config` wizard prints the same block and CANNOT be
+# The interactive `rclone config` wizard prints the same block and cannot be
 # redirected -- hiding stdout would hide its prompts. Prefer the non-interactive
 # form above; if the wizard is unavoidable, clear the scrollback afterwards.
 #
@@ -210,7 +210,7 @@ fi
 # `sync` would delete everything in it that has no local counterpart, and on a
 # drive shared with anything else that is unrecoverable.
 #
-# ⚠ Its reach is TOP-LEVEL entries only, so it does NOT catch the crypto
+# Its reach is top-level entries only, so it does not catch the crypto
 # parent's tree: that shares this fork's `daily/` + `weekly/` shape, so nothing
 # reads as an intruder. See the header. Path separation is the control there;
 # this check is not.
@@ -220,9 +220,9 @@ fi
 # intruder here. An absent or empty destination lists nothing and passes, which
 # is what makes the first-ever sync work.
 #
-# The listing must SUCCEED for any of that to mean anything (parent #785). It
-# used to discard lsf's stderr AND exit code, so an rclone that could not reach
-# the remote at all listed nothing and the guard passed without having looked.
+# The listing must succeed for any of that to mean anything. Discarding
+# lsf's stderr and exit code would let an rclone that could not reach
+# the remote at all list nothing and pass the guard without having looked.
 # Only rc 3 (directory not found) is an empty destination. Measured on this host
 # (rclone v1.75.1, 2026-09-28): an absent folder returns 3, a missing remote 1.
 lsf_err="$(mktemp)"

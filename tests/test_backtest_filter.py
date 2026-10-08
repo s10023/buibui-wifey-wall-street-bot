@@ -281,8 +281,8 @@ class TestBacktestFilterConfig:
 
         It was kept parseable "for TOML back-compat" while nothing read it, so a
         config declaring it got a suppression that could never fire. Asserting it
-        PARSED — which is what this file used to do — cannot detect that; the only
-        assertion that can is that the load refuses.
+        parsed cannot detect that; the only assertion that can is that the load
+        refuses.
         """
         import pytest
 
@@ -384,12 +384,12 @@ def _make_result_with_avg_r(
 class TestEvGate:
     """Verify the avg_r EV gate passes low-WR profitable strategies and blocks losers.
 
-    Every test here calls the real ``passes_ev_gate``. Before 2026-08-07 the gate
-    was a closure inside ``run_scan_cycle`` and therefore unreachable from a test,
-    so these tests re-implemented the comparison inline and asserted on their own
-    copy. That is why the directional-count defect survived: the old
+    Every test here calls the real ``passes_ev_gate``. A test that re-implements
+    the comparison inline asserts on its own copy and cannot falsify the gate:
+    that is how the directional-count defect survived while the gate was a closure
+    inside ``run_scan_cycle``, unreachable from a test. The old
     ``test_insufficient_trades_passes`` wrote ``len(result.closed_trades)`` — the
-    combined count — into the test body, encoding the bug as the expectation.
+    combined count — into its body, encoding the bug as the expectation.
     """
 
     def _cfg(
@@ -475,9 +475,9 @@ class TestEvGate:
     def test_thin_long_leg_not_judged_on_short_trades(self) -> None:
         """A long verdict must not rest on the short leg's sample size.
 
-        The defect fixed 2026-08-07: the guard counted BOTH directions, so this
+        Regression: the guard once counted both directions, so this
         result (1 long trade, 20 short) cleared ``min_trades=5`` on the combined
-        count of 21 and the gate then BLOCKED long on a single trade's avg_r.
+        count of 21 and the gate then blocked long on a single trade's avg_r.
         Measured on the live path, 53 of 260 blocked ``signal_watch`` legs and 45
         of 429 on ``weekdays`` were of this shape; 19 and 68 rested on n_dir=1.
         """

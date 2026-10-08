@@ -652,7 +652,7 @@ class TestSmokeRun:
 
         The tests above reach a written report with `tmp_path` (not a git repo, and
         so on no branch at all) standing in for the parent, which is what proves the
-        checked-out branch no longer gates a scan.
+        checked-out branch does not gate a scan.
         """
         mocker.patch("tools.sync_parent.PARENT_REPO_PATH", tmp_path)
         mocker.patch("tools.sync_parent._hash_exists_in_parent", return_value=False)
@@ -867,9 +867,9 @@ class TestClassifierCaveatBanner:
     *wifey's* work, which no path-resolution test can detect, because the path
     resolves either way.
 
-    ⚠ **What is pinned here is the WARNING, not better counts.** The classifier
+    What is pinned here is the warning, not better counts. The classifier
     cannot see direction of travel, so the deliverable is a reader who distrusts
-    the table. The skill body already said this; the REPORT did not, and the
+    the table. The skill body says this, and so must the report, because the
     report is what gets read days later.
     """
 

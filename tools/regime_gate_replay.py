@@ -17,25 +17,23 @@ tested cells. ``ENABLE`` means that slice reliably loses (dropping it helps);
 ``DISABLE``/``CONCENTRATE`` means it reliably wins (dropping it costs);
 ``INSUFFICIENT`` means the run cannot tell.
 
-⚠ **The cells are then combined, not pooled.** ``[bias.regime].mode`` is ONE
-GLOBAL SWITCH: flipping it to ``hard`` activates every cell's suppression at
+**The cells are then combined, not pooled.** ``[bias.regime].mode`` is one
+global switch: flipping it to ``hard`` activates every cell's suppression at
 once, so a single reliably-winning cell blocks the flip no matter how many
-cells or how much volume point the other way. The previous rule pooled an
-n-weighted ``avg_r`` across strategy AND regime, which let one large losing
+cells or how much volume point the other way. Pooling an
+n-weighted ``avg_r`` across strategy and regime would let one large losing
 cell carry the aggregate and print ``FLIP justified`` while cells pointing the
-other way sat in the table above it — the tool's own docs had to carry a
-"read the per-cell table, never the banner" warning to compensate. The banner
-now derives from the cells, so the warning is no longer needed.
+other way sat in the table above it, so the banner derives from the cells.
 
-The pooled aggregates are still printed, labelled DESCRIPTIVE, and are not
+The pooled aggregates are also printed, labelled DESCRIPTIVE, and are not
 decision-bearing.
 
-⚠ **The flip question cannot see a bad KEPT cell.** Everything above tests only
-the slice the gate would DROP, so a regime the mapping lets through can bleed
+**The flip question cannot see a bad kept cell.** Everything above tests only
+the slice the gate would drop, so a regime the mapping lets through can bleed
 without ever earning a verdict — the tool would print ``DO NOT FLIP`` and look
 like a clean bill while the worst cell in its own table sat untested. That is a
 blind spot in the *config*, not in the flip decision, and it needs the mirror
-question: **for each KEPT cell, would suppressing it help?**
+question: **for each kept cell, would suppressing it help?**
 
 ``evaluate_kept_cells`` asks exactly that, reusing the same
 :mod:`analytics.audit_guard` machinery with the roles mirrored — the kept cell
@@ -43,7 +41,7 @@ becomes the candidate ``supp_r`` and ``kept_r`` is what the strategy would still
 trade without it. An ``ENABLE`` verdict there means the mapping admits a
 reliable loser.
 
-⚠ **Two decisions, so two Holm families, and they must NOT be merged.** Pooling
+**Two decisions, so two Holm families, and they must not be merged.** Pooling
 them would change the shipped flip verdict by inflating its denominator. They
 are also combined differently, which is the mirror of the defect this tool
 already carries a warning about: ``mode`` is one global switch so a single cell
@@ -285,7 +283,7 @@ def build_kept_audit_cells(trades: pd.DataFrame) -> list[tuple[str, str, AuditCe
     :func:`build_audit_cells`'s stated counterfactual rather than inventing a
     second one.
 
-    ⚠ ``kept_r`` deliberately excludes the strategy's already-suppressed cells.
+    ``kept_r`` deliberately excludes the strategy's already-suppressed cells.
     They are not part of the surviving book under the change being considered,
     so folding them in would compare against a book that no config reachable
     from here actually trades.
@@ -339,9 +337,9 @@ def evaluate_kept_cells(
     alpha: float = DEFAULT_ALPHA,
     min_n: int = DEFAULT_MIN_N,
 ) -> list[CellEvidence]:
-    """Per-cell verdicts for KEPT cells, in their OWN Holm family.
+    """Per-cell verdicts for kept cells, in their own Holm family.
 
-    ⚠ **Separate from :func:`evaluate_cells` by design.** The two answer
+    **Separate from :func:`evaluate_cells` by design.** The two answer
     different questions — the global ``mode`` flip vs a per-strategy mapping
     edit — so they are different families. Merging them would silently move the
     shipped flip verdict by enlarging its haircut denominator.
@@ -361,10 +359,10 @@ def evaluate_kept_cells(
 def flip_verdict(cells: Sequence[CellEvidence]) -> tuple[str, list[str]]:
     """Combine per-cell verdicts under the single-global-switch constraint.
 
-    ⚠ **Not a pool.** ``[bias.regime].mode`` flips every cell at once, so ONE
+    **Not a pool.** ``[bias.regime].mode`` flips every cell at once, so one
     cell whose CI clears the bar on the winning side blocks the flip regardless
     of how many cells or how much trade volume point the other way. An
-    n-weighted mean cannot express that, which is why the old banner could
+    n-weighted mean cannot express that, which is why a pooled banner can
     contradict its own table.
     """
     blocking = [c for c in cells if c.verdict.decision in _BLOCKING_DECISIONS]
@@ -418,12 +416,12 @@ MAPPING_HOLD = "MAPPING UNTESTED"
 
 
 def mapping_verdict(cells: Sequence[CellEvidence]) -> tuple[str, list[str]]:
-    """Combine KEPT-cell verdicts for the per-strategy mapping question.
+    """Combine kept-cell verdicts for the per-strategy mapping question.
 
-    ⚠ **Deliberately NOT :func:`flip_verdict`'s shape.** That one applies a veto
+    **Deliberately not :func:`flip_verdict`'s shape.** That one applies a veto
     because ``mode`` is a single global switch. Here each ``enabled_regimes`` /
     ``per_strategy`` entry is edited independently, so a losing cell and a
-    winning cell are BOTH actionable and neither cancels the other. Reusing the
+    winning cell are both actionable and neither cancels the other. Reusing the
     veto here would suppress a real finding whenever any other cell won — the
     same class of error as pooling, arrived at from the opposite direction.
 
@@ -483,12 +481,12 @@ def attach_verdicts(
 ) -> pd.DataFrame:
     """Left-join each cell's verdict onto the descriptive aggregate.
 
-    The exported CSV would otherwise persist only the DESCRIPTIVE half and drop
+    The exported CSV would otherwise persist only the descriptive half and drop
     every decision-bearing column — CI, adjusted p, verdict — which is the half
     a reader needs to reach the same conclusion the banner did.
 
     ``kept_cells`` is optional and defaults to empty, so a caller that passes
-    only the suppressed family still gets nulls on every kept row. ⚠ A null
+    only the suppressed family still gets nulls on every kept row. A null
     verdict means **not in the family passed to this call** — it never means
     "tested and found unremarkable". ``tested_as`` names which family a row was
     judged in, because the two carry different Holm denominators and an adjusted

@@ -105,7 +105,7 @@ class StrategyOverride:
     # honoured by `effective_tp_r` when it is given a direction, but no consumer
     # applies them: `_resolve_tp_r` has no per-TF directional step and the sweep
     # calls `effective_tp_r` without a direction. Audit:
-    # docs/audits/2026-10-01-dead-directional-tp-r-keys.md (Issue #317).
+    # docs/audits/2026-10-01-dead-directional-tp-r-keys.md.
     tp_r_long_per_tf: dict[str, float] = field(default_factory=dict)
     tp_r_short_per_tf: dict[str, float] = field(default_factory=dict)
     sl_pct_per_tf: dict[str, float] = field(default_factory=dict)
@@ -166,8 +166,8 @@ def dead_timeframes(day_filter: str, timeframes: Iterable[str]) -> list[str]:
     scanner drops the events one by one, the backtest still records runs (with
     zero closed trades), and recalibrate consequently writes no ratings — so
     ``get_confidence`` falls back to a hardcoded 3 that no run can ever correct.
-    ``config/signal_watch.toml`` scanned ``1wk`` under ``tue_thu`` from PR #22
-    until 2026-08-06 and dispatched zero alerts in that entire window.
+    ``config/signal_watch.toml`` once scanned ``1wk`` under ``tue_thu`` and
+    dispatched zero alerts for the whole period it did so.
     """
     allowed = _day_filter_to_weekdays(day_filter)
     if allowed is None:
@@ -206,10 +206,10 @@ def voided_volume_gates(
 
     This is silent at every layer — the detector fires normally and the events are
     dropped one at a time, so the surface reads as "covered" while producing
-    nothing. Measured damage before the 2026-08-06 fix, cost-inclusive:
+    nothing. Measured damage without the fix, cost-inclusive:
     ``doji`` x 1d ran at exactly 0 signals against 1,247 raw detector fires;
     ``orb`` x 4h at n=1; and on ``engulfing`` x 1d / ``bos`` x 1d the pairing did
-    not merely thin the sample but INVERTED its sign (-0.273R -> +0.042R and
+    not merely thin the sample but inverted its sign (-0.273R -> +0.042R and
     -0.033R -> +0.071R once the conjunction was removed).
 
     ``adr_exempt = true`` clears a strategy: entry geometries that fire at range
@@ -256,18 +256,18 @@ class BacktestFilterConfig:
     # direction only. Falls back to min_avg_r when None.
     min_avg_r_long: float | None = None
     min_avg_r_short: float | None = None
-    # Significance requirement on the BLOCK decision (2026-08-07). The gate
+    # Significance requirement on the block decision. The gate
     # suppresses only when the directional avg_r falls below its threshold by
     # more than this many standard errors — i.e. when the shortfall is
     # distinguishable from zero, not merely negative. Default 1.64 = one-sided
     # 95%. Measured on the post-#150 population, a bare `avg_r < threshold` test
     # made 43% (signal_watch) / 55% (weekdays) of blocks on evidence
     # indistinguishable from zero, and a block destroys the ledger row too.
-    # NOT multiplicity-corrected, deliberately: BH guards against SELECTING a
+    # Not multiplicity-corrected, deliberately: BH guards against SELECTING a
     # winner from many candidates (the sweep's problem); this gate makes an
     # independent per-leg call, and correcting over ~200-400 cells drives the
     # critical value to z~3.5, at which a fail-open gate blocks ~nothing.
-    # 0.0 restores the legacy point-estimate behaviour.
+    # 0.0 selects the plain point-estimate test.
     min_avg_r_z: float = 1.64
     # Persist computed backtest results to backtest_runs table (default on)
     save_results: bool = True
@@ -442,9 +442,9 @@ class SignalWatchConfig:
     day_filter: str = "off"
     # Catch-up dispatch window, in hours measured from a candle's CLOSE. The
     # newest closed candle always alerts; an older one alerts only while it is
-    # this fresh. 0.0 = newest-only, the pre-2026-08-25 rule. The live configs
+    # this fresh. 0.0 = newest-only. The live configs
     # inherit a non-zero value from strategy_params.toml because under one
-    # pre-open run a day the session's FIRST 4h bar can never BE the newest
+    # pre-open run a day the session's first 4h bar can never be the newest
     # closed candle — see scanner.may_dispatch_candle.
     max_alert_age_hours: float = 0.0
     # Per-strategy timeframe allow-list: {"trend_day": ["4h", "1d"], ...}
@@ -680,9 +680,9 @@ def load_signal_config(path: str | Path) -> SignalWatchConfig:
             if raw_bt.get("min_avg_r_short") is not None
             else None
         ),
-        # Default matches the dataclass (1.64). Deliberately NOT defaulted off:
-        # T6 shipped LiveParityConfig default-off "to be flipped later" and it
-        # stayed off for ~2.5 months (#149). A behaviour change ships on.
+        # Default matches the dataclass (1.64). Deliberately not defaulted off: a
+        # default-off LiveParityConfig stayed off for ~2.5 months. A behaviour
+        # change ships on.
         min_avg_r_z=float(raw_bt.get("min_avg_r_z", 1.64)),
         save_results=bool(raw_bt.get("save_results", True)),
         cache_enabled=bool(raw_bt.get("cache_enabled", True)),

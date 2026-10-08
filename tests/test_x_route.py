@@ -34,17 +34,18 @@ def test_route_target_unroutable() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Setup suppressors (parent #521, ported 2026-08-13). Both drops used to live only in
-# the skills' markdown routing table, so each depended on the orchestrator reading
-# prose correctly at the end of a long batch. `rejected` is here because upstream's
-# 2026-07-31 round 3 shipped one: a pundit walked through a short and then explicitly
-# argued AGAINST taking it, which is `setup` + `retrospective: false`, so the table
+# Setup suppressors (parent #521, ported 2026-08-13). Both drops are enforced in
+# code because the skills' markdown routing table depends on the orchestrator
+# reading prose correctly at the end of a long batch. `rejected` is here because
+# upstream shipped a miss on 2026-07-31: a pundit walked through a short and then
+# explicitly argued against taking it, which is `setup` + `retrospective: false`, so the table
 # routed it to Stream C and pundit_score.py scored him on a trade he declined. Only
 # the digest reader caught it.
 #
-# In wifey the exposure was wider: `/ingest-video` pass 1 SETS `retrospective` on any
-# setup lifted from a channel's intro recap, and nothing read it — so a recap call
-# routed carrying today's `call_ts_utc` and was scored on an already-resolved trade.
+# In wifey the exposure was wider: `/ingest-video` pass 1 sets `retrospective` on any
+# setup lifted from a channel's intro recap, and without the drop nothing reads it,
+# so a recap call would route carrying today's `call_ts_utc` and be scored on an
+# already-resolved trade.
 # ---------------------------------------------------------------------------
 
 

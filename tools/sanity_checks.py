@@ -83,7 +83,7 @@ PLACEHOLDER_SYMBOLS = frozenset({"SYMBOL", "TF"})
 #: Parent-repo artifacts. A hit means a wifey surface presents a crypto-parent
 #: artifact as if it were current.
 #:
-#: ⚠ **Scoped to `.claude/` only, unlike the other checks.** Widening it to
+#: **Scoped to `.claude/` only, unlike the other checks.** Widening it to
 #: CLAUDE.md / README / system-overview immediately returns 4 hits that are all
 #: *correct history* — the fork-lineage paragraph, the sister-memory pointer, the
 #: README's "forked from" line. That is the prose-marker grep the skill built,
@@ -439,15 +439,16 @@ def regression_filter_patterns(workflow: str) -> list[str]:
 def check_regression_surface(claude_md: str, workflow: str) -> list[Finding]:
     """CLAUDE.md's `make test-regression` trigger list mirrors CI's filter.
 
-    Until 2026-08-26 the doc list diverged in BOTH directions — narrower on
-    ``analytics/`` and ``config/``, silent on four paths, and *wider* than CI on
-    ``tests/fixtures/``. Only the narrowing direction is harmful: a diff CI runs
-    the golden suite on read as "gate not required" locally, so the golden move
-    surfaced after the push in a metered Actions cycle. Over-running the gate
+    The doc list can diverge in both directions — narrower than CI on
+    ``analytics/`` and ``config/``, silent on paths, or *wider* than CI on
+    ``tests/fixtures/`` (all three were the state until 2026-08-26). Only the
+    narrowing direction is harmful: a diff CI runs the golden suite on reads as
+    "gate not required" locally, so the golden move surfaces after the push in a
+    metered Actions cycle. Over-running the gate
     costs ~8s and nothing else, which is why "strict subset" was the wrong
     diagnosis even though the fix is the same. Comparing verbatim is what makes the two checkable against each
     other at all — a paraphrase (`analytics/backtest/` for `analytics/**/*.py`)
-    cannot be diffed by anything. Ported from parent #698 (ST89).
+    cannot be diffed by anything.
 
     An empty filter is itself a finding: it means the workflow moved and this
     check was silently comparing against nothing.
@@ -675,7 +676,7 @@ if __name__ == "__main__":
     # repo root, so the import below dies with ModuleNotFoundError; only the Make target
     # and an explicit `PYTHONPATH=.` worked. The house idiom, as in `tools/route_dedup.py`.
     #
-    # ⚠ **Both lines are scoped to `__main__` deliberately.** This module is imported by
+    # **Both lines are scoped to `__main__` deliberately.** This module is imported by
     # `tests/test_sanity_checks.py`, and a re-exec at import time would fire mid-collection
     # for anyone running pytest from outside the venv — swapping the interpreter out from
     # under a test run is a far worse failure than the one being fixed.

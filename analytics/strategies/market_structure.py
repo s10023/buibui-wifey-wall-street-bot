@@ -1,6 +1,6 @@
 """Detector: Market Structure Break (BOS / CHoCH) — extracted from `analytics/indicators_lib.py` in strat-2.
 
-Phase 0.2 lookahead fix (2026-06-09): the signal `open_time` is stamped at the
+The signal `open_time` is stamped at the
 swing *confirmation* bar (`row_idx + swing_lookback`) rather than the swing bar
 itself, because the centered swing window reads `swing_lookback` future bars to
 confirm the swing. The swing *price* level is still taken from the swing bar.

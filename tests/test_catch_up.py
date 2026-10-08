@@ -335,11 +335,11 @@ class TestCooldownStoreLastMarked:
 
 
 # --------------------------------------------------------------------------- #
-# max_alert_age_hours — the dispatch recency window (2026-08-25)              #
+# max_alert_age_hours — the dispatch recency window                          #
 # --------------------------------------------------------------------------- #
 #
 # Under one pre-open run a day the session's FIRST 4h bar can never BE the
-# newest closed candle, so at a window of 0.0 it was structurally undeliverable
+# newest closed candle, so at a window of 0.0 it is structurally undeliverable
 # — 120 of 351 ledger candles, 34%, every one the 13:30 UTC bar. These candles
 # are anchored to the REAL clock (unlike _C0.._C3 above, which sit in 2024 and
 # are therefore ancient under any window — that is what keeps the tests above
@@ -364,7 +364,7 @@ class TestDispatchRecencyWindow:
         assert may_dispatch_candle(500, 500, 100, 10_000, 0.0) is True
 
     def test_zero_window_excludes_every_older_candle(self) -> None:
-        """0.0 is the pre-2026-08-25 rule and must stay reachable exactly."""
+        """0.0 is the latest-candle-only rule and must stay reachable exactly."""
         assert may_dispatch_candle(400, 500, 100, 10_000, 0.0) is False
 
     def test_older_candle_inside_the_window_dispatches(self) -> None:

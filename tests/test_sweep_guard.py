@@ -174,11 +174,11 @@ class TestEvaluateCommitGate:
 
 
 class TestDsrThresholdIsDerivedNotRestated:
-    """The gate's DSR bar is DERIVED from `GATE_DSR` (parent #776).
+    """The gate's DSR bar is derived from `GATE_DSR` (parent #776).
 
-    ⚠ A bare `DSR_THRESHOLD == GATE_DSR` assertion is VACUOUS: both are 0.95, so
+    A bare `DSR_THRESHOLD == GATE_DSR` assertion is vacuous: both are 0.95, so
     it passes whether the constant is derived or restated. The non-vacuous test is
-    on the SOURCE — a restated literal is the defect, and the value agreeing is
+    on the source — a restated literal is the defect, and the value agreeing is
     exactly what made two independent links look correct for as long as they did.
     """
 

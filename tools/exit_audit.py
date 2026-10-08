@@ -6,7 +6,7 @@ mean/median MFE_R and MAE_R, the share of trades whose MFE reached
 >=0.5R / >=1.0R, the median tp_r they were asked to reach, and median bars
 held. Read the tables against the 4-pattern verdict grid printed in the footer.
 
-`--replay` switches to the exit-policy A/B (spec §3–§5, parent PR #437): every
+`--replay` switches to the exit-policy A/B (spec §3–§5): every
 resolved alert is re-resolved under each named policy and scored in R space.
 Read `analytics/exits/audit.py`'s docstring for what the headline metric is and
 why it is not upstream's portfolio Sharpe.

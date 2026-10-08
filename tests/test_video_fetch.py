@@ -140,10 +140,10 @@ def test_fetch_meta_bool_timestamp_treated_as_absent() -> None:
 
 
 # ---------------------------------------------------------------------------
-# I2 (final review, 2026-07-28): a premiere's `timestamp` is upload time and
+# A premiere's `timestamp` is upload time and
 # `release_timestamp` is when it actually went public. Taking the earlier value
 # makes the publish upper bound too early — the look-ahead-permitting direction
-# for video_calltime.py's stated-time bound — so the LATER of the two wins.
+# for video_calltime.py's stated-time bound — so the later of the two wins.
 # ---------------------------------------------------------------------------
 
 
@@ -244,11 +244,11 @@ def test_fetch_transcript_prefers_captions(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# CRITICAL 2 (final review, 2026-07-28): --sub-langs all pulled ~100 machine
-# translations alongside the original, and sorted(glob)[0] picked alphabetically
-# ("af" beats "zh") — the headline Chinese-video case got an English-derived
-# machine translation mislabelled meta.lang="zh". Fix: targeted --sub-langs,
-# explicit preference-ordered selection, and lang stamped from the CHOSEN file.
+# `--sub-langs all` pulls ~100 machine translations alongside the original, and
+# sorted(glob)[0] picks alphabetically ("af" beats "zh"), so the headline
+# Chinese-video case would get an English-derived machine translation mislabelled
+# meta.lang="zh". Hence a targeted --sub-langs, explicit preference-ordered
+# selection, and lang stamped from the chosen file.
 # ---------------------------------------------------------------------------
 
 _AF_VTT = "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\naf text\n"
@@ -508,9 +508,9 @@ def test_extract_frames_skips_failed_grabs(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# CRITICAL 1 (final review, 2026-07-28): extract_frames used to seek meta.url —
-# a web page ffmpeg cannot demux — so every grab silently failed. Frames must
-# come from a locally downloaded copy, downloaded once and reused across marks.
+# extract_frames must not seek meta.url: it is a web page ffmpeg cannot demux, so
+# every grab would silently fail. Frames come from a locally downloaded copy,
+# downloaded once and reused across marks.
 # ---------------------------------------------------------------------------
 
 
@@ -597,16 +597,15 @@ def test_extract_frames_deletes_media_but_keeps_frames(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Round-2 feed finding (2026-07-31): a transient failure here costs a WHOLE
-# vision pass, silently. The skill reads `frame_paths == []`, writes a "frame
+# A transient failure here costs a whole vision pass, silently (feed finding
+# 2026-07-31). The skill reads `frame_paths == []`, writes a "frame
 # extraction failed (media download error)" health note and skips pass 2
 # entirely — yet a bare re-run with no other change returned 15/15 frames.
 # So extract_frames retries, and only on total failure.
 #
-# Round-4 feed finding (2026-08-01): ONE retry was not enough. Two transient
-# `HTTP 403`s survived the built-in retry and both cleared on a single MANUAL
-# re-run — one of them on the video that produced that batch's only complete
-# entry+stop+target row. Round 5 saw zero 403s, so the failure is intermittent,
+# One retry is not enough (feed finding 2026-08-01): two transient `HTTP 403`s
+# survived the built-in retry and both cleared on a single manual re-run, one of them on the video that produced that batch's only complete
+# entry+stop+target row. The next round saw zero 403s, so the failure is intermittent,
 # not gone. Hence 3 attempts with a short backoff: the failure is server-side
 # and immediate, so retrying with no pause just spends all three attempts
 # inside the same bad second.
@@ -857,10 +856,10 @@ def test_batch_isolates_one_bad_video(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# I1 (final review, 2026-07-28): _subprocess_run sets timeout=600, and
-# subprocess.TimeoutExpired subclasses SubprocessError, not OSError — the old
-# `except OSError` let one hung yt-dlp abort the whole batch with a traceback,
-# contradicting "one bad video never kills the batch".
+# _subprocess_run sets timeout=600, and subprocess.TimeoutExpired subclasses
+# SubprocessError, not OSError, so an `except OSError` would let one hung yt-dlp
+# abort the whole batch with a traceback, contradicting "one bad video never
+# kills the batch".
 # ---------------------------------------------------------------------------
 
 
@@ -878,7 +877,7 @@ def test_batch_survives_a_hung_subprocess_timeout(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Fix round 1: cache-hit URL must be the URL actually requested at that
+# A cache-hit URL must be the URL actually requested at that
 # position (not whichever URL first populated the video_id), and a
 # transcript-only failure must not discard the already-fetched VideoMeta.
 # ---------------------------------------------------------------------------
@@ -920,17 +919,16 @@ def test_result_to_dict_surfaces_transcript_error_as_unavailable(
 
 
 # ---------------------------------------------------------------------------
-# Fix round 2: main() must load .env before reading GROQ_API_KEY, or the
+# main() must load .env before reading GROQ_API_KEY, or the
 # operator's key silently never reaches the Groq fallback, and the resulting
 # "no GROQ_API_KEY configured" error misdirects (key is present, just unread).
 # ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
-# Deferred-list item (final review, 2026-07-28): now that extract_frames
-# downloads real media and produces real JPEGs, a cache hit whose frames were
-# since deleted (e.g. a pruned .cache/) must not send pass 2 to nonexistent
-# files.
+# Because extract_frames downloads real media and produces real JPEGs, a cache
+# hit whose frames were since deleted (e.g. a pruned .cache/) must not send
+# pass 2 to nonexistent files.
 # ---------------------------------------------------------------------------
 
 
@@ -970,17 +968,17 @@ def test_main_loads_dotenv_before_reading_the_key(
 
 
 # ---------------------------------------------------------------------------
-# Round-3 feed finding (2026-07-31): yt-dlp 2026.07.04 enables ONLY deno as a
+# Feed finding (2026-07-31): yt-dlp 2026.07.04 enables only deno as a
 # JavaScript runtime by default, and deno is not installed on this box (node and
 # bun are). Captions still resolve without one, so the failure disguises itself
-# as a single unlucky video — but every path that downloads MEDIA dies with
+# as a single unlucky video — but every path that downloads media dies with
 # `HTTP Error 403: Forbidden`, including _ensure_local_media. That returns None,
 # extract_frames returns [], and /ingest-video reads the empty list as a media
-# failure and skips the whole vision pass. Last session that would have cost all
-# six videos their chart correction had it not been caught mid-run.
+# failure and skips the whole vision pass; that would have cost all six videos of the
+# affected session their chart correction had it not been caught mid-run.
 #
 # A network-free suite cannot catch a wrong argument to a real binary, so the
-# only thing worth asserting is the command SHAPE, at every call site.
+# only thing worth asserting is the command shape, at every call site.
 # ---------------------------------------------------------------------------
 
 
@@ -1043,14 +1041,14 @@ def test_every_ytdlp_call_site_enables_an_installed_js_runtime(
 
 # ---------------------------------------------------------------------------
 # ST46 — `--dump-json` already returns `subtitles` and `automatic_captions` on
-# the call `fetch_meta` ALREADY MAKES, so using them costs parsing, not quota.
+# the call `fetch_meta` already makes, so using them costs parsing, not quota.
 # Measured upstream 2026-08-20 on three ingested videos:
 #   4Dkw1jz04lY  language=None  subtitles=[zh-Hant]
 #   f6cUsj7u8nY  language=None  subtitles=[zh]
 #   3iHFAoxunzA  language=None  subtitles=[]
 # The first line is the defect: with `language` absent, `meta.lang` is "" and the
-# old `_sub_langs` asked for `en` alone, so yt-dlp answered "There are no subtitles
-# for the requested languages" and a video with an AUTHOR-WRITTEN zh-Hant track fell
+# `_sub_langs` asked for `en` alone, so yt-dlp answered "There are no subtitles
+# for the requested languages" and a video with an author-written zh-Hant track fell
 # through to ASR — worst exactly where ASR is weakest.
 # ---------------------------------------------------------------------------
 
@@ -1394,18 +1392,18 @@ def test_cache_round_trip_covers_every_video_meta_field(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# The `en-US` regression in ST46's own widening, measured 2026-08-20 on
+# The `en-US` case in ST46's widening, measured 2026-08-20 on
 # 9avrSmPczP4 (@benjaminjcowen). yt-dlp reports `language: "en-US"`, ZERO
 # author-written tracks and **157** auto-caption codes led by `ab`, `aa`, `af`;
 # `en` sits at index 32 and `en-US` does not exist at all. So the widening
-# asked for the WHOLE 157-code translate matrix, and re-running that request
+# asked for the whole 157-code translate matrix, and re-running that request
 # live returns `Downloading subtitles: ab, aa, en` followed by
 # `HTTP Error 429: Too Many Requests` — whichever file lands is then whatever
 # survived the rate limit. The ingested transcript was a machine translation
 # into Afar, recorded as `auto_captions` with the language silently hidden.
 #
 # Two independent properties are needed, because either one alone still ships a
-# wrong-language transcript: resolve a REGIONAL `meta.lang` down to the base
+# wrong-language transcript: resolve a regional `meta.lang` down to the base
 # track that exists, and never request the matrix in the first place.
 # ---------------------------------------------------------------------------
 
@@ -1494,7 +1492,7 @@ def test_fetch_transcript_refuses_a_track_unrelated_to_a_KNOWN_language(
 
 
 # ---------------------------------------------------------------------------
-# A caption download that FAILS must not read as a video with no captions.
+# A caption download that fails must not read as a video with no captions.
 # Ported from parent #750, which measured it on a video whose own metadata
 # listed `en` and `en-orig`.
 # ---------------------------------------------------------------------------

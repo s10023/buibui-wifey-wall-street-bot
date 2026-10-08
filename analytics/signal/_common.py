@@ -2,7 +2,7 @@
 
 The `_bt_mem_cache` dict is defined exactly once here. Every consumer must
 `from analytics.signal._common import _bt_mem_cache` and mutate in place
-(`.clear()`, `[k] = v`, `del [k]`). NEVER `_bt_mem_cache = {}` after import —
+(`.clear()`, `[k] = v`, `del [k]`). Never `_bt_mem_cache = {}` after import:
 that re-binds a local and breaks cache coherence.
 """
 

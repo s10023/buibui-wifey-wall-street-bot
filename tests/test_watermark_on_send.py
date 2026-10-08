@@ -111,7 +111,7 @@ def _candle_consumed(store: CooldownStore, event: SignalEvent) -> bool:
 
 class TestWatermarkOnSend:
     def test_non_sending_run_does_not_consume_candle(self, tmp_path: Any) -> None:
-        """send_telegram=False must NOT stamp the primary watermark."""
+        """send_telegram=False must not stamp the primary watermark."""
         store, event = _drive(
             send_telegram=False, dispatch_return=False, tmp_path=tmp_path
         )

@@ -1,22 +1,13 @@
 ---
 name: ingest-video
 description: >
-  Ingest one OR MORE YouTube or X video URLs into the research pipeline in a single
-  call — including Chinese-language video. Fetches metadata + transcript (yt-dlp
-  captions, Groq whisper-large-v3 fallback) via tools/video_fetch.py, batched with a
-  randomized cooldown + a per-video dedup cache so re-runs hit zero network, then
-  runs TWO sonnet subagent passes per video: pass 1 (text-only) segments the
-  transcript and ranks candidate items; pass 2 (vision) reads the transcript-selected
-  frames (never scene-change — tools/video_marks.py) and produces chart-corrected
-  item JSON. Call time is resolved deterministically in code (tools/video_calltime.py)
-  — never by the model doing date arithmetic — preferring a stated in-video time but
-  bounded below the publish timestamp. Classifies via the shared content-type gate +
-  4-bucket verdict taxonomy and routes (after ONE human review gate for the whole
-  batch) into the same three streams as /ingest-x: A hypotheses ->
-  docs/plans/thesis-inbox.md, B mechanics -> docs/plans/mechanics-backlog.md, C daily
-  setups -> docs/plans/pundit-calls.jsonl, plus a durable per-video note. Invoke when
-  the user says "/ingest-video", pastes one or more YouTube or X video URLs, or says
-  "ingest this video" / "ingest these videos".
+  Ingest one or more YouTube or X video URLs, Chinese-language video included,
+  into the research pipeline: transcript and transcript-selected chart frames are
+  read, call time is resolved in code, each item is classified, and after one
+  human review gate for the whole batch it is routed to the thesis inbox, the
+  mechanics backlog or the pundit-calls ledger, plus a per-video note. Invoke when
+  the user says "/ingest-video", pastes YouTube or X video URLs, or asks to ingest
+  a video.
 allowed-tools: Bash, Read, Write, Edit, Task
 ---
 

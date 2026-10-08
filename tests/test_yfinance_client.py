@@ -41,7 +41,7 @@ def test_fetch_history_returns_empty_df_on_no_data() -> None:
 
 
 def test_fetch_history_never_auto_adjusts_prices() -> None:
-    """As-of adjustment guard: auto_adjust MUST stay False so the close is the raw
+    """As-of adjustment guard: auto_adjust must stay False so the close is the raw
     print. (Split factors are still back-applied by yfinance — a bounded as-of
     violation documented in the module docstring and docs/redesign/phase0-lookahead-audit.md.)
     """

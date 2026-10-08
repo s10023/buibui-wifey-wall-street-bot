@@ -9,15 +9,15 @@ Two design choices keep the suite from going vacuous — the failure mode where
 a guard is "verified" by a fixture that could never have reached the guarded
 call in the first place:
 
-1. Every rejection test asserts `sync` was NEVER invoked, not merely that the
+1. Every rejection test asserts `sync` was never invoked, not merely that the
    exit code was 1. A script that died for an unrelated reason also exits 1.
 2. `test_destination_matching_local_root_is_allowed` is the positive control
    for the intruder check. Without it, that guard would pass just as well if
    it rejected *any* non-empty destination, which would break every sync after
    the first one.
 
-⚠ One case here asserts a HOLE rather than a guard. Guard 3 compares only
-TOP-LEVEL entries, so it cannot tell a same-shaped sibling tree from our own —
+One case here asserts a hole rather than a guard. Guard 3 compares only
+top-level entries, so it cannot tell a same-shaped sibling tree from our own —
 the crypto parent's remote is `daily/` + `weekly/` exactly like this one, and
 the parent measured a dry-run against it passing every check and reporting
 deletions of its own files. `test_same_shaped_sibling_is_NOT_caught` pins that
@@ -211,15 +211,15 @@ def test_foreign_destination_is_rejected(
 def test_same_shaped_sibling_is_NOT_caught(
     backup_root: Path, fake_rclone: Path, tmp_path: Path
 ) -> None:
-    """⚠ Characterization test: it asserts the HOLE, not the protection.
+    """Characterization test: it asserts the hole, not the protection.
 
-    Guard 3 compares TOP-LEVEL entries only, so a destination whose top level
+    Guard 3 compares top-level entries only, so a destination whose top level
     matches ours passes even when everything below it belongs to someone else.
     `gdrive:snapshots` is the crypto parent's tree and is `daily/` + `weekly/`
     exactly like this one; the parent measured a `--dry-run` aimed at it on
     2026-08-15 passing every guard and reporting deletions of its own files.
 
-    Guard 3 is NOT the control for that. wifey's remote is pinned to a
+    Guard 3 is not the control for that. wifey's remote is pinned to a
     wifey-only folder, so the parent's tree is unreachable from here — the
     separation is structural, one layer below this script. This test exists so
     the distinction stops being folklore: if someone later widens the guard to
@@ -262,10 +262,10 @@ def test_destination_matching_local_root_is_allowed(
 def test_unlistable_destination_is_rejected(
     backup_root: Path, fake_rclone: Path, tmp_path: Path
 ) -> None:
-    """A listing that FAILED is not an empty destination (parent #785).
+    """A listing that failed is not an empty destination (parent #785).
 
-    lsf's stderr and exit code used to be discarded, so a broken config listed
-    nothing and the intruder guard passed without having looked. Measured on
+    If lsf's stderr and exit code are discarded, a broken config lists
+    nothing and the intruder guard passes without having looked. Measured on
     this host: a missing remote exits 1.
     """
     rc, err, calls = run_script(

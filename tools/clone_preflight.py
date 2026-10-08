@@ -7,34 +7,34 @@ does not need, so the CLI is broken on a clean clone while a hermetic test
 passes anyway. A rule aimed only at (a) — "pass every path explicitly" — makes
 (b) invisible, which is why this is a mechanism rather than another line of prose.
 
-wifey has already paid for this class once, in the other direction: `.claude/`
-was an allowlist until 2026-08-20, so the hooks were untracked and silently did
-not survive a reclone while every local run had them. Absence on a clean clone
+wifey has paid for this class once, in the other direction: with `.claude/` as
+an allowlist (until 2026-08-20) the hooks were untracked and silently did not
+survive a reclone while every local run had them. Absence on a clean clone
 is the thing no local check can see.
 
-**CI already is this gate**, being a clean checkout. What this closes is TIMING,
+**CI already is this gate**, being a clean checkout. What this closes is timing,
 not detection: on a private repo, detection after a push costs a metered Actions
 cycle, a red PR, and a visibility flip to read the failure at all. So this runs
-locally, and at roughly the cost of `make test` it REPLACES that branch's
+locally, and at roughly the cost of `make test` it replaces that branch's
 `make test` rather than adding to it.
 
 Why a clone and not a cheaper trick. The first two were measured in the parent
 repo (`buibui-moon-trader-bot`, 2026-08-20) and the reasoning is structural, so
 it ports; the third was re-measured here:
 
-* **A foreign working directory was REFUTED.** Every default is a relative path,
+* **A foreign working directory was refuted.** Every default is a relative path,
   so a foreign cwd makes them all absent at once — including every *committed*
   asset. Upstream measured 27 failures of 4192, and almost none were the bug.
-* **Monkeypatching the `DEFAULT_*` constants is PARTIAL by construction.**
+* **Monkeypatching the `DEFAULT_*` constants is partial by construction.**
   ``DEFAULT_DB_PATH`` is re-exported into two modules that captured the value at
   import, so patching one attribute leaves two live and the guard reports covered.
   That re-export shape is wifey's too — `analytics.store` and
   `analytics.data_store` both surface it.
-* **A clone has no false positives BY CONSTRUCTION** — every committed file is
+* **A clone has no false positives by construction** — every committed file is
   present and every gitignored one is absent.
 
-⚠ **Two holes, stated because a gate whose reach is unknown gets over-trusted.**
-A clone does NOT catch an *absolute* default (``$HOME/...``), because ``$HOME``
+**Two holes, stated because a gate whose reach is unknown gets over-trusted.**
+A clone does not catch an *absolute* default (``$HOME/...``), because ``$HOME``
 is identical in the clone — ``EXTERNAL_ROOTS`` in ``deploy/backup-analytics.sh``
 is exactly that shape, and it is the entry that exists *because* a denylist
 defaults to covered only within the tree it is applied to. And it only catches
@@ -43,7 +43,7 @@ untested CLI branch.
 
 The refusal on a dirty tree is the load-bearing part. A clone only ever sees
 **committed** state, so a pre-flight run against an uncommitted tree tests stale
-code and reports GREEN — the same invisible pass the gate exists to kill. That
+code and reports green — the same invisible pass the gate exists to kill. That
 is also why this belongs in `/post-branch` phase 5, *after* the doc commits and
 before `gh pr create`, and not in phase 1's sweep, which runs before them.
 """
@@ -88,7 +88,7 @@ def clone_argv(root: Path, dest: Path) -> list[str]:
 
 
 def seed_venv_argv() -> list[str] | None:
-    """Argv that pre-creates the clone's ``.venv`` on THIS interpreter, or None.
+    """Argv that pre-creates the clone's ``.venv`` on this interpreter, or None.
 
     ``make preflight`` runs this script on the project's ``.venv`` python, which
     is by construction an interpreter the suite runs on. Poetry, left to itself,
@@ -97,7 +97,6 @@ def seed_venv_argv() -> list[str] | None:
     :func:`probe_argv` can only report that as INFRA. Poetry adopts an existing
     in-project ``.venv`` (:func:`subprocess_env` puts it there), so creating one
     first pins the interpreter without depending on poetry's own selection.
-    Ported from parent #880.
 
     Only from inside a virtualenv: a bare system ``python3`` fallback carries no
     such guarantee, and seeding from it could pin the wrong version where
@@ -119,17 +118,17 @@ def install_argv() -> list[str]:
 
 
 def subprocess_env() -> dict[str, str]:
-    r"""The clone's venv goes INSIDE the clone, never in Poetry's shared cache.
+    r"""The clone's venv goes inside the clone, never in Poetry's shared cache.
 
-    ⚠ **On Windows this is the difference between the gate running and not
+    **On Windows this is the difference between the gate running and not
     running at all.** Poetry's cache path is derived from the interpreter that
     installed Poetry, and under the Microsoft Store Python that is
     ``…\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\
     Local\pypoetry\Cache\virtualenvs\<project>-<hash>-py3.13\…``. Add numpy's
     deepest test fixture to that and the result exceeds the 260-character
     MAX_PATH limit, so the install dies on a FileNotFoundError naming a
-    Fortran file nobody asked for. Measured here 2026-09-18: preflight returned
-    INFRA and never reached the suite.
+    Fortran file nobody asked for. Measured 2026-09-18: preflight returned INFRA and never reached the
+    suite.
 
     Putting the venv at ``<clone>/.venv`` removes ~110 characters of prefix and
     is the layout the rest of the repo already assumes
@@ -138,7 +137,7 @@ def subprocess_env() -> dict[str, str]:
     It is also strictly more hermetic on every platform, which is why this is
     not guarded by a host check: the venv is created and destroyed with the
     clone rather than persisting in a cache shared with the dev box, so a stale
-    cached venv can no longer answer for a lock file it does not match.
+    cached venv cannot answer for a lock file it does not match.
     """
     return {**os.environ, "POETRY_VIRTUALENVS_IN_PROJECT": "1"}
 

@@ -1,4 +1,4 @@
-"""Price a candidate hypothesis BEFORE it is written into the inbox.
+"""Price a candidate hypothesis before it is written into the inbox.
 
 The G3 gate of ``/research-distil``. Prints the effect size the gate demands at
 the declared ``n`` and trial family, beside the corpus best, so a claim is
@@ -221,11 +221,10 @@ def price(args: argparse.Namespace) -> list[str]:
             if args.sd is None:
                 # `--corpus-best` is quoted in effect units, so comparing it to
                 # the bar needs `--sd` to convert the required Sharpe into those
-                # units. Without it there is no comparison to make -- and this
-                # branch used to fall through to the same bare REACHABLE a
-                # cleared bar prints, so "did not compare" rendered as "passed"
-                # on a gate `/research-distil` mandates running. Name the
-                # missing input instead. Ported from parent #692 (ST76).
+                # units. Without it there is no comparison to make, and a bare
+                # REACHABLE (what a cleared bar prints) would render "did not
+                # compare" as "passed" on a gate `/research-distil` mandates
+                # running. Name the missing input instead.
                 out.append("  VERDICT           REACHABLE, corpus best NOT COMPARED")
                 out.append(
                     "                    --corpus-best is in effect units; without"

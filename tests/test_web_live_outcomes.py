@@ -2,7 +2,7 @@
 
 Self-contained client setup (not the shared ``web_client`` fixture): the fixture
 patches ``web.api.main.duckdb.connect`` globally, which would clobber the real
-``duckdb.connect`` used to build the in-memory seed connection. We create the
+``duckdb.connect`` that builds the in-memory seed connection. We create the
 seed conn first, then enter the patched TestClient context.
 """
 

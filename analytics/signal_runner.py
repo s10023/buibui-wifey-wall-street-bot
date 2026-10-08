@@ -315,11 +315,12 @@ def run_signal_watch(
             with connect_with_retry(db_path) as conn:
                 # Sync each symbol+timeframe; fall back to backfill for new symbols
                 now_ms = int(time.time() * 1000)
-                # Live backtest window. `[backtest] days` is the DECLARED window (365
-                # in both live configs); until 2026-08-06 it reached NEITHER the OHLCV
-                # cache nor run_scan_cycle, so the EV gate ran on the 90-day signature
-                # default and abstained (n_closed < min_trades) on 71% of all
-                # direction-legs. The two surfaces below must move TOGETHER:
+                # Live backtest window. `[backtest] days` is the declared window (365
+                # in both live configs). It must reach both the OHLCV cache and
+                # run_scan_cycle: otherwise the EV gate runs on the 90-day signature
+                # default and abstains (n_closed < min_trades) on 71% of all
+                # direction-legs (measured before the fix). The two surfaces below
+                # must move together:
                 # run_scan_cycle prefers a populated `ohlcv_cache` over its own
                 # `start_ms` read, so widening `days` alone widens nothing.
                 # Audit: docs/audits/2026-08-06-live-ev-gate-window.md
@@ -401,8 +402,8 @@ def run_signal_watch(
                 # backtest: they come from the SAME `[backtest]` block the gate
                 # reads, so a live alert is charged what a backtest of it would
                 # be. Omitting them is not a neutral default — it silently
-                # returns the ledger to the gross basis that flattered every
-                # live-vs-backtest comparison before 2026-08-19.
+                # returns the ledger to the gross basis that flatters every
+                # live-vs-backtest comparison.
                 try:
                     backfill_outcomes(
                         conn,

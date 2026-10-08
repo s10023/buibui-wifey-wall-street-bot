@@ -1,13 +1,13 @@
 """Average Daily Range (ADR) statistics.
 
-The median fields (ported from parent #598, 2026-08-12) are **display-only**. The
+The median fields are **display-only**. The
 median answers "what does a normal day look like", which is the question an operator
 reading the Stats tab is actually asking; the mean answers "what is the total range
 per day", a different question, and it stays where it is.
 
-**The gap is the signal, and do not write copy that assumes mean > median.** Daily
+**The gap is the signal, and copy must not assume mean > median.** Daily
 range is right-skewed, so the mean usually sits above the median — measured through
-this function 2026-08-12 that held **strictly in 9 of 10** equity cells
+this function on 2026-08-12 that held **strictly in 9 of 10** equity cells
 (SPY/QQQ/NVDA/AAPL/MSFT × 14d/30d; SPY 30d 0.94% mean vs 0.89% median, NVDA 14d 3.42%
 vs 3.18%). The tenth, **AAPL 30d, is a tie at 2.19% / 2.19%** — so the strict
 inequality already fails on equity data at n=10, before considering the parent's

@@ -52,19 +52,17 @@ def route_target(
     They default to False so every existing caller keeps its behaviour; a source that
     cannot express the distinction (an X post today) simply never sets them.
 
-    - `retrospective` — the speaker is reviewing a position entered BEFORE this item.
+    - `retrospective` — the speaker is reviewing a position entered before this item.
       Scoring it forward from this timestamp flatters the author, because part of the
       outcome is already known.
     - `rejected` — the speaker walked through the trade and then argued AGAINST taking
-      it. Routing it scores the author on a trade they declined. This shipped once
-      upstream (2026-07-31 round 3) and was caught only by the human reading the digest.
+      it. Routing it scores the author on a trade they declined. It shipped once
+      upstream (2026-07-31) and was caught only by the human reading the digest.
 
-    Ported from parent #521 (2026-08-01), which landed **one day after** wifey ported
-    this file in #123 — so the gap was a timing artifact, not an equity divergence.
-    wifey's #130 then cited #521 in its own title while taking only its `route_dedup`
-    half, which is why the miss survived a re-check. `unattributable` is the parent's
-    THIRD suppressor and is deliberately absent: it belongs to the relay-attribution
-    work (#558), which this fork has refused.
+    Ported from parent #521 (2026-08-01), which landed one day after wifey ported
+    this file in #123, so the gap is a timing artifact, not an equity divergence.
+    `unattributable` is the parent's third suppressor and is deliberately absent: it
+    belongs to the relay-attribution work (#558), which this fork has refused.
     """
     if content_type == "setup":
         if retrospective or rejected:

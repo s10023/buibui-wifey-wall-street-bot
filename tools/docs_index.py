@@ -1,15 +1,15 @@
 """Generate browsable indexes for the audit and spec corpora.
 
 `docs/audits/` (18 verdicts) and `docs/superpowers/specs/` (14 specs) are 32
-documents that **nothing indexed**. CLAUDE.md cites 9 of the 18 audits inline, on
-the footgun and sleeve-verdict entries they support; the other 9, and 13 of the
-14 specs, had no surface listing them at all.
+documents that **no other surface lists**. CLAUDE.md cites 9 of the 18 audits
+inline, on the footgun and sleeve-verdict entries they support; the other 9, and
+13 of the 14 specs, are listed nowhere else.
 
-Ported from parent PR #600. Two rules shape the extraction, and both exist to
+Two rules shape the extraction, and both exist to
 avoid making the index a new source of confident-sounding wrong claims:
 
 - **Nothing is guessed.** Date and title come from the filename and the H1, which
-  are 100% reliable across both corpora. A verdict line is emitted ONLY when it
+  are 100% reliable across both corpora. A verdict line is emitted only when it
   can be read out of a Verdict heading as prose; every other row gets an em dash,
   and the index header states the coverage out loud. A keyword-guessed verdict
   column would be strictly worse than none in a repo whose standing lesson is
