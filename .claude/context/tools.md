@@ -1310,9 +1310,25 @@ exits before any point estimate. The full run prints the same block first. It ta
 minutes: each of the eight bootstrap CIs (two legs × primary, 5 bps, execution lag, SPY) is ~5,000
 Python-loop stationary resamples over ~24,500 sessions.
 
-The verdict function returns `UNREGISTERED` when the leg-1 CI straddles zero and leg 3 is not
-excluded, because the pre-registration names no verdict for that case; it needs an operator
-ruling rather than a reading.
+The verdict function returns `INSUFFICIENT` when the leg-1 CI straddles zero and leg 3 is not
+excluded. OV-1's pre-registration named no verdict for that case (the tool printed `UNREGISTERED`
+when the audit ran); the VM amendment named it, which changes no OV-1 reading.
+
+## vm_overlay_audit.py — VM as a paired increment over OV-1
+
+Runs the frozen VM pre-registration (edge-pillars spec § Amendment 1) on OV-1's frame and exact
+panel, reusing `overlay_audit.py`'s loaders and constants. Four arms (`bh`, `ov`, `vm`, `ovvm`);
+the headline is the increment test `ovvm` against `ov`, the spec falsifier `vm` against `bh`, and
+`vm` against `ov` is reported. It refuses to run if the VM frame does not span OV-1's panel exactly.
+
+**Run:** `make wifey-vm-audit ARGS=--precheck` first, then `make wifey-vm-audit`
+(`[--db PATH] [--french-zip PATH] [--precheck] [--no-spy]`). Pass the same `--french-zip` OV-1
+read, or the end date moves.
+
+`--precheck` prints the panel, `σ_target`, the pre-1952 Saturday-to-weekday volatility ratio, the
+VM weight's mean and the gated half-widths. The full run computes ~34 bootstrap CIs (three rows ×
+two legs at the primary, 5 bps, execution lag, real-time target and SPY), so it takes well over
+half an hour; run it in the background.
 
 ## edgar_client.py — the SEC User-Agent contract
 

@@ -1106,6 +1106,7 @@ make wifey-xasset-audit                     # Edge-hunt #3 — cross-asset TSMOM
 make wifey-pead-audit                       # Edge-hunt #4 — PEAD-lite 2x2 (read-only)
 make wifey-insider-audit                    # H-024 phase 3 — insider trial family, gross vs net (read-only)
 make wifey-overlay-audit                    # OV-1 — 200d MA as an overlay on the Ken French total-return frame (read-only; ARGS=--precheck)
+make wifey-vm-audit                         # VM — volatility-managed exposure as an increment over OV-1 (read-only; ARGS=--precheck)
 make wifey-exit-audit                      # Exit MFE/MAE diagnostic — live ledger (read-only)
 make wifey-n-eff                           # Effective independent series (n_eff) for a pooled panel (read-only)
 ```

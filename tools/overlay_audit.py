@@ -108,7 +108,7 @@ def _print_arms(arms: pd.DataFrame, bps: float) -> None:
         f"{'maxDD':>7} {'TUW(y)':>7} {'in-mkt':>7} {'sw/yr':>6}"
     )
     for arm in ("bh", "ov"):
-        s = summarize_arm(arms, arm)
+        s = summarize_arm(arms, arm, pos="pos" if arm == "ov" else None)
         print(
             f"  {arm:<4} {bps:>4.0f} {s.ann_return:>7.2%} {s.ann_vol:>8.4f} {s.sharpe:>7.3f} "
             f"{s.ulcer:>7.2f} {s.max_dd:>6.1%} {s.tuw_sessions / TRADING_DAYS:>7.1f} "

@@ -5,6 +5,10 @@ OV-1's rule is H1's ``ma200d`` unchanged: long while the close is above its
 calendars (``^GSPC`` has no pre-1952 Saturdays; the French file does), so the
 mapping from one to the other is where a look-ahead could enter, and it lives in
 one function, :func:`position_on`.
+
+VM's rule (#421, the spec's Amendment 1) is a fractional weight
+``min(1, σ_target / σ̂_20d)`` read from the return series itself, so it needs no
+calendar mapping: :func:`vol_weight` shifts it onto the next session.
 """
 
 from __future__ import annotations
@@ -49,3 +53,41 @@ def position_on(
     values = signal.to_numpy(dtype=float)
     out = np.where(k >= 0, values[np.clip(k, 0, None)], np.nan)
     return pd.Series(out, index=dates, name="pos")
+
+
+VOL_WINDOW = 20
+
+
+def realized_vol(returns: pd.Series, window: int = VOL_WINDOW) -> pd.Series:
+    """Sample standard deviation (ddof 1) of the ``window`` returns ending at ``t``.
+
+    NaN until ``window`` returns exist. Read from returns up to and including
+    ``t``, so the weight built on it must be shifted before it is held.
+    """
+    return returns.rolling(window).std(ddof=1)
+
+
+def vol_weight(
+    returns: pd.Series,
+    target: float | pd.Series,
+    *,
+    window: int = VOL_WINDOW,
+    lag: int = 1,
+) -> pd.Series:
+    """VM's weight ``min(1, target / σ̂)``, held over each session of ``returns``.
+
+    ``returns`` is the return calendar itself, so the mapping is a plain shift:
+    ``lag=1`` holds over session ``t+1`` the weight set from ``σ̂_t``, and
+    ``lag=2`` adds one session of execution delay. A zero ``σ̂`` gives full
+    weight. ``target`` may be a series aligned to ``returns`` (the real-time
+    sensitivity's expanding median).
+
+    ``lag=0`` holds the weight read from the session being earned. It is
+    non-causal by construction and exists only as the causality test's
+    positive control.
+    """
+    if lag < 0:
+        raise ValueError("lag must be >= 0")
+    sigma = realized_vol(returns, window)
+    w = (target / sigma).clip(upper=1.0)
+    return w.shift(lag).rename("w")

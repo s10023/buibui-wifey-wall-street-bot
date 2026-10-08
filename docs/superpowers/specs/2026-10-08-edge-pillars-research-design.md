@@ -1,7 +1,8 @@
 # Edge pillars: what a survivable system needs, and where to look next
 
 **Status: DESIGN, phase 1 (no data read). Issue #378. OV-1 pre-registration FROZEN 2026-10-08
-on the operator's go; build is #418.** Written without `analytics.db`; every
+on the operator's go; build is #418. VM pre-registration FROZEN 2026-10-08 as Amendment 1;
+build is #421, which reported FOUND as an increment (`docs/audits/2026-10-08-vm-overlay-increment.md`).** Written without `analytics.db`; every
 repo figure below is quoted from a tracked audit, and every power figure is a
 `tools/distil_power.py` run reproduced inline. Literature claims carry their source and are kept
 apart from what this repo measured.
@@ -327,3 +328,88 @@ operator's go on 2026-10-08. Changing any line re-opens the trial count.
 
 `analytics/**/*.py` is in CI's regression filter, so the build branch also runs
 `make test-regression`.
+
+## Amendment 1 — VM pre-registration (#421)
+
+**FROZEN 2026-10-08, before any VM return was computed**, on the operator's go after OV-1 reported
+FOUND. OV-1's pre-registration above is unchanged except for the naming in "Verdict function"
+below, which changes none of its readings. Changing any line here re-opens the trial count.
+
+The question is whether volatility management adds survival **beside** OV-1, now the adopted core.
+It is a paired increment over OV-1, not a fresh trial.
+
+### Rule
+
+- `σ̂_t`: sample standard deviation (ddof 1) of the frame's market total returns over the 20
+  sessions ending at `t`, inclusive, on the return calendar.
+- Weight held over session `t+1`: `w = min(1, σ_target / σ̂_t)`. Unlevered, rebalanced daily, no
+  band.
+- `σ_target`: the median of `σ̂_t` over the OV-1 panel's sessions, computed once on the primary
+  frame and printed by the precheck. It is in-sample by construction (the spec's wording), so the
+  real-time version is a sensitivity run below.
+
+### Panel, frame, costs and bootstrap
+
+All as OV-1: French `Mkt-RF + RF` and `RF`, the OV-1 panel's exact sessions (so every arm is
+paired), 2 bps per unit of |Δposition| with 5 bps reported, and a stationary bootstrap with mean
+block 252, 5,000 resamples and seed 20261008, every leg on the same resamples. Daily rebalancing
+with no band charges every small weight change, which is conservative.
+
+### Arms
+
+- `bh`: the market every session.
+- `ov`: OV-1, unchanged.
+- `vm`: weight `w` in the market, `1 − w` in `RF`.
+- `ovvm`: OV-1 × VM, weight `pos_ov × w`.
+
+### Gates
+
+Both tests use OV-1's three legs and bars unchanged: ΔUI CI upper bound below 0, ulcer ratio
+≤ 0.75 on the point estimate, and ΔSR CI lower bound above −0.10.
+
+1. **Increment test (the headline): `ovvm` against `ov`.** This alone decides whether the core
+   could change. FOUND means OV-1 × VM cuts ulcer by at least a further quarter at non-inferior
+   Sharpe, and adopting it is still the operator's call. Any other verdict leaves the core at
+   OV-1.
+2. **Spec falsifier: `vm` against `bh`.** This is Part 3's literal test of VM as an overlay. It
+   decides nothing operational, because VM can enter the core only as OV-1 × VM, so no
+   multiplicity correction is applied between the two.
+
+Reported, not gated: `vm` against `ov` (VM as a replacement for OV-1).
+
+### Verdict function
+
+The OV-1 pre-registration named no verdict for a leg-1 CI that straddles zero. **It is
+`INSUFFICIENT`**: the survival change is not distinguishable from zero, and the premise is
+neither shown nor refuted. The full order is:
+
+1. EXCLUDED if the leg-1 CI lies wholly at or above 0, or the leg-3 CI upper bound is below −0.10.
+2. FOUND if all three legs pass.
+3. BOUNDED if leg 1 passes and leg 2 or 3 does not.
+4. INSUFFICIENT otherwise (the leg-1 CI contains 0).
+
+`analytics/overlay/report.py::overlay_verdict` returned `UNREGISTERED` for case 4, and returns
+`INSUFFICIENT` from this amendment on. That changes no OV-1 reading: its primary and both gated
+sensitivities were FOUND, and only the SPY cross-check, which cannot overturn the primary, fell
+in case 4. An INSUFFICIENT headline is filed as EXCLUDED as an addition to the core, with the
+premise recorded as not refuted, kept apart as in the H-024 audit.
+
+### Reported, not gated
+
+- Per arm: CAGR, volatility, Sharpe, ulcer, max drawdown, longest time under water, mean exposure
+  and turnover per year (Σ|Δposition| per calendar year), plus the P(DD ≥ D within 5 years) curve
+  for D ∈ {15, 20, 25, 30, 40}%.
+- Sensitivity runs: 5 bps; a 1-session execution lag on both signals; a **real-time
+  `σ_target`** (the expanding median of `σ̂` through `t`, the Cederburg et al. critique);
+  split halves (sign only); and SPY total return from 1993, with `σ̂` from SPY's own returns and
+  the primary `σ_target`.
+
+### Causality and frame limits
+
+- A truncated-series test over 6 cuts on the weight, with the `lag=0` weight (which reads the
+  return of the session being earned) as a positive control that must be flagged.
+- Pre-1952 Saturday sessions were short (two hours) and are expected to be quieter, so inside the
+  20-session window they would bias `σ̂` low before 1952 and the weight slightly high. The
+  precheck prints the Saturday-to-weekday volatility ratio so the size of this is measured.
+- `σ̂` is on the CRSP total market, OV-1's signal is on `^GSPC`: each rule reads its own natural
+  input.
