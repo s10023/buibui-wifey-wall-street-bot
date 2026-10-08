@@ -10,7 +10,6 @@ read first if any of this is ever re-ported.
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -907,8 +906,10 @@ class TestSinkAllowlistAndBareInvocation:
         import sys as _sys
 
         repo = Path(__file__).resolve().parent.parent
-        env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
-        env["PYTHONUTF8"] = "1"  # the child must write the UTF-8 we decode
+        from tools.child_env import python_child_env
+
+        # the child must write the UTF-8 we decode
+        env = python_child_env(drop=("PYTHONPATH",))
         proc = subprocess.run(  # noqa: S603 - fixed argv, shell=False
             [_sys.executable, str(repo / "tools" / "route_dedup.py"), "--help"],
             capture_output=True,

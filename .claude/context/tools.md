@@ -435,6 +435,18 @@ bounded window, so a citation far from its target is invisible.
 **Run:** via `make post-branch-checks`, or
 `PYTHONPATH=. poetry run python tools/post_branch_checks.py --check stale-anchors`.
 
+## child_env.py — the env for a child Python whose output the parent decodes
+
+`python_child_env(base=None, *, drop=())` copies `os.environ` (or `base`), removes the `drop`
+keys and sets `PYTHONUTF8=1`. `encoding="utf-8"` on a `subprocess` call fixes only how the parent
+decodes; on Windows a child Python still writes piped stdout/stderr as cp1252, and one non-ASCII
+byte then fails the parent's strict decode (Issue #411; `tools/route_dedup.py --help` emits 16).
+`tests/test_explicit_encoding.py::test_child_python_writes_utf8` requires every text-mode call
+whose literal argv starts with an interpreter (`sys.executable`, `python*`, `poetry run python`,
+or a named interpreter variable) to pass `env=python_child_env(...)`, directly or through a
+local name assigned from it, or to set `errors=`. A non-literal argv must do the same or appear
+in `NON_LITERAL_ARGV_ALLOWLIST` with its reason, and an entry that stops matching fails the test.
+
 ## claude_home.py — the one derivation of this checkout's memory tree
 
 Five call sites — `cadence_check`, `post_branch_checks`, `sync_parent`, `deploy/backup-analytics.sh`

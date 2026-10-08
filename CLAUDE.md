@@ -153,7 +153,10 @@ make test           # full pytest suite (make test-cov for coverage)
   `write_text`, text-mode `open` and text-mode `subprocess` call in shipped code, `tests/` and
   `.claude/hooks/`: no env var can mask a source scan. The subprocess case fails more quietly:
   the decode error happens in a reader thread, `stdout` comes back `None`, and the error
-  surfaces later as `'NoneType' object has no attribute 'splitlines'`. Go through `make`,
+  surfaces later as `'NoneType' object has no attribute 'splitlines'`. A child Python also
+  writes its piped output as cp1252, so the same test requires a call that launches Python to
+  pass `env=tools/child_env.py::python_child_env()` (which pins `PYTHONUTF8=1`) or set
+  `errors=`; a non-literal argv needs a named entry in its allowlist. Go through `make`,
   or prefix direct invocations:
   `PYTHONUTF8=1 PYTHONPATH=. poetry run python tools/post_branch_checks.py …`. Linux CI is
   unaffected.
