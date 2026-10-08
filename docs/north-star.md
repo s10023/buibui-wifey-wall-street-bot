@@ -23,7 +23,7 @@ not done. Open work lives in GitHub Issues, never here. Built-and-measured verdi
 | --- | --- | --- |
 | G1 | First sized paper book, honest costs, paper Sharpe > 0 | Whether the sizing playbook transplants to equities |
 | G2 | Core sleeve OOS Sharpe ≥ ~1 on the breadth universe, costs in, DSR/PBO-gated | That sleeve becomes the core. Any threshold revision is pre-registered before looking at results |
-| G3 | Multi-sleeve paper book ≥ 3 consecutive months Sharpe ≥ 1.0 net, drawdown inside budget | Permission to spec Phase B: risk layer (kill-switch, drawdown governor) first, executor after |
+| G3 | Multi-sleeve paper book tracks its backtest-implied returns within a tracking tolerance declared before it starts, for ≥ 3 consecutive months, drawdown inside budget | Permission to spec Phase B: risk layer (kill-switch, drawdown governor) first, executor after |
 | G4 | Live tracks paper within tolerance for ≥ 4 weeks at minimum size | Permission to scale size |
 
 G1 is not live: it was scoped to the parent's paper book, which never re-evaluated it, and no
@@ -31,6 +31,26 @@ sleeve here has a positive per-trade edge net of cost to size. Sizing does not r
 per-trade edge, so do not port the parent's `portfolio/` until a sleeve shows one. Breadth relief
 is not available either: the 505-member universe carries `n_eff` ≈ 2.96 at `1d`
 (`make wifey-n-eff`), and `n_eff` tends to `1/rho` as names are added.
+
+G3 is a tracking gate, not a Sharpe test (ruled 2026-10-08, #378). Three months of daily returns
+put a 95% interval of about ±3.9 on an annualized Sharpe (`sqrt(252/63)` ≈ 2.0 standard errors;
+Lo, 2002), so they cannot tell 1.0 from 0, and no practical window can. Evidence of edge comes from
+G2's out-of-sample panel; G3 checks that paper behaves as that evidence predicts. The north-star
+quote above still reads "Sharpe ≥ 1.0 … over ≥ 3 consecutive months" until the two-track decision
+(#419, after OV-1 reports) rewrites it.
+
+## Two yardsticks
+
+Ruled 2026-10-08 (#336, #378). Each class is judged on its own yardstick, fixed before results.
+
+| Class | Judged on | Gate |
+| --- | --- | --- |
+| Edge-claiming sleeve | Net-of-cost Sharpe of the committed cell; beta-hedged alpha for any long-only leg | `GATE_SHARPE = 0.7`, DSR ≥ 0.95, PBO ≤ 0.5, bootstrap lower bound > 0, realized-beta guardrail on market-neutral constructions |
+| Risk overlay on the market premium | Survival against buy-and-hold on a total-return frame with cash earning T-bills | Ulcer index below buy-and-hold (bootstrap CI), at least 25% lower, and net Sharpe non-inferior within 0.10. Beta-hedged alpha is reported but is not the yardstick |
+
+An overlay never claims an edge, and a sleeve cannot pass by switching class after its result is
+known. The first overlay pre-registration is OV-1
+(`docs/superpowers/specs/2026-10-08-edge-pillars-research-design.md` § Phase 2; build #418).
 
 ## Data-cost policy
 

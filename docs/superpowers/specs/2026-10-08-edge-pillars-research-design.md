@@ -1,6 +1,7 @@
 # Edge pillars: what a survivable system needs, and where to look next
 
-**Status: DESIGN, phase 1 (no data read). Issue #378.** Written without `analytics.db`; every
+**Status: DESIGN, phase 1 (no data read). Issue #378. OV-1 pre-registration FROZEN 2026-10-08
+on the operator's go; build is #418.** Written without `analytics.db`; every
 repo figure below is quoted from a tracked audit, and every power figure is a
 `tools/distil_power.py` run reproduced inline. Literature claims carry their source and are kept
 apart from what this repo measured.
@@ -260,10 +261,15 @@ estimate.
    survival-managed core plus alpha sleeves only once one clears G2.
 3. Re-label G3 as a tracking gate, since three months cannot test a Sharpe.
 
+**Ruled 2026-10-08, all as recommended.** (1) OV-1 is a go: #418. (2) The overlay yardstick is
+adopted now, in `docs/north-star.md` § Two yardsticks; the two-track north star is decided after
+OV-1 reports: #419. (3) G3 is a tracking gate in `docs/north-star.md`. Later candidates still
+need their own go.
+
 ## Phase 2 — what to measure first, on the machine with the data
 
-**The single first experiment is OV-1.** Its pre-registration below is frozen from the moment the
-operator says go. Changing any line re-opens the trial count.
+**The single first experiment is OV-1.** Its pre-registration below has been frozen since the
+operator's go on 2026-10-08. Changing any line re-opens the trial count.
 
 ### Pre-registration
 
