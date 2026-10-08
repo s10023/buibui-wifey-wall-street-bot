@@ -178,8 +178,8 @@ make test           # full pytest suite (make test-cov for coverage)
 ### Repo checks
 
 - `make status` prints every repo-shape number: tests, files, CLAUDE.md size, handoff lines,
-  MEMORY.md size and bullet count, audits, skills, tools. Print these rather than writing them
-  into a doc, where they go stale.
+  MEMORY.md size and bullet count, audits, skills, tools, skill usage. Print these rather than
+  writing them into a doc, where they go stale.
 - `make sanity-checks` runs the eight mechanical checks in `tools/sanity_checks.py`: fork drift
   against invocable artifacts, parent-repo leakage in skills, dead repo paths, package coverage
   in `.claude/context/`, the three hand-maintained router lists, `[strategy_params.X]` keys,
@@ -739,9 +739,9 @@ description and trigger conditions load every session, so use them proactively. 
 descriptions do not say:
 
 - `.claude/` is a denylist: `.gitignore` names only `settings.local.json` (absolute machine
-  paths), `RESUME.md` (session scratch) and `sensitive-terms.txt` (never tracked, by policy).
-  Skills, agents, context, hooks and `settings.json` all ship, and a new artifact class is
-  tracked by default. Check `git check-ignore` before assuming.
+  paths), `RESUME.md` (session scratch), `sensitive-terms.txt` (never tracked, by policy) and
+  `skill-usage.log` (machine-local, #395). Skills, agents, context, hooks and `settings.json` all
+  ship, and a new artifact class is tracked by default. Check `git check-ignore` before assuming.
 - Load `/frontend-design` before any Svelte, CSS or UI change.
 - Invoke `/post-branch` before `gh pr create`, while the branch is still local-only.
 - When a skill upgrade fixes a defect, ask whether the defect changed coverage or only
