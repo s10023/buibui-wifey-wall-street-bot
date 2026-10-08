@@ -357,7 +357,7 @@ def load_stocks_config(path: Path = _DEFAULT_STOCKS_PATH) -> dict[str, Any]:
         raise FileNotFoundError(
             f"{path} not found — copy stocks.json.example to {path} and edit."
         )
-    with path.open() as f:
+    with path.open(encoding="utf-8") as f:
         config: dict[str, Any] = json.load(f)
     validate_stocks_config(config)
     config.pop(UNIVERSE_POLICY_KEY, None)
@@ -373,7 +373,7 @@ def load_universe_policy(path: Path = _DEFAULT_STOCKS_PATH) -> UniversePolicy:
     """
     if not path.exists():
         return DEFAULT_UNIVERSE_POLICY
-    with path.open() as f:
+    with path.open(encoding="utf-8") as f:
         config: dict[str, Any] = json.load(f)
     block = config.get(UNIVERSE_POLICY_KEY)
     if block is None:
@@ -403,7 +403,7 @@ def load_research_universe(
         raise FileNotFoundError(
             f"{path} not found — the research breadth universe (N3) lives here."
         )
-    with path.open() as f:
+    with path.open(encoding="utf-8") as f:
         config: dict[str, Any] = json.load(f)
     validate_research_universe(config)
     block = config[UNIVERSE_POLICY_KEY]

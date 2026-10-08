@@ -30,11 +30,13 @@ class CooldownStore:
             return
         # Corrupted or unreadable state file: start empty rather than crash the daemon.
         with suppress(json.JSONDecodeError, OSError):
-            data = json.loads(self._path.read_text())
+            data = json.loads(self._path.read_text(encoding="utf-8"))
             self._watermarks = data.get("watermarks", {})
 
     def _save(self) -> None:
-        self._path.write_text(json.dumps({"watermarks": self._watermarks}, indent=2))
+        self._path.write_text(
+            json.dumps({"watermarks": self._watermarks}, indent=2), encoding="utf-8"
+        )
 
     def is_new_candle(
         self,

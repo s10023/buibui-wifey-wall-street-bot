@@ -48,7 +48,7 @@ def _iter_py_files(root: str) -> list[pathlib.Path]:
 
 def _imports_from(path: pathlib.Path, prefix: str) -> list[str]:
     """Return module names this file imports that start with ``prefix``."""
-    tree = ast.parse(path.read_text(), filename=str(path))
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     hits: list[str] = []
     for node in ast.walk(tree):
         if (
@@ -66,7 +66,7 @@ def _imports_from(path: pathlib.Path, prefix: str) -> list[str]:
 
 def _from_imports(path: pathlib.Path, prefix: str) -> list[tuple[str, list[str]]]:
     """Return ``(module, [names])`` for each ``from <prefix>... import ...`` line."""
-    tree = ast.parse(path.read_text(), filename=str(path))
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     out: list[tuple[str, list[str]]] = []
     for node in ast.walk(tree):
         if (

@@ -233,7 +233,7 @@ def _load_cached(cache_dir: Path, tweet_id: str) -> tuple[XPost, list[str]] | No
     if not path.exists():
         return None
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
         raw = dict(data["post"])
         raw["photo_urls"] = tuple(raw.get("photo_urls", ()))
         return XPost(**raw), list(data.get("photo_paths", []))
@@ -250,7 +250,9 @@ def _write_cache(
         "photo_paths": photo_paths,
         "fetched_at_utc": datetime.now(UTC).isoformat(),
     }
-    _cache_path(cache_dir, tweet_id).write_text(json.dumps(payload, indent=2))
+    _cache_path(cache_dir, tweet_id).write_text(
+        json.dumps(payload, indent=2), encoding="utf-8"
+    )
 
 
 def fetch_x_batch(

@@ -43,7 +43,7 @@ class TestBacktestSweepConfigDefaults:
 class TestLoadBacktestConfig:
     def test_load_from_toml(self, tmp_path: Path) -> None:
         p = tmp_path / "cfg.toml"
-        p.write_text(_MINIMAL_TOML)
+        p.write_text(_MINIMAL_TOML, encoding="utf-8")
         cfg = load_backtest_config(p)
         assert cfg.symbols == ["BTCUSDT", "ETHUSDT"]
         assert cfg.timeframes == ["1h", "4h"]
@@ -59,13 +59,13 @@ class TestLoadBacktestConfig:
 
     def test_load_invalid_toml(self, tmp_path: Path) -> None:
         p = tmp_path / "bad.toml"
-        p.write_text("symbols = [unclosed")
+        p.write_text("symbols = [unclosed", encoding="utf-8")
         with pytest.raises(tomllib.TOMLDecodeError):
             load_backtest_config(p)
 
     def test_load_partial_toml_uses_defaults(self, tmp_path: Path) -> None:
         p = tmp_path / "partial.toml"
-        p.write_text(_PARTIAL_TOML)
+        p.write_text(_PARTIAL_TOML, encoding="utf-8")
         cfg = load_backtest_config(p)
         assert cfg.symbols == ["BTCUSDT"]
         assert cfg.timeframes == ["4h"]
@@ -77,7 +77,7 @@ class TestLoadBacktestConfig:
     def test_load_day_filter_string_modes(self, tmp_path: Path) -> None:
         for mode in ("off", "weekdays", "tue_thu"):
             p = tmp_path / f"cfg_{mode}.toml"
-            p.write_text(f'symbols = []\nday_filter = "{mode}"\n')
+            p.write_text(f'symbols = []\nday_filter = "{mode}"\n', encoding="utf-8")
             cfg = load_backtest_config(p)
             assert cfg.day_filter == mode
 
@@ -87,20 +87,22 @@ class TestLoadBacktestConfig:
 
     def test_load_atr_sl_floor_top_level(self, tmp_path: Path) -> None:
         p = tmp_path / "cfg.toml"
-        p.write_text("symbols = []\natr_sl_floor = true\n")
+        p.write_text("symbols = []\natr_sl_floor = true\n", encoding="utf-8")
         cfg = load_backtest_config(p)
         assert cfg.atr_sl_floor is True
 
     def test_load_atr_sl_floor_backtest_section(self, tmp_path: Path) -> None:
         p = tmp_path / "cfg.toml"
-        p.write_text("symbols = []\n[backtest]\natr_sl_floor = true\n")
+        p.write_text(
+            "symbols = []\n[backtest]\natr_sl_floor = true\n", encoding="utf-8"
+        )
         cfg = load_backtest_config(p)
         assert cfg.atr_sl_floor is True
 
     def test_load_per_tf_min_trades(self, tmp_path: Path) -> None:
         content = "min_trades = 20\nmin_trades_15m = 30\nmin_trades_4h = 10\nmin_trades_1d = 5\n"
         p = tmp_path / "cfg.toml"
-        p.write_text(content)
+        p.write_text(content, encoding="utf-8")
         cfg = load_backtest_config(p)
         assert cfg.min_trades_per_tf == {"15m": 30, "4h": 10, "1d": 5}
         assert cfg.effective_min_trades("15m") == 30
@@ -159,14 +161,14 @@ tp_r = 3.0
 tp_r_4h = 2.5
 """
         p = tmp_path / "cfg.toml"
-        p.write_text(content)
+        p.write_text(content, encoding="utf-8")
         cfg = load_backtest_config(p)
         assert cfg.strategy_params["engulfing"].tp_r == 3.0
         assert cfg.strategy_params["bos"].tp_r_per_tf == {"4h": 2.5}
 
     def test_load_strategy_params_defaults_to_empty(self, tmp_path: Path) -> None:
         p = tmp_path / "cfg.toml"
-        p.write_text("symbols = ['BTCUSDT']\n")
+        p.write_text("symbols = ['BTCUSDT']\n", encoding="utf-8")
         cfg = load_backtest_config(p)
         assert cfg.strategy_params == {}
 
@@ -213,7 +215,7 @@ tp_r_short_4h = 5.0
 tp_r_long_1wk = 2.0
 """
         p = tmp_path / "cfg.toml"
-        p.write_text(content)
+        p.write_text(content, encoding="utf-8")
         cfg = load_backtest_config(p)
         override = cfg.strategy_params["trend_day"]
         assert override.tp_r_per_tf == {"4h": 4.0}
@@ -299,7 +301,7 @@ tp_r_15m = 4.5
 tp_r_15m = 3.5
 """
         p = tmp_path / "cfg.toml"
-        p.write_text(content)
+        p.write_text(content, encoding="utf-8")
         cfg = load_backtest_config(p)
         assert cfg.effective_tp_r("doji", "ETHUSDT", "15m") == 4.5
         assert cfg.effective_tp_r("doji", "BTCUSDT", "15m") == 3.5
@@ -318,7 +320,8 @@ class TestCostModelBacktestConfig:
             "\n"
             "[backtest.cost_model]\n"
             "enabled = true\n"
-            "notional_usd = 25000.0\n"
+            "notional_usd = 25000.0\n",
+            encoding="utf-8",
         )
         cfg = load_backtest_config(p)
         assert cfg.cost_model is not None
@@ -326,5 +329,8 @@ class TestCostModelBacktestConfig:
 
     def test_disabled_block_is_none(self, tmp_path: Path) -> None:
         p = tmp_path / "cfg.toml"
-        p.write_text('symbols = ["SPY"]\n\n[backtest.cost_model]\nenabled = false\n')
+        p.write_text(
+            'symbols = ["SPY"]\n\n[backtest.cost_model]\nenabled = false\n',
+            encoding="utf-8",
+        )
         assert load_backtest_config(p).cost_model is None

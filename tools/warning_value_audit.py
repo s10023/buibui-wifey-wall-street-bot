@@ -371,7 +371,7 @@ def main() -> int:
     print(report)
     if args.out is not None:
         args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(report)
+        args.out.write_text(report, encoding="utf-8")
         print(f"[saved] {args.out}", file=sys.stderr)
     return 0
 

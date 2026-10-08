@@ -113,7 +113,7 @@ class TestCooldownStore:
 
     def test_corrupted_state_file_starts_fresh(self, tmp_path: Any) -> None:
         path = tmp_path / "state.json"
-        path.write_text("not valid json")
+        path.write_text("not valid json", encoding="utf-8")
         store = CooldownStore(str(path))
         assert store.is_new_candle("BTCUSDT", "4h", "fvg", 1000) is True
 

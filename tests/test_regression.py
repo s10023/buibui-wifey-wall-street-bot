@@ -203,7 +203,8 @@ def test_golden_metrics(
                 },
                 indent=2,
             )
-            + "\n"
+            + "\n",
+            encoding="utf-8",
         )
         print(f"\nUpdated: {golden_path}")
         return
@@ -211,7 +212,7 @@ def test_golden_metrics(
     if not golden_path.exists():
         pytest.fail(f"Golden file missing: {golden_path}\nRun: make regression-update")
 
-    golden_data = json.loads(golden_path.read_text())
+    golden_data = json.loads(golden_path.read_text(encoding="utf-8"))
     golden = golden_data["strategies"]
 
     report = _diff_report(results, golden)

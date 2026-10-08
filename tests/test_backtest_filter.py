@@ -257,7 +257,9 @@ class TestBacktestFilterConfig:
         from analytics.signal_config import load_signal_config
 
         p = tmp_path / "cfg.toml"
-        p.write_text("[backtest]\nmode = 'hard'\ndays = 60\nmin_trades = 10\n")
+        p.write_text(
+            "[backtest]\nmode = 'hard'\ndays = 60\nmin_trades = 10\n", encoding="utf-8"
+        )
         cfg = load_signal_config(p)
         assert cfg.backtest.mode == "hard"
         assert cfg.backtest.days == 60
@@ -267,7 +269,7 @@ class TestBacktestFilterConfig:
         from analytics.signal_config import load_signal_config
 
         p = tmp_path / "cfg.toml"
-        p.write_text("telegram = true\n")
+        p.write_text("telegram = true\n", encoding="utf-8")
         cfg = load_signal_config(p)
         assert cfg.backtest.mode == "soft"
         assert cfg.backtest.days == 90
@@ -287,7 +289,9 @@ class TestBacktestFilterConfig:
         from analytics.signal_config import load_signal_config
 
         p = tmp_path / "cfg.toml"
-        p.write_text("[backtest]\nmode = 'hard'\nfilter_threshold = 0.5\n")
+        p.write_text(
+            "[backtest]\nmode = 'hard'\nfilter_threshold = 0.5\n", encoding="utf-8"
+        )
         with pytest.raises(ValueError, match="min_avg_r"):
             load_signal_config(p)
 
@@ -296,7 +300,7 @@ class TestBacktestFilterConfig:
         from analytics.signal_config import load_signal_config
 
         p = tmp_path / "cfg.toml"
-        p.write_text("[backtest]\nmode = 'hard'\nmin_avg_r = 0.25\n")
+        p.write_text("[backtest]\nmode = 'hard'\nmin_avg_r = 0.25\n", encoding="utf-8")
         assert load_signal_config(p).backtest.min_avg_r == 0.25
 
     def test_min_avg_r_default(self) -> None:
@@ -307,7 +311,7 @@ class TestBacktestFilterConfig:
         from analytics.signal_config import load_signal_config
 
         p = tmp_path / "cfg.toml"
-        p.write_text("[backtest]\nmode = 'hard'\nmin_avg_r = 0.25\n")
+        p.write_text("[backtest]\nmode = 'hard'\nmin_avg_r = 0.25\n", encoding="utf-8")
         cfg = load_signal_config(p)
         assert cfg.backtest.min_avg_r == 0.25
 

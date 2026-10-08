@@ -49,7 +49,9 @@ def fake_repo(tmp_path: Path) -> Path:
     """
     repo = tmp_path / "repo"
     (repo / "docs" / "plans").mkdir(parents=True)
-    (repo / "docs" / "plans" / "note.md").write_text("research output\n")
+    (repo / "docs" / "plans" / "note.md").write_text(
+        "research output\n", encoding="utf-8"
+    )
 
     con = duckdb.connect(str(repo / "analytics.db"))
     con.execute("CREATE TABLE signal_alert_outcomes (id INTEGER)")
@@ -63,9 +65,9 @@ def fake_memory(tmp_path: Path) -> Path:
     """A stand-in for the memory tree, with the SoT's filename in it."""
     mem = tmp_path / "memory"
     mem.mkdir()
-    (mem / "MEMORY.md").write_text("# index\n")
-    (mem / "project_todo_master.md").write_text("# SoT\n")
-    (mem / "reference_env_gotchas.md").write_text("# topic\n")
+    (mem / "MEMORY.md").write_text("# index\n", encoding="utf-8")
+    (mem / "project_todo_master.md").write_text("# SoT\n", encoding="utf-8")
+    (mem / "reference_env_gotchas.md").write_text("# topic\n", encoding="utf-8")
     return mem
 
 
@@ -105,7 +107,9 @@ def test_memory_tree_lands_in_the_snapshot(
     assert rc == 0
 
     snapshot = only_snapshot(backup_root)
-    assert (snapshot / "memory" / "project_todo_master.md").read_text() == "# SoT\n"
+    assert (snapshot / "memory" / "project_todo_master.md").read_text(
+        encoding="utf-8"
+    ) == "# SoT\n"
     assert (snapshot / "memory" / "MEMORY.md").exists()
     assert (snapshot / "memory" / "reference_env_gotchas.md").exists()
 
@@ -134,7 +138,9 @@ def test_absent_root_is_recorded_in_the_manifest(
     the failure this section exists to make visible rather than silent.
     """
     _, _, backup_root = run_backup(fake_repo, tmp_path, tmp_path / "nonexistent")
-    manifest = json.loads((only_snapshot(backup_root) / "MANIFEST.json").read_text())
+    manifest = json.loads(
+        (only_snapshot(backup_root) / "MANIFEST.json").read_text(encoding="utf-8")
+    )
 
     assert manifest["external_roots"]["memory"]["files"] == 0
     assert manifest["external_roots"]["memory"]["path"].endswith("nonexistent")
@@ -144,7 +150,9 @@ def test_present_root_is_counted_in_the_manifest(
     fake_repo: Path, fake_memory: Path, tmp_path: Path
 ) -> None:
     _, _, backup_root = run_backup(fake_repo, tmp_path, fake_memory)
-    manifest = json.loads((only_snapshot(backup_root) / "MANIFEST.json").read_text())
+    manifest = json.loads(
+        (only_snapshot(backup_root) / "MANIFEST.json").read_text(encoding="utf-8")
+    )
 
     assert manifest["external_roots"]["memory"]["files"] == 3
     assert manifest["external_roots"]["memory"]["path"] == str(fake_memory)
@@ -161,7 +169,9 @@ def test_research_files_still_counts_repo_trees_only(
     unexplained jump and the field would stop being readable as coverage.
     """
     _, _, backup_root = run_backup(fake_repo, tmp_path, fake_memory)
-    manifest = json.loads((only_snapshot(backup_root) / "MANIFEST.json").read_text())
+    manifest = json.loads(
+        (only_snapshot(backup_root) / "MANIFEST.json").read_text(encoding="utf-8")
+    )
 
     # docs/plans/note.md is the only repo-derived file the fixture builds; every
     # BACKUP_FILES entry is absent from it, so the count is 1 however many are
@@ -226,7 +236,9 @@ def test_default_memory_path_is_derived_from_the_repo(
     assert proc.returncode == 0, proc.stderr
 
     snapshot = only_snapshot(backup_root)
-    assert (snapshot / "memory" / "project_todo_master.md").read_text() == "# SoT\n"
+    assert (snapshot / "memory" / "project_todo_master.md").read_text(
+        encoding="utf-8"
+    ) == "# SoT\n"
 
 
 def test_memory_lands_inside_the_snapshot_not_beside_it(

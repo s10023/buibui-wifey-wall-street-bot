@@ -54,7 +54,7 @@ def invoked_scripts(makefile_text: str) -> list[str]:
 
 class TestMakefileInvocations:
     def test_finds_the_real_entry_points(self) -> None:
-        scripts = invoked_scripts(MAKEFILE.read_text())
+        scripts = invoked_scripts(MAKEFILE.read_text(encoding="utf-8"))
         # Sanity-check the parser itself: if this regressed to matching nothing,
         # every assertion below would vacuously pass.
         assert "wifey.py" in scripts
@@ -63,7 +63,7 @@ class TestMakefileInvocations:
     def test_every_invoked_script_exists(self) -> None:
         missing = [
             s
-            for s in invoked_scripts(MAKEFILE.read_text())
+            for s in invoked_scripts(MAKEFILE.read_text(encoding="utf-8"))
             if not (REPO_ROOT / s).is_file()
         ]
         assert missing == [], f"Makefile invokes non-existent script(s): {missing}"
@@ -72,7 +72,7 @@ class TestMakefileInvocations:
         """The #138 case: python exits 0 on an empty file, so this looks like success."""
         empty = [
             f"{s} ({(REPO_ROOT / s).stat().st_size}B)"
-            for s in invoked_scripts(MAKEFILE.read_text())
+            for s in invoked_scripts(MAKEFILE.read_text(encoding="utf-8"))
             if (REPO_ROOT / s).is_file()
             and (REPO_ROOT / s).stat().st_size < _MIN_SCRIPT_BYTES
         ]

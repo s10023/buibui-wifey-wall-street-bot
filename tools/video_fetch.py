@@ -878,7 +878,7 @@ def _load_cached(cache_dir: Path, video_id: str) -> BatchResult | None:
     if not path.exists():
         return None
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
         # A cached frame_paths entry can point at a JPEG deleted since it was
         # written (extract_frames now downloads real media and can be re-run with
         # a pruned .cache/); a stale path here would silently send pass 2 to a
@@ -914,7 +914,8 @@ def _write_cache(cache_dir: Path, result: BatchResult, meta: VideoMeta) -> None:
             },
             indent=2,
             ensure_ascii=False,
-        )
+        ),
+        encoding="utf-8",
     )
 
 

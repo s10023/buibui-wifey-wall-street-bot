@@ -32,7 +32,11 @@ def _broad_symbols(min_history_days: int | None) -> list[str]:
 
 def _mega_symbols(broad: list[str]) -> list[str]:
     """The pre-expansion S&P-100 stocks (stable mega arm) ∩ the active universe."""
-    snap = set(json.loads(_SNAPSHOT.read_text())) if _SNAPSHOT.exists() else set()
+    snap = (
+        set(json.loads(_SNAPSHOT.read_text(encoding="utf-8")))
+        if _SNAPSHOT.exists()
+        else set()
+    )
     mega = [s for s in broad if s in snap]
     return mega or broad  # fall back to broad if the snapshot is absent
 

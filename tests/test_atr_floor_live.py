@@ -234,7 +234,7 @@ class TestLoadSignalConfigAtrSlFloor:
 
     def _write(self, tmp_path: Path, content: str) -> Path:
         p = tmp_path / "cfg.toml"
-        p.write_text(content)
+        p.write_text(content, encoding="utf-8")
         return p
 
     def test_global_floor_parsed(self, tmp_path: Path) -> None:

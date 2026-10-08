@@ -233,7 +233,7 @@ def test_fetch_transcript_prefers_captions(tmp_path: Path) -> None:
 
     def _run(cmd: list[str]) -> FakeProc:
         captured.append(cmd)
-        (tmp_path / "sub.zh.vtt").write_text(VTT)
+        (tmp_path / "sub.zh.vtt").write_text(VTT, encoding="utf-8")
         return FakeProc(0, "")
 
     result = fetch_transcript(_meta(), run=_run, work_dir=tmp_path)
@@ -259,9 +259,9 @@ def test_fetch_transcript_prefers_matching_lang_over_alphabetical(
     tmp_path: Path,
 ) -> None:
     def _run(cmd: list[str]) -> FakeProc:
-        (tmp_path / "sub.af.vtt").write_text(_AF_VTT)
-        (tmp_path / "sub.en.vtt").write_text(_EN_VTT)
-        (tmp_path / "sub.zh.vtt").write_text(VTT)
+        (tmp_path / "sub.af.vtt").write_text(_AF_VTT, encoding="utf-8")
+        (tmp_path / "sub.en.vtt").write_text(_EN_VTT, encoding="utf-8")
+        (tmp_path / "sub.zh.vtt").write_text(VTT, encoding="utf-8")
         return FakeProc(0, "")
 
     result = fetch_transcript(_meta(), run=_run, work_dir=tmp_path)
@@ -273,7 +273,7 @@ def test_fetch_transcript_prefers_matching_lang_over_alphabetical(
 
 def test_fetch_transcript_matches_lang_prefixed_variant(tmp_path: Path) -> None:
     def _run(cmd: list[str]) -> FakeProc:
-        (tmp_path / "sub.zh-Hans.vtt").write_text(VTT)
+        (tmp_path / "sub.zh-Hans.vtt").write_text(VTT, encoding="utf-8")
         return FakeProc(0, "")
 
     result = fetch_transcript(_meta(), run=_run, work_dir=tmp_path)
@@ -286,7 +286,7 @@ def test_fetch_transcript_falls_back_to_english_without_mislabeling(
     tmp_path: Path,
 ) -> None:
     def _run(cmd: list[str]) -> FakeProc:
-        (tmp_path / "sub.en.vtt").write_text(_EN_VTT)
+        (tmp_path / "sub.en.vtt").write_text(_EN_VTT, encoding="utf-8")
         return FakeProc(0, "")
 
     result = fetch_transcript(_meta(), run=_run, work_dir=tmp_path)
@@ -300,7 +300,7 @@ def test_fetch_transcript_requests_targeted_sub_langs_not_all(tmp_path: Path) ->
 
     def _run(cmd: list[str]) -> FakeProc:
         captured.append(cmd)
-        (tmp_path / "sub.zh.vtt").write_text(VTT)
+        (tmp_path / "sub.zh.vtt").write_text(VTT, encoding="utf-8")
         return FakeProc(0, "")
 
     fetch_transcript(_meta(), run=_run, work_dir=tmp_path)
@@ -950,7 +950,7 @@ def test_load_cached_drops_frame_paths_pointing_at_deleted_files(
         "frame_paths": [str(existing_frame), str(missing_frame)],
         "fetched_at_utc": "2026-07-28T00:00:00+00:00",
     }
-    (asset_dir / "asset.json").write_text(json.dumps(payload))
+    (asset_dir / "asset.json").write_text(json.dumps(payload), encoding="utf-8")
 
     cached = _load_cached(tmp_path, video_id)
     assert cached is not None
@@ -1250,7 +1250,7 @@ def test_sub_langs_asks_for_the_track_that_exists_when_language_is_null(
 
     def _run(cmd: list[str]) -> FakeProc:
         captured.append(cmd)
-        (tmp_path / "sub.zh-Hant.vtt").write_text(VTT)
+        (tmp_path / "sub.zh-Hant.vtt").write_text(VTT, encoding="utf-8")
         return FakeProc(0, "")
 
     result = fetch_transcript(_meta_no_lang(), run=_run, work_dir=tmp_path)
@@ -1279,7 +1279,7 @@ def test_transcript_source_is_auto_when_only_an_asr_track_matches(
     )
 
     def _run(cmd: list[str]) -> FakeProc:
-        (tmp_path / "sub.zh-Hant.vtt").write_text(VTT)
+        (tmp_path / "sub.zh-Hant.vtt").write_text(VTT, encoding="utf-8")
         return FakeProc(0, "")
 
     result = fetch_transcript(meta, run=_run, work_dir=tmp_path)
@@ -1292,7 +1292,7 @@ def test_transcript_source_unknown_is_not_folded_into_auto(tmp_path: Path) -> No
     and it was ASR" are different claims, so they get different values."""
 
     def _run(cmd: list[str]) -> FakeProc:
-        (tmp_path / "sub.zh.vtt").write_text(VTT)
+        (tmp_path / "sub.zh.vtt").write_text(VTT, encoding="utf-8")
         return FakeProc(0, "")
 
     result = fetch_transcript(_meta(), run=_run, work_dir=tmp_path)
@@ -1355,7 +1355,8 @@ def test_pre_st46_cache_entry_still_loads_and_claims_no_provenance(
                 "segments": [],
                 "frame_paths": [],
             }
-        )
+        ),
+        encoding="utf-8",
     )
     got = _load_cached(tmp_path, "oldvid")
     assert got is not None
@@ -1459,7 +1460,7 @@ def test_select_caption_track_prefers_the_base_language_over_english(
 ) -> None:
     """A `pt-BR` upload with `pt` and `en` tracks must not be read in English."""
     for code in ("en", "pt"):
-        (tmp_path / f"sub.{code}.vtt").write_text(VTT)
+        (tmp_path / f"sub.{code}.vtt").write_text(VTT, encoding="utf-8")
     chosen = _select_caption_track(sorted(tmp_path.glob("sub*.vtt")), "pt-BR")
     assert chosen is not None
     assert chosen.name == "sub.pt.vtt"
@@ -1470,7 +1471,7 @@ def test_select_caption_track_prefers_an_original_track_to_an_alphabetical_guess
 ) -> None:
     """`vtts[0]` is alphabetical, which is how `aa` beat the original track."""
     for code in ("aa", "en-orig"):
-        (tmp_path / f"sub.{code}.vtt").write_text(VTT)
+        (tmp_path / f"sub.{code}.vtt").write_text(VTT, encoding="utf-8")
     chosen = _select_caption_track(sorted(tmp_path.glob("sub*.vtt")), "de-AT")
     assert chosen is not None
     assert chosen.name == "sub.en-orig.vtt"
@@ -1485,7 +1486,7 @@ def test_fetch_transcript_refuses_a_track_unrelated_to_a_KNOWN_language(
     fall through rather than return a transcript."""
 
     def _run(cmd: list[str]) -> FakeProc:
-        (tmp_path / "sub.aa.vtt").write_text(VTT)
+        (tmp_path / "sub.aa.vtt").write_text(VTT, encoding="utf-8")
         return FakeProc(0, "")
 
     result = fetch_transcript(_meta_regional_lang(), run=_run, work_dir=tmp_path)
@@ -1566,7 +1567,7 @@ def test_caption_download_is_retried_once_and_the_retry_is_used(
         attempts += 1
         if attempts == 1:
             return FakeProc(1, "", "HTTP Error 429: Too Many Requests")
-        (tmp_path / "sub.en.vtt").write_text(VTT)
+        (tmp_path / "sub.en.vtt").write_text(VTT, encoding="utf-8")
         return FakeProc(0, "")
 
     result = fetch_transcript(
@@ -1611,7 +1612,7 @@ def test_a_successful_caption_download_costs_exactly_one_call(tmp_path: Path) ->
     def _run(cmd: list[str]) -> FakeProc:
         nonlocal attempts
         attempts += 1
-        (tmp_path / "sub.en.vtt").write_text(VTT)
+        (tmp_path / "sub.en.vtt").write_text(VTT, encoding="utf-8")
         return FakeProc(0, "")
 
     result = fetch_transcript(

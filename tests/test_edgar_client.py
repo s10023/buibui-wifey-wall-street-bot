@@ -49,7 +49,7 @@ _FIX = Path(__file__).parent / "fixtures" / "edgar"
 
 
 def _load(name: str) -> dict[str, Any]:
-    data: dict[str, Any] = json.loads((_FIX / name).read_text())
+    data: dict[str, Any] = json.loads((_FIX / name).read_text(encoding="utf-8"))
     return data
 
 

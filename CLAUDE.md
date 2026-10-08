@@ -148,9 +148,10 @@ make test           # full pytest suite (make test-cov for coverage)
 
 - **Encoding.** The Makefile exports `PYTHONUTF8=1` to every recipe. Without it Windows reads
   and writes text as cp1252, and this tree's source, configs and fixtures contain non-ASCII
-  characters, so the suite fails with `'charmap' codec` errors. It covers `make` only: a bare
-  `poetry run pytest` or a directly run tool still starts in cp1252, because many `read_text()`
-  calls pass no `encoding=`. `subprocess.run(…, text=True)` without `encoding=` fails more
+  characters, so the suite fails with `'charmap' codec` errors. It covers `make` only, which is
+  why `tests/test_explicit_encoding.py` statically requires `encoding=` on every `read_text`,
+  `write_text` and text-mode `open` in shipped code, `tests/` and `.claude/hooks/`: no env var
+  can mask a source scan. `subprocess.run(…, text=True)` without `encoding=` fails more
   quietly: the decode error happens in a reader thread, `stdout` comes back `None`, and the
   error surfaces later as `'NoneType' object has no attribute 'splitlines'`. Go through `make`,
   or prefix direct invocations:

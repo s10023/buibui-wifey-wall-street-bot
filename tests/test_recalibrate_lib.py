@@ -407,26 +407,26 @@ _FAKE_SOURCE = textwrap.dedent("""\
 class TestWriteConfidenceToSource:
     def test_patches_single_strategy_int(self, tmp_path: Path) -> None:
         src = tmp_path / "indicators_lib.py"
-        src.write_text(_FAKE_SOURCE)
+        src.write_text(_FAKE_SOURCE, encoding="utf-8")
         patched = write_confidence_to_source({"fvg": 5}, src)
         assert patched == ["fvg"]
-        assert "confidence=5" in src.read_text()
+        assert "confidence=5" in src.read_text(encoding="utf-8")
 
     def test_patches_multiple_strategies(self, tmp_path: Path) -> None:
         src = tmp_path / "indicators_lib.py"
-        src.write_text(_FAKE_SOURCE)
+        src.write_text(_FAKE_SOURCE, encoding="utf-8")
         patched = write_confidence_to_source({"fvg": 5, "bos": 1}, src)
         assert set(patched) == {"fvg", "bos"}
-        content = src.read_text()
+        content = src.read_text(encoding="utf-8")
         assert "confidence=5" in content
         assert "confidence=1" in content
 
     def test_patches_per_tf_dict(self, tmp_path: Path) -> None:
         src = tmp_path / "indicators_lib.py"
-        src.write_text(_FAKE_SOURCE)
+        src.write_text(_FAKE_SOURCE, encoding="utf-8")
         patched = write_confidence_to_source({"fvg": {"default": 1, "4h": 4}}, src)
         assert patched == ["fvg"]
-        content = src.read_text()
+        content = src.read_text(encoding="utf-8")
         assert '"default": 1' in content
         assert '"4h": 4' in content
 
@@ -439,31 +439,31 @@ class TestWriteConfidenceToSource:
             ),
         """)
         src = tmp_path / "indicators_lib.py"
-        src.write_text(source)
+        src.write_text(source, encoding="utf-8")
         patched = write_confidence_to_source({"fvg": {"default": 2, "4h": 5}}, src)
         assert patched == ["fvg"]
-        content = src.read_text()
+        content = src.read_text(encoding="utf-8")
         assert '"default": 2' in content
         assert '"4h": 5' in content
 
     def test_unknown_strategy_not_in_patched(self, tmp_path: Path) -> None:
         src = tmp_path / "indicators_lib.py"
-        src.write_text(_FAKE_SOURCE)
+        src.write_text(_FAKE_SOURCE, encoding="utf-8")
         patched = write_confidence_to_source({"nonexistent": 3}, src)
         assert patched == []
-        assert src.read_text() == _FAKE_SOURCE  # file unchanged
+        assert src.read_text(encoding="utf-8") == _FAKE_SOURCE  # file unchanged
 
     def test_same_value_still_patched(self, tmp_path: Path) -> None:
         src = tmp_path / "indicators_lib.py"
-        src.write_text(_FAKE_SOURCE)
+        src.write_text(_FAKE_SOURCE, encoding="utf-8")
         patched = write_confidence_to_source({"bos": 3}, src)
         assert "bos" in patched  # regex matched and wrote
 
     def test_does_not_corrupt_other_strategies(self, tmp_path: Path) -> None:
         src = tmp_path / "indicators_lib.py"
-        src.write_text(_FAKE_SOURCE)
+        src.write_text(_FAKE_SOURCE, encoding="utf-8")
         write_confidence_to_source({"fvg": 5}, src)
-        content = src.read_text()
+        content = src.read_text(encoding="utf-8")
         # bos and pin_bar untouched
         assert '"bos": StrategySpec' in content
         assert '"pin_bar": StrategySpec' in content

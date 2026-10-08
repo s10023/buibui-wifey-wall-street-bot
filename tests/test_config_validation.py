@@ -272,7 +272,8 @@ class TestStocksConfigWithUniversePolicy:
     def test_load_strips_policy_key(self, tmp_path: Path) -> None:
         path = tmp_path / "stocks.json"
         path.write_text(
-            json.dumps({UNIVERSE_POLICY_KEY: _POLICY_BLOCK, "AAPL": {"sl_pct": 0.05}})
+            json.dumps({UNIVERSE_POLICY_KEY: _POLICY_BLOCK, "AAPL": {"sl_pct": 0.05}}),
+            encoding="utf-8",
         )
         loaded = load_stocks_config(path)
         assert list(loaded.keys()) == ["AAPL"]
@@ -286,13 +287,14 @@ class TestLoadUniversePolicy:
 
     def test_absent_block_returns_default(self, tmp_path: Path) -> None:
         path = tmp_path / "stocks.json"
-        path.write_text(json.dumps({"AAPL": {"sl_pct": 0.05}}))
+        path.write_text(json.dumps({"AAPL": {"sl_pct": 0.05}}), encoding="utf-8")
         assert load_universe_policy(path) == DEFAULT_UNIVERSE_POLICY
 
     def test_block_parsed(self, tmp_path: Path) -> None:
         path = tmp_path / "stocks.json"
         path.write_text(
-            json.dumps({UNIVERSE_POLICY_KEY: _POLICY_BLOCK, "AAPL": {"sl_pct": 0.05}})
+            json.dumps({UNIVERSE_POLICY_KEY: _POLICY_BLOCK, "AAPL": {"sl_pct": 0.05}}),
+            encoding="utf-8",
         )
         policy = load_universe_policy(path)
         assert policy.scope == "liquid_large_cap"
@@ -300,7 +302,9 @@ class TestLoadUniversePolicy:
 
     def test_invalid_block_raises(self, tmp_path: Path) -> None:
         path = tmp_path / "stocks.json"
-        path.write_text(json.dumps({UNIVERSE_POLICY_KEY: {"scope": "x"}}))
+        path.write_text(
+            json.dumps({UNIVERSE_POLICY_KEY: {"scope": "x"}}), encoding="utf-8"
+        )
         with pytest.raises(ValueError):
             load_universe_policy(path)
 
@@ -525,7 +529,7 @@ class TestLoadResearchUniverse:
 
     def _write(self, tmp_path: Path, payload: dict[str, Any]) -> Path:
         p = tmp_path / "universe.json"
-        p.write_text(json.dumps(payload))
+        p.write_text(json.dumps(payload), encoding="utf-8")
         return p
 
     def _payload(self) -> dict[str, Any]:
@@ -824,13 +828,13 @@ class TestShippedStocksExample:
     _EXAMPLE = Path("config/stocks.json.example")
 
     def test_example_is_valid_stocks_config(self) -> None:
-        config = json.loads(self._EXAMPLE.read_text())
+        config = json.loads(self._EXAMPLE.read_text(encoding="utf-8"))
         assert validate_stocks_config(config)
         symbols = [k for k in config if k != UNIVERSE_POLICY_KEY]
         assert len(symbols) >= 10, "example should ship a usable watchlist"
 
     def test_example_declares_a_valid_universe_policy(self) -> None:
-        config = json.loads(self._EXAMPLE.read_text())
+        config = json.loads(self._EXAMPLE.read_text(encoding="utf-8"))
         assert UNIVERSE_POLICY_KEY in config, (
             "the example must DECLARE the policy — an absent block falls back to "
             "DEFAULT_UNIVERSE_POLICY, which is a silent default, not a declaration"
@@ -861,10 +865,10 @@ class TestShippedStocksExample:
         happens to compare to the default.
         """
         marker = "SENTINEL-declared-block-was-read"
-        config = json.loads(self._EXAMPLE.read_text())
+        config = json.loads(self._EXAMPLE.read_text(encoding="utf-8"))
         config[UNIVERSE_POLICY_KEY]["survivorship_note"] = marker
         perturbed = tmp_path / "stocks.json"
-        perturbed.write_text(json.dumps(config))
+        perturbed.write_text(json.dumps(config), encoding="utf-8")
 
         assert load_universe_policy(perturbed).survivorship_note == marker, (
             "the loader returned the fallback for a file that declares a block"
@@ -873,7 +877,7 @@ class TestShippedStocksExample:
         # undeclared file must yield exactly DEFAULT_UNIVERSE_POLICY.
         del config[UNIVERSE_POLICY_KEY]
         undeclared = tmp_path / "undeclared.json"
-        undeclared.write_text(json.dumps(config))
+        undeclared.write_text(json.dumps(config), encoding="utf-8")
         assert load_universe_policy(undeclared) == DEFAULT_UNIVERSE_POLICY
 
         policy = load_universe_policy(self._EXAMPLE)
