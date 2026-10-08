@@ -16,11 +16,17 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 import duckdb
+
+# A bare `python tools/<name>.py` puts tools/ on sys.path rather than the repo root,
+# so the repo imports below died with ModuleNotFoundError and exit 1 (#436). The
+# guarantee is `tests/test_tools_bare_invocation.py`, never this line.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from analytics.store import DEFAULT_DB_PATH
 from utils.config_validation import ResearchUniverse, load_research_universe

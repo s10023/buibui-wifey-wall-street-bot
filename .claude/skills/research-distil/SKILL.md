@@ -149,7 +149,7 @@ PYTHONPATH=. poetry run python tools/distil_power.py \
   [--skew S] [--kurtosis K]
 ```
 
-`PYTHONPATH=.` is required — the bare invocation fails with `ModuleNotFoundError`.
+A bare invocation without `PYTHONPATH=.` works (#436).
 
 `--sr-footing` is mandatory. PSR runs per observation (`z = (sr − sr_benchmark)·√(n_obs−1)`), and
 every sleeve Sharpe this repo files is annualized, so a sleeve-anchored run is

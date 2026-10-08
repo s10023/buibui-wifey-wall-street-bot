@@ -38,6 +38,12 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
+# A bare `python tools/session_digest.py` puts tools/ on sys.path rather than the repo
+# root. Every repo import here is function-level, so `--help` survived while each probe
+# read BROKE with ModuleNotFoundError (#436). The guarantee is
+# `tests/test_tools_bare_invocation.py`, never this line.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 REPO_SLUG = "s10023/buibui-wifey-wall-street-bot"
 HANDOFF = Path("docs/plans/next-conversation-prompt.md")

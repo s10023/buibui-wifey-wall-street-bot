@@ -58,6 +58,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import sys
 from collections import defaultdict
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -65,6 +66,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import duckdb
+
+# A bare `python tools/<name>.py` puts tools/ on sys.path rather than the repo root,
+# so the repo imports below died with ModuleNotFoundError and exit 1 (#436). The
+# guarantee is `tests/test_tools_bare_invocation.py`, never this line.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from analytics.backtest_lib import BacktestResult, Trade
 from analytics.backtest_runner import (

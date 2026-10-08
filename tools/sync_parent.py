@@ -25,12 +25,18 @@ import fnmatch
 import os
 import re
 import subprocess
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
 from pathlib import Path
 from typing import Literal
+
+# A bare `python tools/<name>.py` puts tools/ on sys.path rather than the repo root,
+# so the repo imports below died with ModuleNotFoundError and exit 1 (#436). The
+# guarantee is `tests/test_tools_bare_invocation.py`, never this line.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools.claude_home import memory_dir
 

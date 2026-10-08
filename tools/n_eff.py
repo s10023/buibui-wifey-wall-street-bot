@@ -23,9 +23,15 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 import duckdb
 import pandas as pd
+
+# A bare `python tools/<name>.py` puts tools/ on sys.path rather than the repo root,
+# so the repo imports below died with ModuleNotFoundError and exit 1 (#436). The
+# guarantee is `tests/test_tools_bare_invocation.py`, never this line.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from analytics.research_guards import SeriesDeflator, effective_independent_series
 from analytics.store import DEFAULT_DB_PATH
