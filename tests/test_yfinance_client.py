@@ -57,3 +57,31 @@ def test_fetch_history_never_auto_adjusts_prices() -> None:
     kwargs = mock_ticker.history.call_args.kwargs
     assert kwargs["auto_adjust"] is False
     assert kwargs["actions"] is False
+
+
+def test_fetch_total_return_close_is_the_one_auto_adjusted_fetch() -> None:
+    """The total-return fetch adjusts for dividends; fetch_history must not."""
+    from utils.yfinance_client import fetch_total_return_close
+
+    mock_ticker = MagicMock()
+    mock_ticker.history.return_value = pd.DataFrame(
+        {"Open": [1.0, 1.1], "Close": [1.5, 1.6]},
+        index=pd.DatetimeIndex(["2026-01-02", "2026-01-05"], tz="America/New_York"),
+    )
+    with patch("utils.yfinance_client.yf.Ticker", return_value=mock_ticker):
+        s = fetch_total_return_close("SPY")
+    kwargs = mock_ticker.history.call_args.kwargs
+    assert kwargs["auto_adjust"] is True
+    assert kwargs["interval"] == "1d"
+    assert s.tolist() == [1.5, 1.6]
+    assert pd.DatetimeIndex(s.index).tz is None
+    assert s.index[0] == pd.Timestamp("2026-01-02 05:00")
+
+
+def test_fetch_total_return_close_empty_on_no_data() -> None:
+    from utils.yfinance_client import fetch_total_return_close
+
+    mock_ticker = MagicMock()
+    mock_ticker.history.return_value = pd.DataFrame()
+    with patch("utils.yfinance_client.yf.Ticker", return_value=mock_ticker):
+        assert fetch_total_return_close("SPY").empty

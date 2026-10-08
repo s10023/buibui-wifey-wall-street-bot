@@ -205,6 +205,30 @@ class TestCheckNewModulesInventory:
             == []
         )
 
+    def test_new_package_init_is_covered_by_its_inventory(self, tmp_path: Path) -> None:
+        """A new package's `__init__.py` cannot appear in an inventory, which
+        skips it, so the inventory branch must not ask (OV-1, #418)."""
+        self._pkg(tmp_path, "power.py", "pbo.py", "sharpe.py")
+        blob = "The package holds `power.py`, `pbo.py` and `sharpe.py`."
+        added = [
+            "analytics/research_guards/__init__.py",
+            "analytics/research_guards/pbo.py",
+        ]
+        assert check_new_modules(added, blob, root=tmp_path) == []
+
+    def test_new_member_beside_a_new_init_still_fires(self, tmp_path: Path) -> None:
+        """POSITIVE CONTROL — the init exemption must not cover its siblings."""
+        self._pkg(tmp_path, "power.py", "pbo.py", "sharpe.py")
+        blob = "The package holds `power.py` and `pbo.py`."
+        added = [
+            "analytics/research_guards/__init__.py",
+            "analytics/research_guards/sharpe.py",
+        ]
+        found = check_new_modules(added, blob, root=tmp_path)
+        assert [f.detail.split(" — ")[0] for f in found] == [
+            "NOT IN INVENTORY: analytics/research_guards/sharpe.py"
+        ]
+
     def test_below_quorum_falls_back_to_the_probe(self, tmp_path: Path) -> None:
         """One backticked sibling is a passing reference, not an inventory.
 

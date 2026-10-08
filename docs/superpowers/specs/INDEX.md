@@ -14,14 +14,14 @@ carried in prose where nothing would catch it going stale.
   itself as a spec-vs-code reconcile. Read it as *no reconcile has been written up*,
   never as *19 specs went unreconciled*: the two are indistinguishable
   from here, and the second is a claim this table cannot support.
-- Referenced by no audit at all: 13.
+- Referenced by no audit at all: 12.
 
 The column starts working the moment one audit says so in its own filename or
 H1 — that is the whole detector, and it is deliberately not a body keyword.
 
 | Date | Spec | Reconciled by | Also referenced by | File |
 | --- | --- | --- | --- | --- |
-| 2026-10-08 | Edge pillars: what a survivable system needs, and where to look next | — | — | [2026-10-08-edge-pillars-research-design.md](2026-10-08-edge-pillars-research-design.md) |
+| 2026-10-08 | Edge pillars: what a survivable system needs, and where to look next | — | 2026-10-08-ov1-ma-overlay-total-return.md | [2026-10-08-edge-pillars-research-design.md](2026-10-08-edge-pillars-research-design.md) |
 | 2026-08-29 | H-024 — routine vs opportunistic insider trades: build design + pre-registration | — | 2026-09-20-h024-insider-phase3.md | [2026-08-29-h024-insider-routine-opportunistic-design.md](2026-08-29-h024-insider-routine-opportunistic-design.md) |
 | 2026-08-29 | H-023 — Lazy Prices (10-K/10-Q textual change): build design + pre-registration | — | — | [2026-08-29-h023-lazy-prices-design.md](2026-08-29-h023-lazy-prices-design.md) |
 | 2026-08-18 | Wife-channel alert layout — condensed mirror (design) | — | — | [2026-08-18-wife-alert-layout-design.md](2026-08-18-wife-alert-layout-design.md) |

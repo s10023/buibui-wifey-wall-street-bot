@@ -1293,6 +1293,27 @@ It needs the full uncapped backfill (`insider_backfill_progress` certifies 497 s
 and the run has died on a box whose kernel paged pool leaked to 42.8 GiB of a 15.4 GiB machine. A
 gate run under memory pressure is uninterpretable, since an OOM and a real failure look identical.
 
+## overlay_audit.py — OV-1, the first overlay-class audit
+
+Runs the frozen OV-1 pre-registration (edge-pillars spec § Phase 2): buy-and-hold on the French
+`Mkt-RF + RF` against the 200-session MA filter earning French `RF` when flat, gated on ulcer index
+with Sharpe non-inferiority (`analytics/overlay/report.py`). Read-only against `analytics.db`; it
+downloads the French zip per run unless given `--french-zip`, and prints the file's CRSP build line
+and a sha256 prefix so the audit names the exact file it read. The SPY cross-check fetches SPY's
+total-return close from yfinance at run time (`--no-spy` skips it).
+
+**Run:** `make wifey-overlay-audit ARGS=--precheck` first, then `make wifey-overlay-audit`
+(`[--db PATH] [--french-zip PATH] [--precheck] [--no-spy]`).
+
+`--precheck` prints the panel dates, the calendar facts and both bootstrap half-widths, then
+exits before any point estimate. The full run prints the same block first. It takes about ten
+minutes: each of the eight bootstrap CIs (two legs × primary, 5 bps, execution lag, SPY) is ~5,000
+Python-loop stationary resamples over ~24,500 sessions.
+
+The verdict function returns `UNREGISTERED` when the leg-1 CI straddles zero and leg 3 is not
+excluded, because the pre-registration names no verdict for that case; it needs an operator
+ruling rather than a reading.
+
 ## edgar_client.py — the SEC User-Agent contract
 
 Measured 2026-08-29: a User-Agent carrying a URL is refused (HTTP 403) by both SEC hosts, with or
