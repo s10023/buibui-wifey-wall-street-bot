@@ -358,7 +358,7 @@ class TestLoaders:
         assert len(warnings) == 1 and "line 2" in warnings[0]
 
     def test_null_symbol_is_skipped_with_a_named_warning(self, tmp_path: Path) -> None:
-        """The guard that previously existed only as skill prose.
+        """The null-symbol guard, enforced in code rather than left as skill prose.
 
         Without it ``str(None)`` becomes the literal ticker "None", which then reports
         UNRESOLVABLE — indistinguishable from a symbol we simply have not backfilled.
@@ -398,8 +398,9 @@ class TestLoaders:
     ) -> None:
         """The live silent defect this port closes.
 
-        'scalp' used to load fine and then take BOTH unspecified fallbacks —
-        1d bars instead of 1h, and a 10-session window instead of 2.
+        An unrecognised horizon such as 'scalp' would load fine and then take both
+        unspecified fallbacks: 1d bars instead of 1h, and a 10-session window
+        instead of 2.
         """
         p = tmp_path / "calls.jsonl"
         p.write_text(
@@ -913,7 +914,7 @@ class TestScoreCall:
     def test_target_on_wrong_side_of_a_short_is_unscored_not_an_instant_win(
         self,
     ) -> None:
-        """The 2026-08-04 phantom-WIN defect, in its original one-legged shape.
+        """The phantom-WIN defect (seen 2026-08-04), in its original one-legged shape.
 
         A short quoting only "unless it reclaims 29,200" — a *stop* mis-written into
         ``target`` — leaves entry to fall back to the market. The target then sits above
@@ -1009,7 +1010,7 @@ class TestAggregateAndOutputs:
         assert "A" in report
 
     def test_report_is_silent_when_no_cell_has_crossed(self) -> None:
-        # Negative control: without this, a NOTE printed unconditionally would
+        # Negative control: without this, a note printed unconditionally would
         # pass the test above while telling the operator nothing.
         report = render_report(_scored_fixture(), [], "2026-08-04T00:00:00Z", 5)
         assert f"n≥{AUDIT_ELIGIBLE_N}" not in report
@@ -1025,7 +1026,7 @@ class TestAggregateAndOutputs:
         assert "OPEN" in report and "WIN" in report and "LOSS" in report
         assert "⚠" in report
         assert "NYSE sessions" in report  # equity window policy is stated in the header
-        # ATR-R leads avg R from 2026-08-12: it is the COMPLETE resolved sample,
+        # ATR-R leads avg R: it is the complete resolved sample,
         # where avg R is computed only over calls that stated a stop and so
         # carries its own (r_n/resolved) denominator. See CellStats.r_coverage.
         assert (
@@ -1132,7 +1133,7 @@ class TestRCoverageDisclosure:
     complete atr_r sample is **+0.80**. Reproduce with
     `docs/plans/scripts/pundit_r_coverage.py`.
 
-    Every fixture here is deliberately ASYMMETRIC (a win with no R beside a loss
+    Every fixture here is deliberately asymmetric (a win with no R beside a loss
     with one). A fixture where every call carries an R would make these
     assertions pass against the censored code too.
     """

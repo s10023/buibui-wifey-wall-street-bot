@@ -1,6 +1,6 @@
 """Tests for `analytics/research_guards/power.py` — the effect-size bar.
 
-The 16-cell grid below is an EQUIVALENCE PIN, not a sample. It was measured on
+The 16-cell grid below is an equivalence pin, not a sample. It was measured on
 2026-08-14 against the two pre-promotion implementations
 (`tools/era_power_price.required_sharpe` and `tools/multi_regime_power.required_sr`),
 which agreed to 0.0000%. Pinning it turns that agreement from an observation

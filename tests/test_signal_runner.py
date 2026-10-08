@@ -156,12 +156,13 @@ def test_once_runs_single_cycle_then_exits(daemon_mocks: Any) -> None:
 class TestLiveBacktestWindowIsExecuted:
     """`[backtest] days` must reach the live EV gate, not just parse.
 
-    Until 2026-08-06 `run_signal_watch` called `run_scan_cycle` without `days`, so
-    the gate silently used the 90-day signature default while both live configs
-    declared 365. The gate abstains below `min_trades`, so the narrow window did not
-    fail loudly — it made the hard gate a no-op on 71% of all direction-legs.
+    If `run_signal_watch` called `run_scan_cycle` without `days`, the gate would
+    silently use the 90-day signature default while both live configs declare 365
+    (the state until 2026-08-06). The gate abstains below `min_trades`, so the
+    narrow window does not fail loudly: it made the hard gate a no-op on 71% of
+    all direction-legs.
 
-    These assert the EXECUTED window on both surfaces. Asserting that the config
+    These assert the executed window on both surfaces. Asserting that the config
     parsed to 365 cannot detect this defect: it parsed correctly the whole time.
     """
 

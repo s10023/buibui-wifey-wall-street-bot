@@ -5,10 +5,10 @@ Three things these assert that a green suite would otherwise not prove:
 * ``decline_metrics`` returns the arithmetic it documents, on a hand-built series
   where depth / duration / velocity are known exactly rather than re-derived by
   the test (a test that re-implements its subject can never falsify it — #150).
-* THE THESIS SIGN. ``velocity_score`` must rank a SLOW decliner above a FAST one
+* The thesis sign. ``velocity_score`` must rank a slow decliner above a fast one
   at identical depth. That single assertion is the hypothesis; invert it and the
   sleeve measures the opposite claim while every other test still passes.
-* the causality guard is NOT VACUOUS — it carries a positive control on the
+* the causality guard is not vacuous — it carries a positive control on the
   channel the `.shift(1)` protects, so it fails if the shift is deleted (#181).
 """
 

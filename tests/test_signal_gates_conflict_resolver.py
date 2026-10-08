@@ -1,7 +1,7 @@
-"""Tests for the conflict resolver lift (T6 PR-4).
+"""Tests for the conflict resolver helper.
 
-The conflict resolution block previously inlined in `scanner.run_scan_cycle`
-is now exposed as `_apply_conflict_resolver` in `analytics/signal/gates.py`.
+The conflict resolution block is exposed as `_apply_conflict_resolver` in
+`analytics/signal/gates.py`, extracted from `scanner.run_scan_cycle`.
 These tests pin the live behaviour so future ports (PR-4b backtest replay)
 can reuse the helper with confidence.
 """

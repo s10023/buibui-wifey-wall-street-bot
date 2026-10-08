@@ -187,7 +187,8 @@ def test_fib_ratios_and_small_numbers_are_not_price_levels() -> None:
 
 # ---------------------------------------------------------------------------
 # Divergence 2 (wifey-only): equity levels share the year band, so the parent's ISO
-# strip is not enough. Same defect PR #128 found in the scorer; same shared fix.
+# strip is not enough. The scorer has the same defect (PR #128), fixed in the same
+# shared regexes.
 # ---------------------------------------------------------------------------
 
 
@@ -623,7 +624,7 @@ def test_pairs_cli_reads_an_items_file(
 def test_check_reports_the_semantic_scope_it_actually_used(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """`semantic_checked` alone can no longer describe Stream C — it is checked, but
+    """`semantic_checked` alone cannot describe Stream C: it is checked, but
     only against its own source. The digest has to be able to say which."""
     sink = tmp_path / "pundit-calls.jsonl"
     sink.write_text(_jsonl(_ENTRY_LEG), encoding="utf-8")
@@ -889,9 +890,9 @@ def test_check_with_a_missing_sink_file_reports_no_candidates(
 class TestSinkAllowlistAndBareInvocation:
     """Parent #706, ported 2026-09-02 — two guards with different standing here.
 
-    ⚠ **The `--sink` allowlist is PREVENTION, not a repair.** Upstream measured 30
+    The `--sink` allowlist is prevention, not a repair. Upstream measured 30
     writable bad rows; wifey's ledger carried **0 of 54** when this landed, and that
-    difference must not be collapsed — a ported rationale is a claim about THIS repo.
+    difference must not be collapsed: a ported rationale is a claim about this repo.
     The bare-invocation guard is the opposite: it was a live breakage here.
     """
 

@@ -4,12 +4,12 @@ These cover code that only ever EXECUTES on Windows, which is exactly why they a
 worth having: the Linux host will never exercise them, so nothing else can tell you the
 wrapper stopped preserving an exit code or the installer drifted from the unit files.
 
-⚠ **The shell tests invoke `bash <script>`, never the script directly.** Windows refuses
+The shell tests invoke `bash <script>`, never the script directly. Windows refuses
 a shebang'd `.sh` with `OSError: [WinError 193] %1 is not a valid Win32 application`, and
 ~29 of the parent's 60 Windows test failures are that one mistake. `tests/
 test_backup_local_coverage.py` already uses the `bash` form for the same reason.
 
-⚠ **The PowerShell test does not RUN the installer.** Registering a task needs an
+The PowerShell test does not run the installer. Registering a task needs an
 elevated shell and would put real jobs on the operator's machine as a side effect of a
 test run. It parses the `$Jobs` table instead and diffs it against the systemd units,
 which is the claim that actually rots — the installer's own comment says the two "can be
@@ -45,7 +45,7 @@ def _bash(
 ) -> subprocess.CompletedProcess[str]:
     """Run a bash snippet from the repo root, with UTF-8 decoding made explicit.
 
-    ⚠ `encoding="utf-8"` is not decoration. Without it `text=True` decodes via the ANSI
+    `encoding="utf-8"` is not decoration. Without it `text=True` decodes via the ANSI
     codepage on Windows, the decode raises inside the reader THREAD, and `stdout` comes
     back `None` — surfacing far away as `'NoneType' object has no attribute ...`.
     """
@@ -126,13 +126,13 @@ class TestJobWrapper:
     def _run(
         self, tmp_path: Path, command: str, extra: dict[str, str] | None = None
     ) -> subprocess.CompletedProcess[str]:
-        """⚠ TWO independent brakes on the notifier, deliberately.
+        """Two independent brakes on the notifier, deliberately.
 
-        The first version relied on `WIFEY_NOTIFY=""` alone. `job.sh` read it with
-        `${VAR:-default}`, which substitutes on EMPTY as well as unset, so every failing
-        test resolved to the real notifier and sent live Telegram messages to the
-        operator. One mechanism was one typo away from doing that again, so the value is
-        now also a path that does not exist — either brake alone stops it.
+        `WIFEY_NOTIFY=""` alone is not enough: `job.sh` reads it with
+        `${VAR:-default}`, which substitutes on empty as well as unset, so every failing
+        test would resolve to the real notifier and send live Telegram messages to the
+        operator. One mechanism is one typo away from doing that, so the value is
+        also a path that does not exist; either brake alone stops it.
         """
         env = {
             "WIFEY_LOG_DIR": tmp_path.as_posix(),
@@ -351,29 +351,29 @@ class TestInstallerMirrorsTheUnits:
         assert _installer_jobs()["wifey-universe-sync"].days == ["Saturday"]
 
     def test_NO_job_repeats_sub_daily(self) -> None:
-        """⚠ The parent's `buibui-signal-watch.timer` fires every 15 minutes against a
-        24h crypto tape. wifey has ONE RTH session and fires ONCE a day, and its own
+        """The parent's `buibui-signal-watch.timer` fires every 15 minutes against a
+        24h crypto tape. wifey has one RTH session and fires once a day, and its own
         timer file carries the comment "Do NOT port the parent's OnCalendar=*:01/15".
 
         Pinned here because the divergence is invisible at the call site: both files
         look like a perfectly ordinary trigger list.
 
-        ⚠ Asserted against CODE, with comments stripped. The first version of this test
-        searched the raw file and failed on the installer's own comment explaining the
-        parent's `PT0S` bug — a check that cannot tell a declaration from a warning
-        about that declaration would force the warning to be deleted to go green, which
-        is the opposite of what it is for.
+        Asserted against code, with comments stripped. Searching the raw file fails on
+        the installer's own comment explaining the parent's `PT0S` bug, and a check
+        that cannot tell a declaration from a warning about that declaration would
+        force the warning to be deleted to go green, which is the opposite of what it
+        is for.
         """
         assert _installer_code().count("Repetition") == 0
 
     def test_offsite_is_registered_DISABLED(self) -> None:
-        """`backup-offsite.sh` runs `rclone sync`, which MIRRORS DELETIONS. Until this
+        """`backup-offsite.sh` runs `rclone sync`, which mirrors deletions. Until this
         host has its own remote pinned to its own root_folder_id, a scheduled run could
         mirror an empty local tree over the snapshots it exists to protect."""
         assert "Disabled = $true" in _installer_jobs()["wifey-backup-offsite"].body
 
     def test_the_probe_and_the_installer_agree_on_the_task_PATH(self) -> None:
-        """⚠ A probe looking in the wrong folder returns "not enabled" rather than an
+        """A probe looking in the wrong folder returns "not enabled" rather than an
         error, so it is indistinguishable from a box that installed nothing — the
         failure reports the absence it exists to detect. Only a test connects the two,
         because they live in different languages in different directories.
@@ -419,10 +419,9 @@ class TestInstallerMirrorsTheUnits:
 class TestWindowsTimerProbe:
     """`universe_timer_enabled` on a Windows host.
 
-    ⚠ This leg licenses GRADING ~1,100 series, so a wrong True invents faults and a
-    wrong False silences a real cadence. Before this branch the Windows answer was
-    always False — correct while the job could not be scheduled here, and wrong the
-    moment it could.
+    This leg licenses grading ~1,100 series, so a wrong True invents faults and a
+    wrong False silences a real cadence. The Windows answer used to be a constant
+    False, which is correct only while the job cannot be scheduled here.
     """
 
     def _probe(

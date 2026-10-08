@@ -37,9 +37,9 @@ def _no_auth_client() -> Generator[TestClient]:
 
 # The real message DuckDB 1.5.5 raises, captured in this repo 2026-08-12.
 #
-# The previous fixture said only "Could not set lock on file" — an INVENTED
+# A fixture saying only "Could not set lock on file" would be an invented
 # truncation. `is_lock_conflict` matches on "Conflicting lock", the substring
-# that actually discriminates, so the shortened wording sailed through this test
+# that actually discriminates, so the shortened wording would sail through this test
 # while failing the guard. That is the failure mode a substring match always
 # has: a test that writes its own version of an external system's message can
 # pass while the code under test never fires.

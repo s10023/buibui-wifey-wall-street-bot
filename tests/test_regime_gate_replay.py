@@ -491,7 +491,7 @@ class TestBuildKeptAuditCells:
 class TestKeptFamilyIsSeparate:
     """Regression control for the shipped flip verdict (#231). The two questions
     are different families; merging them would move the flip's Holm denominator
-    and silently restate a decision this branch never intended to touch."""
+    and silently restate a decision the kept-family question has no standing to touch."""
 
     def _frame(self) -> pd.DataFrame:
         return _cell_trades(

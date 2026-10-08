@@ -117,9 +117,9 @@ state_file = "my_state.json"
         """The committed config/signal_watch.toml must parse without errors."""
         cfg_path = Path(__file__).parent.parent / "config" / "signal_watch.toml"
         cfg = load_signal_config(cfg_path)
-        # "1wk" dropped 2026-08-06 — day_filter="tue_thu" discarded every weekly
-        # bar (all stamped Monday), so it scanned and dispatched nothing. See
-        # TestDeadTimeframes; load_signal_config now refuses the pairing outright.
+        # "1wk" is absent: day_filter="tue_thu" would discard every weekly bar (all
+        # stamped Monday), so it would scan and dispatch nothing. See
+        # TestDeadTimeframes; load_signal_config refuses the pairing outright.
         assert cfg.timeframes == ["4h", "1d"]
         # Telegram is off by default in the committed config; the --telegram CLI
         # flag (TELEGRAM=1 / `make go-live`) is the single master switch.
@@ -199,7 +199,7 @@ min_trades_1d = 5
         cfg_path = Path(__file__).parent.parent / "config" / "signal_watch.toml"
         cfg = load_signal_config(cfg_path)
         # [backtest] section uses directional counts (longs or shorts only).
-        # T13 (2026-05-17): equity TFs only — 4h/1d/1wk. T14 may recalibrate.
+        # Equity timeframes only: 4h/1d/1wk.
         assert cfg.backtest.effective_min_trades("4h") == 5
         assert cfg.backtest.effective_min_trades("1d") == 2
         assert cfg.backtest.effective_min_trades("1wk") == 1
@@ -289,14 +289,13 @@ tp_r_4h = 2.5
             Path(__file__).parent.parent / "config" / "signal_watch_weekdays.toml"
         )
         cfg = load_signal_config(cfg_path)
-        # The per-TF directional keys (`tp_r_long_<tf>` / `tp_r_short_<tf>`) named in
-        # the comments below were dropped on 2026-10-01 (#317): nothing ever applied
-        # them, so every directional lookup here returns the cell's combined value,
-        # which is what alerts and the sweep always used. The comments keep the
-        # resweep history; the asserts pin the live values.
-        # engulfing live-parity re-derive (2026-06-03): 4h combined 4.0 (was 3.0; n=75);
-        # 1d combined 5.0 (was 2.5; n=24, long_1d dropped n=18<20); 1wk combined 4.0 kept
-        # (n<10) with long_1wk/short_1wk dropped (raw n=24/37 inflated).
+        # Per-TF directional keys (`tp_r_long_<tf>` / `tp_r_short_<tf>`) are not
+        # applied (#317), so every directional lookup here returns the cell's
+        # combined value, which is what alerts and the sweep use. The comments keep
+        # the resweep measurements; the asserts pin the live values.
+        # engulfing live-parity re-derive (2026-06-03): 4h combined 4.0 (n=75);
+        # 1d combined 5.0 (n=24; long_1d n=18<20 not applied); 1wk combined 4.0 kept
+        # (n<10; raw long_1wk/short_1wk n=24/37 inflated).
         assert cfg.effective_tp_r("engulfing", "AAPL", "4h") == 4.0
         assert cfg.effective_tp_r("engulfing", "AAPL", "1wk") == 4.0
         assert cfg.effective_tp_r("engulfing", "AAPL", "1wk", direction="long") == 4.0
@@ -308,8 +307,8 @@ tp_r_4h = 2.5
         # engulfing 1d directional: long_1d dropped (live long n=18<20); both fall to combined 5.0.
         assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="long") == 5.0
         assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="short") == 5.0
-        # trend_day Phase 2 resweep (under ATR floor): 1wk combined 3.0 NEW (was fallback 2.0)
-        # + long 4.5 (was 4.0; ATR floor pulled winner 0.5 step wider) + short 1.5 (confirmed).
+        # trend_day Phase 2 resweep (under ATR floor): 1wk combined 3.0
+        # + long 4.5 (ATR floor pulled winner 0.5 step wider) + short 1.5 (confirmed).
         assert cfg.effective_tp_r("trend_day", "AAPL", "1wk") == 3.0
         assert cfg.effective_tp_r("trend_day", "AAPL", "1wk", direction="long") == 3.0
         assert cfg.effective_tp_r("trend_day", "AAPL", "1wk", direction="short") == 3.0
@@ -317,13 +316,13 @@ tp_r_4h = 2.5
         # winner = combined → falls back to tp_r_4h.
         assert cfg.effective_tp_r("trend_day", "AAPL", "4h") == 3.0
         assert cfg.effective_tp_r("trend_day", "AAPL", "4h", direction="short") == 3.0
-        # trend_day 1d Phase 2 resweep: combined 3.5 (was 5.0; long-driven so combined
-        # tightens) + tp_r_long_1d=5.0 NEW; tp_r_short_1d dropped (short no_edge under floor).
+        # trend_day 1d Phase 2 resweep: combined 3.5 (long-driven so combined
+        # tightens) + tp_r_long_1d=5.0; tp_r_short_1d dropped (short no_edge under floor).
         assert cfg.effective_tp_r("trend_day", "AAPL", "1d") == 3.5
         assert cfg.effective_tp_r("trend_day", "AAPL", "1d", direction="long") == 3.5
         assert cfg.effective_tp_r("trend_day", "AAPL", "1d", direction="short") == 3.5
         # morning_evening_star Phase 2 resweep: 1d combined 2.0 (confirmed); long 3.5
-        # (was 3.0; ATR floor pulled winner 0.5 step wider); short 1.5 (confirmed).
+        # (ATR floor pulled winner 0.5 step wider); short 1.5 (confirmed).
         assert cfg.effective_tp_r("morning_evening_star", "AAPL", "1d") == 2.0
         assert (
             cfg.effective_tp_r("morning_evening_star", "AAPL", "1d", direction="long")
@@ -333,64 +332,64 @@ tp_r_4h = 2.5
             cfg.effective_tp_r("morning_evening_star", "AAPL", "1d", direction="short")
             == 2.0
         )
-        # morning_evening_star 1wk Phase 2 resweep: combined 1.0 NEW (was no commit);
+        # morning_evening_star 1wk Phase 2 resweep: combined 1.0;
         # long-only 3.5 kept.
         assert cfg.effective_tp_r("morning_evening_star", "AAPL", "1wk") == 1.0
         assert (
             cfg.effective_tp_r("morning_evening_star", "AAPL", "1wk", direction="long")
             == 1.0
         )
-        # morning_evening_star 4h Phase 2 resweep: combined 1.5 (was 3.0; ATR floor
-        # inverts edge — tightest tp_r wins); short 1.0 (was 3.5; same direction).
+        # morning_evening_star 4h Phase 2 resweep: combined 1.5 (ATR floor
+        # inverts edge — tightest tp_r wins); short 1.0 (same direction).
         assert cfg.effective_tp_r("morning_evening_star", "AAPL", "4h") == 1.5
         assert (
             cfg.effective_tp_r("morning_evening_star", "AAPL", "4h", direction="short")
             == 1.5
         )
-        # ema live-parity re-derive (2026-06-03): 1d combined 4.5 (was 4.0; n=20),
-        # long_1d/short_1d dropped (live long n=15<20, short n<10) → fall to 4.5.
+        # ema live-parity re-derive (2026-06-03): 1d combined 4.5 (n=20); long_1d and
+        # short_1d fall to 4.5 (live long n=15<20, short n<10).
         assert cfg.effective_tp_r("ema", "AAPL", "1d") == 4.5
         assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="long") == 4.5
         assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="short") == 4.5
-        # ema 4h combined 3.0 (was 1.5; n=45) + tp_r_long_4h=3.5 (n=20) + tp_r_short_4h=1.0 (n=25).
+        # ema 4h combined 3.0 (n=45); tp_r_long_4h=3.5 (n=20), tp_r_short_4h=1.0 (n=25).
         assert cfg.effective_tp_r("ema", "AAPL", "4h") == 3.0
         assert cfg.effective_tp_r("ema", "AAPL", "4h", direction="long") == 3.0
         assert cfg.effective_tp_r("ema", "AAPL", "4h", direction="short") == 3.0
-        # hammer_hanging_man Phase 2 resweep: 4h combined 3.5 (was 3.0); 1d combined 2.0
-        # NEW (was fallback 4.0) + tp_r_long_1d=2.5 NEW.
+        # hammer_hanging_man Phase 2 resweep: 4h combined 3.5; 1d combined 2.0;
+        # tp_r_long_1d=2.5.
         assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "4h") == 3.5
         assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "1d") == 2.0
         assert (
             cfg.effective_tp_r("hammer_hanging_man", "AAPL", "1d", direction="long")
             == 2.0
         )
-        # bos Phase 2 resweep: 1d combined 2.5 kept (no_edge under floor) + tp_r_long_1d=4.0 NEW.
+        # bos Phase 2 resweep: 1d combined 2.5 kept (no_edge under floor) + tp_r_long_1d=4.0.
         assert cfg.effective_tp_r("bos", "AAPL", "1d") == 2.5
         assert cfg.effective_tp_r("bos", "AAPL", "1d", direction="long") == 2.5
-        # orb 4h live-parity re-derive (2026-06-03): combined 3.0 (was 2.5; n=54),
-        # long_4h dropped (live long n=29→3.0 = combined), short_4h 2.0 (was 1.5; n=25).
+        # orb 4h live-parity re-derive (2026-06-03): combined 3.0 (n=54); live long
+        # n=29 gives 3.0 = combined; short_4h 2.0 (n=25).
         assert cfg.effective_tp_r("orb", "AAPL", "4h") == 3.0
         assert cfg.effective_tp_r("orb", "AAPL", "4h", direction="long") == 3.0
         assert cfg.effective_tp_r("orb", "AAPL", "4h", direction="short") == 3.0
-        # doji live-parity re-derive (2026-06-03): 4h combined 4.5 NEW (raw was no_edge,
+        # doji live-parity re-derive (2026-06-03): 4h combined 4.5 (raw was no_edge,
         # live n=30); 1d 5.0 kept (live n=13<20, flagged); 1wk 4.0 kept (live n<10).
         assert cfg.effective_tp_r("doji", "AAPL", "4h") == 4.5
         assert cfg.effective_tp_r("doji", "AAPL", "1d") == 5.0
         assert cfg.effective_tp_r("doji", "AAPL", "1wk") == 4.0
-        # eqh_eql Phase 2 resweep: 4h tp_r_short_4h=5.0 NEW (combined no_edge stays at 2.0).
+        # eqh_eql Phase 2 resweep: tp_r_short_4h=5.0 (combined no_edge stays at 2.0).
         assert cfg.effective_tp_r("eqh_eql", "AAPL", "4h", direction="short") == 2.0
-        # order_block Phase 2 resweep: 1d combined 3.0 confirmed; tp_r_short_1d=2.5 NEW;
-        # tp_r_short_4h=1.5 NEW (combined no_edge stays at fallback 2.0).
+        # order_block Phase 2 resweep: 1d combined 3.0; tp_r_short_1d=2.5;
+        # tp_r_short_4h=1.5 (combined no_edge stays at fallback 2.0).
         assert cfg.effective_tp_r("order_block", "AAPL", "1d") == 3.0
         assert cfg.effective_tp_r("order_block", "AAPL", "1d", direction="short") == 3.0
         assert cfg.effective_tp_r("order_block", "AAPL", "4h", direction="short") == 2.0
-        # order_block 1wk: tp_r_long_1wk=2.5 NEW (combined no_edge under floor).
+        # order_block 1wk: tp_r_long_1wk=2.5 (combined no_edge under floor).
         assert cfg.effective_tp_r("order_block", "AAPL", "1wk", direction="long") == 2.0
         # inside_bar candle-resweep 13-sym: 4h combined 3.0 (confirms inside_bar audit;
-        # long no_edge, short=combined); 1d combined 2.5 (was 2.0; long winner=combined
-        # → drop tp_r_long_1d, short no_edge → falls to combined); 1wk combined 1.5
-        # (was 4.5; ATR floor 2.5× pulled SL much wider → tighter tp_r wins; long
-        # winner=combined → drop tp_r_long_1wk, short no_edge).
+        # long no_edge, short=combined); 1d combined 2.5 (long winner=combined, short
+        # no_edge, so both fall to combined); 1wk combined 1.5 (the ATR floor 2.5×
+        # pulls SL much wider, so a tighter tp_r wins; long winner=combined, short
+        # no_edge).
         assert cfg.effective_tp_r("inside_bar", "AAPL", "4h") == 3.0
         assert cfg.effective_tp_r("inside_bar", "AAPL", "4h", direction="long") == 3.0
         assert cfg.effective_tp_r("inside_bar", "AAPL", "4h", direction="short") == 3.0
@@ -400,12 +399,12 @@ tp_r_4h = 2.5
         assert cfg.effective_tp_r("inside_bar", "AAPL", "1wk") == 1.5
         assert cfg.effective_tp_r("inside_bar", "AAPL", "1wk", direction="long") == 1.5
         assert cfg.effective_tp_r("inside_bar", "AAPL", "1wk", direction="short") == 1.5
-        # pin_bar candle-resweep 13-sym: 4h combined 2.0 (was 3.5; ATR floor 1.5×
+        # pin_bar candle-resweep 13-sym: 4h combined 2.0 (ATR floor 1.5×
         # pulled SL wider → tighter tp_r wins) + tp_r_long_4h=3.0 kept (differs from
         # combined 2.0); 1d combined 2.5 (confirms; long winner=combined → drop
         # tp_r_long_1d); 1wk combined 4.5 kept (combined no_edge) + tp_r_long_1wk=3.5
-        # (was 3.0; thin sample n=10 +0.800R under ATR floor); tp_r_short_1wk dropped
-        # (was 5.0; short no_edge under ATR floor).
+        # (thin sample n=10 +0.800R under ATR floor); tp_r_short_1wk dropped
+        # (short no_edge under ATR floor).
         assert cfg.effective_tp_r("pin_bar", "AAPL", "4h") == 2.0
         assert cfg.effective_tp_r("pin_bar", "AAPL", "4h", direction="long") == 2.0
         assert cfg.effective_tp_r("pin_bar", "AAPL", "4h", direction="short") == 2.0
@@ -422,14 +421,13 @@ tp_r_4h = 2.5
         """signal_watch.toml (tue_thu) strategy_params must be applied (equity surface)."""
         cfg_path = Path(__file__).parent.parent / "config" / "signal_watch.toml"
         cfg = load_signal_config(cfg_path)
-        # The per-TF directional keys (`tp_r_long_<tf>` / `tp_r_short_<tf>`) named in
-        # the comments below were dropped on 2026-10-01 (#317): nothing ever applied
-        # them, so every directional lookup here returns the cell's combined value,
-        # which is what alerts and the sweep always used. The comments keep the
-        # resweep history; the asserts pin the live values.
-        # engulfing live-parity re-derive (2026-06-03): 4h combined 4.0 (was 2.5; n=44)
-        # + tp_r_short_4h=3.0 (n=26, differs); 1d combined 2.5 kept (live n=16<20),
-        # long_1d/short_1d dropped (raw n=59/77 inflated).
+        # Per-TF directional keys (`tp_r_long_<tf>` / `tp_r_short_<tf>`) are not
+        # applied (#317), so every directional lookup here returns the cell's
+        # combined value, which is what alerts and the sweep use. The comments keep
+        # the resweep measurements; the asserts pin the live values.
+        # engulfing live-parity re-derive (2026-06-03): 4h combined 4.0 (n=44);
+        # tp_r_short_4h=3.0 (n=26, differs); 1d combined 2.5 kept (live n=16<20; raw
+        # long_1d/short_1d n=59/77 inflated).
         assert cfg.effective_tp_r("engulfing", "AAPL", "4h") == 4.0
         assert cfg.effective_tp_r("engulfing", "AAPL", "1d") == 2.5
         assert cfg.effective_tp_r("engulfing", "AAPL", "4h", direction="short") == 4.0
@@ -437,9 +435,9 @@ tp_r_4h = 2.5
         # engulfing 1d directionals dropped → both fall to combined 2.5.
         assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="long") == 2.5
         assert cfg.effective_tp_r("engulfing", "AAPL", "1d", direction="short") == 2.5
-        # pin_bar candle-resweep 13-sym: 4h combined 2.0 (was 3.5; ATR floor 1.5×
+        # pin_bar candle-resweep 13-sym: 4h combined 2.0 (ATR floor 1.5×
         # pulled SL wider → tighter tp_r wins; long no_edge, short=combined → no
-        # directional override); 1d combined 2.5 (was 3.5) + tp_r_long_1d=5.0 kept
+        # directional override); 1d combined 2.5 + tp_r_long_1d=5.0 kept
         # (short winner=combined → drop tp_r_short_1d); 1wk falls back to
         # strategy-wide tp_r=3.0 (n<10 — Fri close × tue_thu suppression).
         assert cfg.effective_tp_r("pin_bar", "AAPL", "4h") == 2.0
@@ -451,9 +449,9 @@ tp_r_4h = 2.5
         assert cfg.effective_tp_r("pin_bar", "AAPL", "1wk") == 3.0
         assert cfg.effective_tp_r("pin_bar", "AAPL", "1wk", direction="long") == 3.0
         assert cfg.effective_tp_r("pin_bar", "AAPL", "1wk", direction="short") == 3.0
-        # hammer_hanging_man Phase 2 resweep: 4h combined 3.5 (was 4.0; ATR floor
-        # 1.5× pulled SL wider → tighter tp_r wins); 1d combined 2.0 (was 2.5);
-        # tp_r_long_1d=2.5 NEW + tp_r_short_1d=1.5 NEW (directional split).
+        # hammer_hanging_man Phase 2 resweep: 4h combined 3.5 (ATR floor
+        # 1.5× pulled SL wider → tighter tp_r wins); 1d combined 2.0;
+        # tp_r_long_1d=2.5 + tp_r_short_1d=1.5 (directional split).
         assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "4h") == 3.5
         assert cfg.effective_tp_r("hammer_hanging_man", "AAPL", "1d") == 2.0
         assert (
@@ -465,9 +463,9 @@ tp_r_4h = 2.5
             == 2.0
         )
         # trend_day Phase 2 resweep: 4h combined 4.5 (confirms Task E); long=5.0;
-        # short=3.0 (was 2.0; ATR floor pulled winner 1.0 step wider). 1d combined
-        # 5.0 NEW (long-driven edge dominates); tp_r_long_1d dropped (=combined);
-        # tp_r_short_1d=1.0 (was 3.0; ATR floor pulled winner 2.0 steps tighter).
+        # short=3.0 (ATR floor pulled winner 1.0 step wider). 1d combined
+        # 5.0 (long-driven edge dominates); tp_r_long_1d dropped (=combined);
+        # tp_r_short_1d=1.0 (ATR floor pulled winner 2.0 steps tighter).
         assert cfg.effective_tp_r("trend_day", "AAPL", "4h") == 4.5
         assert cfg.effective_tp_r("trend_day", "AAPL", "4h", direction="long") == 4.5
         assert cfg.effective_tp_r("trend_day", "AAPL", "4h", direction="short") == 4.5
@@ -475,9 +473,9 @@ tp_r_4h = 2.5
         assert cfg.effective_tp_r("trend_day", "AAPL", "1d", direction="long") == 5.0
         assert cfg.effective_tp_r("trend_day", "AAPL", "1d", direction="short") == 5.0
         # morning_evening_star Phase 2 resweep: 4h combined 2.5 (confirms Task E);
-        # long=4.5 (was 5.0; ATR floor pulled winner 0.5 step shorter); short=
-        # combined (tp_r_short_4h dropped). 1d combined 2.0 (was 2.5); long=5.0
-        # (kept); short=1.5 (was 2.0; ATR floor pulled winner 0.5 step shorter).
+        # long=4.5 (ATR floor pulled winner 0.5 step shorter); short=
+        # combined (tp_r_short_4h dropped). 1d combined 2.0; long=5.0
+        # (kept); short=1.5 (ATR floor pulled winner 0.5 step shorter).
         assert cfg.effective_tp_r("morning_evening_star", "AAPL", "4h") == 2.5
         assert (
             cfg.effective_tp_r("morning_evening_star", "AAPL", "4h", direction="long")
@@ -496,41 +494,41 @@ tp_r_4h = 2.5
             cfg.effective_tp_r("morning_evening_star", "AAPL", "1d", direction="short")
             == 2.0
         )
-        # ema live-parity re-derive (2026-06-03): 4h combined 1.5 (was 3.5; n=30),
-        # long_4h/short_4h dropped (live n=13/17<20) → fall to 1.5; 1d combined 4.5 kept
-        # (live n=13<20), long_1d/short_1d dropped → fall to 4.5.
+        # ema live-parity re-derive (2026-06-03): 4h combined 1.5 (n=30); long_4h and
+        # short_4h fall to 1.5 (live n=13/17<20); 1d combined 4.5 kept (live n=13<20)
+        # and long_1d/short_1d fall to 4.5.
         assert cfg.effective_tp_r("ema", "AAPL", "4h") == 1.5
         assert cfg.effective_tp_r("ema", "AAPL", "4h", direction="long") == 1.5
         assert cfg.effective_tp_r("ema", "AAPL", "4h", direction="short") == 1.5
         assert cfg.effective_tp_r("ema", "AAPL", "1d") == 4.5
         assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="long") == 4.5
         assert cfg.effective_tp_r("ema", "AAPL", "1d", direction="short") == 4.5
-        # orb 4h live-parity re-derive (2026-06-03): combined 5.0 (was 3.5; n=37),
-        # long_4h/short_4h dropped (live long=5.0=combined, short n=17<20) → fall to 5.0.
+        # orb 4h live-parity re-derive (2026-06-03): combined 5.0 (n=37); long_4h and
+        # short_4h fall to 5.0 (live long=5.0=combined, short n=17<20).
         assert cfg.effective_tp_r("orb", "AAPL", "4h") == 5.0
         assert cfg.effective_tp_r("orb", "AAPL", "4h", direction="long") == 5.0
         assert cfg.effective_tp_r("orb", "AAPL", "4h", direction="short") == 5.0
-        # bos Phase 2 resweep: 4h tp_r_short_4h=1.5 NEW (long no_edge, combined
-        # net-neg); 1d combined 2.5 NEW; tp_r_long_1d=4.0 NEW.
+        # bos Phase 2 resweep: tp_r_short_4h=1.5 (long no_edge, combined net-neg);
+        # 1d combined 2.5; tp_r_long_1d=4.0.
         assert cfg.effective_tp_r("bos", "AAPL", "4h", direction="short") == 3.0
         assert cfg.effective_tp_r("bos", "AAPL", "1d") == 2.5
         assert cfg.effective_tp_r("bos", "AAPL", "1d", direction="long") == 2.5
-        # doji live-parity re-derive (2026-06-03): 1d combined 3.5 kept (live n=11<20),
-        # long_1d dropped (live long n<10) → falls to 3.5.
+        # doji live-parity re-derive (2026-06-03): 1d combined 3.5 kept (live n=11<20);
+        # long_1d falls to 3.5 (live long n<10).
         assert cfg.effective_tp_r("doji", "AAPL", "1d") == 3.5
         assert cfg.effective_tp_r("doji", "AAPL", "1d", direction="long") == 3.5
-        # eqh_eql Phase 2 resweep: 4h combined 4.0 NEW (near-zero edge); 1d combined
-        # 3.0 NEW; tp_r_long_1d=5.0 NEW (thin n=15 but strong edge).
+        # eqh_eql Phase 2 resweep: 4h combined 4.0 (near-zero edge); 1d combined
+        # 3.0; tp_r_long_1d=5.0 (thin n=15 but strong edge).
         assert cfg.effective_tp_r("eqh_eql", "AAPL", "4h") == 4.0
         assert cfg.effective_tp_r("eqh_eql", "AAPL", "1d") == 3.0
         assert cfg.effective_tp_r("eqh_eql", "AAPL", "1d", direction="long") == 3.0
-        # order_block Phase 2 resweep: 4h combined 2.5 NEW; tp_r_short_4h=4.5 NEW;
+        # order_block Phase 2 resweep: 4h combined 2.5; tp_r_short_4h=4.5;
         # 1d combined 5.0 kept (sub-noise uplift over 4.5 winner).
         assert cfg.effective_tp_r("order_block", "AAPL", "4h") == 2.5
         assert cfg.effective_tp_r("order_block", "AAPL", "4h", direction="short") == 2.5
         assert cfg.effective_tp_r("order_block", "AAPL", "1d") == 5.0
         # inside_bar candle-resweep 13-sym: 4h combined 3.0 (confirms inside_bar audit;
-        # long no_edge, short=combined); 1d combined 5.0 (was 2.0; ATR floor inverts
+        # long no_edge, short=combined); 1d combined 5.0 (ATR floor inverts
         # edge — long-driven now wins outright; long winner=combined → drop
         # tp_r_long_1d; short no_edge → falls to combined); 1wk insufficient sample
         # (n<10) — falls back to strategy-wide tp_r=3.0.
@@ -553,7 +551,7 @@ tp_r_4h = 2.5
         # Top-level floor stays off (Task C precedent — no other strategy affected).
         assert cfg.atr_sl_floor is False
         # All 12 active strategies carry per-strategy atr_sl_floor=true
-        # (liquidity_sweep removed 2026-05-21 — no_edge on 4h/1d both configs).
+        # (liquidity_sweep is not active: no_edge on 4h/1d in both configs).
         active = [
             "bos",
             "doji",
@@ -610,8 +608,8 @@ tp_r_4h = 2.5
         )
         cfg = load_signal_config(cfg_path)
         assert cfg.atr_sl_floor is False  # top-level off
-        # liquidity_sweep removed 2026-05-21 — was the only positive 1wk cell on
-        # this config but 4h/1d net-neg; full retirement.
+        # liquidity_sweep is not active: it was the only positive 1wk cell on
+        # this config but 4h/1d are net-neg.
         active = [
             "bos",
             "doji",
@@ -772,7 +770,7 @@ tp_r_15m = 3.5
         assert cfg.effective_tp_r("doji", "ETHUSDT", "1h") == 3.0
 
     def test_signal_watch_toml_has_no_per_symbol_overrides(self) -> None:
-        """T13 (2026-05-17) stripped all per-symbol overrides; T14 may reintroduce."""
+        """The shipped config carries no per-symbol overrides."""
         cfg_path = Path(__file__).parent.parent / "config" / "signal_watch.toml"
         cfg = load_signal_config(cfg_path)
         for strat, override in cfg.strategy_params.items():
@@ -886,16 +884,15 @@ class TestLoadWithExtends:
         assert cfg.bias.adr_suppress_threshold == 0.80
         assert cfg.backtest.effective_min_trades("4h") == 5
         assert cfg.backtest.effective_min_trades("1wk") == 1
-        # merged: base per-strategy flag + child tp_r. Was `volume_suppress` until
-        # 2026-08-06; `adr_exempt` replaced it as the demonstrator when that flag was
-        # removed, and it MOVED into the base in the same change precisely so both
-        # configs inherit it (living in signal_watch.toml alone had voided bos on
-        # weekdays). Same merge shape: base contributes the flag, child the tp_r.
+        # merged: base per-strategy flag + child tp_r. `adr_exempt` lives in the base
+        # precisely so both configs inherit it (living in signal_watch.toml alone
+        # voids bos on weekdays). Same merge shape: base contributes the flag, child
+        # the tp_r.
         assert cfg.strategy_params["bos"].adr_exempt is True
         assert cfg.effective_tp_r("bos", "AAPL", "4h") == 3.0
-        # F8 HTF EMA gate inherited from base — enabled in hard mode after the
-        # 2026-05-06 soft-mode validation; per-strategy overrides loaded for the
-        # strategies that prefer 1d EMA-50.
+        # F8 HTF EMA gate inherited from base, in hard mode (soft-mode validation
+        # 2026-05-06); per-strategy overrides loaded for the strategies that prefer
+        # 1d EMA-50.
         assert cfg.bias.htf_ema_enabled is True
         assert cfg.bias.htf_ema_mode == "hard"
         assert cfg.bias.htf_ema_default_tf == "4h"
@@ -911,12 +908,11 @@ class TestLoadWithExtends:
             assert cfg.bias.htf_ema_anchor(strat).tf == "1d", (
                 f"{strat} should override to 1d anchor"
             )
-        # T2c direction filter (soft mode) inherited from base — the gate stays
-        # enabled so suppress_long / suppress_short still fire for any strategy
-        # that declares them. NO strategy declares one as of 2026-08-06 (PR #143):
-        # bos's `suppress_long` was the only instance and it was a crypto-era flag
-        # whose claim inverts on equities. The gate mechanism is unchanged and is
-        # covered by tests/test_live_parity_direction_filter_gate.py, which builds
+        # T2c direction filter (soft mode) inherited from base. The gate stays
+        # enabled so suppress_long / suppress_short fire for any strategy that
+        # declares them. No strategy declares one: bos's `suppress_long` (PR #143)
+        # was a crypto-era flag whose claim inverts on equities. The gate mechanism
+        # is covered by tests/test_live_parity_direction_filter_gate.py, which builds
         # its own StrategyOverride(suppress_long=True) rather than reading a config.
         assert cfg.bias.direction_filter_enabled is True
         assert cfg.bias.direction_filter_mode == "soft"
@@ -1043,17 +1039,16 @@ tp_r = 3.0
     def test_signal_watch_toml_volume_suppress_flags(self) -> None:
         """signal_watch.toml volume_suppress flags must be parsed correctly.
 
-        Updated 2026-08-06: this test previously asserted `orb` and `doji` were
-        True and passed for months while both cells produced ~zero signals — it
-        checked that a flag PARSED, never that the flag left anything alive. That
-        is the #140 blind spot ("right value for the input I imagined" cannot see
-        "this surface produces nothing"); `TestVoidedVolumeGates` is the
-        output-oriented counterpart that can.
+        Asserting that `orb` and `doji` parse as True would pass while both cells
+        produce ~zero signals: it checks that a flag parses, never that the flag
+        leaves anything alive. That is the #140 blind spot ("right value for the
+        input I imagined" cannot see "this surface produces nothing");
+        `TestVoidedVolumeGates` is the output-oriented counterpart that can.
         """
         cfg_path = Path(__file__).parent.parent / "config" / "signal_watch.toml"
         cfg = load_signal_config(cfg_path)
-        # All four crypto-era A14b volume flags were removed 2026-08-06:
-        # doji / orb / engulfing-long were VOIDED by conjunction with the ADR gate;
+        # No crypto-era A14b volume flag is set (removed 2026-08-06):
+        # doji / orb / engulfing-long were voided by conjunction with the ADR gate;
         # bos was not voided (it is adr_exempt) but its claim does not replicate on
         # equities — volume failed to predict R on every cell (all p >= 0.113, wrong
         # sign on 3 of 5) while discarding 90-94% of its signals.
@@ -1301,8 +1296,8 @@ min_avg_r_short = 0.2
     ) -> None:
         """The TOML kill switch must survive `load_signal_config` (parent #788).
 
-        The two tests above build the dataclass directly, so they stayed green
-        while the loader dropped the key and `cache_enabled = false` loaded as True.
+        The two tests above build the dataclass directly, so they stay green
+        even if the loader drops the key and `cache_enabled = false` loads as True.
         """
         p = tmp_path / "w.toml"
         p.write_text(
@@ -1353,7 +1348,7 @@ class TestDeadTimeframes:
     """A day_filter × fixed-open-weekday timeframe pairing is a blackout, not a filter.
 
     `config/signal_watch.toml` paired `tue_thu` with `1wk` from PR #22 until
-    2026-08-06. Weekly bars are stamped Monday, so 100% of their signals were
+    2026-08-06. Weekly bars are stamped Monday, so 100% of their signals are
     discarded: zero alerts dispatched, zero closed trades in `backtest_runs`,
     and therefore no `confidence_ratings` rows that any `make db-update` could
     ever create.
@@ -1419,7 +1414,7 @@ class TestVoidedVolumeGates:
     volume correlate at ~+0.65, so the conjunction is nearly the empty set —
     measured P(pass both) = 0.0046 vs 0.036 under independence.
 
-    Shipped state before 2026-08-06: `doji` x 1d produced exactly 0 signals from
+    Measured under the conjunction: `doji` x 1d produced exactly 0 signals from
     1,247 raw detector fires, `orb` x 4h ran on n=1, and `engulfing` x 1d /
     `bos` x 1d had their measured avg_r sign inverted.
     """
@@ -1486,9 +1481,9 @@ adr_exempt = true
         assert cfg.effective_volume_suppress("bos") is True
 
     def test_shipped_configs_carry_no_voided_gate(self) -> None:
-        # Binds the guard to the real configs. This assertion FAILS on the
-        # pre-2026-08-06 tree: signal_watch flagged [engulfing, orb, doji] and
-        # signal_watch_weekdays additionally flagged bos.
+        # Binds the guard to the real configs. It would fail on a config flagging
+        # [engulfing, orb, doji] (signal_watch) or additionally bos
+        # (signal_watch_weekdays).
         for path in ("config/signal_watch.toml", "config/signal_watch_weekdays.toml"):
             cfg = load_signal_config(path)
             assert (
@@ -1499,10 +1494,10 @@ adr_exempt = true
             ), path
 
     def test_no_shipped_strategy_sets_volume_suppress(self) -> None:
-        """All four crypto-era A14b volume flags were removed on 2026-08-06.
+        """None of the four crypto-era A14b volume flags is set.
 
         Not merely a restatement of the guard above: a strategy could set the flag
-        legitimately by also setting `adr_exempt` (that is `bos`'s old shape, which
+        legitimately by also setting `adr_exempt` (`bos`'s former shape, which
         the guard permits). This pins the stronger, current fact — none of the four
         replicated on equities, so none is set. Re-adding one is allowed, but it
         must break this test and be re-measured first, not slip in.
@@ -1515,14 +1510,14 @@ adr_exempt = true
                 assert cfg.effective_volume_suppress_short(name) is not True, name
 
     def test_no_shipped_strategy_sets_direction_suppress(self) -> None:
-        """Direct sibling of the volume-flag guard above, for the DIRECTION flags.
+        """Direct sibling of the volume-flag guard above, for the direction flags.
 
-        `bos.suppress_long` was the only instance and it was removed 2026-08-06
-        (PR #143): it arrived from the crypto parent one day before the fork
-        (parent PR #367, justified by an n=72,643 Binance-trade audit) and its
-        claim INVERTS on equities — long is bos's better leg on both timeframes.
-        #141's sweep missed it because it greps as a direction flag, not a volume
-        flag, which is exactly why this needs its own assertion.
+        `bos.suppress_long` was the only instance and was removed 2026-08-06
+        (PR #143): it came from the crypto parent (parent PR #367, justified by an
+        n=72,643 Binance-trade audit) and its claim inverts on equities: long is
+        bos's better leg on both timeframes. #141's sweep missed it because it
+        greps as a direction flag, not a volume flag, which is exactly why this
+        needs its own assertion.
 
         This flag class is latent rather than loud: `[bias.direction_filter]` ships
         as mode="soft", so a wrong flag logs and keeps, costing nothing until
@@ -1538,11 +1533,11 @@ adr_exempt = true
 
 
 class TestMaxAlertAgeHours:
-    """The catch-up dispatch window (2026-08-25).
+    """The catch-up dispatch window (measured 2026-08-25).
 
-    Under one pre-open run a day the session's FIRST 4h bar can never BE the
-    newest closed candle, so at a window of 0.0 it was structurally
-    undeliverable — 120 of 351 ledger candles, 34%, every one the 13:30 UTC bar.
+    Under one pre-open run a day the session's first 4h bar is never the
+    newest closed candle, so at a window of 0.0 it is structurally
+    undeliverable: 120 of 351 ledger candles, 34%, every one the 13:30 UTC bar.
     """
 
     def test_defaults_to_the_old_newest_only_rule(self) -> None:
@@ -1593,7 +1588,7 @@ class TestNoUnappliedDirectionalPerTfTpR:
     `_resolve_tp_r` (alerts, EV-gate book) has no per-TF directional step, and the
     sweep calls `effective_tp_r` without a direction, so a declared
     `tp_r_long_<tf>` reads like a calibration and changes nothing. All 32 were
-    removed on 2026-10-01 (Issue #317); audit
+    removed (Issue #317); audit
     `docs/audits/2026-10-01-dead-directional-tp-r-keys.md`. Wiring the keys in
     is a TA-freeze `tp_r` change, and the change that does it deletes this guard.
     """

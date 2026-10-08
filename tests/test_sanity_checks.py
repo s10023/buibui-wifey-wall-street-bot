@@ -343,11 +343,11 @@ def test_working_tree_is_clean() -> None:
 
 
 class TestPathLikeTail:
-    """`module.symbol` is not a file path, and used to be reported as one.
+    """`module.symbol` is not a file path.
 
-    The tail was `[A-Za-z0-9_/.]+` with no extension requirement, so any dotted
-    reference parsed as a path. It was 3 of 3 `missing-paths` hits when this same
-    code first ran against the sibling repo, whose docs use the notation.
+    A tail of `[A-Za-z0-9_/.]+` with no extension requirement would parse any
+    dotted reference as a path. That was 3 of 3 `missing-paths` hits when this
+    same code first ran against the sibling repo, whose docs use the notation.
     """
 
     def test_module_dot_symbol_is_not_a_path(self) -> None:
@@ -437,9 +437,9 @@ WORKFLOW = """jobs:
 class TestRegressionSurface:
     """CLAUDE.md's test-regression trigger list vs CI's own paths filter.
 
-    Until 2026-08-26 the doc list diverged in BOTH directions, and only the
-    narrowing one was harmful, so these tests assert the finding EXISTS as much as
-    they assert clean.
+    The doc list can diverge from the workflow in both directions, and only the
+    narrowing one is harmful (measured 2026-08-26), so these tests assert the
+    finding exists as much as they assert clean.
     """
 
     def test_reads_the_regression_block_not_the_frontend_one(self) -> None:
@@ -491,15 +491,15 @@ class TestRegressionSurface:
 class TestBareInvocationRunsEveryLeg:
     """The venv bootstrap, end to end — parent #742/#760, ported 2026-09-22.
 
-    ⚠ **The unit tests in `test_venv_bootstrap.py` cannot cover this.** They prove the
+    The unit tests in `test_venv_bootstrap.py` cannot cover this. They prove the
     swap fires; this proves the swap fixes the thing it was added for. Measured before
     the fix: a bare run exited **0** printing `0 finding(s)` with three of eight legs
     reading `SKIPPED  (project dependencies are not installed)` — the same words the
     legs that skip legitimately use, so the wrong interpreter was invisible in a report
     that looked healthy.
 
-    ⚠ **The negative control is the load-bearing half.** A pass here is satisfied by two
-    worlds — the swap working, or the probe never reaching a degraded run at all — and
+    The negative control is the load-bearing half. A pass here is satisfied by two
+    worlds, the swap working or the probe never reaching a degraded run at all, and
     the second is the shape this repo removed four instances of on 2026-09-21. Setting
     the sentinel suppresses the swap, so the control must observe the degraded report;
     if it does not, the discriminator is broken and both cases are meaningless.
@@ -507,14 +507,14 @@ class TestBareInvocationRunsEveryLeg:
 
     @staticmethod
     def _foreign_interpreter(repo: Path) -> str | None:
-        """An interpreter that is NOT this repo's venv, or None if there is none.
+        """An interpreter that is not this repo's venv, or None if there is none.
 
-        ⚠ **Derived from `sys.base_prefix`, deliberately NOT from `PATH`.** The first
-        draft probed `shutil.which("python3")` and this whole test SKIPPED — under
-        `poetry run` the venv's own `Scripts`/`bin` is first on `PATH`, so every
-        candidate resolved to the venv and the probe concluded there was nothing to
-        swap from. It would have read green-by-skip forever, in CI too: the dead-check
-        shape, reproduced inside the test written to prove a dead check had been fixed.
+        Derived from `sys.base_prefix`, deliberately not from `PATH`. Probing
+        `shutil.which("python3")` makes the whole test skip: under `poetry run` the
+        venv's own `Scripts`/`bin` is first on `PATH`, so every candidate resolves to
+        the venv and the probe concludes there is nothing to swap from. It would read
+        green-by-skip forever, in CI too: the dead-check shape, reproduced inside the
+        test written to prove a dead check had been fixed.
         `sys.base_prefix` is the base installation whenever we are inside a venv, which
         is exactly the interpreter a human types by accident.
         """

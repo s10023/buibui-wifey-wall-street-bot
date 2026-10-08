@@ -43,7 +43,7 @@ _CURRENT_WEEK = date(2026, 3, 2)  # the Monday of _NOW
 def _insert_ohlcv_rows(
     conn: duckdb.DuckDBPyConnection, n_rows: int, params: list[object]
 ) -> None:
-    """Insert n_rows OHLCV rows in ONE statement.
+    """Insert n_rows OHLCV rows in one statement.
 
     DuckDB pays a fixed per-statement cost that dwarfs the row itself, and its
     executemany just loops, so a bar-at-a-time seed is far slower than folding

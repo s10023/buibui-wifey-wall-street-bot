@@ -54,7 +54,7 @@ _CASES: list[
     ),
     (
         # doji with a huge upper wick: raw wick-rejection is True for long but
-        # MUST be suppressed because the candle is a doji (live precedence).
+        # must be suppressed because the candle is a doji (live precedence).
         "doji_suppresses_w5",
         [(100.0, 101.0, 99.0, 100.5), (100.0, 110.0, 99.5, 100.4)],
         {"long": {"w7_doji": True}, "short": {"w7_doji": True}},
@@ -242,8 +242,8 @@ class TestEvaluateWarningCells:
                 _block(80, -0.8, "w7_doji", rng),  # reliable loser
                 _block(80, 0.8, "w1_marubozu", rng),  # reliable winner
                 # Powered null: sd tightened so the CI genuinely excludes an
-                # effect at the bar. At the 0.3 default it does NOT, and this
-                # line asserted COSMETIC anyway until 2026-08-13.
+                # effect at the bar. At the 0.3 default it does not, so this
+                # line must not assert COSMETIC (fixed 2026-08-13).
                 _block(80, 0.0, "w6_consecutive", rng, sd=0.1),
                 _block(5, -1.0, "w2_equal_levels", rng),  # under-powered
                 _block(300, 0.05, None, rng),  # clean bulk

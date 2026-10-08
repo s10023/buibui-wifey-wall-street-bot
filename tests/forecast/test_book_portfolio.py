@@ -60,11 +60,11 @@ def test_governor_is_causal() -> None:
     )
 
     # Positive control. Unlike its sibling in test_book_instrument.py this
-    # assertion is NOT vacuous — deleting the `.shift(1)` on the governor's
-    # trailing vol makes it fail (measured 2026-08-13) — but it carried a comment
-    # claiming "k=100 is in an unclamped region (verified: governor[100] ~ 0.656)"
-    # and that was FALSE: governor[100] is exactly 1.5, i.e. AT g_max. Since a
-    # clamped base can mask a stimulus, assert propagation explicitly.
+    # assertion is not vacuous: deleting the `.shift(1)` on the governor's
+    # trailing vol makes it fail (measured 2026-08-13). k=100 is not in an
+    # unclamped region (governor[100] ~ 0.656 is false): governor[100] is exactly
+    # 1.5, i.e. at g_max. Since a clamped base can mask a stimulus, assert
+    # propagation explicitly.
     # Measured: governor[k+1] 1.5 -> 0.5, delta 1.0. base sits at g_max, so only a
     # DOWNWARD move is observable — which is the physical one, a 3x price spike
     # raising trailing vol and shrinking the governor.

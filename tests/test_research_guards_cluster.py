@@ -55,7 +55,7 @@ class TestClusterStats:
         assert cs.n_eff == 12.0
 
     def test_negative_sample_icc_cannot_manufacture_independence(self) -> None:
-        """⚠ The deflator only ever SHRINKS.
+        """The deflator only ever shrinks.
 
         Anti-correlated clusters give a negative sample ICC, which would push
         DEFF below 1 and invent MORE effective observations than trades. The

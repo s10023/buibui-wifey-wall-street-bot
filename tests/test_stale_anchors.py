@@ -292,6 +292,6 @@ class TestDecimalIsNotASection:
         assert (UNTYPED, "7b") in declared_anchors("**7b — The board view.** x\n")
 
     def test_a_decimal_no_longer_blinds_the_ordered_list_fallback(self) -> None:
-        """The whole point: one decimal used to suppress every real anchor."""
+        """One decimal must not suppress every real anchor."""
         md = "**4.9 min** to run\n\n1. **Read the banner.**\n2. **Prove it.**\n"
         assert declared_anchors(md) == {("step", "1"), ("step", "2")}
