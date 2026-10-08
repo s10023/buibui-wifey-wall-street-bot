@@ -18,7 +18,7 @@ Detailed reference for `web/`. Load this when working on the FastAPI backend or 
   swallowing the error, and only a lock conflict is survivable. Do not reintroduce a bare
   `except: pass` there: it started the API with no schema and no complaint when the database
   was missing.
-- `routers/` — config, ohlcv, fib, signals, backtest, stats, zones (T16-full removed the Binance-Futures-only `positions` / `prices` / `stream` routers; Phase B will re-introduce per the equities broker)
+- `routers/` — config, ohlcv, fib, signals, backtest, stats, zones, live_outcomes, core (T16-full removed the Binance-Futures-only `positions` / `prices` / `stream` routers; Phase B will re-introduce per the equities broker)
 - `models/` — Pydantic models per router; `active_config.py` → `ActiveConfigResponse` + `StrategyParamsModel` + `UniversePolicyResponse`; `zones.py` → `ZoneBox`, `ZoneLine`, `SwingPoint`, `ZonesResponse`
 
 ### Key endpoints
@@ -31,6 +31,7 @@ Detailed reference for `web/`. Load this when working on the FastAPI backend or 
 - `GET /api/stats/{symbol}?days=180` — cached daily in `stats_cache` table; `path_cone` (required — pre-M5 cache rows fail validation and self-heal) + `weekly_cone` (Optional with an explicit None→recompute cache branch) cached with the bundle; `weekly_current_state`, `today_path`, `current_week_path`, `weekly_wick_percentile` always live (never cached), injected via `_inject_live_fields()`
 - `GET /api/live-outcomes?days&min_n[&symbol]` — cross-symbol roll-up of the live `signal_alert_outcomes` ledger (roll-up + per-(strategy, tf, direction) + per-strategy win-rate/avg-R/expired; `symbol=` scopes roll-up + tables, chip list always global); never cached, own router (not the per-symbol StatsBundle)
 - `GET /api/live-outcomes/open[?symbol]` — unresolved alerts marked to the newest stored OHLCV close per symbol (gross unrealized R + SL/TP distances; best-effort marks, never 5xx)
+- `GET /api/core-state` — `CoreStateResponse`: `analytics/overlay/live.py::core_state` at the latest completed `^GSPC` close (`completed_closes` → `core_state`, the digest's call) plus `exposure`, `sma_distance`, `flip_distance` and `missing_sessions` (the digest's staleness rule); 404 naming `make core-sync` when `^GSPC` history is too short. Read-only and advisory (`docs/north-star.md` § Frozen, #430); `tests/test_web_core.py` pins every field to `core_state`
 - `GET /api/backtest/analysis?use_config=true` — 12 digest query cards; `use_config=true` scopes via `DigestScope`
 
 ## Frontend — `web/ui/` (Svelte 5 + Vite)
@@ -42,7 +43,7 @@ Build: `make web-build` → `web/ui/dist/` served by FastAPI StaticFiles.
 - `src/api.ts` — typed client; `getStrategies(configName?)`, `getActiveConfig()`, `getUniversePolicy()`
 - `src/stores/` — config, strategies, watchlist, `activeConfig.ts` (exposes `activeConfigStore`, `configName`, `configDefaultSymbol`)
 - `src/pages/` — Chart, Backtest, SignalFeed, Stats
-- `src/components/` — Nav, CandleChart, BacktestResult, …
+- `src/components/` — Nav, CandleChart, BacktestResult, LiveOutcomes, CoreStateCard, …
 
 ### Backtest page
 
@@ -71,6 +72,7 @@ Build: `make web-build` → `web/ui/dist/` served by FastAPI StaticFiles.
 
 - 10-card grid: P1/P2 (incl. P1 strong%), ADR (mean **and median**, `avg / med` at 2dp), hourly distribution, DOW patterns (incl. Str H/Str L, plus **Med Range** beside Avg Range at 2dp, **Med Return** and a noise-dimmed **Avg Return**), session breakdown, weekly P1/P2, avg return by day, weekly P2 timing with flip risk, Daily Distance, P1 Wick Rank
 - **DOW return columns dim inside `2.576 × SE`** (Bonferroni over the 5 equity weekdays, *not* the parent's k=7 2.69). A dimmed `+` and `−` share one grey deliberately. Display-only; nothing gates on it, and on current data all 25 measured cells dim. See `/stats-dashboard`.
+- **Survival Core · OV-1 × VM** card (full-width, above the cones) — market-wide, fetched by `CoreStateCard.svelte` via `getCoreState()` independently of the symbol picker: exposure, MA leg with sessions held and flip level, VM σ̂ and weight, as-of close, and a STALE badge when `missing_sessions > 0`
 - **Live Alert Outcomes** card (full-width, below the grid) — cross-symbol, fetched independently of the symbol picker via `getLiveOutcomes(days, minN)`; all-time roll-up chips (incl. a no-TP integrity badge) + period/min-n pill toggles + by-strategy and by-cell tables with diverging avg-R bars
 - Default lookback: 365d
 - "Daily Distance" + "P1 Wick Rank" — live, never cached; "Live Alert Outcomes" — cross-symbol, never cached

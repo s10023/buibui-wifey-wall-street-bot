@@ -721,8 +721,9 @@ The core line (#423) is the survival core's state, OV-1 × VM (ruled in #429), f
 `analytics/overlay/live.py`: exposure, the MA leg with sessions held and the close that would flip
 it, VM's `σ̂` and weight, and the as-of close. `collect_core` reads `^GSPC` read-only. A locked or
 absent DB is AMBER `core unreadable`, like the freshness probe. `core_findings` is AMBER
-`core stale` when a closed NYSE session is missing; a bar dated today counts as closed from 21:00
-UTC, the later DST close, so a pre-open run expects yesterday's close. No watchlist carries
+`core stale` when a closed NYSE session is missing, through `live.py::missing_sessions`, which the
+web UI's core card shares; a bar dated today counts as closed from 21:00 UTC, the later DST close,
+so a pre-open run expects yesterday's close. No watchlist carries
 `^GSPC` and `go-live` never syncs it, so `TELEGRAM=1` runs `make core-sync` first, and a failed
 sync never blocks the send.
 

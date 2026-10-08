@@ -1070,7 +1070,9 @@ Not a sleeve: an overlay is judged against buy-and-hold on the overlay yardstick
   pinned in-sample median, since the French file is not read here, and `σ̂` comes from `^GSPC`
   price returns because the French file lags by weeks. `flip_level` is the mean of the last 199
   closes: the next close is above the 200-session SMA that includes it exactly when it exceeds
-  that mean. `completed_closes` drops a bar dated today before 21:00 UTC.
+  that mean. `completed_closes` drops a bar dated today before 21:00 UTC. `missing_sessions` lists
+  closed NYSE sessions after `as_of` with no bar, the staleness rule both the digest's
+  `core_findings` and `GET /api/core-state` (the Stats page card, #432) call.
   `tests/test_overlay_live.py` pins the read-out against `ma_signal` and `vol_weight`.
 - `report.py` — `overlay_verdict` (EXCLUDED is checked first; a leg-1 CI straddling zero returns
   `INSUFFICIENT`, named by Amendment 1), `bootstrap_legs` and `evaluate_overlay` (both take a
