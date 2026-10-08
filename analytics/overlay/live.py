@@ -21,8 +21,9 @@ Every value describes the position to hold over the session after
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 
@@ -82,6 +83,23 @@ def completed_closes(close: pd.Series, now: datetime) -> pd.Series:
     if now.hour >= SESSION_CLOSED_UTC_HOUR:
         return close
     return close[close.index < pd.Timestamp(now.date())]
+
+
+def missing_sessions(
+    as_of: date, now: datetime, sessions_fn: Callable[[date, date], list[date]]
+) -> list[date]:
+    """Sessions after ``as_of`` that have closed by ``now`` (UTC) but have no bar.
+
+    A bar dated today counts as closed from :data:`SESSION_CLOSED_UTC_HOUR`, the
+    later of the two DST close times, so a pre-open read expects yesterday's
+    close. Non-empty means the core describes an old position.
+    """
+    today = now.date()
+    return [
+        d
+        for d in sessions_fn(as_of + timedelta(days=1), today)
+        if d < today or now.hour >= SESSION_CLOSED_UTC_HOUR
+    ]
 
 
 def core_state(close: pd.Series, *, target: float = VM_SIGMA_TARGET) -> CoreState:

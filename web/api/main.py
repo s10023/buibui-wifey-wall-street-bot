@@ -18,6 +18,7 @@ from analytics.db_retry import connect_with_retry, is_lock_conflict
 from web.api.routers import (
     backtest,
     config,
+    core,
     fib,
     live_outcomes,
     ohlcv,
@@ -127,6 +128,7 @@ for module in (
     stats,
     zones,
     live_outcomes,
+    core,
 ):
     app.include_router(module.router, prefix="/api")
 

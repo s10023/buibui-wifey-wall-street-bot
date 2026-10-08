@@ -8,6 +8,7 @@
   import PathCone from "../components/PathCone.svelte";
   import WeeklyCone from "../components/WeeklyCone.svelte";
   import LiveOutcomes from "../components/LiveOutcomes.svelte";
+  import CoreStateCard from "../components/CoreStateCard.svelte";
 
   const TIMEFRAMES_DAYS = [30, 90, 180, 365];
   const DOW_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -118,6 +119,11 @@
       what: "For this week's P1 candle (the 1h candle that first set the weekly extreme), how does its wick size compare to all historical P1 candles? Wick is measured in the P1 direction (lower wick for P1=low, upper wick for P1=high), normalised by the candle's open price and ADR14. Exceedance % = fraction of historical P1 weeks with a BIGGER wick than this week's.",
       value: "Low exceedance (e.g. 15%) means this week's P1 wick is unusually large — only 15% of historical weeks had a bigger wick. A large wick indicates a sharp sweep-and-reverse. High exceedance means the wick is small relative to history — the extreme may not hold.",
       example: "Exceedance 20% → this week's P1 wick is larger than 80% of historical weeks. Strong sweep-and-reverse signal — wait for 1h close to confirm before entering.",
+    },
+    core: {
+      what: "The survival core, OV-1 × VM, read off the latest completed ^GSPC close. OV-1 holds the market while the close is above its 200-session SMA; VM scales that by min(1, σ_target / σ̂20). Exposure = MA leg × VM weight, decided at the as-of close and held over the next session. Market-wide, so it ignores the symbol picker.",
+      value: "An advisory risk overlay on market exposure, judged on drawdown (ulcer index), not an edge and not a trade signal. Its advantage is front-loaded in the 1929→ history; since 1993 it is mainly a drawdown cut at about equal Sharpe. 'Flips' is the next close that changes the MA leg. A STALE badge means ^GSPC missed a closed session, so the numbers describe an old position — run make core-sync.",
+      example: "Exposure 100% · MA IN 127 sessions, flips below 7,243 (−7.2%) · σ̂20 10.3% → w 1.00 → fully invested; a close under 7,243 would take it to 0%.",
     },
     liveOutcomes: {
       what: "REAL outcomes of every Telegram alert the live daemon fired, scored from the signal_alert_outcomes ledger (cross-symbol). Roll-up is all-time: resolved = TP/SL touched or held to expiry; No-TP should read 0 (every fired alert now persists a stop/target). The tables window by the selected period. Win rate excludes expired trades; avg R averages outcome_r over all resolved rows.",
@@ -236,6 +242,22 @@
         {loading ? "Loading…" : "Load"}
       </button>
     </div>
+  </div>
+
+  <!-- Survival core — market-wide, independent of the symbol picker (#432) -->
+  <div class="card core-card">
+    <div class="card-header">
+      <span class="card-title">Survival Core · OV-1 × VM</span>
+      <button class="help-btn" class:active={openHelp === "core"} onclick={() => toggleHelp("core")} aria-label="Help">?</button>
+    </div>
+    {#if openHelp === "core"}
+      <div class="help-panel">
+        <div class="help-section"><span class="help-label">What</span>{CARD_HELP.core.what}</div>
+        <div class="help-section"><span class="help-label">Use</span>{CARD_HELP.core.value}</div>
+        <div class="help-section help-example"><span class="help-label">e.g.</span>{CARD_HELP.core.example}</div>
+      </div>
+    {/if}
+    <CoreStateCard />
   </div>
 
   {#if error}
@@ -1638,5 +1660,7 @@
 
   /* ── Live Alert Outcomes ─────────────────────────────────────────── */
   .lo-grid { margin-top: 16px; }
+
+  .core-card { margin-bottom: 16px; }
 
 </style>

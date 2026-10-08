@@ -623,3 +623,22 @@ export const getLiveOutcomesOpen = (symbol: string | null = null) =>
     `/api/live-outcomes/open` +
       (symbol ? `?symbol=${encodeURIComponent(symbol)}` : ""),
   );
+
+// ── Survival core (OV-1 × VM) ─────────────────────────────────────────────────
+
+export interface CoreStateResponse {
+  as_of: string; // ISO date of the latest completed ^GSPC close
+  close: number;
+  sma: number;
+  ma_in: boolean;
+  sessions_in_state: number;
+  flip_level: number;
+  sigma_ann: number; // fraction, annualised
+  vm_weight: number;
+  exposure: number; // fraction of the market to hold next session
+  sma_distance: number; // close / SMA − 1
+  flip_distance: number; // flip_level / close − 1
+  missing_sessions: number; // closed NYSE sessions with no bar; > 0 = stale
+}
+
+export const getCoreState = () => apiFetch<CoreStateResponse>("/api/core-state");
