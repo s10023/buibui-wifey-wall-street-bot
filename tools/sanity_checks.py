@@ -100,7 +100,13 @@ LEAKAGE_RE = re.compile(
 LEAKAGE_EXEMPT: dict[str, str] = {
     "sync-parent/SKILL.md": "addresses the parent repo directly",
     "ingest-video/SKILL.md": "addresses the parent repo directly",
+    "ingest-video/references/fetch-and-frames.md": (
+        "step 2b's sibling-repo check, moved from ingest-video/SKILL.md"
+    ),
     "post-branch/SKILL.md": "quotes the pattern in order to hunt for it",
+    "post-branch/references/doc-walk.md": (
+        "quotes the pattern in order to hunt for it (moved from post-branch/SKILL.md)"
+    ),
     "sanity-check/SKILL.md": "quotes the pattern in order to hunt for it",
     "ingest-feed/SKILL.md": "names the sibling repo path deliberately, as the sibling",
     "db-update/SKILL.md": "names the parent's systemd unit AS the parent's, to disown it",
