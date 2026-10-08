@@ -3,7 +3,7 @@
 Covers the engine adapter `_apply_adr_bias_gate_to_signals` and the wire-up
 inside `run_backtest()`. The gate must reuse live's `_filter_signals_by_adr`
 and `_is_adr_exempt` verbatim. Wifey has no per-direction exemption fields
-(parent's PR #380 `adr_exempt_long`/`adr_exempt_short` were not ported), so
+(parent's PR #380 `adr_exempt_long`/`adr_exempt_short` are not ported), so
 only strategy-wide `adr_exempt=True` is exercised here.
 """
 

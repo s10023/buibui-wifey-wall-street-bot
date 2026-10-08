@@ -127,8 +127,7 @@ class TestToleranceSessionsFor:
         """Regression pin: adding the third term must not move a shipped bar.
 
         4h and 1d bars close inside one session, so `max(0, span - 1)` is 0 for
-        both. If this moves, every previously-FRESH watchlist series has silently
-        been regraded.
+        both. If this moves, every FRESH watchlist series is silently regraded.
         """
         assert sessions_per_bar("4h") == 0.5
         assert sessions_per_bar("1d") == 1.0
@@ -251,8 +250,8 @@ class TestUnscheduledTier:
     def test_unscheduled_series_never_makes_the_report_fail(self) -> None:
         """With no cadence covering it, a series' age is an absence, not a fault.
 
-        ⚠ This is the timer-NOT-enabled world, which `evaluate_ohlcv`'s empty
-        `universe_symbols` default expresses. It was once unconditional.
+        This is the world where the universe-sync timer is not enabled, which
+        `evaluate_ohlcv`'s empty `universe_symbols` default expresses.
         """
         rows = [Series("ZTS", "1d", _ms(date(2026, 6, 18)))]
         report = evaluate_ohlcv(
@@ -432,10 +431,8 @@ class TestEvaluateSignal:
         assert report.newest_session is None
 
     def test_an_old_watermark_is_not_a_failure(self) -> None:
-        """⚠ Anti-regression for the defect this leg shipped with.
-
-        The watermark advances on DISPATCH, not on every run, and `day_filter`
-        makes dispatch intermittent. Grading it printed STALE on a healthy
+        """The watermark advances on dispatch, not on every run, and `day_filter`
+        makes dispatch intermittent. Grading it would print STALE on a healthy
         system, so `ok` must stay true however old the mark is.
         """
         marks = {"AAPL:4h:ema": _ms(date(2026, 1, 2))}

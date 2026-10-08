@@ -5,7 +5,7 @@ report does with a family, not whether the sleeve has an edge, and a fixture
 whose returns are constructed is the only way to assert that a placebo cannot
 reach the DSR family or that a pure-market book reads as beta.
 
-⚠ **The evaluate stack is module-scoped on purpose.** ``evaluate_xs`` runs a
+**The evaluate stack is module-scoped on purpose.** ``evaluate_xs`` runs a
 10,000-resample bootstrap per book and this repo's per-test budget is 30s;
 building the report once keeps every assertion below free.
 """

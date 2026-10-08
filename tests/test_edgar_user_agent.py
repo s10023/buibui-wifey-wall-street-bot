@@ -7,7 +7,7 @@ Measured 2026-08-29 against both SEC hosts (data.sec.gov / www.sec.gov):
     URL, with parens      403 / 403
     URL, without parens   403 / 403
 
-The module previously fell back to the repo URL when ``EDGAR_CONTACT_EMAIL`` was
+The module must not fall back to the repo URL when ``EDGAR_CONTACT_EMAIL`` was
 unset, documented as "SEC may throttle an address-less UA harder". That was the
 wrong shape entirely: it 403s everywhere, so ``make wifey-pead-backfill`` could
 not run on an unconfigured box and failed as if SEC were down. These tests pin
@@ -49,7 +49,7 @@ def test_blank_contact_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_non_email_contact_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The exact regression: a URL used to be the *default* value here.
+    # A URL must never be the *default* value here.
     monkeypatch.setenv(
         "EDGAR_CONTACT_EMAIL", "https://github.com/s10023/buibui-wifey-wall-street-bot"
     )
@@ -63,7 +63,7 @@ def test_backfill_entry_point_reads_dotenv_before_anything_else(
 ) -> None:
     """Both EDGAR backfills must load ``.env`` as their first act.
 
-    Neither did until 2026-09-01, so a box with ``EDGAR_CONTACT_EMAIL`` set in
+    A backfill that skips this leaves a box with ``EDGAR_CONTACT_EMAIL`` set in
     ``.env`` — the only place the error message and ``.env.example`` tell you to
     put it — still died on ``EdgarContactMissing``. The advice named a file the
     entry point never read, which reads as a config mistake rather than a defect.

@@ -422,10 +422,10 @@ class TestDescribe:
 
 
 class TestSharedBaseGateState:
-    """`conflict_resolver` off in the shared base is SETTLED (#149).
+    """`conflict_resolver` off in the shared base is settled (#149).
 
-    It is the only gate that READS `confidence_ratings`, so enabling it inside
-    the sweep that PRODUCES them is a fixed-point iteration, not a gate: three
+    It is the only gate that reads `confidence_ratings`, so enabling it inside
+    the sweep that produces them is a fixed-point iteration, not a gate: three
     consecutive backtest+recalibrate passes went 108 → 66 rows differing,
     damping but not converged, with cells still oscillating at iteration 3.
     With five gates the sweep is deterministic (0 of 160 rows differ).

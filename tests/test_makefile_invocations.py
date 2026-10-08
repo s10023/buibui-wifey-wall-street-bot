@@ -3,10 +3,10 @@
 This is the static half of the silent-surface enforcement; the data-driven half is
 `tools/dead_surface_check.py` (+ `tests/test_dead_surface_check.py`), which reports
 (strategy × timeframe) cells where declaration and output disagree in either
-direction — declared but never firing, or rated but no longer declared.
+direction — declared but never firing, or rated but undeclared.
 
 `make wifey-open-trades` ran `trade/open_trades.py` — a **0-byte file** — printed
-"🚀 Opening multiple trades…" and exited **0** until 2026-08-06 (#138). Python
+"🚀 Opening multiple trades…" and exited **0** (#138, fixed 2026-08-06). Python
 exits 0 on an empty file, so a target can invoke nothing, report success, and be
 indistinguishable from a target that worked. `make` cannot catch this: the
 command genuinely succeeded.

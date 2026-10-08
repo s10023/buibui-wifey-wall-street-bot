@@ -272,7 +272,7 @@ def test_powered_null_scales_with_the_bar() -> None:
 
 
 class TestClusterKeyFailsClosed:
-    """⚠ An unusable key must cost the VERDICT, never the guard.
+    """An unusable key must cost the verdict, never the guard.
 
     Falling back to per-trade resampling would report a confident, undeflated
     answer — the fail-open shape this repo already closed in
@@ -309,7 +309,7 @@ def _day_clustered(
     Each day draws one common effect and every trade that day sits on it with
     little independent noise — the shape the audit measured (median ICC 0.598).
 
-    ⚠ **The defaults are deliberately MARGINAL.** An overwhelming effect
+    The defaults are deliberately marginal. An overwhelming effect
     survives the correction and should: at ``mu=-0.6, sd=0.7`` this fixture
     still earns ENABLE on the day unit (CI ``[-1.23, -0.16]``, adj-p 0.019)
     even though the CI widens 3x and the p-value moves 11 orders of magnitude.

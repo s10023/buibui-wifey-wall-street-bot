@@ -6,7 +6,7 @@ forward-walk resolver can score them. See
 docs/superpowers/specs/2026-06-01-outcome-ledger-sl-tp-fallback-design.md.
 
 Ported from parent PR #410. Reconciled to the equity surface: AAPL / 4h, and
-the wifey ohlcv schema has no `taker_buy_volume` column (dropped in T4).
+the wifey ohlcv schema has no `taker_buy_volume` column.
 """
 
 import duckdb
@@ -166,7 +166,7 @@ class TestReconstructNullOutcomes:
             apply=True,
             now_ms=4 * _STEP,
         )
-        # row already has tp_price set + resolved → no longer a NULL candidate
+        # row already has tp_price set + resolved → not a NULL candidate
         assert again["null_rows"] == 0
         assert again["reconstructed"] == 0
 

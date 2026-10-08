@@ -161,7 +161,7 @@ def _row(date: str, verdict: str, stem: str) -> str:
 
 
 class TestVerdictJoin:
-    """The audit-verdict → SoT ownership join (the other half of parent #641).
+    """The audit-verdict → SoT ownership join (ported from parent #641).
 
     The parent's predicates live in a gitignored file and are proven by a
     hand-run sibling that DUPLICATES them; here the module is tracked and
@@ -246,7 +246,7 @@ def _issue(number: int, body: str | None = "", **extra: Any) -> dict[str, Any]:
 
 
 class TestIssueOwners:
-    """Issues own audit verdicts since planning moved there (#379)."""
+    """Issues own audit verdicts: planning lives there (#379)."""
 
     STEM = "2026-08-20-audit-guard-cross-sectional-clustering"
 

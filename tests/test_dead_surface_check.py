@@ -118,11 +118,11 @@ class TestFindDeadCells:
 
 
 class TestAllowlist:
-    """Exercises the filtering mechanism, NOT whatever the allowlist happens to hold.
+    """Exercises the filtering mechanism, not whatever the allowlist happens to hold.
 
-    These tests pinned the shipped contents until 2026-08-06 and broke the moment
-    the list emptied — a test coupled to data that is designed to change. The
-    mechanism is patched here; the shipped contents get their own assertion below.
+    These tests must not pin the shipped contents: a test coupled to data that is
+    designed to change breaks the moment the list empties. The mechanism is
+    patched here; the shipped contents get their own assertion below.
     """
 
     @pytest.fixture
@@ -161,7 +161,7 @@ class TestAllowlist:
         assert unexpected([cell]) == [cell]
 
     def test_shipped_allowlist_is_empty(self) -> None:
-        """The allowlist may only ever SHRINK — it reached empty on 2026-08-06.
+        """The allowlist may only ever shrink; it is empty (since 2026-08-06).
 
         A new entry means a dead surface was accepted, which is the thing this
         module exists to prevent. Growing it should require deleting this test,
@@ -268,7 +268,7 @@ class TestFindOrphanRatings:
 
 
 class TestOrphanTiers:
-    """`undeclared anywhere` vs `declared by another config` (sister PR #608).
+    """`undeclared anywhere` vs `declared by another config` (ported from sister PR #608).
 
     The two live configs partition the calendar by `day_filter`, so a cell can be
     undeclared by the config that rates it while the other still declares it.

@@ -12,13 +12,13 @@ Why a real end-to-end run rather than `--dry-run`
 `--dry-run` reports what it *would* copy and returns before copying anything, so
 a dry-run assertion passes whether or not the copy loop runs at all. That is the
 vacuous-guard shape this repo has been bitten by twice (`docs/audits/
-2026-08-13-vacuous-causality-guards.md`), and the subject here IS the copy. So
+2026-08-13-vacuous-causality-guards.md`), and the subject here is the copy. So
 these drive the script for real against a fixture tree, via the two env knobs
 (`WIFEY_REPO_ROOT`, `WIFEY_PYTHON`) that exist for exactly this.
 
 `test_memory_tree_is_absent_without_it` is the negative control for the whole
 file: it points `WIFEY_MEMORY_DIR` at a path that does not exist and asserts the
-snapshot comes back WITHOUT a memory directory. Without it, every assertion
+snapshot comes back without a memory directory. Without it, every assertion
 below would pass just as well if the script copied the memory tree from some
 hardcoded location, and the env knob the other tests rely on would be unproven.
 """
@@ -107,7 +107,7 @@ def only_snapshot(backup_root: Path) -> Path:
 def test_memory_tree_lands_in_the_snapshot(
     fake_repo: Path, fake_memory: Path, tmp_path: Path
 ) -> None:
-    """The point of the whole section: the SoT is no longer single-copy."""
+    """The SoT is not single-copy: the memory tree lands in the snapshot."""
     rc, _, backup_root = run_backup(fake_repo, tmp_path, fake_memory)
     assert rc == 0
 
@@ -202,8 +202,8 @@ def test_default_memory_path_is_derived_from_the_repo(
     rather than merely asserting the script reported a plausible-looking path.
     """
     home = tmp_path / "home"
-    # ⚠ `Path.home()` reads USERPROFILE on Windows and HOME on POSIX, so an
-    # isolation setting only one of them leaks the REAL home on the other host
+    # `Path.home()` reads USERPROFILE on Windows and HOME on POSIX, so an
+    # isolation setting only one of them leaks the real home on the other host
     # — and it leaks silently, because the derived tree merely fails to exist
     # and the run warns rather than failing. Set both.
     monkeypatch.setenv("HOME", str(home))

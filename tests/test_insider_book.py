@@ -6,7 +6,7 @@ assertion is satisfied both by the invariant holding and by the perturbation
 never arriving, so each invariant here is paired with an edit that must change
 the number the invariant pins.
 
-⚠ **The causality control observes the channel it protects.** It asserts on the
+**The causality control observes the channel it protects.** It asserts on the
 BOOK's return on the formation day, not on an upstream weight — the vacuity
 audit's finding was that a control on a neighbouring value can fire through a
 different path and certify nothing about the guard it was written for.

@@ -110,7 +110,7 @@ def test_harness_catches_injected_lookahead() -> None:
 
 # Detectors with a confirmed, tracked lookahead leak. xfail(strict) so the
 # follow-up fix PR is forced to remove the entry when it makes the cell causal.
-# Currently empty: the only known leak (`bos`, centered swing window) was fixed
+# Empty: the only known leak (`bos`, centered swing window) is closed
 # by shifting the signal open_time to the confirmation bar (row_idx +
 # swing_lookback) — see docs/redesign/phase0-lookahead-audit.md.
 _KNOWN_LOOKAHEAD_DETECTORS: set[str] = set()

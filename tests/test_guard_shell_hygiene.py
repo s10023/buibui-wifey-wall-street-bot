@@ -87,9 +87,9 @@ class TestEachRuleFires:
         assert "exit status is SWALLOWED" in out
 
     def test_the_old_recommended_form_fires(self) -> None:
-        """The rule's own advice until parent #779 ended in `tail`, so it exited 0.
-
-        A test here pinned that string as silent -- the defect asserted as correct.
+        """The form the rule once recommended (until parent #779) ended in `tail`, so it
+        exited 0 and the hook must still fire on it; a test pinning it as silent
+        would assert the defect as correct.
         """
         out = _run(
             'make preflight > /tmp/p.log 2>&1; echo "exit=$?"; tail -8 /tmp/p.log'
@@ -123,9 +123,8 @@ class TestTheThingsItMustNotSayAnythingAbout:
     def test_a_pipe_after_the_status_is_captured_is_silent(self) -> None:
         """The pipe half is scoped to the gate's own segment.
 
-        This exact shape fired the hook live on 2026-09-29: the status was
-        captured and exited with, but a later `| head` matched the old
-        segment-spanning pattern.
+        The status is captured and exited with, but a later `| head` must not match
+        a segment-spanning pattern (this shape fired the hook live on 2026-09-29).
         """
         out = _run(
             "make post-branch-checks > f 2>&1; rc=$?; grep -v x f | head -80; exit $rc"
@@ -169,7 +168,7 @@ class TestDedupIsPerRulePerSession:
 
 
 class TestTheGateListIsThisReposOwn:
-    """⚠ The port's one hard divergence: the gate list was RE-DERIVED, not copied.
+    """The port's one hard divergence: the gate list is re-derived, not copied.
 
     Upstream's list names `daily_check.py` and omits half of wifey's gates. A
     copied list would match nothing on the commands a session here actually
@@ -203,7 +202,7 @@ class TestTheGateListIsThisReposOwn:
 
 
 class TestNotPortedRulesAreAbsentOnPurpose:
-    """⚠ Three upstream rules are deliberately absent -- pin that, so a later
+    """Three upstream rules are deliberately absent -- pin that, so a later
     'completeness' pass cannot quietly restore a rule that can never fire here.
     """
 

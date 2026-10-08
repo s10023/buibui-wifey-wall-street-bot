@@ -10,7 +10,7 @@ target the alert actually carried (`implied_tp_r`) rather than the declared
 `rr_ratio` it stores beside it.
 
 Equity port of the parent's tests/test_mfe_mae.py (PR #433): the only fixture
-change is dropping `taker_buy_volume` (not a column in the wifey ohlcv table).
+difference is dropping `taker_buy_volume` (not a column in the wifey ohlcv table).
 """
 
 import duckdb

@@ -80,7 +80,7 @@ class TestResolveCooldownBars:
         assert _resolve_cooldown_bars("1d", cfg) == 1
 
     def test_unknown_timeframe_falls_back_to_one(self) -> None:
-        # Intraday TFs wifey no longer trades are unknown → 1-bar floor.
+        # Intraday TFs wifey does not trade are unknown → 1-bar floor.
         cfg = LiveParityConfig(cooldown=True)
         assert _resolve_cooldown_bars("15m", cfg) == 1
         assert _resolve_cooldown_bars("1h", cfg) == 1

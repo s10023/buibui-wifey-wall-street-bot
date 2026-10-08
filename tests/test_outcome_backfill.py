@@ -651,12 +651,11 @@ class TestWinCreditsTheEffectiveTarget:
 class TestMaxHoldCalibrationCoverage:
     """Every timeframe a config scans must have a calibrated hold cap.
 
-    This guard could not be written before 2026-08-12: `1wk` had no entry, the
-    fallback silently handed it the `15m` value (96 bars = 96 WEEKS), and the
-    `weekdays` config scans `1wk` — so the assertion would have been red with no
-    correct value to make it green. Choosing 7 (user, 2026-08-12) is what made
-    the guard writable, which is the point worth remembering: a guard whose only
-    fix is a calibration decision belongs WITH that decision, not before it.
+    Without a `1wk` entry the fallback silently hands it the `15m` value (96 bars =
+    96 weeks), and the `weekdays` config scans `1wk`, so this assertion is red
+    until a correct value exists. Choosing 7 (user, 2026-08-12) made the guard
+    writable: a guard whose only fix is a calibration decision belongs with that
+    decision, not before it.
     """
 
     def test_max_hold_covers_every_configured_timeframe(self) -> None:
@@ -838,7 +837,7 @@ class TestNetOfCostResolution:
         """A cost model reaches BACKWARDS; `no_ohlcv` must still mean the same.
 
         The fetch is widened by the trailing ADV window, so a signal whose only
-        bars sit BEFORE it now returns a non-empty frame. Without the slice back
+        bars sit before it returns a non-empty frame. Without the slice back
         to the post-signal frame, `bars.empty` would be False and these rows
         would silently move from `no_ohlcv` into `open` — a count changing
         meaning because an unrelated feature was switched on.
@@ -863,7 +862,7 @@ class TestNetOfCostResolution:
 class TestGapFillsAreSymmetric:
     """Both tails priced, or neither — a one-sided fix is a new bias, not a fix.
 
-    The 2026-08-19 audit measured only gapped LOSSES. On the live ledger 21.1% of
+    The 2026-08-19 audit measured only gapped losses. On the live ledger 21.1% of
     losses gap through their stop but 26.1% of wins gap through their target, so
     pricing one side alone overstates the real bias by ~65%.
     """

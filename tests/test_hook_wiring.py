@@ -1,15 +1,15 @@
-"""End-to-end guards that the PreToolUse hooks actually RUN as configured.
+"""End-to-end guards that the PreToolUse hooks actually run as configured.
 
-⚠ **This exists because they did not.** Measured 2026-09-21 on the Windows host:
+This exists because they did not run. Measured 2026-09-21 on the Windows host:
 every hook in `.claude/settings.json` launched with `exec python3 "$f"`, and on
 this box `python3` resolves to the Windows Store App Execution Alias, a reparse
 point that returns **Permission denied / exit 126** from Git Bash. Only exit 2
 blocks, so `guard-destructive.py` -- the guard for `rm -rf`, `git reset --hard`,
-force-push and DB wipes -- **failed open on every command**. CLAUDE.md anticipated
-fail-open for a MISSING hook file; a broken interpreter fails open identically.
+force-push and DB wipes -- **failed open on every command**. CLAUDE.md anticipates
+fail-open for a missing hook file; a broken interpreter fails open identically.
 
-⚠ **The stub is UNDETECTABLE by test operator**: `[ -f ]` and `[ -x ]` both report
-true for it, and even `wc -c` on it is denied. So the fix is candidate ORDERING --
+**The stub is undetectable by test operator**: `[ -f ]` and `[ -x ]` both report
+true for it, and even `wc -c` on it is denied. So the fix is candidate ordering --
 prefer this repo's own venv, the interpreter everything else already runs on --
 rather than trying to detect brokenness.
 
@@ -138,7 +138,7 @@ class TestTheDestructiveGuardActuallyGuards:
 
 
 class TestTheInterpreterOrderIsLoadBearing:
-    """⚠ Do not 'simplify' these wrappers back to a bare `python3`."""
+    """These wrappers must not be simplified back to a bare `python3`."""
 
     @pytest.mark.parametrize(
         "script",
