@@ -42,6 +42,7 @@ web/ui/src/
 │   ├── AnalysisCard.svelte
 │   ├── BacktestResult.svelte
 │   ├── CandleChart.svelte    ← lightweight-charts wrapper
+│   ├── CoreStateCard.svelte  ← self-fetching survival-core card (#432)
 │   ├── ErrorBanner.svelte
 │   ├── LiveOutcomes.svelte   ← self-fetching card (see /stats-dashboard)
 │   ├── LoadingSpinner.svelte

@@ -34,7 +34,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -161,17 +161,12 @@ def core_findings(
 ) -> list[Finding]:
     """AMBER when ``^GSPC`` misses a session that has closed by ``now`` (UTC).
 
-    A bar dated today counts as closed from 21:00 UTC, the later of the two
-    DST close times, so a pre-open run expects yesterday's close.
+    The rule is :func:`analytics.overlay.live.missing_sessions`, shared with the
+    web UI's core card.
     """
-    from analytics.overlay.live import SESSION_CLOSED_UTC_HOUR
+    from analytics.overlay.live import missing_sessions
 
-    today = now.date()
-    closed = [
-        d
-        for d in sessions_fn(as_of + timedelta(days=1), today)
-        if d < today or now.hour >= SESSION_CLOSED_UTC_HOUR
-    ]
+    closed = missing_sessions(as_of, now, sessions_fn)
     if not closed:
         return []
     return [

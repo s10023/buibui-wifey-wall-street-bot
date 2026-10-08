@@ -28,6 +28,11 @@ analytics/stats/                ← compute_live_outcomes, mark_open_positions, 
 web/api/routers/live_outcomes.py ← GET /api/live-outcomes (+ /open) — NOT part of StatsBundle
 web/api/models/live_outcomes.py ← its own response models
 web/ui/src/components/LiveOutcomes.svelte ← self-fetching card with its own controls
+
+analytics/overlay/live.py       ← core_state, completed_closes, missing_sessions
+web/api/routers/core.py         ← GET /api/core-state — NOT part of StatsBundle
+web/api/models/core.py          ← CoreStateResponse
+web/ui/src/components/CoreStateCard.svelte ← self-fetching survival-core card
 ```
 
 ## The cards
@@ -63,14 +68,16 @@ exact figure.
 
 | Card | Backend | Notes |
 | ------ | --------- | ------- |
-| Live Alert Outcomes | `compute_live_outcomes` / `mark_open_positions` / `open_positions` → `GET /api/live-outcomes` (+ `/live-outcomes/open`) | **The one card that is not in `StatsBundle` at all.** Scored from the `signal_alert_outcomes` ledger and **cross-symbol** — every other card is keyed to the selected symbol. `LiveOutcomes.svelte` fetches it itself with its own `days` / `min_n` / `symbol` controls, so the page-level symbol and period pickers do not drive it. Roll-up is all-time; the tables window by its own `days` (0 = all time). Win rate excludes expired trades; `avg R` averages `outcome_r`, which is **net of cost** |
+| Live Alert Outcomes | `compute_live_outcomes` / `mark_open_positions` / `open_positions` → `GET /api/live-outcomes` (+ `/live-outcomes/open`) | **One of two cards that are not in `StatsBundle` at all.** Scored from the `signal_alert_outcomes` ledger and **cross-symbol** — every `StatsBundle` card is keyed to the selected symbol. `LiveOutcomes.svelte` fetches it itself with its own `days` / `min_n` / `symbol` controls, so the page-level symbol and period pickers do not drive it. Roll-up is all-time; the tables window by its own `days` (0 = all time). Win rate excludes expired trades; `avg R` averages `outcome_r`, which is **net of cost** |
+| Survival Core · OV-1 × VM | `analytics/overlay/live.py::core_state` → `GET /api/core-state` | Market-wide (`^GSPC`), so the page-level symbol and period pickers do not drive it. Read-only and advisory: the same `completed_closes` → `core_state` call and `missing_sessions` rule as the digest, with no rule of its own (#432). `CoreStateCard.svelte` fetches it once on mount |
 
 **Why three paths, not two?** The cached bundle is safe to serve stale for a day.
 The live *fields* must reflect the current candle's position, so they bypass the
-cache but still ride the same per-symbol request. Live Alert Outcomes is neither:
-it reads a different table on a different axis (cross-symbol, not per-symbol) and
-so cannot key on `(symbol, days, date)` at all — which is why it is a separate
-endpoint rather than a third branch of `compute_all`.
+cache but still ride the same per-symbol request. Live Alert Outcomes and the
+Survival Core are neither: each reads a different table on a different axis
+(cross-symbol or market-wide, not per-symbol) and so cannot key on
+`(symbol, days, date)` at all — which is why each is a separate endpoint rather
+than a third branch of `compute_all`.
 
 ## Key constraints
 

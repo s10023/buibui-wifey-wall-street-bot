@@ -1009,6 +1009,7 @@ make web-full CONFIG=config/signal_watch.toml   # build UI then start server
 | `POST` | `/api/backtest` | Run a backtest (auto-saved to DB) for a symbol/timeframe/strategy |
 | `GET` | `/api/stats/{symbol}` | Computed stats bundle (P1/P2, ADR, DOW, session, weekly) for a symbol |
 | `GET` | `/api/live-outcomes` | Cross-symbol roll-up of fired-alert outcomes from `signal_alert_outcomes` (win/loss/avg-R per strategy×tf×direction); never cached |
+| `GET` | `/api/core-state` | OV-1 × VM survival-core state at the latest completed `^GSPC` close (read-only, advisory) |
 | `GET` | `/api/zones` | Structural zones for a symbol+timeframe (FVG, OB, EQH/EQL, BOS, Fib, OTE, swings) |
 
 Phase A (signals-only) does not ship `/api/positions`, `/api/prices`, or `/api/stream/*` — the Binance-Futures variants were removed in T16-full and Phase B will re-introduce equivalents against the chosen equities broker.
