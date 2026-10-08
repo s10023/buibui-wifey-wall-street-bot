@@ -413,3 +413,88 @@ premise recorded as not refuted, kept apart as in the H-024 audit.
   precheck prints the Saturday-to-weekday volatility ratio so the size of this is measured.
 - `σ̂` is on the CRSP total market, OV-1's signal is on `^GSPC`: each rule reads its own natural
   input.
+
+## Amendment 2 — TOM pre-registration (#422)
+
+**FROZEN 2026-10-08, before any TOM return was computed**, on the operator's go for Part 3's
+candidate 2. Changing any line here re-opens the trial count. TOM is an **edge claim**, so it is
+judged on the edge yardstick (`docs/north-star.md` § Two yardsticks), not the overlay one.
+
+### TOM rule
+
+- Window: the last session of each calendar month plus the first three sessions of the next. A
+  session in the window holds the market for that session's return, so the book enters at the
+  close before the window's first session and exits at the close of its fourth. Outside the
+  window it earns French `RF`.
+- Sessions are the French daily file's own dates. Membership is a function of the calendar
+  alone: it reads no return, price or volume. Knowing that a session is the month's last uses
+  the exchange schedule, which is published in advance (see frame limits).
+
+### TOM panel, frame and costs
+
+- Market: French `Mkt-RF + RF`; cash: French `RF`. No `^GSPC` and no `analytics.db`.
+- **Primary panel: 1988-01-04 → the last session of the last complete calendar month in the
+  file**, out of sample for Ariel (1987) and Lakonishok & Smidt (1988). A month the file has not
+  finished is cut, because its last session is not yet known. Record both dates in the audit
+  header before any return is computed.
+- **Secondary panel: 2006-01-03 → the same end**, out of sample for McConnell & Xu (2008),
+  reported for sign only.
+- Costs: 2 bps per unit of |Δposition| (about 24 sides a year), with 5 bps reported. As in OV-1,
+  the first session carries no entry cost.
+
+### TOM gate
+
+`tom` is long-only, so per #336 it is judged on **beta-hedged** returns:
+
+- `β`: OLS slope of `tom − RF` on `mkt − RF` over the panel, with an intercept (the
+  `beta_attribution` already used for OV-1 and VM).
+- `h_t = (tom_t − RF_t) − β (mkt_t − RF_t)`. The hedged Sharpe is `mean(h) / sd(h)` (ddof 1),
+  annualized by `√252`: an appraisal ratio on the panel's own `β`.
+
+FOUND only if all three legs hold:
+
+1. Hedged annualized Sharpe ≥ `GATE_SHARPE` 0.7.
+2. DSR ≥ 0.95, from `deflated_sharpe_ratio` on the per-session hedged Sharpe with
+   `n_trials = 4` (TOM plus H-001, H-002 and H-021, the calendar rows already tested) and
+   `sr_variance = 0.0652 / 252` (the filed sleeve family's annualized variance, per session),
+   with the hedged series' own skew and non-excess kurtosis. On normal moments this footing
+   reproduces Part 3's bars (0.533 on 1988→, 0.630 on 2006→).
+3. `boot_lo` > 0: the lower bound of a stationary-bootstrap 95% CI of the hedged annualized
+   Sharpe, `β` held at its panel value, mean block 252, 5,000 resamples, seed 20261008.
+
+PBO does not apply: the window and the costs are fixed from the literature, so no cell is
+selected from a grid.
+
+### TOM verdict function
+
+1. **FOUND** if all three legs hold.
+2. **EXCLUDED** if the CI's upper bound is below 0.7: a gate-sized hedged Sharpe is ruled out.
+   The premise is then read separately: refuted if the upper bound is at or below 0, otherwise
+   not refuted.
+3. **BOUNDED** if the CI's lower bound is above 0 but leg 1 or 2 fails: a positive hedged
+   return that does not clear the bar.
+4. **INSUFFICIENT** otherwise (the CI contains 0 and reaches 0.7). Filed as EXCLUDED as a
+   deployable sleeve with the premise recorded as not refuted, as in Amendment 1.
+
+### TOM: reported, not gated
+
+- Per arm (`bh`, `tom`): CAGR, volatility, Sharpe in excess of `RF`, ulcer, max drawdown,
+  longest time under water, mean exposure and turnover per year; `β`, alpha and its t-stat.
+- The literature's own statistic: mean daily market excess return inside the window and
+  outside it, and their difference with a stationary-bootstrap CI.
+- Sensitivities: 5 bps; a 1-session execution lag (the position shifted one session later);
+  split halves of the primary panel (sign only); the secondary panel (sign only).
+- No window variant (other lengths or offsets) is run. Each would be a fifth trial.
+
+### TOM causality and frame limits
+
+- A truncation test: positions computed on a calendar cut at 6 dates equal the full-calendar
+  positions on every session at least one session before each cut. The session at the cut is
+  exempt by construction, because the cut hides whether the next session starts a new month,
+  and a positive control asserts that the truncated calendar mislabels exactly such a session.
+- The window is read from the realized calendar. Of the unscheduled closures on the panel
+  (1994-04-27, 2001-09-11 to 09-14, 2004-06-11, 2007-01-02, 2012-10-29 and 10-30, 2018-12-05,
+  2025-01-09), only 2007-01-02 falls on a session the published schedule put in a window. It was
+  announced after President Ford's death on 2006-12-26, before that window's entry close on
+  2006-12-28, so the realized window was knowable in time.
+- The market is the CRSP value-weighted total market, not an investable fund, as in OV-1.
