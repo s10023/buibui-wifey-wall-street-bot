@@ -280,7 +280,8 @@ def find_unpinned_child_python(
         for n in ast.walk(tree)
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
     ]
-    scopes: list[tuple[str, ast.AST]] = [(f.name, f) for f in funcs] or [
+    # The module scope sorts last (no lineno), so it claims only module-level calls.
+    scopes: list[tuple[str, ast.AST]] = [(f.name, f) for f in funcs] + [
         ("<module>", tree)
     ]
     seen: set[int] = set()
@@ -353,3 +354,13 @@ def test_flags_unpinned_child_python(snippet: str) -> None:
 )
 def test_does_not_flag_pinned_or_non_python(snippet: str) -> None:
     assert find_unpinned_child_python(snippet) == []
+
+
+def test_module_level_call_is_scanned_beside_a_def() -> None:
+    """A file that defines a function must not hide its module-level calls."""
+    snippet = (
+        "def f():\n"
+        "    pass\n"
+        "subprocess.run([sys.executable, 'x.py'], text=True, encoding='utf-8')\n"
+    )
+    assert find_unpinned_child_python(snippet) == [(3, "<module>")]
