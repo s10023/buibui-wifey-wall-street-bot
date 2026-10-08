@@ -2,8 +2,9 @@
 
 `.claude/settings.json` registers every hook, on four events: `SessionStart` (the session digest),
 `UserPromptSubmit` and `PostToolUse` on `Bash` (lifecycle advisories), and `PreToolUse` on `Bash`
-(two guards, three advisories) and on `Edit|Write|NotebookEdit|MultiEdit` (the branch guard).
-Every hook is a Python file run through the same wrapper; none is inline shell.
+(two guards, three advisories), on `Edit|Write|NotebookEdit|MultiEdit` (the branch guard) and on
+`Skill` (the usage log, which also runs on `UserPromptSubmit`). Every hook is a Python file run
+through the same wrapper; none is inline shell.
 
 ## Wrapper interpreter order
 
@@ -94,6 +95,25 @@ An inline `--body`, stdin, an unreadable file or a chained `git commit -F` still
 `main` gets a "branch off latest main" reminder, once per session per branch, never for gitignored
 paths. Ported from the parent with only its rationale pointer changed.
 
+## log-skill-usage.py — logs, never blocks
+
+`PreToolUse` on `Skill` and `UserPromptSubmit` (#395): appends one tab-separated line per skill
+invocation (UTC timestamp, source `tool` or `prompt`, name, args cut to 80 characters) to the
+gitignored `.claude/skill-usage.log`. Both events, because a typed `/name` loads the skill without
+a `Skill` tool call; a log fed by `PreToolUse` alone would score the skills the operator types most
+as unused. The prompt side logs every leading `/name`, built-ins included, and the summary judges
+only `.claude/skills/` against the log.
+
+It cannot block. Every path in the script returns 0 and swallows its own failure, and its wrapper
+runs the interpreter without `exec` and then ends `exit 0`, so the wrapper's exit code is final
+whatever Python does. `make status` prints a one-line count (invocations since the first entry,
+repo skills with none); `poetry run python .claude/hooks/log-skill-usage.py --summary` prints the
+per-name table and the never-invoked list. Read it as evidence before demoting a skill, not as a
+verdict: the log is per machine, starts empty on a fresh clone, and a cloud session's copy dies
+with its container. It is not in the session digest, which reports reds rather than repo shape.
+`tests/test_log_skill_usage.py` pins the parsing and summary; `TestSkillUsageLogWiring` in
+`tests/test_hook_wiring.py` drives both wrappers end to end.
+
 ## The SessionStart digest (`tools/session_digest.py`)
 
 Not a file here, but registered here: `SessionStart` (`startup|resume|clear`) runs
@@ -114,7 +134,8 @@ Test the wiring, not just the module. `tests/test_hook_wiring.py` reads the wrap
 passes whether or not the wrapper string in `settings.json` is correct — the wrapper string is a
 surface of its own, separate from the module it invokes.
 
-`tests/test_hook_wiring.py`, `tests/test_guard_shell_hygiene.py` and `tests/test_advise_lifecycle.py` live in `tests/`, so
+`tests/test_hook_wiring.py`, `tests/test_guard_shell_hygiene.py`, `tests/test_advise_lifecycle.py` and
+`tests/test_log_skill_usage.py` live in `tests/`, so
 `make test` and CI's `lint-typecheck-test` job both run them; `make lint-py` and `make typecheck`
 cover the hook sources like any other tracked `.py` module.
 

@@ -404,6 +404,30 @@ class TestCli:
         monkeypatch.setattr("tools.wait_ci.wait_branch", boom)
         assert main(["--branch", "main"]) == EXIT_FAILED
 
+    def test_bare_invocation_works(self) -> None:
+        """The documented direct call, run with **no** `PYTHONPATH` (#425).
+
+        Without the `sys.path` bootstrap this died at import with exit 1, the same
+        code as a genuine CI failure, so a session read an import error as red CI.
+        """
+        import sys as _sys
+        from pathlib import Path
+
+        from tools.child_env import python_child_env
+
+        repo = Path(__file__).resolve().parent.parent
+        proc = subprocess.run(  # noqa: S603 - fixed argv, shell=False
+            [_sys.executable, str(repo / "tools" / "wait_ci.py"), "--help"],
+            capture_output=True,
+            text=True,
+            cwd=str(repo),
+            env=python_child_env(drop=("PYTHONPATH",)),
+            check=False,
+            encoding="utf-8",
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert "--pr" in proc.stdout
+
 
 class TestGhAuthFallback:
     """Parent #887: a failed token lookup falls back to ambient auth, never raises.

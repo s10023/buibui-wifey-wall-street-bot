@@ -26,6 +26,8 @@ config/youtube_channels.toml
 # Pre-flip sensitive-term list. NEVER tracked — it is the enumeration of what must not
 # be published, so committing it publishes exactly the thing it exists to catch.
 .claude/sensitive-terms.txt
+# Skill-usage log appended by .claude/hooks/log-skill-usage.py (#395). Machine-local evidence.
+.claude/skill-usage.log
 .idea/
 
 # Local planning docs — personal notes, not for public repo

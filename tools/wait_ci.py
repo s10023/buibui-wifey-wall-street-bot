@@ -73,9 +73,15 @@ import sys
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
-from tools.session_digest import REPO_SLUG, owner_env
+# A bare `poetry run python tools/wait_ci.py` puts `tools/` on sys.path rather than the
+# repo root, so the import below died with ModuleNotFoundError and exit 1 (#425), the
+# same code as a genuine CI failure. The guarantee is `test_bare_invocation_works`.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from tools.session_digest import REPO_SLUG, owner_env  # noqa: E402
 
 #: One home for the slug and for the token-or-ambient auth lookup:
 #: ``session_digest`` and ``cadence_check`` already share them.

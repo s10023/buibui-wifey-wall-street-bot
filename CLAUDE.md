@@ -178,8 +178,8 @@ make test           # full pytest suite (make test-cov for coverage)
 ### Repo checks
 
 - `make status` prints every repo-shape number: tests, files, CLAUDE.md size, handoff lines,
-  MEMORY.md size and bullet count, audits, skills, tools. Print these rather than writing them
-  into a doc, where they go stale.
+  MEMORY.md size and bullet count, audits, skills, tools, skill usage. Print these rather than
+  writing them into a doc, where they go stale.
 - `make sanity-checks` runs the eight mechanical checks in `tools/sanity_checks.py`: fork drift
   against invocable artifacts, parent-repo leakage in skills, dead repo paths, package coverage
   in `.claude/context/`, the three hand-maintained router lists, `[strategy_params.X]` keys,
@@ -224,7 +224,7 @@ make test           # full pytest suite (make test-cov for coverage)
   `needs: lint-typecheck-test` after any test failure — so the failing row decides the verdict
   and skips never do. A `gh` failure raises rather than becoming data. Through `make` any
   failure is make's exit 2, so read the banner, or call
-  `poetry run python tools/wait_ci.py --pr <n>` / `--branch main` for the code.
+  `PYTHONPATH=. poetry run python tools/wait_ci.py --pr <n>` / `--branch main` for the code.
 - Run `make test`, `make test-regression` and every CI wait in the background
   (`run_in_background: true`) and wait for the task notification. `.claude/settings.local.json`
   allowlists these targets, and `.claude/hooks/advise-foreground-run.py` nudges when a run is in
@@ -389,7 +389,7 @@ they guard against re-litigating settled research.
 | `trade/` | Empty placeholder (both files are 0 bytes); `make wifey-open-trades` fails loudly. An order layer would land here in Phase B | — |
 | `tests/` | pytest suite; tests import from lib modules and pass mock dependencies directly | — |
 | `migrations/` | Seven one-shot scripts, run by hand, each refusing to start without a `.bak`. 001/002 rewrite `run_id` and cascade to `backtest_trades`; 003–005 update `signal_alert_outcomes` in place (its key carries no measured value); 006/007 delete from `ohlcv`, and 007's rows cannot be recovered by refetch. Check what the target table's key is made of before choosing a shape. Routine schema changes go through `analytics/store/schema.py`'s migration list | `context/migrations.md` |
-| `.claude/hooks/` | Destructive-command guard, foreground-run and shell-hygiene advisories, the branch guard on edits, and `advise-lifecycle.py` (PR create/merge, session close-out). `SessionStart` runs `tools/session_digest.py`. Covered by ruff and mypy | `context/hooks.md` |
+| `.claude/hooks/` | Destructive-command guard, foreground-run and shell-hygiene advisories, the branch guard on edits, `advise-lifecycle.py` (PR create/merge, session close-out), and `log-skill-usage.py` (a never-blocking skill-usage log, read by `make status`). `SessionStart` runs `tools/session_digest.py`. Covered by ruff and mypy | `context/hooks.md` |
 | `config/` | `stocks.json` (gitignored 13-symbol live watchlist), `universe.json` (committed 505-member research universe), `strategy_params.toml` (shared base inherited via `extends`), `youtube_channels.toml` (gitignored; `.example` committed) | `context/config.md` |
 | `deploy/` | `backup-analytics.sh` (local leg), `backup-offsite.sh` (rclone leg), `notify-failure.sh`, and opt-in `wifey-*` systemd user units (backup ×2, templated alert, signal-watch, universe-sync, daily-check). `deploy/windows/` is the Windows half of the same jobs: `job.sh`, `load-env.sh` (strips CR) and `install-tasks.ps1`. Do not re-sync `job.sh` from the parent: that one shims `deploy/run-job.sh`, which wifey does not have. Every job is one-shot | `deploy/README.md` |
 
@@ -739,9 +739,9 @@ description and trigger conditions load every session, so use them proactively. 
 descriptions do not say:
 
 - `.claude/` is a denylist: `.gitignore` names only `settings.local.json` (absolute machine
-  paths), `RESUME.md` (session scratch) and `sensitive-terms.txt` (never tracked, by policy).
-  Skills, agents, context, hooks and `settings.json` all ship, and a new artifact class is
-  tracked by default. Check `git check-ignore` before assuming.
+  paths), `RESUME.md` (session scratch), `sensitive-terms.txt` (never tracked, by policy) and
+  `skill-usage.log` (machine-local, #395). Skills, agents, context, hooks and `settings.json` all
+  ship, and a new artifact class is tracked by default. Check `git check-ignore` before assuming.
 - Load `/frontend-design` before any Svelte, CSS or UI change.
 - Invoke `/post-branch` before `gh pr create`, while the branch is still local-only.
 - When a skill upgrade fixes a defect, ask whether the defect changed coverage or only
