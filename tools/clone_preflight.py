@@ -170,6 +170,7 @@ def dirty_paths(root: Path) -> list[str]:
         capture_output=True,
         text=True,
         check=True,
+        encoding="utf-8",
     )
     return [line for line in result.stdout.splitlines() if line.strip()]
 
@@ -181,6 +182,7 @@ def _head(root: Path) -> str:
         capture_output=True,
         text=True,
         check=True,
+        encoding="utf-8",
     )
     return result.stdout.strip()
 

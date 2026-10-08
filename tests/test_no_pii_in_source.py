@@ -52,6 +52,7 @@ def _tracked_python_files() -> list[Path]:
         capture_output=True,
         text=True,
         check=True,
+        encoding="utf-8",
     ).stdout
     return [REPO_ROOT / p for p in out.split("\0") if p and Path(p).name != SELF]
 

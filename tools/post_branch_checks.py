@@ -446,7 +446,7 @@ def _run_rc(argv: Sequence[str]) -> int:
     """Exit code of a fixed-argv command; 0 if it cannot be launched."""
     try:
         return subprocess.run(  # noqa: S603 - fixed argv, shell=False
-            list(argv), capture_output=True, text=True, check=False
+            list(argv), capture_output=True, text=True, check=False, encoding="utf-8"
         ).returncode
     except OSError:
         return 0
@@ -460,7 +460,7 @@ def _run(argv: Sequence[str]) -> str:
     """
     try:
         out = subprocess.run(  # noqa: S603 - fixed argv, shell=False
-            list(argv), capture_output=True, text=True, check=False
+            list(argv), capture_output=True, text=True, check=False, encoding="utf-8"
         )
     except OSError:
         return ""

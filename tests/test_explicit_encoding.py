@@ -16,6 +16,13 @@ misses any `Path` reached through an attribute. This scan flags every `read_text
 `write_text` / text-mode `open` call by NAME, and a false positive costs one
 `encoding=` argument.
 
+Subprocess calls are in scope too (Issue #408): `subprocess.run(..., text=True)` (or
+`universal_newlines=True`) without `encoding=` decodes the child's output as cp1252
+in a reader thread, `stdout` comes back `None`, and the failure surfaces later as
+`'NoneType' object has no attribute 'splitlines'`. Matched by function name
+(`run`, `check_output`, `Popen`, `call`, `check_call`) and a text-mode keyword that
+is `True` or not a literal.
+
 `tests/` is IN scope. A tmp-file round trip looks symmetric and is not: cp1252
 cannot ENCODE CJK, so `write_text(VTT)` dies at the write.
 """
@@ -54,6 +61,10 @@ _NON_FILE_OPEN_RECEIVERS = frozenset(
     {"webbrowser", "Image", "tarfile", "zipfile", "os"}
 )
 
+# Subprocess entry points that take `text=` / `encoding=`.
+_SUBPROCESS_FUNCS = frozenset({"run", "check_output", "Popen", "call", "check_call"})
+_TEXT_MODE_KWARGS = ("text", "universal_newlines")
+
 # A site that carried CJK-capable text with a bare read, kept so the scope test below
 # stays anchored to a real file.
 KNOWN_SITE = Path("tools/video_fetch.py")
@@ -71,6 +82,15 @@ def _mode_literal(call: ast.Call, positional_index: int) -> str | None:
     return None
 
 
+def _is_text_mode_subprocess(call: ast.Call) -> bool:
+    """True when a text-mode keyword is literally True or a non-literal expression."""
+    return any(
+        kw.arg in _TEXT_MODE_KWARGS
+        and (not isinstance(kw.value, ast.Constant) or kw.value.value is True)
+        for kw in call.keywords
+    )
+
+
 def _needs_encoding(call: ast.Call) -> bool:
     """True when `call` is a text-mode file open that leaves encoding to the locale."""
     keywords = {kw.arg for kw in call.keywords}
@@ -80,6 +100,10 @@ def _needs_encoding(call: ast.Call) -> bool:
     func = call.func
     if isinstance(func, ast.Attribute) and func.attr in _TEXT_METHODS:
         return True
+
+    name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+    if name in _SUBPROCESS_FUNCS:
+        return _is_text_mode_subprocess(call)
 
     if isinstance(func, ast.Name) and func.id == "open":
         mode_index = 1  # open(file, mode, ...)
@@ -135,6 +159,10 @@ def test_shipped_code_names_every_text_encoding() -> None:
         "open(p, 'w')",
         "p.open()",
         "p.open('a')",
+        "subprocess.run(['git'], capture_output=True, text=True)",
+        "subprocess.check_output(cmd, universal_newlines=True)",
+        "subprocess.Popen(cmd, text=flag)",  # non-literal: may be text mode
+        "run(cmd, text=True)",
     ],
 )
 def test_flags_bare_calls(snippet: str) -> None:
@@ -154,6 +182,10 @@ def test_flags_bare_calls(snippet: str) -> None:
         "p.read_bytes()",
         "webbrowser.open(url)",
         "p.read_text(**kw)",
+        "subprocess.run(cmd, text=True, encoding='utf-8')",
+        "subprocess.run(cmd, capture_output=True)",  # bytes mode
+        "subprocess.run(cmd, text=False)",
+        "subprocess.run(cmd, **kw)",
     ],
 )
 def test_does_not_flag_explicit_or_binary(snippet: str) -> None:

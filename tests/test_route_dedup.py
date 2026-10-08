@@ -915,6 +915,7 @@ class TestSinkAllowlistAndBareInvocation:
             cwd=str(repo),
             env=env,
             check=False,
+            encoding="utf-8",
         )
         assert proc.returncode == 0, proc.stderr
 
