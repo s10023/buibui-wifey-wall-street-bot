@@ -908,6 +908,7 @@ class TestSinkAllowlistAndBareInvocation:
 
         repo = Path(__file__).resolve().parent.parent
         env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+        env["PYTHONUTF8"] = "1"  # the child must write the UTF-8 we decode
         proc = subprocess.run(  # noqa: S603 - fixed argv, shell=False
             [_sys.executable, str(repo / "tools" / "route_dedup.py"), "--help"],
             capture_output=True,
