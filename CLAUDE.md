@@ -14,8 +14,8 @@ panel you are arguing from, because the two are not interchangeable:
   regime as a soft conditioner. US equities have one RTH session, so crypto's session axis does
   not port.
 
-Never commit an overfit parameter. Report negative results plainly: all nine sleeves built so
-far are non-positive, and each is a finding.
+Never commit an overfit parameter. Report negative results plainly: all ten sleeves built so
+far fail their gates, and each is a finding.
 
 **Definition of done.** A Python change is done when `make lint-py`, `make typecheck` and
 `make test` are green.
@@ -379,7 +379,7 @@ they guard against re-litigating settled research.
 | --- | --- | --- |
 | `wifey.py` · `cli/` | Entry shim delegating to `cli.main:main`; argparse subcommand package with `_common.py` helpers | — |
 | `analytics/` | DuckDB analytics layer: `store/`, `strategies/` (16 registered for dispatch), `backtest/`, `signal/`, `stats/`, `research_guards/`, `sweep_guard.py`, `audit_guard.py`, `db_retry.py`, plus data ingest, quality and calendar | `context/analytics.md` |
-| `analytics/{forecast,xsmom,lowvol,xasset,pead,gapfill,velocity,exits}/` | Research sleeves and the exit diagnostic (verdicts below) | `context/analytics.md` |
+| `analytics/{forecast,xsmom,lowvol,xasset,pead,gapfill,velocity,tom,exits}/` | Research sleeves and the exit diagnostic (verdicts below) | `context/analytics.md` |
 | `analytics/insider/` | H-024, the first non-price sleeve, so the TA freeze does not bind it: `form4`, `classify`, `book`/`replay`/`report`, run by `make wifey-insider-audit`. Measured; verdict below. The pre-registration is frozen at four trials with routine-arm placebos as controls | `context/analytics.md` |
 | `analytics/overlay/` | OV-1 (#418) and VM (#421): risk overlays on the market premium, judged on the overlay yardstick (`docs/north-star.md` § Two yardsticks), never `GATE_SHARPE`. The 200-session MA filter is **FOUND as an overlay** on the French total-return frame, 1929–2026: ulcer ratio 0.382, ΔSR +0.250 (CI +0.072 to +0.447). The advantage is front-loaded: on SPY from 1993 it is a drawdown cut (ratio 0.590) at about equal Sharpe (+0.039), significant on neither leg. Not an edge, and it does not make G1 live. Audit: `docs/audits/2026-10-08-ov1-ma-overlay-total-return.md`. VM (#421), `min(1, σ_target / σ̂_20d)`, is **FOUND as an increment over OV-1**: OV-1 × VM against OV-1 has ΔUI CI clear of zero in every run (max DD −19.7% vs −44.6%), but the ulcer ratio is a thin margin (0.722 vs the 0.75 floor; 0.762 BOUNDED under a one-session lag) and the Sharpe gain is not significant. Adopted as the core (#429, `docs/north-star.md`); `analytics/overlay/live.py` puts its daily state in the digest (#423). Audit: `docs/audits/2026-10-08-vm-overlay-increment.md` | `context/analytics.md` |
 | `signals/` · `utils/` | Alerting and dedup daemon (detection lives in `analytics/`); shared Telegram, yfinance and EDGAR clients; the two config-universe loaders | `context/signals.md` |
@@ -395,8 +395,8 @@ they guard against re-litigating settled research.
 
 ### Sleeve verdicts
 
-Nine sleeves have been built and measured on equities, eight on price and `insider/` on
-filings, and every one is non-positive. Do not rebuild a shelved sleeve. The free-data edge-hunt
+Ten sleeves have been built and measured on equities, eight on price, `insider/` on filings
+and `tom/` on the calendar, and every one fails its gate. Do not rebuild a shelved sleeve. The free-data edge-hunt
 arc is concluded (`docs/audits/2026-06-24-honest-exit-free-data-edge-arc.md`); a new free-data
 hunt needs an explicit user go, and any re-opening is per candidate.
 
@@ -413,6 +413,7 @@ is not evidence about the underlying premise.
 | `pead/` PEAD-lite | **FAIL** — `broad_ls` +0.10 @2bps, DSR 0.20; β guardrail fired (β ≈ +113, governor saturation on sparse daily cohorts). The controlled mega arm (β −0.40) drifted negative (−0.53) |
 | `gapfill/` gap-fill magnet | **EXCLUDED, direction refuted.** Cost-free the magnet returns −0.460, so gaps continue rather than revert; the post-hoc inverse (+0.392) is under 0.7 before costs, and at ~211× daily gross turnover a 1bp fee costs ~0.9 Sharpe. Quote "90.3% of gaps fill within 60 sessions" only with its null: a matched placebo level fills 88.9%, so the gap-specific lift is +1.5pp (peak +5.7pp at 5 sessions). Audit: `docs/audits/2026-08-14-edge-hunt-5-gapfill-magnet.md` |
 | `velocity/` velocity alternation | **EXCLUDED as a null.** The β guardrail fired (−1.646), and beta-hedged it is −0.169 at alpha t −0.49. `velocity = depth / duration` correlates +0.499 / +0.546 with its components and performs like depth alone. `long_only` +0.649 gross hedges to +0.004, i.e. pure market beta, so `deploy_grade`'s long-only leg reads market exposure; changing that gate is a user call. The time-series form the pundit described is untested and not queued. Audit: `docs/audits/2026-08-14-edge-hunt-6-velocity-alternation.md` |
+| `tom/` turn of the month | **EXCLUDED as a deployable sleeve; the premise reads positive on 1988→ only.** Beta-hedged Sharpe +0.290, CI [+0.004, +0.621], DSR 0.553 at four trials (1988-01-04 → 2026-08-31, 2 bps): a hedged 0.7 is outside the CI. The window's excess return beats the rest by +6.27 bp a day (CI +1.17 to +11.71), but 5 bps, a one-session lag, the second half (+0.006) and 2006→ (−0.009) all contain zero. Halves are sign-only, so read the fade as consistent with decay, not a test of it. Not re-judged as an overlay: an edge claim keeps its yardstick. Audit: `docs/audits/2026-10-08-tom-turn-of-month.md` |
 | `insider/` H-024 routine vs opportunistic | **EXCLUDED as a deployable sleeve; the premise is not refuted, because the test is underpowered.** Keep those two apart. T1 (opportunistic L/S, 1mo, ADV-weighted) is Sharpe −0.468 net and −0.402 gross, DSR 0.001, boot_lo −1.054; β −0.167 is near-neutral, so it is evidence about the premise. All four reversal pairs are `measurable`, but `indistinguishable` means only that the CI contains zero: paired CIs of about ±150 bps/mo against the paper's 82 bps/mo can neither separate the arms nor exclude the effect. T4 is the cell likely to be misread: net +0.756 and boot_lo +0.147, but β +1.043, hedged +0.337, alpha t +0.99, DSR 0.65, and its routine placebo returns +0.546. Weights are trailing dollar ADV, a liquidity weight, since no market-cap series exists. Panel routine share is 68.1%. Re-opening needs an explicit user go and a stated lever, and the lever is more history, not more names. Audit: `docs/audits/2026-09-20-h024-insider-phase3.md` |
 | `exits/` MFE-MAE diagnostic | **EXIT-FIXABLE at the cohort level** (n=264): of the 157 losses that could show excursion, 43.9% reached ≥1R before stopping (CI 36.4–51.8%). Still blocked per edge (0 of 30 loss cells reach n=30), and the ledger predates the outcome fix. Audit: `docs/audits/2026-08-12-exit-mfe-mae-diagnostic-rerun.md` |
 | `exits/` policy replay A/B | **BOUNDED** — the lever's ceiling is +0.368R of paired uplift, and it buys no measurably profitable book. Every arm beats `fixed` on a paired CI clear of zero, and the effect is the time lever alone (`time_only` +0.317R vs `composite` +0.297R). A paired CI certifies "A beats B", never "A makes money": with the 31 session days as the unit no arm's mean R clears zero, and the swept maximum (t +2.52) misses the Bonferroni bar of 2.81. Baseline avg_r −0.176 (t −1.84); both parameters in-sample. The "peaks at bar 3" table is the arm's avg_r at `time_stop=k`, not open-position R. Audit: `docs/audits/2026-08-14-exit-policy-ab-v1.md` |

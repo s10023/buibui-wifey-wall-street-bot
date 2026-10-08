@@ -21,7 +21,7 @@ H1 — that is the whole detector, and it is deliberately not a body keyword.
 
 | Date | Spec | Reconciled by | Also referenced by | File |
 | --- | --- | --- | --- | --- |
-| 2026-10-08 | Edge pillars: what a survivable system needs, and where to look next | — | 2026-10-08-ov1-ma-overlay-total-return.md, 2026-10-08-vm-overlay-increment.md | [2026-10-08-edge-pillars-research-design.md](2026-10-08-edge-pillars-research-design.md) |
+| 2026-10-08 | Edge pillars: what a survivable system needs, and where to look next | — | 2026-10-08-ov1-ma-overlay-total-return.md, 2026-10-08-tom-turn-of-month.md, 2026-10-08-vm-overlay-increment.md | [2026-10-08-edge-pillars-research-design.md](2026-10-08-edge-pillars-research-design.md) |
 | 2026-08-29 | H-024 — routine vs opportunistic insider trades: build design + pre-registration | — | 2026-09-20-h024-insider-phase3.md | [2026-08-29-h024-insider-routine-opportunistic-design.md](2026-08-29-h024-insider-routine-opportunistic-design.md) |
 | 2026-08-29 | H-023 — Lazy Prices (10-K/10-Q textual change): build design + pre-registration | — | — | [2026-08-29-h023-lazy-prices-design.md](2026-08-29-h023-lazy-prices-design.md) |
 | 2026-08-18 | Wife-channel alert layout — condensed mirror (design) | — | — | [2026-08-18-wife-alert-layout-design.md](2026-08-18-wife-alert-layout-design.md) |
