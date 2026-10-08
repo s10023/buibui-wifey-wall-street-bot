@@ -70,7 +70,7 @@ class TestEvaluate:
 
     def test_a_fresh_mark_is_not_overdue(self, tmp_path: Path) -> None:
         (tmp_path / "demo").write_text(
-            f"{NOW - timedelta(days=2):%Y-%m-%dT%H:%M:%SZ}\n"
+            f"{NOW - timedelta(days=2):%Y-%m-%dT%H:%M:%SZ}\n", encoding="utf-8"
         )
         st = evaluate(WEEKLY, tmp_path, NOW)
         assert not st.overdue
@@ -79,7 +79,7 @@ class TestEvaluate:
     def test_a_stale_mark_IS_overdue(self, tmp_path: Path) -> None:
         """Positive control for the only transition that matters."""
         (tmp_path / "demo").write_text(
-            f"{NOW - timedelta(days=8):%Y-%m-%dT%H:%M:%SZ}\n"
+            f"{NOW - timedelta(days=8):%Y-%m-%dT%H:%M:%SZ}\n", encoding="utf-8"
         )
         st = evaluate(WEEKLY, tmp_path, NOW)
         assert st.overdue
@@ -88,7 +88,7 @@ class TestEvaluate:
     def test_the_boundary_is_STRICTLY_greater(self, tmp_path: Path) -> None:
         """Exactly at the period is still fresh — pin it so a refactor cannot drift it."""
         (tmp_path / "demo").write_text(
-            f"{NOW - timedelta(days=7):%Y-%m-%dT%H:%M:%SZ}\n"
+            f"{NOW - timedelta(days=7):%Y-%m-%dT%H:%M:%SZ}\n", encoding="utf-8"
         )
         assert not evaluate(WEEKLY, tmp_path, NOW).overdue
 
@@ -98,7 +98,7 @@ class TestEvaluate:
         An mtime fallback would fail the other way — it reports *fresher than
         reality*, because touching a file is not running the task.
         """
-        (tmp_path / "demo").write_text("corrupted\n")
+        (tmp_path / "demo").write_text("corrupted\n", encoding="utf-8")
         st = evaluate(WEEKLY, tmp_path, NOW)
         assert st.overdue
         assert "unreadable" in st.detail

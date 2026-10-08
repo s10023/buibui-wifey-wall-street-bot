@@ -383,7 +383,7 @@ class TestUniverseReaders:
         reports a fault for a decision. Both directions are asserted: the live
         name stays graded, the delisted one drops out.
         """
-        raw = json.loads(Path("config/universe.json").read_text())
+        raw = json.loads(Path("config/universe.json").read_text(encoding="utf-8"))
         delisted = {s for s, m in raw["members"].items() if m.get("delisted")}
         assert delisted, (
             "fixture assumption: the committed universe has delisted members"
@@ -409,7 +409,8 @@ class TestUniverseReaders:
                         "CCC": "not-a-dict",
                     }
                 }
-            )
+            ),
+            encoding="utf-8",
         )
         assert read_universe_symbols(p) == {"AAA", "CCC"}
 
@@ -467,7 +468,7 @@ class TestReadersDegradeRatherThanCrash:
 
     def test_malformed_state_file_reads_empty(self, tmp_path: Path) -> None:
         bad = tmp_path / "signal_state.json"
-        bad.write_text("{not json")
+        bad.write_text("{not json", encoding="utf-8")
         assert read_watermarks(bad) == {}
 
     def test_absent_watchlist_reads_empty(self, tmp_path: Path) -> None:
@@ -475,12 +476,15 @@ class TestReadersDegradeRatherThanCrash:
 
     def test_universe_policy_is_not_a_symbol(self, tmp_path: Path) -> None:
         path = tmp_path / "stocks.json"
-        path.write_text('{"AAPL": {"sl_pct": 2}, "universe_policy": {"scope": "x"}}')
+        path.write_text(
+            '{"AAPL": {"sl_pct": 2}, "universe_policy": {"scope": "x"}}',
+            encoding="utf-8",
+        )
         assert read_scheduled_symbols(path) == frozenset({"AAPL"})
 
     def test_watchlist_as_a_bare_list_is_accepted(self, tmp_path: Path) -> None:
         path = tmp_path / "stocks.json"
-        path.write_text('["AAPL", "MSFT"]')
+        path.write_text('["AAPL", "MSFT"]', encoding="utf-8")
         assert read_scheduled_symbols(path) == frozenset({"AAPL", "MSFT"})
 
 

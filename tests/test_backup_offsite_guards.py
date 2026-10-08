@@ -46,7 +46,7 @@ def backup_root(tmp_path: Path) -> Path:
     """A backup root that passes the pre-existing source-side guards."""
     snapshot = tmp_path / "root" / "daily" / "2026-01-01"
     snapshot.mkdir(parents=True)
-    (snapshot / "MANIFEST.json").write_text(json.dumps({"ok": True}))
+    (snapshot / "MANIFEST.json").write_text(json.dumps({"ok": True}), encoding="utf-8")
     (tmp_path / "root" / "weekly").mkdir()
     return tmp_path / "root"
 
@@ -74,7 +74,8 @@ def fake_rclone(tmp_path: Path) -> Path:
         '       [ -n "${FAKE_LSF_STDERR:-}" ] && echo "$FAKE_LSF_STDERR" >&2\n'
         '       exit "${FAKE_LSF_RC:-0}" ;;\n'
         "esac\n"
-        "exit 0\n"
+        "exit 0\n",
+        encoding="utf-8",
     )
     shim.chmod(0o755)
     return bindir
@@ -95,7 +96,7 @@ def run_script(
 ) -> tuple[int, str, list[str]]:
     """Run the script; return (exit code, stderr, rclone subcommands invoked)."""
     log = tmp_path / "rclone.log"
-    log.write_text("")
+    log.write_text("", encoding="utf-8")
     env = dict(os.environ)
     env.pop("WIFEY_OFFSITE_MAX_SNAPSHOT_DELETES", None)
     env.update(
@@ -124,13 +125,17 @@ def run_script(
         encoding="utf-8",
         timeout=20,
     )
-    calls = [line.split()[0] for line in log.read_text().splitlines() if line.strip()]
+    calls = [
+        line.split()[0]
+        for line in log.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     return proc.returncode, proc.stderr, calls
 
 
 def sync_argv(tmp_path: Path) -> list[str]:
     """The argv of the one `rclone sync` call the last run made."""
-    lines = (tmp_path / "rclone.log").read_text().splitlines()
+    lines = (tmp_path / "rclone.log").read_text(encoding="utf-8").splitlines()
     (line,) = [ln for ln in lines if ln.startswith("sync ")]
     return line.split()
 

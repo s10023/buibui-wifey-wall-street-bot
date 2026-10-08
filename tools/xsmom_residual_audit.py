@@ -46,7 +46,11 @@ _SNAPSHOT = Path("config/universe_sp100_snapshot.json")
 def _mega_symbols(broad: list[str]) -> list[str]:
     """The pre-expansion S&P-100 stocks (the stable mega arm), intersected with
     the active universe so a missing backfill never crashes the audit."""
-    snap = set(json.loads(_SNAPSHOT.read_text())) if _SNAPSHOT.exists() else set()
+    snap = (
+        set(json.loads(_SNAPSHOT.read_text(encoding="utf-8")))
+        if _SNAPSHOT.exists()
+        else set()
+    )
     mega = [s for s in broad if s in snap]
     return mega or broad  # fall back to broad if the snapshot is absent
 

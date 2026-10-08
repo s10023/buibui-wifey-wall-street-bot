@@ -187,7 +187,7 @@ def load_sync_state(state_path: Path = STATE_FILE_PATH) -> str:
     """Return the last-synced parent hash, or ``FORK_COMMIT`` on bootstrap."""
     if not state_path.exists():
         return FORK_COMMIT
-    fields = _parse_frontmatter(state_path.read_text())
+    fields = _parse_frontmatter(state_path.read_text(encoding="utf-8"))
     if "last_synced_hash" not in fields:
         raise SyncStateError("state file is missing 'last_synced_hash' in frontmatter")
     return fields["last_synced_hash"]
@@ -210,7 +210,7 @@ def write_sync_state(
     )
     state_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = state_path.with_suffix(state_path.suffix + ".tmp")
-    tmp.write_text(body)
+    tmp.write_text(body, encoding="utf-8")
     os.replace(tmp, state_path)
 
 
@@ -888,7 +888,11 @@ def _hash_exists_in_parent(commit_hash: str) -> bool:
 
 
 def _read_parent_memory() -> str:
-    return PARENT_MEMORY_PATH.read_text() if PARENT_MEMORY_PATH.exists() else ""
+    return (
+        PARENT_MEMORY_PATH.read_text(encoding="utf-8")
+        if PARENT_MEMORY_PATH.exists()
+        else ""
+    )
 
 
 def _commit_diff(sha: str) -> str:
@@ -1019,7 +1023,7 @@ def main(argv: list[str] | None = None) -> int:
     path = _report_path()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(report)
+        path.write_text(report, encoding="utf-8")
     except OSError as exc:
         return _fail(f"Cannot write report to {path}: {exc}")
 

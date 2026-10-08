@@ -51,18 +51,21 @@ class TestStateFile:
 
     def test_reads_frontmatter_hash(self, tmp_path: Path) -> None:
         f = tmp_path / "state.md"
-        f.write_text("---\nlast_synced_hash: abc1234\nupdated: 2026-05-23\n---\nbody\n")
+        f.write_text(
+            "---\nlast_synced_hash: abc1234\nupdated: 2026-05-23\n---\nbody\n",
+            encoding="utf-8",
+        )
         assert sp.load_sync_state(f) == "abc1234"
 
     def test_malformed_frontmatter_raises(self, tmp_path: Path) -> None:
         f = tmp_path / "state.md"
-        f.write_text("no frontmatter here\n")
+        f.write_text("no frontmatter here\n", encoding="utf-8")
         with pytest.raises(sp.SyncStateError, match="malformed"):
             sp.load_sync_state(f)
 
     def test_missing_hash_key_raises(self, tmp_path: Path) -> None:
         f = tmp_path / "state.md"
-        f.write_text("---\nupdated: 2026-05-23\n---\nbody\n")
+        f.write_text("---\nupdated: 2026-05-23\n---\nbody\n", encoding="utf-8")
         with pytest.raises(sp.SyncStateError, match="last_synced_hash"):
             sp.load_sync_state(f)
 
@@ -70,7 +73,7 @@ class TestStateFile:
         f = tmp_path / "state.md"
         sp.write_sync_state("deadbee", f, "smoke note")
         assert sp.load_sync_state(f) == "deadbee"
-        assert "smoke note" in f.read_text()
+        assert "smoke note" in f.read_text(encoding="utf-8")
 
     def test_write_is_atomic_no_temp_left(self, tmp_path: Path) -> None:
         f = tmp_path / "state.md"
@@ -82,7 +85,7 @@ def _load_commits_from_fixture() -> list[sp.Commit]:
     """Reconstruct Commit objects from the pipe-delimited fixture."""
     text = (
         Path(__file__).parent / "fixtures" / "sync_parent" / "sample_git_log.txt"
-    ).read_text()
+    ).read_text(encoding="utf-8")
     commits: list[sp.Commit] = []
     for line in text.strip().splitlines():
         sha, subject, body = line.split("|", 2)
@@ -279,7 +282,7 @@ class TestAlreadyApplied:
     def _diff(self) -> str:
         return (
             Path(__file__).parent / "fixtures" / "sync_parent" / "sample_diff.txt"
-        ).read_text()
+        ).read_text(encoding="utf-8")
 
     def test_extract_function_and_constant(self) -> None:
         syms = sp.extract_added_symbols(self._diff())
@@ -331,7 +334,7 @@ class TestModifiedSymbolIsNotEvidence:
             / "fixtures"
             / "sync_parent"
             / "modified_symbol_diff.txt"
-        ).read_text()
+        ).read_text(encoding="utf-8")
 
     def test_modified_symbol_is_not_counted_as_added(self) -> None:
         ch = sp.extract_symbol_changes(self._diff())
@@ -365,7 +368,7 @@ class TestModifiedSymbolIsNotEvidence:
         """A greenfield addition is unaffected by the fix."""
         added_diff = (
             Path(__file__).parent / "fixtures" / "sync_parent" / "sample_diff.txt"
-        ).read_text()
+        ).read_text(encoding="utf-8")
         ch = sp.extract_symbol_changes(added_diff)
         assert "classify_regime_v2" in ch.added
         assert ch.modified == []
@@ -405,7 +408,7 @@ class TestMemoryExtract:
     def _memory(self) -> str:
         return (
             Path(__file__).parent / "fixtures" / "sync_parent" / "sample_memory.md"
-        ).read_text()
+        ).read_text(encoding="utf-8")
 
     def test_finds_referenced_pr(self) -> None:
         excerpt = sp.extract_memory_entry(403, self._memory())
@@ -561,7 +564,7 @@ class TestSmokeRun:
         ]
         memory_text = (
             Path(__file__).parent / "fixtures" / "sync_parent" / "sample_memory.md"
-        ).read_text()
+        ).read_text(encoding="utf-8")
         mocker.patch("tools.sync_parent._wifey_path_exists", return_value=True)
         mocker.patch(
             "tools.sync_parent.extract_added_symbols", return_value=[]
@@ -590,7 +593,7 @@ class TestSmokeRun:
         code = sp.main(["--from", "635ed5a", "--no-fetch"])
         assert code == 0
         assert report_path.exists()
-        assert "Parent sync report" in report_path.read_text()
+        assert "Parent sync report" in report_path.read_text(encoding="utf-8")
 
     def test_main_creates_report_dir_when_missing(
         self, mocker: Any, tmp_path: Path
@@ -622,7 +625,7 @@ class TestSmokeRun:
         assert code == 0
         written = list(report_dir.glob("parent-sync-*.md"))
         assert len(written) == 1
-        assert "Parent sync report" in written[0].read_text()
+        assert "Parent sync report" in written[0].read_text(encoding="utf-8")
 
     def test_report_dir_is_inside_the_repo(self) -> None:
         """The report must outlive a reboot: a /tmp clear lost a 67-PR triage once."""

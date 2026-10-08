@@ -648,7 +648,7 @@ def test_pre_change_cache_entry_still_loads(tmp_path: Path) -> None:
         },
         "photo_paths": [],
     }
-    (cache_dir / "1.json").write_text(json.dumps(legacy))
+    (cache_dir / "1.json").write_text(json.dumps(legacy), encoding="utf-8")
     loaded = _load_cached(cache_dir, "1")
     assert loaded is not None
     post, _ = loaded

@@ -471,7 +471,7 @@ def read_watermarks(path: Path) -> dict[str, int]:
     a finding rather than as freshness.
     """
     try:
-        raw = json.loads(path.read_text())
+        raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     marks = raw.get("watermarks")
@@ -488,7 +488,7 @@ def read_scheduled_symbols(path: Path = DEFAULT_STOCKS) -> frozenset[str]:
     watchlist rather than crash on one.
     """
     try:
-        raw = json.loads(path.read_text())
+        raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return frozenset()
     if isinstance(raw, list):
@@ -518,7 +518,7 @@ def read_universe_symbols(path: Path = DEFAULT_UNIVERSE) -> frozenset[str]:
     the same direction every other unreadable state takes here.
     """
     try:
-        raw = json.loads(path.read_text())
+        raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return frozenset()
     if not isinstance(raw, dict):

@@ -67,7 +67,7 @@ def merge_constituents(
 def _load_constituents_from_csv(path: Path) -> list[tuple[str, str]]:
     import csv
 
-    with open(path, newline="") as f:
+    with open(path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         return [
             (row["Symbol"].strip().upper(), row["Sector"].strip())
@@ -101,15 +101,15 @@ def main() -> None:
     parser.add_argument("--snapshot", type=Path, default=SNAPSHOT_PATH)
     args = parser.parse_args()
 
-    universe = json.loads(args.universe.read_text())
+    universe = json.loads(args.universe.read_text(encoding="utf-8"))
     constituents = (
         _load_constituents_from_csv(args.from_csv)
         if args.from_csv
         else _load_constituents_from_wikipedia()
     )
     merged, snapshot = merge_constituents(universe, constituents)
-    args.universe.write_text(json.dumps(merged, indent=2) + "\n")
-    args.snapshot.write_text(json.dumps(snapshot, indent=2) + "\n")
+    args.universe.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
+    args.snapshot.write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8")
     n_new = len(merged["members"]) - len(universe["members"])
     print(
         f"Merged {len(constituents)} constituents (+{n_new} new). "

@@ -53,7 +53,7 @@ import json
 from pathlib import Path
 
 index = []
-for el in json.loads(Path(".cache/video/_batch.json").read_text()):
+for el in json.loads(Path(".cache/video/_batch.json").read_text(encoding="utf-8")):
     row = {"url": el["url"], "cached": el.get("cached"), "unavailable": el.get("unavailable")}
     meta = el.get("meta")
     if meta:
@@ -61,7 +61,8 @@ for el in json.loads(Path(".cache/video/_batch.json").read_text()):
         out.mkdir(parents=True, exist_ok=True)
         (out / "transcript.json").write_text(
             json.dumps({"meta": meta, "segments": el.get("segments", [])},
-                       ensure_ascii=False, indent=2)
+                       ensure_ascii=False, indent=2),
+            encoding="utf-8",
         )
         row |= {k: meta[k] for k in
                 ("video_id", "author", "title", "duration_s", "lang", "publish_ts_utc")}
@@ -301,7 +302,7 @@ import json
 from pathlib import Path
 from tools.video_marks import keep_items
 
-CANDIDATES = json.loads(Path("<path to pass-1 candidates JSON>").read_text())
+CANDIDATES = json.loads(Path("<path to pass-1 candidates JSON>").read_text(encoding="utf-8"))
 kept, dropped = keep_items(CANDIDATES)
 print(json.dumps({"item_ts": [c["ts"] for c in kept], "kept": kept, "dropped": dropped},
                  ensure_ascii=False, indent=2))
@@ -392,7 +393,7 @@ from tools.video_marks import TranscriptSegment, select
 VIDEO_ID = "<video_id>"          # e.g. "dQw4w9WgXcQ"
 ITEM_TS = [<ts of each kept item from step 3>]   # e.g. [252.0, 886.0]
 
-raw = json.loads((Path(".cache/video") / VIDEO_ID / "transcript.json").read_text())
+raw = json.loads((Path(".cache/video") / VIDEO_ID / "transcript.json").read_text(encoding="utf-8"))
 meta = VideoMeta(**raw["meta"])
 segments = [TranscriptSegment(**s) for s in raw["segments"]]
 
@@ -822,9 +823,9 @@ from pathlib import Path
 VIDEO_ID = "<video_id>"
 NOTE = Path("<note_path>")
 
-raw = json.loads((Path(".cache/video") / VIDEO_ID / "transcript.json").read_text())
+raw = json.loads((Path(".cache/video") / VIDEO_ID / "transcript.json").read_text(encoding="utf-8"))
 lines = "\n".join(f"- `{s['ts_s']:.1f}` {s['text']}" for s in raw["segments"])
-with NOTE.open("a") as fh:
+with NOTE.open("a", encoding="utf-8") as fh:
     fh.write(f"\n## Transcript (as fetched, not proofread)\n\n{lines}\n")
 PY
 ```

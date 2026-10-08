@@ -58,7 +58,7 @@ def parse(path: Path) -> list[tuple[str, str, str]]:
     """Return (section, key, value) for every directive, comments stripped."""
     out: list[tuple[str, str, str]] = []
     section = ""
-    for raw in path.read_text().splitlines():
+    for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not line or line.startswith(("#", ";")):
             continue
@@ -181,7 +181,7 @@ def test_referenced_repo_paths_exist(path: Path) -> None:
 def makefile_targets() -> set[str]:
     """Every target name declared at the head of a Makefile rule."""
     targets: set[str] = set()
-    for raw in (REPO_ROOT / "Makefile").read_text().splitlines():
+    for raw in (REPO_ROOT / "Makefile").read_text(encoding="utf-8").splitlines():
         if not raw or raw[0].isspace() or raw.startswith("#"):
             continue
         head, sep, rest = raw.partition(":")

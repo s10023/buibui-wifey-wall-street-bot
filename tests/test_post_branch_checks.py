@@ -175,9 +175,9 @@ class TestCheckNewModulesInventory:
     def _pkg(tmp_path: Path, *members: str) -> Path:
         pkg = tmp_path / "analytics" / "research_guards"
         pkg.mkdir(parents=True)
-        (pkg / "__init__.py").write_text("")
+        (pkg / "__init__.py").write_text("", encoding="utf-8")
         for m in members:
-            (pkg / m).write_text("")
+            (pkg / m).write_text("", encoding="utf-8")
         return pkg
 
     def test_prose_hit_no_longer_reports_covered(self, tmp_path: Path) -> None:

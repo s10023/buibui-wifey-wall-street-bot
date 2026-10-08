@@ -525,7 +525,7 @@ def write_confidence_to_source(
             confidence=N,        ← int form, replaced
             confidence={...},    ← dict form, replaced
     """
-    content = source_path.read_text()
+    content = source_path.read_text(encoding="utf-8")
     patched: list[str] = []
 
     for strategy, value in updates.items():
@@ -545,6 +545,6 @@ def write_confidence_to_source(
             patched.append(strategy)
 
     if patched:
-        source_path.write_text(content)
+        source_path.write_text(content, encoding="utf-8")
 
     return patched

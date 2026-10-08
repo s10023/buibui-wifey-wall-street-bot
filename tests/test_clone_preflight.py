@@ -57,7 +57,7 @@ def _make_repo(tmp_path: Path) -> Path:
     _git(repo, "init", "-q", "-b", "main")
     _git(repo, "config", "user.email", "t@example.com")
     _git(repo, "config", "user.name", "t")
-    (repo / "committed.txt").write_text("committed\n")
+    (repo / "committed.txt").write_text("committed\n", encoding="utf-8")
     _git(repo, "add", "committed.txt")
     _git(repo, "commit", "-q", "-m", "initial")
     return repo
@@ -81,20 +81,20 @@ class TestDirtyPaths:
 
     def test_modified_file_is_reported(self, tmp_path: Path) -> None:
         repo = _make_repo(tmp_path)
-        (repo / "committed.txt").write_text("modified\n")
+        (repo / "committed.txt").write_text("modified\n", encoding="utf-8")
         assert any("committed.txt" in line for line in dirty_paths(repo))
 
     def test_untracked_file_is_reported(self, tmp_path: Path) -> None:
         """An untracked new module is exactly the change a clone would miss."""
         repo = _make_repo(tmp_path)
-        (repo / "brand_new.py").write_text("x = 1\n")
+        (repo / "brand_new.py").write_text("x = 1\n", encoding="utf-8")
         assert any("brand_new.py" in line for line in dirty_paths(repo))
 
 
 class TestRefusesOnDirtyTree:
     def test_returns_the_refused_exit_code(self, tmp_path: Path) -> None:
         repo = _make_repo(tmp_path)
-        (repo / "committed.txt").write_text("uncommitted edit\n")
+        (repo / "committed.txt").write_text("uncommitted edit\n", encoding="utf-8")
         clone_dir = tmp_path / "clone"
         assert (
             main(["--repo", str(repo), "--dest", str(clone_dir), "--dry-run"])
@@ -104,7 +104,7 @@ class TestRefusesOnDirtyTree:
     def test_refuses_before_taking_any_clone(self, tmp_path: Path) -> None:
         """A clone of a dirty tree would test stale HEAD and report green."""
         repo = _make_repo(tmp_path)
-        (repo / "committed.txt").write_text("uncommitted edit\n")
+        (repo / "committed.txt").write_text("uncommitted edit\n", encoding="utf-8")
         clone_dir = tmp_path / "clone"
         main(["--repo", str(repo), "--dest", str(clone_dir), "--dry-run"])
         assert not clone_dir.exists()
@@ -128,10 +128,10 @@ class TestCleanTreeProceeds:
     def test_clone_omits_gitignored_operator_data(self, tmp_path: Path) -> None:
         """The whole point: gitignored paths must be absent in the clone."""
         repo = _make_repo(tmp_path)
-        (repo / ".gitignore").write_text("operator_only.json\n")
+        (repo / ".gitignore").write_text("operator_only.json\n", encoding="utf-8")
         _git(repo, "add", ".gitignore")
         _git(repo, "commit", "-q", "-m", "ignore")
-        (repo / "operator_only.json").write_text("{}\n")
+        (repo / "operator_only.json").write_text("{}\n", encoding="utf-8")
         clone_dir = tmp_path / "clone"
         assert main(["--repo", str(repo), "--dest", str(clone_dir), "--dry-run"]) == 0
         assert not (clone_dir / "operator_only.json").exists()
@@ -285,12 +285,14 @@ class TestWiredIntoTheWorkflow:
     """Acceptance is mechanical, not prose. These pin the wiring."""
 
     def test_makefile_exposes_the_target(self) -> None:
-        makefile = (REPO_ROOT / "Makefile").read_text()
+        makefile = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
         assert "preflight:" in makefile
         assert "tools/clone_preflight.py" in makefile
 
     def test_post_branch_phase_5_names_the_gate(self) -> None:
-        skill = (REPO_ROOT / ".claude/skills/post-branch/SKILL.md").read_text()
+        skill = (REPO_ROOT / ".claude/skills/post-branch/SKILL.md").read_text(
+            encoding="utf-8"
+        )
         assert "make preflight" in skill
 
     def test_pytest_args_still_mirror_make_test(self) -> None:
@@ -301,7 +303,7 @@ class TestWiredIntoTheWorkflow:
         self-referential shape as the handoff's retired `Line count:` stamp.
         Widen `make test` and this fails rather than the claim quietly rotting.
         """
-        makefile = (REPO_ROOT / "Makefile").read_text()
+        makefile = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
         recipe = re.search(
             r"^test:\n(?:.*\n)*?\tpoetry run (pytest .*)$", makefile, re.M
         )

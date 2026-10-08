@@ -197,7 +197,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    universe: dict[str, Any] = json.loads(args.universe.read_text())
+    universe: dict[str, Any] = json.loads(args.universe.read_text(encoding="utf-8"))
     members: dict[str, dict[str, Any]] = universe["members"]
 
     conn = duckdb.connect(str(args.db), read_only=True)
@@ -219,7 +219,7 @@ def main() -> None:
         print("\n(dry run — pass --write to apply)")
         return
     universe["members"] = stamped
-    args.universe.write_text(json.dumps(universe, indent=2) + "\n")
+    args.universe.write_text(json.dumps(universe, indent=2) + "\n", encoding="utf-8")
     print(f"\n✅ wrote {args.universe} ({len(changes)} member(s) restamped)")
 
 
