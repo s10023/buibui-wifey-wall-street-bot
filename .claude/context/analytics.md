@@ -1041,34 +1041,44 @@ drift (−0.53): the honest read is no PEAD in liquid large-caps net of cost on 
 (`make wifey-pead-audit`); backfill via `make wifey-pead-backfill` (EDGAR, 480/504 names, 24,747
 quarters).
 
-## overlay/ — risk overlays on the market premium (OV-1, #418)
+## overlay/ — risk overlays on the market premium (OV-1 #418, VM #421)
 
 Not a sleeve: an overlay is judged against buy-and-hold on the overlay yardstick in
 `docs/north-star.md` § Two yardsticks (ulcer index with Sharpe non-inferiority), never on
-`GATE_SHARPE`. The frozen pre-registration is the edge-pillars spec § Phase 2. `__init__.py`
-re-exports the public names below.
+`GATE_SHARPE`. The frozen pre-registrations are the edge-pillars spec § Phase 2 (OV-1) and
+§ Amendment 1 (VM). `__init__.py` re-exports the public names below.
 
 - `rules.py` — `ma_signal` (H1's `ma200d` unchanged; NaN through the warm-up so it never reads
   as flat) and `position_on`, the one place the signal calendar meets the return calendar. With
   `lag >= 1` a session's position is the signal at the `lag`-th latest signal date strictly
   before it; `lag=0` admits the same session's close and exists only as the causality test's
-  positive control.
+  positive control. VM's `vol_weight` is `min(1, target / σ̂_20d)` (`realized_vol`, ddof 1,
+  through `t`), shifted onto the next session because it is read from the return calendar itself;
+  `target` may be a series (the real-time expanding median). `lag=0` is again the control.
 - `frame.py` (only DB-touching, read-only) — `load_gspc_close` and `build_frame`. The return
   calendar is the market series' own, so the French file's 1,039 in-panel Saturdays survive;
   an inner join with `^GSPC` would drop them. Refuses a market series running past the last close
   (a stale signal nobody downstream could see) and any panel session missing `mkt` or `rf`.
-- `replay.py` — `arm_returns`: `bh` earns `mkt`; `ov` earns `mkt` on its position and `rf` on the
+  `vol_target` is VM's in-sample `σ_target` (median `σ̂` over the panel); `with_vol_weight` adds
+  `w` and `w_ov = pos × w`, computing `w` on the full market series so the panel keeps its warm-up.
+- `replay.py` — `arm_returns`: `bh` earns `mkt`; each arm in `positions` (default
+  `OV1_POSITIONS = {"ov": "pos"}`) earns `mkt` on its position, fractional or not, and `rf` on the
   rest, less `bps × |Δpos|`. No `Trade` objects, so `cost_model.py` does not apply.
 - `report.py` — `overlay_verdict` (EXCLUDED is checked first; a leg-1 CI straddling zero returns
-  `UNREGISTERED`, a case the pre-registration names no verdict for), `bootstrap_legs` (both legs
+  `INSUFFICIENT`, named by Amendment 1), `bootstrap_legs` and `evaluate_overlay` (both take a
+  `base` and an `arm`, so VM's increment test benchmarks against `ov`; both legs
   on identical resamples: equal seeds, and the statistics draw nothing from the generator),
-  `summarize_arm`, `beta_attribution`, `calendar_years`. Sharpe is in excess of `rf`. Annual
+  `summarize_arm` (pass `pos=` for an arm's position column; read `turnover_per_year` for a
+  fractional weight, where nearly every session is a switch), `beta_attribution`, `calendar_years`. Sharpe is in excess of `rf`. Annual
   return and switches per year use calendar years, because the pre-1952 Saturdays make a session
   count overstate the span by ~4%.
 
 Causality: `tests/test_overlay_rules.py::TestCausality`, six truncation cuts with two positive
 controls on the same channel (a rule reading tomorrow's close, flagged 6 of 6; the `lag=0`
-mapping, flagged 3 of 6). Audit tool: `tools/overlay_audit.py` (`make wifey-overlay-audit`).
+mapping, flagged 3 of 6). VM's is `tests/test_overlay_vm.py::TestCausality`: returns after each of
+six cuts get +20% a session, large enough that the capped weight cannot absorb it, and the `lag=0`
+weight is flagged 6 of 6. Audit tools: `tools/overlay_audit.py` (`make wifey-overlay-audit`) and
+`tools/vm_overlay_audit.py` (`make wifey-vm-audit`).
 
 ## gapfill/ — gap-fill "magnet" sleeve (edge-hunt #5; PR #198)
 

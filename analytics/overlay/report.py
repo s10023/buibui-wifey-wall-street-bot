@@ -11,9 +11,13 @@ spec § Phase 2. FOUND needs all three legs:
 EXCLUDED if the leg-1 CI lies wholly at or above 0, or the leg-3 CI upper bound
 is below −0.10; that clause is checked first, because a definitive failure on
 either leg is not rescued by the other. BOUNDED if leg 1 passes and leg 2 or 3
-does not. A leg-1 CI that straddles 0 with leg 3 not excluded is a case the
-pre-registration names no verdict for; it is returned as ``UNREGISTERED`` so it
-cannot be quietly read as one of the three.
+does not. INSUFFICIENT otherwise: the leg-1 CI contains 0, so the survival
+change is not distinguishable from zero. OV-1's pre-registration named no
+verdict for that case; the spec's Amendment 1 (VM, #421) named it, which
+changes none of OV-1's readings.
+
+Every function takes the benchmark ``base`` and the candidate ``arm``, so VM's
+increment test reuses the yardstick with OV-1 as the benchmark.
 
 Sharpe here is on returns in excess of ``rf``. Both legs are bootstrapped from
 the same paired resamples: each call to ``block_bootstrap_ci`` reseeds, and the
@@ -71,20 +75,24 @@ def _d_sr(a: npt.NDArray[np.float64]) -> float:
     return excess_sharpe(a[:, 1], a[:, 2]) - excess_sharpe(a[:, 0], a[:, 2])
 
 
-def paired(arms: pd.DataFrame) -> npt.NDArray[np.float64]:
-    """The ``[bh, ov, rf]`` matrix every paired statistic resamples by row."""
-    return arms[["bh", "ov", "rf"]].to_numpy(dtype=np.float64)
+def paired(
+    arms: pd.DataFrame, *, base: str = "bh", arm: str = "ov"
+) -> npt.NDArray[np.float64]:
+    """The ``[base, arm, rf]`` matrix every paired statistic resamples by row."""
+    return arms[[base, arm, "rf"]].to_numpy(dtype=np.float64)
 
 
 def bootstrap_legs(
     arms: pd.DataFrame,
     *,
+    base: str = "bh",
+    arm: str = "ov",
     n_boot: int = N_BOOT,
     block: int = BLOCK,
     seed: int = SEED,
 ) -> tuple[BootstrapCI, BootstrapCI]:
-    """Stationary-bootstrap CIs for ``ΔUI`` and ``ΔSR`` on shared resamples."""
-    a = paired(arms)
+    """Stationary-bootstrap CIs for ``ΔUI`` and ``ΔSR`` (``arm − base``) on shared resamples."""
+    a = paired(arms, base=base, arm=arm)
     d_ui = block_bootstrap_ci(
         a, _d_ui, n_boot=n_boot, block=block, method="stationary", seed=seed
     )
@@ -95,7 +103,7 @@ def bootstrap_legs(
 
 
 def overlay_verdict(d_ui: BootstrapCI, ui_ratio: float, d_sr: BootstrapCI) -> str:
-    """FOUND / BOUNDED / EXCLUDED / UNREGISTERED, per the module docstring."""
+    """FOUND / BOUNDED / EXCLUDED / INSUFFICIENT, per the module docstring."""
     if d_ui.lo >= 0.0 or d_sr.hi < -SHARPE_MARGIN:
         return "EXCLUDED"
     leg1 = d_ui.hi < 0.0
@@ -105,7 +113,7 @@ def overlay_verdict(d_ui: BootstrapCI, ui_ratio: float, d_sr: BootstrapCI) -> st
         return "FOUND"
     if leg1:
         return "BOUNDED"
-    return "UNREGISTERED"
+    return "INSUFFICIENT"
 
 
 @dataclass(frozen=True)
@@ -119,13 +127,17 @@ class OverlayGate:
 def evaluate_overlay(
     arms: pd.DataFrame,
     *,
+    base: str = "bh",
+    arm: str = "ov",
     n_boot: int = N_BOOT,
     block: int = BLOCK,
     seed: int = SEED,
 ) -> OverlayGate:
-    """Run the three-leg gate on a two-arm replay."""
-    d_ui, d_sr = bootstrap_legs(arms, n_boot=n_boot, block=block, seed=seed)
-    ratio = ulcer_index(arms["ov"].to_numpy()) / ulcer_index(arms["bh"].to_numpy())
+    """Run the three-leg gate on ``arm`` against ``base``."""
+    d_ui, d_sr = bootstrap_legs(
+        arms, base=base, arm=arm, n_boot=n_boot, block=block, seed=seed
+    )
+    ratio = ulcer_index(arms[arm].to_numpy()) / ulcer_index(arms[base].to_numpy())
     return OverlayGate(d_ui, ratio, d_sr, overlay_verdict(d_ui, ratio, d_sr))
 
 
@@ -139,20 +151,30 @@ class ArmSummary:
     tuw_sessions: int
     switches_per_year: float
     in_market: float
+    turnover_per_year: float
 
 
-def summarize_arm(arms: pd.DataFrame, arm: str) -> ArmSummary:
-    """Reported, not gated: return, volatility, drawdown shape and turnover."""
+def summarize_arm(
+    arms: pd.DataFrame, arm: str, *, pos: str | None = None
+) -> ArmSummary:
+    """Reported, not gated: return, volatility, drawdown shape and turnover.
+
+    ``pos`` names the arm's position column; without it the arm is held fully
+    every session, as ``bh`` is. A switch is any session whose position moved,
+    so on a fractional weight it counts nearly every session and turnover
+    (``Σ|Δpos|`` per calendar year) is the figure to read.
+    """
     r = arms[arm].to_numpy(dtype=np.float64)
     rf = arms["rf"].to_numpy(dtype=np.float64)
     years = calendar_years(arms.index)
     wealth = float(np.prod(1.0 + r))
-    if arm == "ov":
-        pos = arms["pos"]
-        switches = float((pos.diff().abs() > 0).sum()) / years
-        in_market = float(pos.mean())
+    if pos is not None:
+        delta = arms[pos].diff().abs()
+        switches = float((delta > 0).sum()) / years
+        turnover = float(delta.sum()) / years
+        in_market = float(arms[pos].mean())
     else:
-        switches, in_market = 0.0, 1.0
+        switches, turnover, in_market = 0.0, 0.0, 1.0
     return ArmSummary(
         ann_return=wealth ** (1.0 / years) - 1.0,
         ann_vol=float(np.std(r, ddof=1)) * math.sqrt(TRADING_DAYS),
@@ -162,6 +184,7 @@ def summarize_arm(arms: pd.DataFrame, arm: str) -> ArmSummary:
         tuw_sessions=time_under_water(r),
         switches_per_year=switches,
         in_market=in_market,
+        turnover_per_year=turnover,
     )
 
 
@@ -172,10 +195,10 @@ class BetaAttribution:
     alpha_t: float
 
 
-def beta_attribution(arms: pd.DataFrame) -> BetaAttribution:
-    """OLS of the overlay's excess return on the market's. Reported, not the yardstick."""
+def beta_attribution(arms: pd.DataFrame, arm: str = "ov") -> BetaAttribution:
+    """OLS of ``arm``'s excess return on the market's. Reported, not the yardstick."""
     rf = arms["rf"].to_numpy(dtype=np.float64)
-    y = arms["ov"].to_numpy(dtype=np.float64) - rf
+    y = arms[arm].to_numpy(dtype=np.float64) - rf
     x = arms["bh"].to_numpy(dtype=np.float64) - rf
     xc = x - x.mean()
     beta = float(np.dot(xc, y - y.mean()) / np.dot(xc, xc))

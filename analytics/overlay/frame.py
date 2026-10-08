@@ -18,7 +18,14 @@ from __future__ import annotations
 import duckdb
 import pandas as pd
 
-from analytics.overlay.rules import MA_WINDOW, ma_signal, position_on
+from analytics.overlay.rules import (
+    MA_WINDOW,
+    VOL_WINDOW,
+    ma_signal,
+    position_on,
+    realized_vol,
+    vol_weight,
+)
 
 # Pre-registered (edge-pillars spec § Phase 2): the panel opens at the first
 # session on or after this date whose position has a full SMA warm-up behind it.
@@ -76,3 +83,40 @@ def build_frame(
             f"{len(missing)} panel sessions lack mkt or rf, first {missing[0]}"
         )
     return frame
+
+
+def vol_target(
+    market: pd.Series, panel: pd.Index, *, window: int = VOL_WINDOW
+) -> float:
+    """VM's ``σ_target``: the median of ``σ̂_t`` over the panel's sessions.
+
+    Pre-registered as in-sample (Amendment 1); the real-time alternative is the
+    expanding median, a sensitivity run.
+    """
+    sigma = realized_vol(market, window).reindex(panel)
+    if sigma.isna().any():
+        raise ValueError("σ̂ is undefined on some panel session")
+    return float(sigma.median())
+
+
+def with_vol_weight(
+    frame: pd.DataFrame,
+    market: pd.Series,
+    target: float | pd.Series,
+    *,
+    window: int = VOL_WINDOW,
+    lag: int = 1,
+) -> pd.DataFrame:
+    """``frame`` plus VM's weight ``w`` and OV-1 × VM's ``w_ov = pos × w``.
+
+    ``w`` is computed on the full ``market`` series, so the panel's first
+    sessions keep their 20-return warm-up. Raises when any panel session has no
+    weight, rather than letting a NaN read as flat.
+    """
+    w = vol_weight(market, target, window=window, lag=lag).reindex(frame.index)
+    if w.isna().any():
+        raise ValueError(f"{int(w.isna().sum())} panel sessions have no VM weight")
+    out = frame.copy()
+    out["w"] = w
+    out["w_ov"] = out["pos"] * w
+    return out

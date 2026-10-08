@@ -37,8 +37,9 @@ class TestVerdict:
                 (-0.40, -0.11),
                 "EXCLUDED",
             ),  # leg 3 wholly below -0.10
-            ((-5.0, 0.0), 0.60, (-0.05, 0.20), "UNREGISTERED"),  # hi == 0 is not below
-            ((-5.0, 2.0), 0.60, (-0.05, 0.20), "UNREGISTERED"),
+            ((-5.0, 0.0), 0.60, (-0.05, 0.20), "INSUFFICIENT"),  # hi == 0 is not below
+            ((-5.0, 2.0), 0.60, (-0.05, 0.20), "INSUFFICIENT"),
+            ((-5.0, 2.0), 0.90, (-0.15, 0.20), "INSUFFICIENT"),  # every leg short
         ],
     )
     def test_truth_table(
@@ -89,7 +90,7 @@ class TestGate:
         gate = evaluate_overlay(arms, n_boot=60, block=50, seed=SEED)
         assert gate.d_ui.point < 0.0
         assert gate.ui_ratio < 1.0
-        assert gate.verdict in {"FOUND", "BOUNDED", "UNREGISTERED", "EXCLUDED"}
+        assert gate.verdict in {"FOUND", "BOUNDED", "INSUFFICIENT", "EXCLUDED"}
 
     def test_identical_arms_give_zero_differences(self) -> None:
         frame = _frame()
@@ -124,10 +125,12 @@ class TestDiagnostics:
     def test_summary_fields(self) -> None:
         arms = arm_returns(_frame(), bps=2.0)
         bh = summarize_arm(arms, "bh")
-        ov = summarize_arm(arms, "ov")
+        ov = summarize_arm(arms, "ov", pos="pos")
         assert bh.in_market == 1.0 and bh.switches_per_year == 0.0
         assert 0.0 < ov.in_market < 1.0
         years = (arms.index[-1] - arms.index[0]).days / 365.25
         assert ov.switches_per_year == pytest.approx(2 / years)
         assert ov.max_dd > bh.max_dd  # less negative
         assert ov.tuw_sessions >= 0
+        assert ov.turnover_per_year == pytest.approx(2 / years)
+        assert bh.turnover_per_year == 0.0
