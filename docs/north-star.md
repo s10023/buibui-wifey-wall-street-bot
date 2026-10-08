@@ -62,7 +62,7 @@ Free first; pay only when a gate needs it.
 | Breadth universe (505 members, `config/universe.json`) | free | have; PIT membership deliberately not scraped, survivorship bounded in `universe_policy` |
 | Delisted-ticker price history | paywalled | never: bound the claim instead |
 | Earnings dates | free (yfinance / EDGAR) | have (`earnings_facts`); live wiring is an Issue |
-| Ken French factor library | free | with the first paper book |
+| Ken French factor library | free | have: daily 3-factor file via `utils/french_client.py`, read per run (OV-1, #418) |
 | Polygon.io (~$29/mo) | paid | on trigger only: Yahoo breaks, or > 2 years of `4h` needed |
 | Order book / tape, options surface | paid | never: no phase needs them |
 

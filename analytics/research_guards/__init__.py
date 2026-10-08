@@ -2,8 +2,9 @@
 
 Pure-math statistics (no DB / IO / network) used to gate strategy selection
 against in-sample mirages: Probabilistic & Deflated Sharpe, PBO/CSCV, the
-multiple-testing Sharpe haircut, Minimum Track Record Length, and block /
-stationary bootstrap confidence intervals.
+multiple-testing Sharpe haircut, Minimum Track Record Length, block /
+stationary bootstrap confidence intervals, and survival metrics (drawdown,
+ulcer index, drawdown-breach odds).
 
 Eager re-exports so callers can do
 ``from analytics.research_guards import deflated_sharpe_ratio, cscv_pbo``.
@@ -38,6 +39,13 @@ from analytics.research_guards.pbo import PBOResult, cscv_pbo
 from analytics.research_guards.power import required_sharpe
 from analytics.research_guards.psr import probabilistic_sharpe_ratio
 from analytics.research_guards.sharpe import ann_sharpe, per_period_sharpe
+from analytics.research_guards.survival import (
+    drawdown_breach_curve,
+    drawdown_series,
+    max_drawdown,
+    time_under_water,
+    ulcer_index,
+)
 
 __all__ = [
     "DEPLOY_SHARPE",
@@ -56,13 +64,18 @@ __all__ = [
     "cluster_stats",
     "cscv_pbo",
     "deflated_sharpe_ratio",
+    "drawdown_breach_curve",
+    "drawdown_series",
     "effective_independent_series",
     "expected_max_sharpe",
     "haircut_sharpe",
+    "max_drawdown",
     "min_track_record_length",
     "passes_gate",
     "passes_sleeve_gate",
     "per_period_sharpe",
     "probabilistic_sharpe_ratio",
     "required_sharpe",
+    "time_under_water",
+    "ulcer_index",
 ]

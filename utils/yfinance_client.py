@@ -75,3 +75,25 @@ def fetch_history(
     )[["open", "high", "low", "close", "volume"]]
     df.index = idx_utc
     return df
+
+
+def fetch_total_return_close(symbol: str, *, period: str = "max") -> pd.Series:
+    """Daily close adjusted for splits **and dividends**, as a total-return index.
+
+    The one deliberate exception to ``fetch_history``'s ``auto_adjust=False``:
+    a research frame that compares holding an ETF with holding cash needs the
+    dividends the raw print strips. Never write it to ``ohlcv``, whose levels
+    must stay raw (and whose split-seam guard in ``analytics/data_sync.py`` is
+    tuned for unadjusted closes). Returns a UTC-naive-dated Series, empty on no
+    data.
+    """
+    raw = cast(
+        pd.DataFrame,
+        yf.Ticker(symbol).history(
+            period=period, interval="1d", auto_adjust=True, actions=False
+        ),
+    )
+    if raw.empty:
+        return pd.Series(dtype=float, name=symbol)
+    idx = cast(pd.DatetimeIndex, raw.index).tz_convert("UTC").tz_localize(None)
+    return pd.Series(raw["Close"].to_numpy(dtype=float), index=idx, name=symbol)

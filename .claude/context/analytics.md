@@ -548,7 +548,12 @@ degenerate-input contract across three thresholds (exact `0.0`, `1e-12`, `1e-10`
 of them through here would be a behaviour change needing its own evidence. `ann_sharpe`'s factor is
 already `sqrt(periods)`, where `xsmom.diagnostics._ann_sharpe` takes a raw `ann_days` — same name,
 same shape, differing by ~15.9× at 252. Pinned by constructed inputs in
-`tests/test_research_guards_sharpe.py`, each with a positive control); `gate.py` (below).
+`tests/test_research_guards_sharpe.py`, each with a positive control); `survival.py`
+(wifey-originated, OV-1 #418: `drawdown_series`, `ulcer_index` in percent per Martin & McCann,
+`max_drawdown`, `time_under_water`, and `drawdown_breach_curve`, the P(drawdown ≥ D within a
+horizon) curve from vectorised stationary-bootstrap paths. Wealth starts at 1.0 and that start
+counts as a peak. The path generator does not reproduce `bootstrap._stationary_indices`' random
+stream, so the two are not interchangeable under a pinned seed); `gate.py` (below).
 
 Every function in this package treats `sr` and `sr_variance` as per-observation, never annualized:
 `psr` forms `z = (sr − sr_benchmark)·√(n_obs−1)`, so a daily book is tested against a daily
@@ -1035,6 +1040,34 @@ drift (−0.53): the honest read is no PEAD in liquid large-caps net of cost on 
 `docs/audits/2026-06-23-edge-hunt-4-pead-lite.md`; run via `tools/pead_audit.py`
 (`make wifey-pead-audit`); backfill via `make wifey-pead-backfill` (EDGAR, 480/504 names, 24,747
 quarters).
+
+## overlay/ — risk overlays on the market premium (OV-1, #418)
+
+Not a sleeve: an overlay is judged against buy-and-hold on the overlay yardstick in
+`docs/north-star.md` § Two yardsticks (ulcer index with Sharpe non-inferiority), never on
+`GATE_SHARPE`. The frozen pre-registration is the edge-pillars spec § Phase 2.
+
+- `rules.py` — `ma_signal` (H1's `ma200d` unchanged; NaN through the warm-up so it never reads
+  as flat) and `position_on`, the one place the signal calendar meets the return calendar. With
+  `lag >= 1` a session's position is the signal at the `lag`-th latest signal date strictly
+  before it; `lag=0` admits the same session's close and exists only as the causality test's
+  positive control.
+- `frame.py` (only DB-touching, read-only) — `load_gspc_close` and `build_frame`. The return
+  calendar is the market series' own, so the French file's 1,039 in-panel Saturdays survive;
+  an inner join with `^GSPC` would drop them. Refuses a market series running past the last close
+  (a stale signal nobody downstream could see) and any panel session missing `mkt` or `rf`.
+- `replay.py` — `arm_returns`: `bh` earns `mkt`; `ov` earns `mkt` on its position and `rf` on the
+  rest, less `bps × |Δpos|`. No `Trade` objects, so `cost_model.py` does not apply.
+- `report.py` — `overlay_verdict` (EXCLUDED is checked first; a leg-1 CI straddling zero returns
+  `UNREGISTERED`, a case the pre-registration names no verdict for), `bootstrap_legs` (both legs
+  on identical resamples: equal seeds, and the statistics draw nothing from the generator),
+  `summarize_arm`, `beta_attribution`, `calendar_years`. Sharpe is in excess of `rf`. Annual
+  return and switches per year use calendar years, because the pre-1952 Saturdays make a session
+  count overstate the span by ~4%.
+
+Causality: `tests/test_overlay_rules.py::TestCausality`, six truncation cuts with two positive
+controls on the same channel (a rule reading tomorrow's close, flagged 6 of 6; the `lag=0`
+mapping, flagged 3 of 6). Audit tool: `tools/overlay_audit.py` (`make wifey-overlay-audit`).
 
 ## gapfill/ — gap-fill "magnet" sleeve (edge-hunt #5; PR #198)
 

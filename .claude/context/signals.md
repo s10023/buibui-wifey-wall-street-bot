@@ -246,6 +246,15 @@ Config schema validation and the two universe loaders.
   `parse_eps_facts` (quarterly diluted EPS, originally-filed-only dedup, Q4 = FY−ΣQ1..Q3, YTD spans
   excluded), `parse_announce_dates` (8-K item-2.02 dates). No new poetry dep. Mirrors
   `yfinance_client.py` (no module-level side effects).
+- `french_client.py` — Ken French daily 3-factor file (OV-1, #418; stdlib `urllib` + `zipfile`, no
+  key). `fetch_zip` / `fetch_daily_factors` take the byte fetcher as a parameter; `csv_from_zip` and
+  `parse_daily_factors` are pure and return decimals, not the file's percent. The parser raises
+  `FrenchFormatError` on any malformed row rather than skipping it, since a skipped row shortens
+  the panel silently. The file carries NYSE Saturdays to 1952, which `^GSPC` lacks, so map onto
+  its calendar rather than inner-joining. `RF` is quantised to 1 bp a day.
+- `yfinance_client.fetch_total_return_close` — the one `auto_adjust=True` fetch (dividend- and
+  split-adjusted close), for research frames that compare holding with cash. Never write it to
+  `ohlcv`, whose levels stay raw.
 
 ### Live display
 
