@@ -56,6 +56,7 @@ def _git(*args: str, cwd: Path) -> str | None:
             text=True,
             timeout=_GIT_TIMEOUT_S,
             check=False,
+            encoding="utf-8",
         )
     except (OSError, subprocess.SubprocessError):
         return None

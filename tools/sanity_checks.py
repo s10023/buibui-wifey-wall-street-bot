@@ -211,7 +211,7 @@ class CheckResult:
 def _run(argv: Sequence[str]) -> str:
     try:
         out = subprocess.run(  # noqa: S603 - fixed argv, no shell
-            list(argv), capture_output=True, text=True, check=False
+            list(argv), capture_output=True, text=True, check=False, encoding="utf-8"
         )
     except OSError:
         return ""

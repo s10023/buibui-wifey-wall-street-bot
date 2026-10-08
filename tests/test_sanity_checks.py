@@ -539,6 +539,7 @@ class TestBareInvocationRunsEveryLeg:
                 capture_output=True,
                 text=True,
                 check=False,
+                encoding="utf-8",
             )
             if probe.returncode != 0 or not probe.stdout.strip():
                 continue
@@ -565,6 +566,7 @@ class TestBareInvocationRunsEveryLeg:
             cwd=str(repo),
             env=env,
             check=False,
+            encoding="utf-8",
         )
         return proc.stdout
 

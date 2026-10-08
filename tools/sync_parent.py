@@ -232,6 +232,7 @@ def _git(repo: Path, *args: str) -> str:
         capture_output=True,
         text=True,
         check=True,
+        encoding="utf-8",
     )
     return result.stdout
 

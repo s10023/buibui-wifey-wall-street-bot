@@ -150,10 +150,10 @@ make test           # full pytest suite (make test-cov for coverage)
   and writes text as cp1252, and this tree's source, configs and fixtures contain non-ASCII
   characters, so the suite fails with `'charmap' codec` errors. It covers `make` only, which is
   why `tests/test_explicit_encoding.py` statically requires `encoding=` on every `read_text`,
-  `write_text` and text-mode `open` in shipped code, `tests/` and `.claude/hooks/`: no env var
-  can mask a source scan. `subprocess.run(…, text=True)` without `encoding=` fails more
-  quietly: the decode error happens in a reader thread, `stdout` comes back `None`, and the
-  error surfaces later as `'NoneType' object has no attribute 'splitlines'`. Go through `make`,
+  `write_text`, text-mode `open` and text-mode `subprocess` call in shipped code, `tests/` and
+  `.claude/hooks/`: no env var can mask a source scan. The subprocess case fails more quietly:
+  the decode error happens in a reader thread, `stdout` comes back `None`, and the error
+  surfaces later as `'NoneType' object has no attribute 'splitlines'`. Go through `make`,
   or prefix direct invocations:
   `PYTHONUTF8=1 PYTHONPATH=. poetry run python tools/post_branch_checks.py …`. Linux CI is
   unaffected.

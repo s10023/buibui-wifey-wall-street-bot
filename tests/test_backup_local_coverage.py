@@ -88,7 +88,12 @@ def run_backup(
         }
     )
     proc = subprocess.run(
-        ["bash", str(SCRIPT)], env=env, capture_output=True, text=True, timeout=120
+        ["bash", str(SCRIPT)],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        encoding="utf-8",
     )
     return proc.returncode, proc.stdout, backup_root
 
@@ -231,7 +236,12 @@ def test_default_memory_path_is_derived_from_the_repo(
     env.pop("WIFEY_MEMORY_DIR", None)
 
     proc = subprocess.run(
-        ["bash", str(SCRIPT)], env=env, capture_output=True, text=True, timeout=120
+        ["bash", str(SCRIPT)],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        encoding="utf-8",
     )
     assert proc.returncode == 0, proc.stderr
 
