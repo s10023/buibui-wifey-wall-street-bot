@@ -85,8 +85,8 @@ def upsert_signal_outcome(conn: duckdb.DuckDBPyConnection, row: dict[str, Any]) 
     still wins. This is not defensive coding — it is the live shape.
     `scanner.py` re-writes the alert row on **every** scan that still detects
     the signal (the write is unconditional; only *dispatch* is watermarked)
-    and passes none of the three keys, so under the previous
-    `INSERT OR REPLACE` a re-detection set all three back to NULL. Measured on
+    and passes none of the three keys, so an `INSERT OR REPLACE`
+    would set all three back to NULL on every re-detection. Measured on
     the live ledger 2026-08-11: 13 rows re-stamped in a single cycle, the
     oldest a signal from 7 weeks earlier already booked as a loss. It survived
     only because `backfill_outcomes` re-derives the label downstream in the

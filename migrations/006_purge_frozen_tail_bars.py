@@ -7,22 +7,22 @@ consecutive exact-zero returns with no variance, which is the one shape that
 cannot be distinguished from a real, perfectly flat asset.
 
 `analytics/data_quality.py` now quarantines them at ingest (`frozen_tail_idx`,
-gated on `series_ends_here`), but quarantine drops rows BEFORE storage and so
+gated on `series_ends_here`), but quarantine drops rows before storage and so
 cannot reach what is already in the table. This deletes those rows once.
 
-⚠ POSITION IS THE DISCRIMINATOR, AND THE ROW SHAPE ALONE IS NOT. This migration
-was very nearly written against "zero volume AND unchanged close", which is how
+Position is the discriminator, and the row shape alone is not. This migration
+was very nearly written against "zero volume and unchanged close", which is how
 the defect was first described. Measured 2026-09-02 over the whole DB that
 predicate matches **1,368 rows**, of which only **9** are the dead tails: the
 other **1,359** sit mid-history in live names — 808 `SW`, 231 `AMCR`, 188
-`^GSPC`, 36 `^TNX`. Requiring the run to TERMINATE the series leaves exactly
+`^GSPC`, 36 `^TNX`. Requiring the run to terminate the series leaves exactly
 those 9, across 3 (symbol, timeframe) series. The nearest surviving frozen row is
 81 bars from its series end (`^TYX 1d`, over a full-column scan rather than the
 top rows), so the two populations do not overlap and the rule has margin.
 
-⚠ ZERO VOLUME ALONE IS NOT EVEN A HINT. `DX-Y.NYB`, `^TNX` and `^TYX` are
+Zero volume alone is not even a hint. `DX-Y.NYB`, `^TNX` and `^TYX` are
 permanently zero-volume and perfectly healthy. 12,507 zero-volume rows are
-stored and this rule removes 9 of them; the other 12,498 are LEFT ALONE rather
+stored and this rule removes 9 of them; the other 12,498 are left alone rather
 than certified correct, which is the claim the measurement actually supports.
 The unchanged close is load-bearing.
 
@@ -31,16 +31,16 @@ the row-shape count (1,368) drops the `f.rn < live.first_live` clause, the
 per-symbol split groups by `symbol`, and the margin is `min(rn)` over frozen rows
 outside the purge set (`^TYX 1d` at 81).
 
-DELETION, NOT A FLAG. `ohlcv` has no quarantine column and adding one to record
+Deletion, not a flag. `ohlcv` has no quarantine column and adding one to record
 a one-off would be worse than the problem; the ingest path expresses the same
 decision by never storing the row. A deleted bar is recoverable by refetch (and
 would simply be re-quarantined), so this is not destroying a unique observation.
 
-IDEMPOTENT BY VALUE. There is no "already purged" state to key on — the rule is
+Idempotent by value. There is no "already purged" state to key on — the rule is
 recomputed from the table each run, so a second run finds nothing and reports
 zero. That also makes the dry run's count the exact size of the change.
 
-SCOPE IS THE TAIL, NEVER THE SERIES. The last TRADED bar is kept: `SATS` stops
+Scope is the tail, never the series. The last traded bar is kept: `SATS` stops
 dead at real volume and so contributes nothing here, and `EA`/`EQR` keep their
 final huge-volume session. Membership is a separate decision recorded in
 `config/universe.json` (`delisted: true`), because a delisted member is retained

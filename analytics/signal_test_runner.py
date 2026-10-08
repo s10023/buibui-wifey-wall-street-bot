@@ -377,10 +377,10 @@ def run_signal_test(
                     )
 
                     # Render the wife variant here, where `ohlcv_df` is in
-                    # scope, and print it unconditionally. It used to be built
-                    # only inside the `send_telegram` branch, which made the
-                    # body unreadable without dispatching it to the real
-                    # channel — the wife dry-run logs only its first line.
+                    # scope, and print it unconditionally. Building it only inside the
+                    # `send_telegram` branch would leave the body unreadable
+                    # without dispatching it to the real channel (the wife
+                    # dry-run logs only its first line).
                     wife_text = format_wife_confluence_alert(
                         [event],
                         sl_pct=sl_pct,

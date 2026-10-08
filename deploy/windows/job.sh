@@ -10,7 +10,7 @@
 # `Environment=PATH=`, `OnFailure=` and the journal. Each of those becomes one numbered
 # section below, so a reader can check the unit against the wrapper line by line.
 #
-# ⚠ **This does NOT mirror the parent's `deploy/windows/job.sh`, and must not be
+# **This does not mirror the parent's `deploy/windows/job.sh`, and must not be
 # re-synced from it.** That one is a thin shim over `deploy/run-job.sh` — 192 lines of
 # healthchecks.io pinging, resume-from-suspend network gating and failure formatting.
 # **wifey has no `run-job.sh`**, so the shim would delegate to nothing. The
@@ -66,7 +66,7 @@ load_env .env
 # directory is when a subprocess spawns, so any `cd` downstream drops the venv back off
 # the front.
 #
-# ⚠ `Scripts`, not `bin` — that is the whole Windows difference, and the same one that
+# `Scripts`, not `bin` — that is the whole Windows difference, and the same one that
 # made `deploy/backup-analytics.sh` silently verify snapshots under the wrong interpreter.
 if [ -d "$PWD/.venv/Scripts" ]; then
     PATH="$PWD/.venv/Scripts:$PATH"
@@ -78,12 +78,12 @@ fi
 # Windows defaults a redirected stdout to the ANSI codepage (cp1252 here) and this repo's
 # output carries em-dashes and ⚠ throughout.
 #
-# ⚠ NOT cosmetic. Measured here 2026-09-18: the test suite is 0 failed with PYTHONUTF8=1
+# Not cosmetic. Measured here 2026-09-18: the test suite is 0 failed with PYTHONUTF8=1
 # and 41 failed without it — 40 UnicodeDecodeError, 38 UnicodeEncodeError, every one a
 # `'charmap' codec` failure. A scheduled job that hits one dies outright, and nothing
 # here pings a healthcheck, so that death is silent until someone reads the log.
 #
-# Set HERE rather than per-task in `install-tasks.ps1` so it covers every job at once and
+# Set here rather than per-task in `install-tasks.ps1` so it covers every job at once and
 # takes effect without re-registering anything. The Makefile exports it too; this covers
 # the jobs that do not go through `make`.
 PYTHONUTF8=1
@@ -133,18 +133,18 @@ fi
 # The units route a failure to `notify-failure.sh`; Task Scheduler has no OnFailure, so
 # the wrapper calls it.
 #
-# ⚠ The notifier's own failure must NEVER change the job's verdict. A Telegram outage
-# would otherwise turn a SUCCESSFUL backup into a failed task, which is the wrong
+# The notifier's own failure must never change the job's verdict. A Telegram outage
+# would otherwise turn a successful backup into a failed task, which is the wrong
 # direction: the operator would go looking at the backup. Hence `|| true`.
 #
-# ⚠ `$WIFEY_NOTIFY` is an INJECTION POINT, and it exists for the tests. The failure path
+# `$WIFEY_NOTIFY` is an injection point, and it exists for the tests. The failure path
 # is the half most worth testing and the only one that sends Telegram, so without a seam
 # here every test of it would message the operator's real channels -- including the wife
 # channel, which has a human audience. The default is the real notifier, so production
 # behaviour is unchanged and the seam cannot silently disable alerting.
-# ⚠ `${VAR-default}`, NOT `${VAR:-default}`. The `:` form substitutes the default when
-# the variable is unset OR EMPTY, so `WIFEY_NOTIFY=""` — the obvious way to say "do not
-# notify" — silently resolved to the REAL notifier. That is not hypothetical: it fired
+# Use `${VAR-default}`, not `${VAR:-default}`. The `:` form substitutes the default when
+# the variable is unset or empty, so `WIFEY_NOTIFY=""` — the obvious way to say "do not
+# notify" — would silently resolve to the real notifier. That is not hypothetical: it fired
 # during this file's own test run and sent live Telegram messages to the operator's
 # channel, from the guard written to prevent exactly that.
 #

@@ -312,7 +312,7 @@ def may_dispatch_candle(
     that dispatched happily. Measured 2026-08-25; see
     ``docs/audits/2026-08-25-dispatch-recency-window.md``.
 
-    ⚠ This widens what may dispatch, never what is REPLAYED. A candle whose
+    This widens what may dispatch, never what is replayed. A candle whose
     watermark a previous backfill already consumed stays consumed, so raising
     the window cannot re-send history — it only changes the verdict for candles
     this cycle is seeing for the first time.
@@ -374,7 +374,7 @@ def run_scan_cycle(
     signal is untradeable noise in the chat, yet real ledger evidence.
     max_alert_age_hours: how far back of the newest closed candle (read from
     OHLCV) may still dispatch, measured from each candle's CLOSE. 0.0 = the
-    newest closed candle alone, which is the pre-2026-08-25 rule. See
+    newest closed candle alone, the strict latest-candle rule. See
     may_dispatch_candle for why a window rather than a point. A cold-start guard (no prior
     watermark for a key) restricts the first run to the latest candle so the
     window is not replayed as a burst. Recovery depth is bounded by the

@@ -33,29 +33,28 @@ def passes_ev_gate(
 ) -> bool:
     """Return True when a signal survives the hard EV gate (i.e. is dispatched).
 
-    Extracted from a closure inside ``run_scan_cycle`` on 2026-08-07. It was
-    unreachable from a test while it lived there, so every "EV gate" test in
-    ``tests/test_backtest_filter.py`` re-implemented the comparison inline and
-    asserted on its own copy — which is why the defect below survived: one of
-    those tests encoded it verbatim.
+    Extracted from a closure inside ``run_scan_cycle`` so a test can reach it. While
+    it lived there, every "EV gate" test in ``tests/test_backtest_filter.py``
+    re-implemented the comparison inline and asserted on its own copy, which is
+    why the defect below survived: one of those tests encoded it verbatim.
 
     **The sample-size guard counts the population the statistic is computed
-    from.** Until 2026-08-07 it counted ``len(result.closed_trades)`` — BOTH
-    directions — and then tested a DIRECTIONAL ``avg_r``, so a long verdict
+    from.** Counting ``len(result.closed_trades)`` covers both
+    directions while the test is on a directional ``avg_r``, so a long verdict
     could rest entirely on short trades. Measured on the live path over the
     declared 365d window: 53 of 260 blocked legs on ``signal_watch`` (20%) and
     45 of 429 on ``weekdays`` (10%) had fewer trades in the tested direction
     than ``min_trades`` nominally requires; 19 and 68 respectively rested on a
-    SINGLE directional trade, where dispersion is undefined. No value of
+    single directional trade, where dispersion is undefined. No value of
     ``min_trades`` fixes that — raising it to 10 still admits an n_dir=1 block
     whenever the opposite direction carries the count.
 
     This matters beyond alert volume: a blocked leg is dropped from
-    ``passing_events`` in ``run_scan_cycle`` BEFORE the outcome writer runs, so
+    ``passing_events`` in ``run_scan_cycle`` before the outcome writer runs, so
     it never reaches ``signal_alert_outcomes``. A wrong block does not merely
     silence an alert, it destroys the observation.
 
-    The gate FAILS OPEN in three places here (no result, too few trades, no
+    The gate fails open in three places here (no result, too few trades, no
     directional data) plus a fourth in the caller, which skips it entirely
     unless ``backtest_cfg.mode == "hard"``. Audit:
     ``docs/audits/2026-08-07-ev-gate-directional-sample-guard.md``.
@@ -226,7 +225,7 @@ def effective_adr_threshold(
     ``backtest_runs.adr_suppress_threshold`` is provenance: it answers "what
     suppressed the signals behind this row". Writing the *declared* config value
     there makes the audit trail corroborate a gate that never ran — the same
-    defect class as #144's ``days``, where a recorded parameter contradicted the
+    defect class as ``days``, where a recorded parameter contradicted the
     executed one and the row actively argued for the wrong answer. Measured
     2026-08-11: 2,091 of 3,246 rows (64.4%) recorded 0.80 for a cell the gate
     could not have touched — 1,974 of them purely because the timeframe is not
@@ -238,7 +237,7 @@ def effective_adr_threshold(
     the executing code checks them in:
 
     - ``adr_gate_applies(timeframe)`` — the consumed-ratio gate is undefined
-      where a calendar day holds one bar (#142), and `_filter_signals_by_adr`
+      where a calendar day holds one bar, and `_filter_signals_by_adr`
       no-ops there.
     - ``adr_exempt`` — the strategy bypasses the gate entirely.
 

@@ -437,10 +437,10 @@ STRATEGY_REGISTRY: dict[str, StrategySpec] = {
     ),
     # Legacy fib detectors removed:
     # - fibonacci_retracement (superseded by fib_golden_zone, which was itself removed)
-    # - fib_golden_zone (PR removing fib_golden_zone — confirmed no_edge across
+    # - fib_golden_zone (removed — confirmed no_edge across
     #   3 sweeps: T-A 4-sym, Task E 13-sym, Task C-followup ATR 13-sym 1wk all
     #   net-neg). Detector + tests deleted; ote_entry is the surviving `fib` type.
-    # ote_entry: registered for code completeness, NEVER enabled in any signal_watch config.
+    # ote_entry: registered for code completeness, never enabled in any signal_watch config.
     # WFO audit (2026-05-11, since 2025-09-12, BTC/ETH/SOL × 15m/1h/4h/1d, day_filter ∈ {tue_thu, off}):
     # every cell with adequate OOS n is OOS-negative — BTC 15m -0.71R (n=53), ETH 15m -0.36R (n=47),
     # SOL 15m -0.20R (n=50), BTC 15m off -0.55R (n=121); 4h/1d too thin to score (n≤7). Audit verdict
@@ -469,7 +469,7 @@ STRATEGY_REGISTRY: dict[str, StrategySpec] = {
                 "Rolling window half-size for BOS swing detection.",
             ),
         ],
-        confidence=1,  # WFO no-edge verdict 2026-05-11; never enabled in signal_watch configs (see comment above).
+        confidence=1,  # WFO no-edge verdict (2026-05-11 audit); never enabled in signal_watch configs (see comment above).
     ),
     "ema": StrategySpec(
         name="ema",

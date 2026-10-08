@@ -61,9 +61,9 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
             outcome_cost_r         DOUBLE
         )
     """)
-    # Migration: per-alert cost drag in R (2026-08-19). `outcome_r` is NET of
+    # Migration: per-alert cost drag in R. `outcome_r` is net of
     # this, so gross stays recoverable as `outcome_r + outcome_cost_r`. Declared
-    # LAST in CREATE TABLE above and appended by ALTER here, so a fresh DB and a
+    # last in CREATE TABLE above and appended by ALTER here, so a fresh DB and a
     # migrated one end with the same physical column order. NULL means the row
     # resolved before costs were charged and has not been restated — migration
     # 004 is what clears that state, and a NULL surviving it is a real gap
@@ -400,8 +400,8 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
     # completes with zero errors, so an interrupted or partially-failed symbol
     # carries no marker and is retried in full on the next --resume run.
     #
-    # ⚠ The key carries `since` on purpose. A marker records the window it
-    # actually covered, so re-running with an EARLIER --since must not be
+    # The key carries `since` on purpose. A marker records the window it
+    # actually covered, so re-running with an earlier --since must not be
     # satisfied by a completion that never reached that far back. Keyed on
     # symbol alone, a widened window would silently skip every symbol already
     # done under the narrower one — an absence reading as coverage.

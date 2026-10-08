@@ -17,7 +17,7 @@ a **gap-fade**, i.e. short-horizon reversal in a costume, which is why
 sleeve, where a +0.62 correlation meant the sleeve was not the diversifier it
 looked like.
 
-**That prediction was WRONG, and the control is what showed it: measured
+**That prediction was wrong, and the control is what showed it: measured
 correlation −0.163** (2026-08-14, 501 names, 2,163 days). The nearest unfilled
 edge is often days old and has nothing to do with yesterday's return, so the book
 is very nearly uncorrelated with plain 1-session reversal. Keep the control arm:

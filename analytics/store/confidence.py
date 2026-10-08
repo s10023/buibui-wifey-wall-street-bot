@@ -73,7 +73,7 @@ def prune_undeclared_confidence_ratings(
     config_name: str,
     declared: Collection[tuple[str, str]],
 ) -> list[tuple[str, str, str]]:
-    """Delete this config's ratings for cells it no longer declares.
+    """Delete this config's ratings for cells it does not declare.
 
     Returns the deleted (strategy, tf, direction) triples so the caller can
     report them — a silent delete would swap one invisible surface for another.

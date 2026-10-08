@@ -5,12 +5,10 @@ plus top 20 cumulative functions per profile. Used by `perf-1` (PR 1) and
 `perf-2` (PR 12) to detect any wall-clock regression introduced by the
 intervening split PRs.
 
-Note: the plan (PR 1 Step 1) sketched this file with idealised call shapes.
-The signatures of `get_ohlcv`, `run_backtest`, `run_param_sweep`,
-`run_scan_cycle`, and `run_combo_backtest` differ from those sketches; the
-`_bench_*` functions below were adapted to current signatures while
-preserving the plan's intent (4 benches, 3 runs each, median + IQR,
-cProfile top-20 cumulative).
+The `_bench_*` functions are written against the current signatures of
+`get_ohlcv`, `run_backtest`, `run_param_sweep`, `run_scan_cycle`, and
+`run_combo_backtest` (4 benches, 3 runs each, median + IQR, cProfile top-20
+cumulative).
 
 Reads OHLCV from a read-only handle on the production analytics DB; the
 scan-cycle bench operates on a one-shot clone in /tmp so it never mutates

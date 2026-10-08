@@ -32,10 +32,10 @@ class DOWRow:
     #
     # On US equities this column is noise, and not marginally. Measured 2026-08-12
     # over SPY/QQQ/NVDA/AAPL/MSFT at 365d (script
-    # `docs/plans/scripts/dow_return_noise.py`, which calls THIS function rather
+    # `docs/plans/scripts/dow_return_noise.py`, which calls this function rather
     # than reading 1d bars — the two sources disagree): **all 25 of 25 cells** fall
     # inside the band, the largest |t| across every symbol and weekday is **1.76**
-    # (SPY Tue), and mean and median disagree on SIGN in **5 of 25**. None of that
+    # (SPY Tue), and mean and median disagree on sign in **5 of 25**. None of that
     # was visible while the mean was rendered alone in green or red.
     #
     # The Stats tab dims both return values inside **2.576** SE — Bonferroni for the

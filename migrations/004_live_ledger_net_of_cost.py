@@ -2,51 +2,51 @@
 
 `run_backtest` has charged its trades since Phase 0.4, and the live outcome
 resolver never charged anything. So `signal_alert_outcomes.outcome_r` was a
-GROSS figure sitting in the same units as a NET one, and every
+gross figure sitting in the same units as a net one, and every
 backtest-vs-live comparison was biased **in favour of live** — the opposite of
 the direction one assumes when a live book underperforms its backtest. The
 resolver is fixed forward in the same PR as this migration; this restates the
 rows it already wrote.
 
-WHY THE RESTATEMENT IS NOT OPTIONAL. Fixing only the resolver leaves the ledger
+Why the restatement is not optional. Fixing only the resolver leaves the ledger
 with two permanent bases split at an arbitrary instant — gross before the fix,
 net after — and a boundary inside one column is worse than a uniformly wrong
 column, because it silently breaks every pooled statistic that spans it. The
 parent's own port shipped without the restatement and ended up with exactly
 that. One consistent basis is the deliverable; the resolver change alone is not.
 
-RE-DERIVED, NEVER RECONSTRUCTED. Cost is recomputed from each row's own stored
+Re-derived, never reconstructed. Cost is recomputed from each row's own stored
 geometry (`direction`, `entry_price`, `sl_price`, `candle_ts_ms`,
 `outcome_filled_at_ms`) plus the OHLCV history around its signal bar, through
-the SAME `live_cost_r` the resolver now calls. Sharing that one definition is
+the same `live_cost_r` the resolver now calls. Sharing that one definition is
 the point: if the migration priced rows its own way, the boundary would survive
 the migration that exists to remove it.
 
-NO ERA CUTOFF, unlike 002 — and for a stronger reason than 003's. There is no
+No era cutoff, unlike 002 — and for a stronger reason than 003's. There is no
 era to split: the resolver charged zero from the first row to the last, so every
 resolved row is uniformly gross and one rule covers all of them. The guard is
 `outcome_cost_r IS NULL`, which is state rather than a date, so this is
 idempotent by construction and a re-run finds nothing. That also means a row
-resolved by the NEW resolver is never touched here.
+resolved by the new resolver is never touched here.
 
-CONSERVATIVE WHERE IT CANNOT SEE. A row whose signal bar is missing from OHLCV
+Conservative where it cannot see. A row whose signal bar is missing from OHLCV
 gets `ctx=None`, and `cost_breakdown` then charges the widest spread bucket with
-zero impact. It OVERCHARGES rather than quietly charging nothing, because a
+zero impact. It overcharges rather than quietly charging nothing, because a
 missing context must never be able to look like a free trade. The count is
 reported so the fraction is visible rather than assumed.
 
-BOTH CONFIGS MUST AGREE. `signal_alert_outcomes` has no column recording which
+Both configs must agree. `signal_alert_outcomes` has no column recording which
 live config produced a row, so a per-row cost model is not attributable. This
 refuses to run unless both configs resolve to the same `CostModel` — they do,
 because `[backtest.cost_model]` lives in the shared base — rather than silently
 picking one. If they ever diverge, the fix is a provenance column, not a guess.
 
-⚠ WHAT THIS DOES NOT FIX, and how to frame it. Uncharged costs were an
-ASYMMETRY — the backtest charged, live did not — which is exactly why they
-biased the comparison and why this migration exists. A gap THROUGH the stop is a
+What this does not fix, and how to frame it. Uncharged costs were an
+asymmetry — the backtest charged, live did not — which is exactly why they
+biased the comparison and why this migration exists. A gap through the stop is a
 different animal: it still books exactly -1.0R here, but `engine.py` also sets
-`exit_price = sl_price`, so BOTH books assume a clean touch. That absence is
-SHARED, so it does not bias live against backtest — it just means both overstate.
+`exit_price = sl_price`, so both books assume a clean touch. That absence is
+shared, so it does not bias live against backtest — it just means both overstate.
 It is also the bigger number: on this ledger 46 of 218 losses (21.1%) gapped
 through, worth ~-0.10R per resolved row versus this migration's -0.014R. So the
 claim here is "the two books are now on one basis", never "the ledger is right".

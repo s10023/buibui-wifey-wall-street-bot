@@ -7,7 +7,7 @@ is provenance — it answers "what suppressed the signals behind this row" — s
 declared-but-not-executed value makes the audit trail corroborate a gate that
 did not run. Same defect class as #144's `days`.
 
-This migration rewrites only rows the CURRENT code and config govern, i.e. rows
+This migration rewrites only rows the current code and config govern, i.e. rows
 written at or after #142 (`54cef12`, 2026-08-06T17:07:01+08:00 = 09:07:01Z),
 which is the commit that made the gate no-op on timeframes where a calendar day
 holds one bar. Earlier rows are deliberately left alone: before #142

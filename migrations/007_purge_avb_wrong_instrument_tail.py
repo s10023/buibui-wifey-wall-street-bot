@@ -8,34 +8,34 @@ observations of AvalonBay, and left in place they put a fabricated **-61.1%**
 session (177.32 -> 68.93 on 2026-07-17) into every pooled cross-section that
 reads the research universe.
 
-⚠ THIS IS NOT THE SPLIT SEAM `data_sync.ADJUSTMENT_BASIS_TOL` NOW GUARDS, and
+This is not the split seam `data_sync.ADJUSTMENT_BASIS_TOL` guards, and
 the two must not be conflated. A split restates the whole series consistently
 and is repaired by re-syncing it; here the provider is serving the wrong
-security, so a re-backfill CANNOT repair it. Measured 2026-09-04:
+security, so a re-backfill cannot repair it. Measured 2026-09-04:
 ``yf.Ticker("AVB").history(start="2018-01-01")`` returns **27 rows**, all of
 them the bogus window, while ``fast_info`` reports the real $184.06 — so a
 re-backfill would overwrite the 27 bad bars with the same 27 bad bars and reach
 none of the 2,127 good ones. Deletion is the only repair available from this
 source.
 
-⚠ NOT A DELISTING, so `config/universe.json` is deliberately UNTOUCHED. `EA`,
+Not a delisting, so `config/universe.json` is deliberately untouched. `EA`,
 `EQR` and `SATS` were flagged `delisted: true` in #281 because they had stopped
 trading; AVB is alive and quoted. Flagging it would state something false and
 would remove a live constituent from the breadth universe. What AVB becomes
-after this is a STALE series (last good bar 2026-06-18), which
+after this is a stale series (last good bar 2026-06-18), which
 `make freshness-check` already reports and which a re-backfill will fix by
 itself once the provider repairs the ticker.
 
-TWO PREDICATES, AND THEY AGREE EXACTLY. The rows are selected by BOTH value
+Two predicates, and they agree exactly. The rows are selected by both value
 (`close < 100`) and date (`open_time >= 2026-07-13`), because either alone
 would be a claim about a boundary rather than about a population. Measured over
 the full AVB history the two sets are identical, and the margin is wide in both
-directions: the good bars' minimum LOW is 118.17 (not the close — the low is
+directions: the good bars' minimum low is 118.17 (not the close — the low is
 the value that could dip across a close-based threshold) against the bogus
-band's maximum HIGH of 70.61, a 1.67x gap with nothing inside it. The good
+band's maximum high of 70.61, a 1.67x gap with nothing inside it. The good
 series spans 2018-01-02 -> 2026-06-18 (`1d`) with no row anywhere below 118.17.
 
-IDEMPOTENT BY VALUE, like 006: there is no "already purged" flag, the predicate
+Idempotent by value, like 006: there is no "already purged" flag, the predicate
 is recomputed each run, so a second run finds nothing and reports zero.
 
 Usage:
@@ -44,8 +44,8 @@ Usage:
 Dry-run by default: prints what would change and exits without writing.
 A .bak copy must exist alongside the DB before --apply will proceed.
 
-⚠ The .bak guard tests EXISTENCE, not freshness — all seven migrations do. Cut a
-fresh copy from the CURRENT database before --apply; a weeks-old one satisfies
+The .bak guard tests existence, not freshness — all seven migrations do. Cut a
+fresh copy from the current database before --apply; a weeks-old one satisfies
 it silently.
 """
 
@@ -59,7 +59,7 @@ import duckdb  # noqa: E402
 
 from analytics.store import DEFAULT_DB_PATH  # noqa: E402
 
-#: 2026-07-01 UTC, chosen to sit INSIDE the empty gap between the two
+#: 2026-07-01 UTC, chosen to sit inside the empty gap between the two
 #: populations rather than on either edge of one: the last good bar is
 #: 1781755200000 (`1wk` 2026-06-15 / `1d` 2026-06-18) and the first bogus bar is
 #: 1783915200000 (`1wk` 2026-07-13 / `1d` 2026-07-17), with no AVB row of any
@@ -67,8 +67,8 @@ from analytics.store import DEFAULT_DB_PATH  # noqa: E402
 #: alone.
 _SEAM_MS: int = 1_782_864_000_000
 
-#: Close below which an AVB bar cannot be AvalonBay. Good bars bottom at a LOW
-#: of 118.17; the bogus band tops out at a HIGH of 70.61.
+#: Close below which an AVB bar cannot be AvalonBay. Good bars bottom at a low
+#: of 118.17; the bogus band tops out at a high of 70.61.
 _WRONG_INSTRUMENT_CLOSE: float = 100.0
 
 _WRONG_TAIL_SQL = """

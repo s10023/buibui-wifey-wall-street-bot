@@ -3,10 +3,10 @@
 # only when the unit it names actually failed.
 #
 # The message body is raw journal output -- which is exactly the payload that
-# used to make this alert fail. A traceback carries `line 33, in <module>`, and
-# Telegram's HTML parser reads that bare `<` as an unclosed tag and answers 400;
-# before utils/telegram.py learned to drop parse_mode and retry as plain text,
-# the alert failed on precisely the crashes it exists to report.
+# can make this alert fail. A traceback carries `line 33, in <module>`, and
+# Telegram's HTML parser reads that bare `<` as an unclosed tag and answers 400.
+# utils/telegram.py therefore drops parse_mode and retries as plain text, because
+# without that the alert fails on precisely the crashes it exists to report.
 #
 # Usage: notify-failure.sh <unit-name-without-.service>
 

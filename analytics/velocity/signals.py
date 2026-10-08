@@ -37,11 +37,11 @@ gate                         DSR>=0.95 ∧ PBO<=0.5 ∧ boot_lo>0 ∧ Sharpe>=0.
 
 CAUSALITY. Every score ends in ``.shift(1)``, so day ``d``'s leverage is built
 only from information complete at ``d-1``; ``tests/test_lookahead.py``'s rule and
-the sleeve causality guards (#181) apply. The trailing vol used for sizing is
+the sleeve causality guards apply. The trailing vol used for sizing is
 itself already ``.shift(1)``-ed inside ``beta_neutral_leverage``.
 
 Read-only research: no detector, no dispatch, no DB write — outside the TA
-freeze on the #183 precedent (a measurement that changes no dispatch).
+freeze, as a measurement that changes no dispatch).
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ import pandas as pd
 
 # Single definition, deliberately imported rather than re-inlined: a fifth copy
 # of the cross-sectional z is exactly how the sleeve gate's MinTRL leg diverged
-# unnoticed across four sites (#165). Positive orientation — high score -> long.
+# unnoticed across four sites. Positive orientation — high score -> long.
 from analytics.gapfill.signals import cross_sectional_long_score
 
 __all__ = [

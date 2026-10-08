@@ -50,7 +50,7 @@ def run_param_sweep(args: argparse.Namespace) -> None:
         param_ranges = _default_param_ranges(args.strategy)
 
     # Per-TF min_trades floors. Keys must be supported intervals: a "15m" key
-    # was dead fork inheritance, and 1wk previously fell through to the generic 8.
+    # was dead fork inheritance, and 1wk would fall through to the generic 8.
     _tf_defaults = {"1h": 12, "4h": 5, "1d": 2, "1wk": 1}
     min_trades = (
         args.min_trades if args.min_trades else _tf_defaults.get(args.timeframe, 8)
@@ -127,7 +127,7 @@ def run_param_audit(args: argparse.Namespace) -> None:
         else [s for s in KNOWN_STRATEGIES if s != "seasonality"]
     )
     # Per-TF min_trades floors. Keys must be supported intervals: a "15m" key
-    # was dead fork inheritance, and 1wk previously fell through to the generic 8.
+    # was dead fork inheritance, and 1wk would fall through to the generic 8.
     _tf_defaults = {"1h": 12, "4h": 5, "1d": 2, "1wk": 1}
     min_trades = (
         args.min_trades if args.min_trades else _tf_defaults.get(args.timeframe, 8)

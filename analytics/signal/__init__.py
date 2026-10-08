@@ -1,12 +1,11 @@
-"""Signal package — full split landed in signal-3.
+"""Signal package, split into modules.
 
-signal-1 landed the lightweight type dataclasses moved from signals/alert_formatter.py.
-signal-2 extracted the scanner leaves (`_common`, `gates`, `resolvers`,
-`bt_cache`, `stats_context`, `cofire`).
-signal-3 (this PR) moves `scan_symbol` / `run_scan_cycle` into `scanner.py` and
-reduces `signal_lib.py` to a re-export shim.
+The lightweight type dataclasses live here (moved from signals/alert_formatter.py).
+The scanner leaves are `_common`, `gates`, `resolvers`, `bt_cache`,
+`stats_context` and `cofire`. `scan_symbol` / `run_scan_cycle` live in
+`scanner.py`, and `signal_lib.py` is a re-export shim.
 
-The package re-exports every name `analytics/signal_lib.py` previously exposed
+The package re-exports every name `analytics/signal_lib.py` exposes
 in its `__all__` so `from analytics.signal_lib import X` keeps working
 zero-edits at all 9 external import sites.
 """

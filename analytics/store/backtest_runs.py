@@ -121,16 +121,16 @@ def upsert_backtest_run(
     result must be a BacktestResult instance.
     Returns the run_id so the caller can link backtest_trades rows.
 
-    ``origin`` is a REQUIRED keyword so mypy forces every call site to say
+    ``origin`` is a required keyword so mypy forces every call site to say
     which writer it is. `backtest_runs` has four writers and the row key is
     derived from parameters alone, so two writers measuring different things
-    over different windows used to collide and overwrite each other — see
+    over different windows would collide and overwrite each other — see
     `_backtest_run_id`. Making this required (rather than defaulting it) is the
     same enforcement `adr_gate_applies(timeframe)` uses: a new call site cannot
     silently inherit another writer's identity.
 
-    ``live_parity`` is a REQUIRED keyword for the same reason, and like
-    ``adr_suppress_threshold`` it is what EXECUTED — pass
+    ``live_parity`` is a required keyword for the same reason, and like
+    ``adr_suppress_threshold`` it is what executed — pass
     `cfg.live_parity.identity()`, never a config's declared block. Two of the
     four writers run gates (the sweep and `single_run`, both of which already
     read `live_parity` to decide which ADR branch applies); the other two pass
@@ -138,13 +138,13 @@ def upsert_backtest_run(
     defect it closes: a defaulted argument cannot distinguish "this path runs no
     gates" from "nobody thought about it".
 
-    ``adr_suppress_threshold`` is a REQUIRED keyword for the same reason, and it
+    ``adr_suppress_threshold`` is a required keyword for the same reason, and it
     is the threshold that was **executed**, not the one the config declared —
-    pass `effective_adr_threshold(...)`, never `cfg.adr_suppress_threshold`. It
-    defaulted to None until 2026-08-11, which let the two writers that do wire
-    the gate hand it their raw config value: 2,091 of 3,246 rows then recorded a
+    pass `effective_adr_threshold(...)`, never `cfg.adr_suppress_threshold`. A
+    None default would let the two writers that do wire the gate hand it their
+    raw config value: measured 2026-08-11, 2,091 of 3,246 rows recorded a
     threshold for a cell the gate never touched (1,974 of them on `1d`/`1wk`,
-    where the gate is undefined since #142). A defaulted argument cannot
+    where the gate is undefined). A defaulted argument cannot
     distinguish "this path does not run the gate" from "nobody thought about
     it"; a required one forces each writer to answer.
     """

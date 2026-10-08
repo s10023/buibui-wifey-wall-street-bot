@@ -1,15 +1,15 @@
-"""Migration 005 — signal_alert_outcomes: re-price gapped fills on BOTH sides
+"""Migration 005 — signal_alert_outcomes: re-price gapped fills on both sides
 
 Until 2026-08-20 the live resolver booked a flat `-1.0` for every loss and the
 `implied_tp_r` credit for every win, regardless of where the bar actually opened.
-A bar that OPENS beyond the level does not fill at the level — it fills at the
+A bar that opens beyond the level does not fill at the level — it fills at the
 open. `engine.py` had the identical assumption (`exit_price = sl_price` /
-`= tp_price`), so the absence was SHARED and biased neither book against the
+`= tp_price`), so the absence was shared and biased neither book against the
 other. Both are fixed forward in the same PR; this restates the rows already
 written.
 
-⚠ SYMMETRIC, AND THAT IS THE POINT. The 2026-08-19 audit measured only the
-ADVERSE tail and this migration was very nearly written one-sided. On this
+Symmetric, and that is the point. The 2026-08-19 audit measured only the
+adverse tail and this migration was very nearly written one-sided. On this
 ledger 46 of 218 losses (21.1%) gap through their stop, but **12 of 46 wins
 (26.1%) gap through their target** — the higher rate of the two. Pricing only
 the losses does not remove a bias, it installs its mirror: it would move pooled
@@ -18,33 +18,33 @@ the real bias by ~65% and making every sleeve look worse than it is against a
 stop-free benchmark. Measured by `docs/plans/scripts/gap_through_tp_live.py`,
 the mirror of the audit's four scripts.
 
-RE-DERIVED, NEVER RECONSTRUCTED — same rule as 004. Each row's new gross R comes
+Re-derived, never reconstructed — same rule as 004. Each row's new gross R comes
 from re-running the resolver's own `_scan_forward` against that row's stored
 geometry and its OHLCV history. Nothing here re-implements the fill rule; if it
 did, the boundary this migration exists to remove would survive it.
 
-COST IS CARRIED OVER, NOT RECOMPUTED, and that is a deliberate narrowing.
-`live_cost_r` is a function of direction, entry, stop, entry/exit TIMES and the
-ADV/sigma context — never of the exit PRICE. The gap fill changes where a trade
+Cost is carried over, not recomputed, and that is a deliberate narrowing.
+`live_cost_r` is a function of direction, entry, stop, entry/exit times and the
+ADV/sigma context — never of the exit price. The gap fill changes where a trade
 filled, not which bar resolved it, so `outcome_filled_at_ms` is unchanged and
 every cost input is unchanged with it. Recomputing would re-derive the identical
 number while adding a second way for 004's basis to drift. `outcome_r` is
 therefore rewritten as `new_gross - stored_cost`, and a row with
-`outcome_cost_r IS NULL` (UNPRICED, never "cost nothing") keeps its gross basis.
+`outcome_cost_r IS NULL` (unpriced, never "cost nothing") keeps its gross basis.
 
-THE REPLICA CHECK IS THE GATE. A re-run must reproduce each row's stored
+The replica check is the gate. A re-run must reproduce each row's stored
 `outcome` and `outcome_filled_at_ms` exactly; the audit got 218/218 on losses and
-46/46 on wins. A row that does not reproduce is COUNTED AND SKIPPED rather than
+46/46 on wins. A row that does not reproduce is counted and skipped rather than
 rewritten — a mismatch means the row's OHLCV moved under it, and a migration
 that "fixes" a row it can no longer reproduce is writing a guess.
 
-IDEMPOTENT BY VALUE, not by a state flag. There is no "already restated" column
+Idempotent by value, not by a state flag. There is no "already restated" column
 to key on, and adding one to record a one-off would be worse than the problem.
-Instead only rows whose recomputed value actually DIFFERS are written, so a
+Instead only rows whose recomputed value actually differs are written, so a
 second run reports zero changes. That also makes the dry run's count the exact
 size of the change.
 
-NO ERA CUTOFF. The resolver booked the level from the first row to the last, so
+No era cutoff. The resolver booked the level from the first row to the last, so
 every resolved row is uniformly on the old basis and one rule covers all of them.
 
 Rewriting in place is safe: `signal_id` is
@@ -130,10 +130,10 @@ def migrate(db_path: str, apply: bool) -> None:
                 no_hold_cap += len(key_rows)
                 continue
             earliest = min(int(r[4]) for r in key_rows)
-            # ⚠ The end bound is the table's own MAX(open_time), never a
-            # bar-count arithmetic. A bar count is NOT a calendar span on an RTH
+            # The end bound is the table's own MAX(open_time), never a
+            # bar-count arithmetic. A bar count is not a calendar span on an RTH
             # tape: `4h` RTH is 2 bars/day, so `max_hold` bars spans `max_hold/2`
-            # DAYS, and the obvious `latest + max_hold * tf_secs` window is short
+            # days, and the obvious `latest + max_hold * tf_secs` window is short
             # by a factor of six. It was, and it silently truncated 6 of 264
             # walks into replica mismatches — rows this migration would then have
             # skipped, on a fetch bug rather than on any property of the data.

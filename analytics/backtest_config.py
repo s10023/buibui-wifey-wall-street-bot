@@ -103,7 +103,7 @@ class StrategyOverride:
     # honoured by `effective_tp_r` when it is given a direction, but no consumer
     # applies them: `_resolve_tp_r` has no per-TF directional step and the sweep
     # calls `effective_tp_r` without a direction. Audit:
-    # docs/audits/2026-10-01-dead-directional-tp-r-keys.md (Issue #317).
+    # docs/audits/2026-10-01-dead-directional-tp-r-keys.md.
     tp_r_long_per_tf: dict[str, float] = field(default_factory=dict)
     tp_r_short_per_tf: dict[str, float] = field(default_factory=dict)
     sl_pct_per_tf: dict[str, float] = field(default_factory=dict)

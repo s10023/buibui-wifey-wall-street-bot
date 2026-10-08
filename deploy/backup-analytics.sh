@@ -47,20 +47,20 @@
 #
 # LOCK CONTENTION IS POSSIBLE AND MAY BE SCHEDULED
 # ------------------------------------------------
-# There is still no signal-watch DAEMON -- every wifey unit is Type=oneshot --
-# but "no timer or cron" stopped being true on 2026-08-26. The repo now ships
+# There is no signal-watch daemon -- every wifey unit is Type=oneshot --
+# but the repo ships
 # `wifey-signal-watch.timer` (`make go-live CATCH_UP=1`, Mon-Fri 08:30 UTC) and
 # `wifey-universe-sync.timer` (Sat 10:00 UTC), both opt-in: nothing installs
-# them, so whether a fixed window exists is a property of the BOX, not the repo.
+# them, so whether a fixed window exists is a property of the box, not the repo.
 # Read `systemctl --user list-timers` rather than assuming either way. Beyond
 # any such window, contention comes from whatever the operator is
 # running: `make go-live`, `make db-update`, or a `make wifey-web` session
-# holding the DB open. On duckdb 1.5.5 a second PROCESS is refused even with
+# holding the DB open. On duckdb 1.5.5 a second process is refused even with
 # read_only=True (only reader-vs-reader shares), so "open read-only to dodge the
 # writer" does not work. Hence: retry with backoff, then fall back to the
 # lock-free byte copy.
 #
-# NEVER kill a running scan to clear a lock here. It is the ledger writer; a
+# Never kill a running scan to clear a lock here. It is the ledger writer; a
 # backup must never cost you the thing it exists to protect.
 #
 # Usage:  backup-analytics.sh [--weekly | --weekly-if-due] [--dry-run]
@@ -108,9 +108,9 @@ DB="$REPO/analytics.db"
 # Resolved against $SCRIPT_REPO, never $REPO: the interpreter is a property of
 # the INSTALLATION, not of the tree being copied.
 #
-# ⚠ Two layouts, because a venv is `bin/` on POSIX and `Scripts/` on Windows.
-# Only the POSIX one was named, and the fallback is `python3` -- which EXISTS on
-# a Git Bash host, so the script did not fail, it silently verified snapshots
+# Two layouts, because a venv is `bin/` on POSIX and `Scripts/` on Windows.
+# Naming only the POSIX one leaves the fallback `python3` -- which exists on
+# a Git Bash host, so the script would not fail, it would silently verify snapshots
 # under whatever interpreter happened to be on PATH rather than the one holding
 # the pinned duckdb. Wrong-answer-shaped, not error-shaped.
 #
@@ -161,7 +161,7 @@ BACKUP_DIRS=(
 #                           watermark. It sits at the repo ROOT, outside the
 #                           `docs/plans` tree BACKUP_DIRS covers, so it was the
 #                           one member of the watermark class with no coverage.
-#                           ⚠ Its loss is silent in BOTH directions: no error,
+#                           Its loss is silent in both directions: no error,
 #                           and no burst of stale alerts either. The parent
 #                           restored without it, every key came back cold, the
 #                           cold-start guard then keeps only the latest closed
@@ -175,10 +175,10 @@ BACKUP_DIRS=(
 #                           so no BACKUP_DIRS glob reaches it -- the third file to
 #                           land in this class after `signal_state.json` and
 #                           `sensitive-terms.txt`, and it arrived 2026-09-19,
-#                           AFTER these arrays were last reviewed. ⚠ Its loss is
+#                           after these arrays were last reviewed. Its loss is
 #                           silent: `/ingest-feed` reads an absent follow list as
 #                           "not configured" and reports an empty poll, which is
-#                           exactly how the skill read while it was BLOCKED on the
+#                           exactly how the skill read while it was blocked on the
 #                           file never having existed. `.example` is committed and
 #                           is a schema demo, not a copy -- the channel IDs are a
 #                           hand-curated roster no tool reproduces. Parent #704.
@@ -559,14 +559,14 @@ for line in sys.stdin:
     d[label] = {"path": path, "files": int(n)}
 print(json.dumps(d, sort_keys=True))
 ')"
-# The manifest is SERIALISED, never printf'd. It used to be a block of format
-# strings, which is correct only for values that happen to contain no character
+# The manifest is serialised, never printf'd. A block of format
+# strings is correct only for values that happen to contain no character
 # JSON escapes -- and `source` is an absolute path. On Windows that path opens
-# `C:\Users\...`, whose `\U` is an illegal JSON escape, so every manifest this
-# host wrote was unparseable. `backup_check.py` catches JSONDecodeError and
+# `C:\Users\...`, whose `\U` is an illegal JSON escape, so every manifest written that way
+# on Windows was unparseable. `backup_check.py` catches JSONDecodeError and
 # degrades, so the visible symptom was `backup-check` reporting STALE forever:
 # a check that can only ever be red, which this repo's own docs name as worse
-# than no check at all. `external_roots` was already safe because it went
+# than no check at all. `external_roots` is safe because it goes
 # through `json.dumps`; routing every field the same way is what stops the next
 # added field from reintroducing this.
 #

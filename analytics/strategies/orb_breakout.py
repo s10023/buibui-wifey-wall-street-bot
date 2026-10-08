@@ -1,8 +1,8 @@
 """Detector: ORB Breakout — anchored on the US regular-trading-hours session open.
 
 Bars are grouped into trading sessions whose open is 13:30 UTC (09:30 ET during
-DST, matches the T4 4h synthesis anchor). Wifey is an equity-only fork, so the
-prior 00:00 UTC daily anchor (24/7 crypto markets) is no longer correct.
+DST, matches the 4h synthesis anchor). Wifey is an equity-only fork, so a
+00:00 UTC daily anchor (24/7 crypto markets) does not apply.
 """
 
 import pandas as pd

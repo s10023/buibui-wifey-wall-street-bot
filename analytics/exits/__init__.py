@@ -1,7 +1,7 @@
-"""Exit-policy research package (exit spec 2026-06-05, parent PRs #433 + #437).
+"""Exit-policy research package (exit spec 2026-06-05).
 
 `mfe_mae.py` is the §2 excursion diagnostic. The §3–§5 policy / replay / A/B
-layer landed 2026-08-14: `policies.py` + `replay.py` are the pluggable engine
+layer: `policies.py` + `replay.py` are the pluggable engine
 (ported verbatim — they carry no portfolio dependency), and `audit.py` is the
 verdict layer, which substitutes a per-trade R Sharpe plus a paired bootstrap
 for upstream's portfolio-book headline. Read `audit.py`'s docstring before

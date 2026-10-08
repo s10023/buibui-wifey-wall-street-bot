@@ -43,19 +43,19 @@ if (-not $RepoRoot) {
 # The jobs. Mirrors `deploy/systemd/user/`, and the UTC times are copied from the
 # `OnCalendar=` lines verbatim.
 #
-# ⚠ DO NOT PORT THE PARENT'S SCHEDULES. `buibui-signal-watch.timer` fires
+# Do not port the parent's schedules. `buibui-signal-watch.timer` fires
 # `OnCalendar=*:01/15`, i.e. every 15 minutes against a 24h crypto tape.
-# `wifey-signal-watch.timer` carries the comment "Do NOT port the parent's
-# OnCalendar=*:01/15" for this reason: wifey has ONE RTH session and fires ONCE a day,
+# `wifey-signal-watch.timer` carries a comment saying not to port the parent's
+# `OnCalendar=*:01/15`, for this reason: wifey has one RTH session and fires once a day,
 # pre-open. A 15-minute cadence here would re-scan the same forming bar ~26 times a day
 # and dispatch against a watermark that has not moved.
 #
-# ⚠ Because nothing here repeats sub-daily, NO job gets a repetition element at all --
+# Because nothing here repeats sub-daily, no job gets a repetition element at all --
 # which sidesteps the parent's worst registration bug outright. Recorded so the next
-# person does not rediscover it: `RepetitionDuration = [TimeSpan]::Zero` is REJECTED by
+# person does not rediscover it: `RepetitionDuration = [TimeSpan]::Zero` is rejected by
 # `Register-ScheduledTask` ("(8,26):Duration:PT0S"), and so is `MaxValue`. Indefinite
 # repetition is an EMPTY <Duration>, obtainable only by building a trigger with a real
-# duration and then blanking it. A literal `P1D` registers CLEANLY and then silently
+# duration and then blanking it. A literal `P1D` registers cleanly and then silently
 # stops repeating after a day.
 # ---------------------------------------------------------------------------------
 $Jobs = @(
@@ -82,8 +82,8 @@ $Jobs = @(
         Command = 'deploy/backup-offsite.sh'
         # TimeoutStartSec=3600
         Timeout = [TimeSpan]::FromHours(1)
-        # ⚠ Registered DISABLED. `backup-offsite.sh` runs `rclone sync`, which MIRRORS
-        # DELETIONS. Until this host has its own remote pinned to its own
+        # Registered disabled. `backup-offsite.sh` runs `rclone sync`, which mirrors
+        # deletions. Until this host has its own remote pinned to its own
         # root_folder_id, a scheduled run could mirror an empty local tree over the
         # snapshots it is meant to protect. Enable it by hand once the remote is
         # verified with `make backup-offsite-dry-run`.
@@ -144,15 +144,15 @@ foreach ($job in $Jobs) {
             ConvertTo-LocalTrigger -Utc $_ -Days $(if ($job.ContainsKey('Days')) { $job.Days } else { $null })
         })
 
-    # ⚠ FOUR DEFAULTS THAT KILL A LAPTOP JOB SILENTLY. Every one is set explicitly
+    # Four defaults kill a laptop job silently. Every one is set explicitly
     # because the default is wrong here, and none of them announces itself -- the task
     # simply does not run, or stops mid-flight, and `LastTaskResult` reports the stop as
     # though it were the job's own verdict.
     #
     #   DisallowStartIfOnBatteries  stops the moment the charger is out
-    #   StopIfGoingOnBatteries      KILLS A RUNNING SCAN mid-flight
+    #   StopIfGoingOnBatteries      kills a running scan mid-flight
     #   StopOnIdleEnd               stops when you touch the laptop
-    #   ExecutionTimeLimit          defaults to 72h, so ONE hung run blocks its
+    #   ExecutionTimeLimit          defaults to 72h, so one hung run blocks its
     #                               successor for three days
     #
     # StartWhenAvailable is the `Persistent=true` equivalent: it runs a missed job once
@@ -182,7 +182,7 @@ foreach ($job in $Jobs) {
             Write-Host "  registered           $($job.Name)" -ForegroundColor Green
         }
 
-        # ⚠ READ THE REGISTERED XML BACK. The in-memory trigger object accepts values
+        # Read the registered XML back. The in-memory trigger object accepts values
         # `Register-ScheduledTask` rejects and prints them back happily, and `-WhatIf`
         # skips the call that does the validating -- so inspecting the object proves
         # nothing. Only a read-back is evidence.

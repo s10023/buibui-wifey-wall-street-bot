@@ -24,33 +24,32 @@ from typing import Any
 
 # SEC fair-access requires a User-Agent that identifies the client and gives a
 # reachable contact, so *some* address has to reach the wire. It must not reach
-# SOURCE: this address was a literal here from PR #104 (2026-06-23), which was
-# fine while the repo was private and became a public PII disclosure the moment
-# it flipped on 2026-08-06. Contact comes from the environment — set
+# The address is never a literal in the source: a literal was fine while the
+# repo was private and became a public PII disclosure the moment it flipped
+# public (2026-08-06). Contact comes from the environment — set
 # EDGAR_CONTACT_EMAIL in `.env` (gitignored).
 #
-# ⚠ MEASURED 2026-08-29: a UA carrying a URL is REFUSED (HTTP 403) by both SEC
-# hosts, with or without parentheses. The previous fallback here was the repo
-# URL, documented as "SEC may throttle an address-less UA harder" — that was too
-# kind by the time it was measured: unset meant a hard 403 on every endpoint, so
+# Measured 2026-08-29: a UA carrying a URL is refused (HTTP 403) by both SEC
+# hosts, with or without parentheses. A repo-URL fallback therefore fails: an
+# unset contact means a hard 403 on every endpoint, so
 # `make wifey-pead-backfill` could not run at all on a box without the env var,
 # and the failure rendered as a network error rather than as a missing setting.
 # Probe matrix (data.sec.gov / www.sec.gov): name+email 200/200 · name only
 # 200/403 · URL with parens 403/403 · URL without parens 403/403. So the contact
-# must be email-shaped, and an unset contact now fails LOUD at the call site
+# must be email-shaped, and an unset contact fails loudly at the call site
 # instead of buying a 403 three frames away.
 _MIN_INTERVAL = 0.12  # ~8 req/s, comfortably under the SEC's 10 req/s ceiling
 _last_call = 0.0
 
 # Bounded retry for TRANSIENT failures only.
 #
-# ⚠ Without this, one dropped packet costs a filing PERMANENTLY: the backfill's
+# Without this, one dropped packet costs a filing permanently: the backfill's
 # callers catch per-filing exceptions and continue, so a network blip does not
 # crash a run, it silently removes rows from it and still reports success. That
 # is the repo's silent-surface class, and a long run on a laptop that changes
 # networks meets it constantly.
 #
-# ⚠ Only transient shapes are retried. A 403 is the User-Agent contract and a
+# Only transient shapes are retried. A 403 is the User-Agent contract and a
 # 404 is a document that does not exist; retrying either burns the backoff
 # budget three times over and buries a configuration error under what looks
 # like flakiness. 429 and 5xx are the server asking to be asked again.
@@ -177,8 +176,8 @@ def fetch_submissions(cik: str) -> dict[str, Any]:
 def fetch_submissions_shard(name: str) -> dict[str, Any]:
     """One older-filings shard named by ``filings.files[].name``.
 
-    ⚠ ``filings.recent`` is a WINDOW, not a history — SEC documents it as the
-    most recent 1,000 filings, and that bound was confirmed on ONE company: for a
+    ``filings.recent`` is a window, not a history — SEC documents it as the
+    most recent 1,000 filings, and that bound was confirmed on one company: for a
     heavy Form 4 filer it can start well inside the study window (measured for
     AAPL 2026-08-29: 1000 entries reaching back only to 2015-06-10, with one
     shard covering 1994→2015). A fetcher that reads ``recent`` alone silently

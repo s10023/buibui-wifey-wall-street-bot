@@ -15,7 +15,7 @@ from the primary substrate at all. That is precisely why this module, and not
 ``gate_audit.py``, is the host that unblocks the guard: the six candle warnings
 below need only OHLCV. CME-gap warnings do not exist in this fork.
 
-Ported from parent PR #492. The module body is byte-identical to upstream — all
+The module body is byte-identical to the parent repo's (PR #492) — all
 six ``alert_formatter`` helpers and the whole ``audit_guard`` public surface are
 present here with matching signatures, verified before the copy.
 """
@@ -217,8 +217,8 @@ def evaluate_warning_cells(
     INSUFFICIENT. The two-sample lift CI is a reported corroboration stamp,
     never gate-deciding.
 
-    ⚠ **The COSMETIC trigger was "both cohorts ≥ min_n" until 2026-08-13.**
-    That is a sample-size floor, not power: it let a cell whose CI was many
+    **The COSMETIC trigger is not "both cohorts ≥ min_n".**
+    That is a sample-size floor, not power: it lets a cell whose CI was many
     times the bar be published as "this warning carries no information".
     COSMETIC is a positive claim about absence and needs ``powered_null``
     (``audit_guard``: CI strictly inside ±bar).

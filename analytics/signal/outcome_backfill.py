@@ -40,10 +40,10 @@ value and `outcome_cost_r` stays NULL. NULL and 0.0 are kept distinct on purpose
 migration 004, whose entire guard is `outcome_cost_r IS NULL`. That default is
 also what keeps every pre-existing test honest.
 
-⚠ **Cost was an ASYMMETRY between the books; it is not the largest error in
-either.** A gap THROUGH the stop still books exactly -1.0R here, because the
-resolver reads levels rather than fills — and `engine.py` does the same thing
-(`trade.exit_price = sl_price`), so that absence is SHARED and does NOT bias the
+**Cost was an asymmetry between the books; it is not the largest error in
+either.** A gap through the stop books exactly -1.0R here when the
+resolver reads levels rather than fills, and `engine.py` does the same thing
+(`trade.exit_price = sl_price`), so that absence is shared and does not bias the
 comparison the way uncharged costs did. It does mean both books overstate: on the
 2026-08-19 ledger 21.1% of losses (46 of 218) gapped through their stop, worth
 about -0.10R per resolved row against this cost charge's -0.014R, i.e. ~7x
@@ -76,34 +76,33 @@ from analytics.signal._common import parse_timeframe_secs
 logger = logging.getLogger(__name__)
 
 
-# Hold caps in BARS — never in calendar time. Each is calibrated to the FRACTION
-# OF TRADES THAT RESOLVE WITHIN IT, measured over the full closed-trade
+# Hold caps in bars, never in calendar time. Each is calibrated to the fraction
+# of trades that resolve within it, measured over the full closed-trade
 # population in `backtest_trades` (2026-08-12): `4h` 30 bars covers **91.0%** of
 # 15,799 trades, `1d` 14 bars covers **85.5%** of 7,168. So a cap bites the tail
 # and leaves the body alone. That coverage figure — not a day count — is the
 # thing to reproduce when adding or revisiting a timeframe; the script is
 # `docs/plans/scripts/max_hold_coverage.py`.
 #
-# Coverage MUST be computed with the one-bar offset below (a live cap of N
+# Coverage must be computed with the one-bar offset below (a live cap of N
 # admits `bars_held <= N-1`). Comparing `bars_held <= N` instead inflates every
 # figure by roughly a percentage point and is not comparable across timeframes,
 # because the size of the bar-0 bucket differs sharply by TF (`4h` 20%, `1d`
 # 28%, `1wk` 58%).
 #
-# READ THESE AS BARS. US-equity RTH does not have six `4h` bars in a day — it
-# has TWO — so the old "5d" annotation understated the real window by 3×.
-# Counting a row's age in calendar days against that annotation is how a
-# correctly-open row looks overdue: on 2026-08-12 all 31 open ledger rows were
-# simply starved of bars (`backfill_outcomes` returned `open: 31`, nothing
-# resolvable), while the calendar reading manufactured a phantom "23 rows past
-# their hold window".
+# Read these as bars. US-equity RTH has two `4h` bars in a day, not six, so a
+# "5d" reading understates the real window by 3×. Counting a row's age in
+# calendar days is how a correctly-open row looks overdue: measured 2026-08-12,
+# all 31 open ledger rows were simply starved of bars (`backfill_outcomes`
+# returned `open: 31`, nothing resolvable), while the calendar reading produced a
+# phantom "23 rows past their hold window".
 #
 # Override per-TF via `backfill_outcomes(..., max_hold_bars_by_tf=...)`. That is
-# a FUNCTION parameter only — there is no `[outcome_backfill]` TOML block, and
+# a function parameter only — there is no `[outcome_backfill]` TOML block, and
 # `signal_runner` passes no override, so on the production path these defaults
 # are always the effective values.
 #
-# Every timeframe any config scans MUST have an entry here — `_resolve_max_hold`
+# Every timeframe any config scans must have an entry here — `_resolve_max_hold`
 # refuses an unlisted one rather than guessing, and `test_max_hold_covers_every
 # _configured_timeframe` fails the build if a config adds a timeframe without one.
 DEFAULT_MAX_HOLD_BARS: dict[str, int] = {
@@ -114,9 +113,9 @@ DEFAULT_MAX_HOLD_BARS: dict[str, int] = {
     # 7 bars ≈ 7 weeks. Covers 91.1% of 729 closed `1wk` trades, matched
     # deliberately to `4h`'s 91.0% rather than `1d`'s 85.5% (which would be 5):
     # the error is asymmetric. Too small force-expires a signal that would have
-    # reached TP/SL and writes that wrong label PERMANENTLY, because this module
+    # reached TP/SL and writes that wrong label permanently, because this module
     # only ever revisits rows where `outcome IS NULL`; too large merely leaves a
-    # row open one more cycle. Chosen by the user 2026-08-12. Note the live
+    # row open one more cycle. The live
     # window is offset by one from the backtest's: `_scan_forward` counts bars
     # strictly after the SIGNAL candle, while a backtest trade enters on the next
     # bar's open and can exit on it (58% of `1wk` trades do), so
@@ -168,7 +167,7 @@ def implied_tp_r(
     target it WALKED), `scanner.py` (which records it at fire time) and
     `analytics/exits/audit.py` (which re-derives it read-side for the replay) —
     because inlining it four times is what let the declared/effective split
-    diverge unnoticed in the first place (#165).
+    diverge unnoticed in the first place.
 
     Falls back to `rr_ratio` when `tp_price` is absent, zero, or on the wrong
     side of entry — the same guards `alert_formatter` applies before trusting
@@ -327,8 +326,8 @@ def _scan_forward(
     sl_first = int(sl_idxs[0]) if len(sl_idxs) else len(t)
     tp_first = int(tp_idxs[0]) if len(tp_idxs) else len(t)
 
-    # A bar that OPENS beyond the level fills there. Both branches stay
-    # byte-identical to the pre-2026-08-20 behaviour when the bar did NOT gap,
+    # A bar that opens beyond the level fills there. Both branches stay
+    # byte-identical to the no-gap behaviour when the bar did not gap,
     # so the rr_ratio fallback inside `implied_tp_r` is preserved untouched for
     # every non-gapped win. Mirrors engine.py exactly — see fills.py.
     if sl_first <= tp_first and sl_first < len(t):
@@ -404,8 +403,8 @@ def backfill_outcomes(
 
     `cost_model` / `fee_pct` come from the live `[backtest]` config so the ledger
     is charged exactly what a backtest of the same signal would be (see
-    `live_cost_r`). BOTH DEFAULT TO NO COST, which reproduces the pre-2026-08-19
-    gross behaviour — the default is deliberate, because a resolver that invents
+    `live_cost_r`). Both default to no cost, which reproduces the gross
+    behaviour; the default is deliberate, because a resolver that invents
     a cost basis when its caller supplies none would put a second basis in the
     same column. `signal_runner` passes both from `BacktestFilterConfig`.
     """
@@ -461,7 +460,7 @@ def backfill_outcomes(
         # far — is upserted like any other.
         #
         # Measured on the wifey ledger 2026-08-11: 0 of 264 resolved rows
-        # currently disagree with what the completed bars produce, so this is
+        # disagree with what the completed bars produce, so this is
         # preventive rather than a repair — but 29 of them (11%) resolved ON the
         # last bar of their hold window, which is the exposed shape. What the
         # bound really buys is that the answer stops depending on WHEN the

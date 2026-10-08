@@ -24,7 +24,7 @@ That TP-in-R is `implied_tp_r`, re-derived from the row's own geometry
 structural-TP alert `rr_ratio` is the DECLARED target while `tp_price` is the
 effective one, so reading it raw inflates the win clamp and the `tp_r_p50`
 median — the defect migration 003 restated the ledger for. Routing through the
-single shared definition means this module no longer depends on that
+single shared definition means this module does not depend on that
 restatement having happened: an unmigrated or future writer cannot reintroduce
 it here.
   - expired: both extremes of every in-window bar count.

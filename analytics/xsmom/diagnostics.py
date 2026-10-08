@@ -46,8 +46,8 @@ class BetaAttribution:
 def _ann_sharpe(r: npt.NDArray[np.float64], ann_days: float) -> float:
     """Annualised Sharpe from RAW ``ann_days`` — it square-roots internally.
 
-    ⚠ **Deliberately not** :func:`analytics.research_guards.ann_sharpe`, whose
-    second argument is ALREADY ``sqrt(periods_per_year)``. The two share a name
+    **Deliberately not** :func:`analytics.research_guards.ann_sharpe`, whose
+    second argument is already ``sqrt(periods_per_year)``. The two share a name
     and a shape and differ by a ``sqrt`` — about 15.9x at 252 — so swapping them
     changes every number here and raises nothing. The wrapper survives to keep
     this module's raw-``ann_days`` call sites honest; only the per-period half is

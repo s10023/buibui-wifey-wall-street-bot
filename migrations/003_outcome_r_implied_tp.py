@@ -1,4 +1,4 @@
-"""Migration 003 — signal_alert_outcomes: credit the EFFECTIVE TP, not the declared one
+"""Migration 003 — signal_alert_outcomes: credit the effective TP, not the declared one
 
 `scanner.py` recorded `rr_ratio = eff_alert_tp_r` (the *configured* `tp_r`) while
 `_resolve_outcome_sl_tp` set `tp_price` to a detector's **structural** TP when it
@@ -14,7 +14,7 @@ resolver's label on 267 of 267 rows only once it derived the target from
 `tp_price`. Fixed forward in the same PR as this migration: the resolver now
 credits `implied_tp_r`, and the scanner records it.
 
-TWO COLUMNS, TWO DIFFERENT CLAIMS, both re-derived from the row's own stored
+Two columns, two different claims, both re-derived from the row's own stored
 geometry (`entry_price`, `sl_price`, `tp_price`) — never from config, so nothing
 here is reconstructed or guessed:
 
@@ -24,12 +24,12 @@ here is reconstructed or guessed:
     and by that module's `tp_r_p50` cohort median. Both now derive the target
     through `implied_tp_r` themselves, so this migration is no longer the only
     thing standing between them and a declared value — but it remains what makes
-    the STORED column honest for anything that reads it directly.
+    the stored column honest for anything that reads it directly.
   * `outcome_r` — the R credited on resolution. Rewritten on **wins only**: a
     loss books -1.0 and an expired row books mark-to-market off `sl_price`, so
     neither ever read `rr_ratio`.
 
-NO ERA CUTOFF, deliberately — unlike 002, and this was checked against the DATA
+No era cutoff, deliberately — unlike 002, and this was checked against the data
 rather than against git. An era split would look like resolved wins whose
 `outcome_r` matches the *implied* target while disagreeing with `rr_ratio`; there
 are none. Measured on the pre-migration `.bak`: of **45** resolved wins, **45**
