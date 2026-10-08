@@ -320,6 +320,7 @@ Options:
 - `--timeframes 4h 1d 1wk` — timeframes to fetch (default: `1h 4h`). Supported: `1h`, `4h`, `1d`, `1wk`
 - `--universe` — resolve symbols from `config/universe.json` (505-member research breadth universe) instead of the watchlist
 - `--pundit` — resolve symbols from the pundit call ledger (`docs/plans/pundit-calls.jsonl`) instead of the watchlist. Mutually exclusive with `--universe`
+- `--core` — resolve to `^GSPC`, the survival core's signal index. Use it rather than `--symbols ^GSPC`: on Windows `poetry.exe` strips the caret and fetches `GSPC`. Mutually exclusive with `--universe` and `--pundit`
 
 **Incremental sync — fetch new candles since last stored:**
 
@@ -329,7 +330,7 @@ poetry run python wifey.py analytics sync
 
 Options:
 
-- `--symbols` / `--timeframes` / `--universe` / `--pundit` — same as backfill
+- `--symbols` / `--timeframes` / `--universe` / `--pundit` / `--core` — same as backfill
 - Requires backfill to have been run first for each symbol/timeframe
 
 `sync` also re-syncs a whole series by itself when the provider restates it. It re-fetches the
@@ -349,6 +350,7 @@ ledger's symbols need their own refresh:
 ```bash
 make wifey-pundit-sync        # 1d only — these are horizon-scored calls, not intraday signals
 make wifey-pundit-backfill    # first-time history for a newly-quoted underlying
+make core-sync                # ^GSPC 1d for the survival-core line; the daily check runs it
 ```
 
 Skipping this does not fail loudly: `pundit_score` degrades a symbol with stale bars to
@@ -1083,7 +1085,7 @@ make poetry-update
 make backup          # Verified snapshot of analytics.db + docs/plans + memory → ~/backups/wifey
 make backup-dry-run  # Report what would be captured; writes nothing
 make backup-check    # Age of the newest verified snapshot; advisory, never gates CI
-make session-digest  # One screen: scheduler, OHLCV, backup, cadence reds + open Issues (TELEGRAM=1 sends it)
+make session-digest  # One screen: scheduler, OHLCV, backup, cadence reds, core state + open Issues (TELEGRAM=1 syncs ^GSPC and sends it)
 ```
 
 **Analytics:**

@@ -310,7 +310,7 @@ failing the alert on precisely the crash it exists to report. `utils/telegram.py
 Failure is the only signal this channel gives, which makes it unfalsifiable in the other
 direction: a timer that silently stopped firing and a timer with nothing to report look identical
 from the alert side. `wifey-daily-check` is the heartbeat that closes it: it sends
-`tools/session_digest.py` (scheduler, OHLCV, backup and cadence reds, open Issues) to the personal
+`tools/session_digest.py` (scheduler, OHLCV, backup and cadence reds, the survival core's state, open Issues) to the personal
 channel every day, green included, so a day with no message means this box's scheduler stopped. It
 cannot report tasks that were never registered, being one of them; the `SessionStart` hook in
 `.claude/settings.json` runs the same digest at every session start for that case.

@@ -717,6 +717,15 @@ Two properties are load-bearing: it exits 0 unless `EXIT_NONZERO=1` (a probe tha
 `BROKE` line, never a traceback), and a failed Issue fetch prints `BROKE could not fetch open Issues`
 rather than an empty list. The pure half is tested in `tests/test_session_digest.py`.
 
+The core line (#423) is the survival core's state, OV-1 × VM (ruled in #429), from
+`analytics/overlay/live.py`: exposure, the MA leg with sessions held and the close that would flip
+it, VM's `σ̂` and weight, and the as-of close. `collect_core` reads `^GSPC` read-only. A locked or
+absent DB is AMBER `core unreadable`, like the freshness probe. `core_findings` is AMBER
+`core stale` when a closed NYSE session is missing; a bar dated today counts as closed from 21:00
+UTC, the later DST close, so a pre-open run expects yesterday's close. No watchlist carries
+`^GSPC` and `go-live` never syncs it, so `TELEGRAM=1` runs `make core-sync` first, and a failed
+sync never blocks the send.
+
 ## host_platform.py — which scheduler this box actually has
 
 `tools/host_platform.py` is one predicate, `is_windows()`, wrapping `os.name` (not `sys.platform`).
@@ -1785,8 +1794,12 @@ Fixed by `wifey analytics {sync,backfill} --pundit`, wrapped as `make wifey-pund
   routed.
 - An empty resolve exits non-zero rather than falling back to the watchlist. A fallback would
   resync the same 13 names go-live already covers and report success, reproducing the defect.
-- `--universe` and `--pundit` are mutually exclusive at argparse level, so a conflicting pair is
-  rejected outright instead of silently resolving by precedence.
+- `--universe`, `--pundit` and `--core` are mutually exclusive at argparse level, so a
+  conflicting pair is rejected outright instead of silently resolving by precedence.
+
+`--core` (`make core-sync`) resolves to `^GSPC` for the survival-core line. It is a flag rather
+than `--symbols ^GSPC` because `poetry.exe` on Windows strips the caret from argv, so that
+invocation syncs `GSPC`, logs "run backfill first" and exits 0.
 
 `INVALID_LEDGER_SYMBOLS` (in `utils/config_validation.py`) is the single definition of "not a
 symbol," imported by both the loader and this scorer — if they diverge, the sync path fetches

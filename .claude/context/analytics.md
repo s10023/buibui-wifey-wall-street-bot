@@ -1064,6 +1064,14 @@ Not a sleeve: an overlay is judged against buy-and-hold on the overlay yardstick
 - `replay.py` — `arm_returns`: `bh` earns `mkt`; each arm in `positions` (default
   `OV1_POSITIONS = {"ov": "pos"}`) earns `mkt` on its position, fractional or not, and `rf` on the
   rest, less `bps × |Δpos|`. No `Trade` objects, so `cost_model.py` does not apply.
+- `live.py` — the core's daily state (#423; the core is OV-1 × VM per #429). `core_state` reads
+  both legs through `ma_signal` and `rules.weight_from_sigma`, VM's one formula, which
+  `vol_weight` also calls. `CORE_SYMBOL = "^GSPC"`. `VM_SIGMA_TARGET = 0.00709` is the audit's
+  pinned in-sample median, since the French file is not read here, and `σ̂` comes from `^GSPC`
+  price returns because the French file lags by weeks. `flip_level` is the mean of the last 199
+  closes: the next close is above the 200-session SMA that includes it exactly when it exceeds
+  that mean. `completed_closes` drops a bar dated today before 21:00 UTC.
+  `tests/test_overlay_live.py` pins the read-out against `ma_signal` and `vol_weight`.
 - `report.py` — `overlay_verdict` (EXCLUDED is checked first; a leg-1 CI straddling zero returns
   `INSUFFICIENT`, named by Amendment 1), `bootstrap_legs` and `evaluate_overlay` (both take a
   `base` and an `arm`, so VM's increment test benchmarks against `ov`; both legs
