@@ -1,19 +1,14 @@
 ---
 name: post-branch
 description: >
-  Post-branch docs sweep + handoff — diff the branch's behaviour changes against
-  the doc surfaces (CLAUDE.md, README.md, MEMORY.md, Makefile, docker-compose.yml,
-  .claude/context/*.md, .claude/skills/*/SKILL.md,
-  docs/plans/next-conversation-prompt.md)
-  and propose targeted edits where they've drifted, then run a pre-merge
-  readiness check and offer a fresh-conversation handoff prompt. Use BEFORE
-  `gh pr create`, while the branch is still local-only, and fold the resulting
-  "Documentation updates" section into the initial PR body.
-  Skip for pure refactors, bug fixes covered by tests, dependency bumps, and
-  lint-only commits — the behaviour gate decides. Confirm every edit
-  before writing; never force-push without explicit OK. Also triggers on the
-  user saying "/post-branch", "wrap up the branch", "docs check",
-  "pre-merge check", or "next conversation prompt".
+  Post-branch docs sweep and handoff: diff the branch's behaviour changes against
+  the doc surfaces, propose edits where they drifted, run the pre-merge readiness
+  check and write the fresh-conversation handoff. Run it before `gh pr create`,
+  while the branch is local-only, and fold its "Documentation updates" section
+  into the initial PR body. Its behaviour gate skips pure refactors, bug fixes
+  covered by tests, dependency bumps and lint-only commits. Confirm every edit
+  before writing. Also triggers on "/post-branch", "wrap up the branch", "docs
+  check", "pre-merge check" or "next conversation prompt".
 allowed-tools: Bash, Read, Edit, Write
 effort: high
 ---
