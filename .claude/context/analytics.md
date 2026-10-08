@@ -1150,6 +1150,29 @@ argued a priori that "trade toward the nearest unfilled edge" is mechanically a 
 predicted a high correlation to 1-session reversal. Measured −0.163 — the nearest unfilled edge is
 often days old and unrelated to yesterday's return. Prediction wrong, control right.
 
+## tom/ — turn-of-the-month exposure (#422)
+
+An edge claim on the calendar, frozen in the edge-pillars spec § Amendment 2. Reads only the
+French daily file; no `^GSPC`, no `analytics.db`. Verdict in CLAUDE.md's sleeve table.
+
+- `rules.py` — `tom_position(dates)`: 1.0 on each month's last session and first three
+  (`FIRST_SESSIONS`), from the calendar alone, so no return can leak in. The last date of any
+  calendar reads as a month end because nothing after it is visible; `complete_months` cuts a
+  trailing month the XNYS schedule says is unfinished. `tom_frame` labels the file's whole
+  calendar before cutting the panel at `PRIMARY_START` (1988) or `SECONDARY_START` (2006), and
+  `lag` shifts the position later.
+- `report.py` — `hedged_returns` hedges with `overlay.report.beta_attribution`'s panel `β`;
+  `evaluate_tom` gates the hedged series (annualized Sharpe ≥ `GATE_SHARPE`, DSR ≥ 0.95 at
+  `N_TRIALS = 4` with `sr_variance = SR_VARIANCE_ANNUAL / 252` and the series' own moments, and a
+  stationary-bootstrap lower bound > 0 on OV-1's block, resample count and seed). `tom_verdict`
+  orders FOUND, EXCLUDED (CI upper bound below 0.7), BOUNDED, INSUFFICIENT; `premise_reading` is
+  separate. `window_spread` bootstraps the inside-minus-outside excess return on paired sessions.
+- Costs reuse `overlay.replay.arm_returns` (`positions={"tom": "pos"}`): 24 sides a year.
+
+Causality: `tests/test_tom.py::TestCausality` cuts the calendar at six mid-month sessions; every
+earlier label holds, and a positive control asserts the cut session itself is mislabelled.
+Audit tool: `tools/tom_audit.py` (`make wifey-tom-audit`).
+
 ## velocity/ — velocity-alternation sleeve (edge-hunt #6; thesis H-007)
 
 Tests whether the pace of a decline predicts the pace of the next move (slow grind → sharp rally).

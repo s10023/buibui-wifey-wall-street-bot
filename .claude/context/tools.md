@@ -1339,6 +1339,20 @@ VM weight's mean and the gated half-widths. The full run computes ~34 bootstrap 
 two legs at the primary, 5 bps, execution lag, real-time target and SPY), so it takes well over
 half an hour; run it in the background.
 
+## tom_audit.py — TOM on beta-hedged returns
+
+Runs the frozen TOM pre-registration (edge-pillars spec § Amendment 2) from the French file
+alone, reusing `overlay_audit.py`'s loader and cost constants. Two arms (`bh`, `tom`), gated on the
+hedged series by `analytics/tom/report.py::evaluate_tom`.
+
+**Run:** `make wifey-tom-audit ARGS=--precheck` first, then `make wifey-tom-audit`
+(`[--french-zip PATH] [--precheck]`). Without `--french-zip` it downloads the current file, so pass
+the audited zip to reproduce its numbers.
+
+`--precheck` prints both panels, the window's share of sessions, the count of months whose window
+is not four sessions, and the hedged-Sharpe CI half-widths, and no point estimate. The full run
+computes seven bootstrap CIs at 5,000 resamples each.
+
 ## edgar_client.py — the SEC User-Agent contract
 
 Measured 2026-08-29: a User-Agent carrying a URL is refused (HTTP 403) by both SEC hosts, with or
