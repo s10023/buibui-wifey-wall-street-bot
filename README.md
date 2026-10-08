@@ -41,7 +41,7 @@ Forked from the parent `buibui-moon-trader-bot` (crypto / Binance Futures); the 
   (`docs/plans/mechanics-backlog.md`), and pundit setups
   (`docs/plans/pundit-calls.jsonl`). Ported from parent #466/#467. A post inside a
   thread is recovered upward to its root (`--thread`): the syndication endpoint exposes
-  the reply-to chain but has no replies/children field, so **bookmark the LAST post of a
+  the reply-to chain but has no replies/children field, so **bookmark the last post of a
   thread, never the parent**. Posts carrying video are handed to `/ingest-video` rather
   than skipped (parent #591). Every setup row is
   sign-checked before it is written (`make wifey-check-levels`, or
@@ -93,8 +93,8 @@ Forked from the parent `buibui-moon-trader-bot` (crypto / Binance Futures); the 
   committed `.example`), and state lives in `docs/plans/yt-feed-state.json`.
   **`poll` and `backfill` write nothing**: consumption is stamped only by `mark`, and only
   after the review gate has routed the batch — an aborted run can therefore never
-  permanently eat a video, which is the same watermark-on-send defect this repo fixed in
-  #68. Ported from parent #515 at parent HEAD, so its six follow-up fixes land with it.
+  permanently eat a video, which is the watermark-on-send defect fixed in #68. Ported
+  from parent #515 together with its six follow-up fixes.
 
 ---
 
@@ -493,7 +493,7 @@ the config already carries, so it answers "is what we shipped still the right ch
 than "what should we ship". Both are wrapped by `/wfo-sweep`, which is the trusted production
 path for `tp_r`; run them directly only outside that chain.
 
-⚠ Both are dormant while the TA book is frozen (see CLAUDE.md).
+Both are dormant while the TA book is frozen (see CLAUDE.md).
 
 ### Recalibrate — Update Confidence Star Ratings
 
@@ -501,7 +501,7 @@ Reads `backtest_runs` from `analytics.db` and maps real avg R per strategy to 1�
 confidence ratings. Avg R is **pooled over trades** across symbols
 (`sum(avg_r × closed_trades) / sum(closed_trades)`), matching the win rate beside it — a
 symbol with 1 trade cannot move a star as far as one with 50. Each signal-watch TOML config gets its own set of ratings stored in the
-`confidence_ratings` DB table — stars are no longer shared globals baked into source code.
+`confidence_ratings` DB table — stars are not shared globals baked into source code.
 
 ```bash
 # Per-config workflow (preferred — no source patching)
@@ -528,9 +528,9 @@ Two of those filters exist because their absence failed silently until 2026-08-0
   months after removal.
 - **Only sweep runs** (`sweep_id IS NOT NULL`). The live EV gate writes `backtest_runs`
   rows too — one per direction-leg, single strategy, no live-parity params — and since
-  rows are deduplicated by recency those newer rows used to supersede the competed sweep
-  rows for that symbol. As of 2026-08-07 the two writers are also keyed apart: their
-  `run_id` was identical, so the live gate's `INSERT OR REPLACE` **overwrote** the sweep
+  rows are deduplicated by recency those newer rows would supersede the competed sweep
+  rows for that symbol. The two writers are also keyed apart (since 2026-08-07): with an
+  identical `run_id` the live gate's `INSERT OR REPLACE` **overwrote** the sweep
   row rather than competing with it, and this filter then dropped the cell's symbols
   instead of recovering them (`signal_watch` was rated on 263 of 312 rows). Every writer
   now stamps an `origin`, so the rows accumulate side by side.
@@ -603,7 +603,7 @@ The `[backtest]` table in `config/signal_watch.toml` controls a per-alert expect
 [backtest]
 mode = "hard"           # "soft": append win rate | "hard": suppress low performers | "off"
 days = 365              # lookback window; sets the live EV gate's backtest window
-                        # (declared in strategy_params.toml; executed as of 2026-08-06)
+                        # (declared in strategy_params.toml and executed)
 min_trades = 12         # global fallback — applied to directional trade count (longs for LONG alerts, shorts for SHORT)
 min_trades_4h  = 5      # per-TF overrides; calibrated from DB p25 directional counts
 min_trades_1d  = 2
@@ -665,7 +665,7 @@ Order: `regime` (Step −1) → `htf_ema` / F8 (Step 0) → `adr_suppress_thresh
 # down). Reversal signals at the extreme still fire. Falls back to blanket suppress when
 # move direction is unknown.
 adr_suppress_threshold = 0.80   # e.g. 0.80 = suppress chasing direction when 80%+ consumed
-# INTRADAY TIMEFRAMES ONLY (2026-08-06). "Range consumed UP TO this candle" needs >1 bar
+# Intraday timeframes only. "Range consumed UP TO this candle" needs >1 bar
 # per calendar day to be a partial quantity; `1d` and `1wk` have exactly one, so the gate
 # no-ops there via `adr_gate_applies()`. On a one-bar day the ratio silently became a
 # high-range-day filter and its direction guard was true by construction, costing 28-82%
@@ -714,11 +714,11 @@ bos = ["high_vol", "range"]     # routing-audit-corrected (PR #366); trend regim
 enabled = true
 mode = "soft"                   # flip to "hard" after ≥2 weeks of soft-mode logs
 
-# No strategy sets suppress_long / suppress_short as of 2026-08-06 (PR #143). `bos` carried
+# No strategy sets suppress_long / suppress_short (PR #143, 2026-08-06). `bos` carried
 # suppress_long until then, but it arrived from the crypto parent one day before the fork
 # (parent PR #367) citing n=34,767 long trades — more than this repo's entire backtest_trades
-# table (24,196 rows), so it was never equity data. Re-derived on equities the claim INVERTS:
-# long is bos's BETTER leg on both timeframes. The gate below still reads these keys; it just
+# table (24,196 rows), so it was never equity data. Re-derived on equities the claim inverts:
+# long is bos's better leg on both timeframes. The gate below still reads these keys; it just
 # has nothing to act on. Re-adding one must break
 # tests/test_signal_config.py::test_no_shipped_strategy_sets_direction_suppress.
 ```
@@ -818,7 +818,7 @@ systemctl --user daemon-reload
 systemctl --user enable --now wifey-signal-watch.timer
 
 systemctl --user list-timers wifey-signal-watch.timer
-systemctl --user start wifey-signal-watch.service    # fire one now — ⚠ this SENDS
+systemctl --user start wifey-signal-watch.service    # fire one now — this sends
 journalctl --user -t wifey-signal-watch -n 50        # -t, not -u: the unit sets SyslogIdentifier
 ```
 
@@ -843,11 +843,11 @@ host down) permanently loses that day's signals. Add `--catch-up` to replay ever
 candle since the last run instead — e.g. `make wifey-signal-watch ONCE=1 TELEGRAM=1 CATCH_UP=1`
 (or `wifey signal watch --once --catch-up --telegram`). A recovered candle **does** reach Telegram
 while its close is inside `max_alert_age_hours`; older ones land in the DB and outcome ledger only.
-(This sentence used to say recovered candles are *never* sent — that was the pre-#260 rule, and it
-contradicted the clause beside it.) Leaving `CATCH_UP=1` on every run is safe because the window is
+(The pre-#260 rule was that recovered candles are never sent; it contradicted the
+clause beside it.) Leaving `CATCH_UP=1` on every run is safe because the window is
 a **calendar** bound: a stale candle ages out rather than arriving late. The first run for a fresh
 state file only seeds the latest candle, so enabling it on an established deployment is safe (no
-burst). ⚠ `max_alert_age_hours` is **inert** without it — only catch-up emits an event for a
+burst). `max_alert_age_hours` is **inert** without it — only catch-up emits an event for a
 non-latest candle in the first place, which is why the scheduled unit below passes it.
 
 **`max_alert_age_hours`** (shared base, `24.0`) sets how stale a candle may be and still alert,
@@ -910,11 +910,11 @@ That is the **likely-failure** leg only (fat-finger delete, `git clean`, a bad s
 it does not survive disk death or a lost laptop. `make backup-offsite` is the leg that does:
 an `rclone sync` of that one directory to `gdrive-wifey:snapshots`, on wifey's **own** rclone
 remote pinned to its own Drive folder so it cannot reach the crypto parent's backups.
-⚠ `sync` mirrors deletions in both directions — read the off-site section before setting
+`sync` mirrors deletions in both directions — read the off-site section before setting
 `WIFEY_BACKUP_REMOTE`, and use `make backup-offsite-dry-run` first.
 
 Both legs ship **opt-in** systemd user timers — nothing installs them, exactly like the
-signal-watch timer above. Every wifey unit is `Type=oneshot`, so there is still no wifey daemon. ⚠ A green timer is not a current backup: alerting is failure-only, so a timer that
+signal-watch timer above. Every wifey unit is `Type=oneshot`, so there is still no wifey daemon. A green timer is not a current backup: alerting is failure-only, so a timer that
 silently stopped and one with nothing to report look identical. `make backup-check` dates the
 newest snapshot from its own manifest, which is the *input* the off-site leg copies rather than
 that copy's exit code. Full rationale, setup, coverage policy, and restore procedure:

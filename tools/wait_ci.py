@@ -17,16 +17,16 @@ it swallowed a `gh` failure into "empty means zero".
 Every guard here is a recorded scar, so none of them is decoration:
 
 * **A job/check-count FLOOR, not "nothing pending".** An empty rollup satisfies
-  "no unresolved checks", and the rollup IS empty for the first ~30-60s after
+  "no unresolved checks", and the rollup is empty for the first ~30-60s after
   `gh pr create` — so the naive loop exits instantly and renders identically to
   "all green" (wifey #194). The same vacuity bites the branch gate while a
   chained job does not yet exist: the count arrives as 3, then 5.
-* **An empty-string conclusion is PENDING.** A queued check returns `""`, not
+* **An empty-string conclusion is pending.** A queued check returns `""`, not
   `null`, so a guard written against `null` never fires (#195).
-* **`steps == 0` is a BILLING failure, never a code one.** When the Actions
+* **`steps == 0` is a billing failure, never a code one.** When the Actions
   allowance is exhausted every job fails in 2-4s having executed nothing, which
   renders exactly like a real test failure. Flip the repo public; never debug it.
-* ⚠ **But `steps == 0` alone does NOT settle it — the CONCLUSION does.** A job
+* **But `steps == 0` alone does not settle it — the conclusion does.** A job
   GitHub never created settles ``SKIPPED`` with no steps, and that happens two
   ways that are not billing: a job-level ``if:`` filter, and a ``needs:``
   dependency that failed. This repo has the second shape wired —
@@ -34,26 +34,26 @@ Every guard here is a recorded scar, so none of them is decoration:
   timed-out test leaves it ``SKIPPED`` at ``steps=0``. Reading that as billing
   tells the reader to flip a private repo public in order to debug a test
   failure, which is the most expensive possible wrong action. **Billing requires
-  a FAILED conclusion at zero declared steps**; an exhausted allowance also
+  a `FAILED` conclusion at zero declared steps**; an exhausted allowance also
   leaves chained jobs skipped, so the discriminator is the failing row, never the
   matrix read through its skips.
-* **A PASS in seconds needs the same scrutiny as a FAIL in seconds.** Some checks
+* **A pass in seconds needs the same scrutiny as a fail in seconds.** Some checks
   legitimately finish in 7s (`markdownlint`, `frontend-check`) because they sit
   behind a `dorny/paths-filter`. Duration narrows suspicion; only `steps` settles it.
-* ⚠ **`steps` is reported EXECUTED/DECLARED, because declared alone reads
+* **`steps` is reported executed/declared, because declared alone reads
   backwards.** A job behind a `dorny/paths-filter` still *declares* every step it
   might run and then skips most of them: measured upstream on the parent's #670, a
   docs-only PR declared 14 steps in `lint-typecheck-test` and executed 5, and a
   bare ``steps=14`` reads as "the heavy leg ran on a docs diff" — the exact
   opposite of what happened, and it contradicts the paths-filter claim in
-  `CLAUDE.md`, which is correct. The BILLING discriminator is untouched: an
+  `CLAUDE.md`, which is correct. The billing discriminator is unchanged: an
   exhausted allowance declares nothing, so ``steps=0/0`` still settles it, and
   populated-vs-empty remains the test.
-* ⚠ **A `gh` failure RAISES; it is never turned into data.** This is the fix that
-  motivated the rewrite. The previous `gh()` returned `""` on a non-zero exit, so
-  an unreadable `actions/runs` response left every step count at `None` and the
-  tool printed **"all green, all executed real steps"** — a false green asserting
-  the one thing it had just failed to observe. Transient failures are retried
+* **A `gh` failure raises; it is never turned into data.** Returning `""` on a
+  non-zero exit would leave every step count at `None` for an unreadable
+  `actions/runs` response, and the tool would print **"all green, all executed
+  real steps"** — a false green asserting the one thing it had just failed to
+  observe. Transient failures are retried
   inside the poll loop; an unrecoverable one propagates.
 
 Exit codes: ``0`` green and observed · ``1`` genuine failure · ``2`` timeout ·
@@ -97,12 +97,12 @@ EXIT_UNOBSERVED = 4
 
 
 class GhError(RuntimeError):
-    """A `gh` invocation failed. NEVER convert this into an empty result.
+    """A `gh` invocation failed. Never convert this into an empty result.
 
     ``permanent`` marks a 4xx that no retry will fix (403, 404, 401, 422 ...).
     The poll loop re-raises those instead of retrying: the cloud proxy answers
-    every GraphQL call with a 403, and upstream's loop printed "transient" dozens
-    of times until killed, never reaching its banner or exit code (parent #893).
+    every GraphQL call with a 403, and a loop that retries it prints "transient"
+    dozens of times until killed, never reaching its banner or exit code (parent #893).
     """
 
     def __init__(self, message: str, *, permanent: bool = False) -> None:
@@ -145,9 +145,9 @@ def gh(*args: str) -> str:
 
     ``owner_env`` inherits the environment (a bare env= drops HOME, and `gh` then
     litters `.local/state/gh/` into the CWD), keeps an explicit ``GH_TOKEN``, and
-    falls back to ambient auth when the token lookup fails. The lookup used to run
-    with ``check=True``: in a cloud container s10023 is not in `gh`'s keyring, so
-    it raised a raw ``CalledProcessError`` past the banner and the exit-code
+    falls back to ambient auth when the token lookup fails. The lookup does not use
+    ``check=True``: in a cloud container s10023 is not in `gh`'s keyring, so
+    that would raise a raw ``CalledProcessError`` past the banner and the exit-code
     contract (parent #887).
     """
     out = subprocess.run(
@@ -220,8 +220,8 @@ def verdict(rows: Sequence[JobRow]) -> tuple[int, list[str]]:
         if conclusion == "SKIPPED":
             skipped += 1
             flag = "  <-- SKIPPED, which is NOT billing (the job was never created)"
-        # A cancelled job can execute zero steps exactly as a skip can, and read as
-        # billing it would tell the reader to flip the repo public (parent #880).
+        # A cancelled job can execute zero steps exactly as a skip can, and reading it
+        # as billing would tell the reader to flip the repo public (parent #880).
         elif conclusion == "CANCELLED":
             cancelled += 1
             flag = "  <-- CANCELLED, which is NOT billing"
@@ -284,7 +284,7 @@ def verdict(rows: Sequence[JobRow]) -> tuple[int, list[str]]:
 def pr_head_sha(pr: str) -> str:
     """A PR's head SHA over REST.
 
-    ⚠ **Never `gh pr view --json`** — that is GraphQL, and the cloud-session
+    **Never `gh pr view --json`** — that is GraphQL, and the cloud-session
     proxy refuses GraphQL outright with a 403 (parent #893). REST works on every
     host.
     """
@@ -325,9 +325,9 @@ def branch_head_sha(branch: str) -> str:
 def jobs_for_sha(sha: str, events: tuple[str, ...] | None = None) -> list[dict]:
     """Actions jobs for one SHA, optionally restricted to given trigger events.
 
-    ⚠ **The branch gate MUST filter to `push`.** A SHA on `main` also carries a
+    **The branch gate must filter to `push`.** A SHA on `main` also carries a
     GitHub-managed `dynamic` run — "Configured Graph Update: pip in /." — created
-    several minutes AFTER the push runs finish. Counting its `update-pip-graph`
+    several minutes after the push runs finish. Counting its `update-pip-graph`
     job makes the flip-back gate wait on dependency-graph submission, which it has
     no interest in, and can push it past the timeout. Found by running the new
     mode against a real merged SHA, which reported `jobs=6` where every document
@@ -348,11 +348,11 @@ def runs_for_sha(sha: str, events: tuple[str, ...] | None = None) -> list[dict]:
 
 
 def was_cancelled(jobs: Sequence[dict], runs: Callable[[], list[dict]]) -> bool:
-    """Whether the gated SHA's push run was cancelled, at job OR run level.
+    """Whether the gated SHA's push run was cancelled, at job or run level.
 
-    ⚠ **The job-level test alone misses the common case.** A concurrency group
-    holds one running and one PENDING run; a newer push cancels the pending one
-    before it creates any jobs, so the cancel shows ONLY on the run (measured
+    **The job-level test alone misses the common case.** A concurrency group
+    holds one running and one pending run; a newer push cancels the pending one
+    before it creates any jobs, so the cancel shows only on the run (measured
     upstream, parent #880: CI run `cancelled` with zero jobs, beside a green Trivy
     job). With no cancelled job to see, the gate sat under its floor until the
     timeout. ``runs`` is called only when no job shows the cancel.

@@ -87,18 +87,17 @@ class Chapter:
 # content. Matched case-insensitively as substrings, across the languages actually
 # present in the follow list (en + zh-Hans/zh-Hant).
 #
-# ⚠ This list IS the content test, so a hint that merely means "the video starts
-# here" belongs nowhere in it. `intro` was one upstream and was removed there
-# (parent #695) after a leading chapter titled `Intro` running 0-295s of an 1128s
-# video marked the first 26% of an educational upload as a position recap -- on a
-# channel configured `intro_recap_s: 0`, which is EXACTLY wifey's setting for both
-# live channels. So this ships in its post-#695 form ON PURPOSE: porting the original
-# list would reproduce that defect here on day one rather than import it dormant.
-# An introduction OPENS content; a recap REPLAYS prior calls, and only the second is
+# This list is the content test, so a hint that merely means "the video starts
+# here" belongs nowhere in it. `intro` is excluded (parent #695): a leading chapter
+# titled `Intro` running 0-295s of an 1128s video marked the first 26% of an
+# educational upload as a position recap -- on a channel configured
+# `intro_recap_s: 0`, which is exactly wifey's setting for both live channels.
+# Adding it would reproduce that defect here.
+# An introduction opens content; a recap replays prior calls, and only the second is
 # what this window exists to trim. A channel whose recap chapter really is titled
 # `Intro` keeps its per-channel constant, which is the designed fallback -- a false
 # positive silently drops Stream C setups, the only stream carrying dated calls.
-# ⚠ `review` and 概述 are the same shape and are UNMEASURED, kept because both
+# `review` and 概述 are the same shape and are unmeasured, kept because both
 # routinely do head a genuine recap; treat a sighting on either as this defect again
 # rather than as a new one.
 _RECAP_TITLE_HINTS: tuple[str, ...] = (
@@ -119,12 +118,12 @@ _RECAP_TITLE_HINTS: tuple[str, ...] = (
 def recap_window_s(chapters: tuple[Chapter, ...]) -> float:
     """End of the LEADING run of recap-shaped chapters, or 0.0 when there is none.
 
-    This is the per-VIDEO answer to the question `intro_recap_s` answers per CHANNEL.
+    This is the per-video answer to the question `intro_recap_s` answers per channel.
     The constant is hand-tuned from a sample and is wrong on any upload that opens
     differently -- upstream measured a configured 120s against a recap chapter that
     actually ran to 186s, i.e. 66s of recap read as fresh content.
 
-    ⚠ Only a LEADING recap counts. A mid-video 回顧 is a different thing, and
+    Only a leading recap counts. A mid-video 回顧 is a different thing, and
     treating it as an intro would swallow the real content before it. Returning 0.0 is
     the honest "no answer here", which leaves the channel constant in charge --
     upstream found chapters on only about half its measured corpus, so degrading
@@ -367,10 +366,10 @@ def _select_caption_track(vtts: list[Path], lang: str) -> Path | None:
     `en`, then whatever carries YouTube's `-orig` suffix, which marks the track
     the video was actually spoken in.
 
-    Two last-resort rules, both measured. `sorted(...)[0]` used to close this
+    Two last-resort rules, both measured. A bare `sorted(...)[0]` would close this
     function, and alphabetical order is how `aa` (Afar) beat every other
-    candidate on 9avrSmPczP4. So a blind pick now happens ONLY when nothing
-    knows the language: with a KNOWN `lang` and no related track, this returns
+    candidate on 9avrSmPczP4. So a blind pick happens only when nothing
+    knows the language: with a known `lang` and no related track, this returns
     None and the caller falls through to ASR, because ASR in the real language
     beats a machine translation into an unrelated one.
     """
@@ -428,14 +427,14 @@ class TranscriptResult:
 def _sub_langs(meta: VideoMeta) -> str:
     """The `--sub-langs` request list: the tracks that exist, narrowest first.
 
-    ⚠ This is ST46's widening fix PLUS the regression it shipped. ST46 widened
+    This is ST46's widening fix plus the regression it shipped. ST46 widened
     the request with the codes `--dump-json` said exist, because yt-dlp returns
     `language: null` on a large slice of the follow list and asking for `en`
     alone sent 17 of 89 zh notes to ASR while an author-written track sat
     unrequested. `caption_langs_*` come from that same metadata call, so
     reading them costs no extra request.
 
-    The regression: on a channel whose `meta.lang` is a REGIONAL variant with a
+    The regression: on a channel whose `meta.lang` is a regional variant with a
     full auto-translate matrix, the widening asked for the matrix. Measured
     2026-08-20 on 9avrSmPczP4 — `language: "en-US"`, no author-written track,
     **157** auto codes led by `ab`/`aa`/`af`, `en` at index 32 and `en-US`
@@ -511,11 +510,11 @@ def _download_captions(
 ) -> tuple[list[Path], bool]:
     """Download the requested tracks. Returns `(vtts, captions_were_missed)`.
 
-    ⚠ **The second element is the whole point of this function.** Before it existed the
-    caller ran yt-dlp, threw the result away, and globbed for `sub*.vtt` — so a transient
-    429 produced an empty list byte-identical to the empty list a caption-less video
-    produces, and the ASR fallback silently and permanently downgraded a note whose
-    author track was sitting right there. Upstream measured this on a video whose own
+    **The second element is the whole point of this function.** Globbing for
+    `sub*.vtt` after discarding yt-dlp's result lets a transient 429 produce an empty
+    list byte-identical to the empty list a caption-less video produces, and the ASR
+    fallback silently and permanently downgrades a note whose author track is
+    sitting right there. Upstream measured this on a video whose own
     metadata listed `en` and `en-orig`: nothing in the selection path was ever broken,
     which is why two earlier caption fixes did not cover it. **Neither was about
     selection**; this one is a line earlier, about the download.
@@ -710,10 +709,10 @@ def _transcribe_groq(
 def _ensure_local_media(
     meta: VideoMeta, dest_dir: Path, *, run: RunProc
 ) -> Path | None:
-    """Download the video once so ffmpeg can seek a LOCAL file.
+    """Download the video once so ffmpeg can seek a local file.
 
     `meta.url` is a web page (e.g. a YouTube watch URL) — ffmpeg cannot demux that,
-    so every `-i meta.url` seek used to fail silently and `frame_paths` was always
+    so every `-i meta.url` seek fails silently and `frame_paths` is always
     `[]`. Reused when a `video.*` file already exists in `dest_dir` (e.g. a prior
     call left one behind); returns `None` on a failed/empty download, never raises.
     """
@@ -781,10 +780,9 @@ def _attempt_frames(
     return paths
 
 
-# One pause per retry, so 3 attempts total. Round-4 (2026-08-01): two transient
-# `HTTP 403`s survived the previous single retry and BOTH cleared on a manual
-# re-run — one of them on the video carrying that batch's only complete
-# entry+stop+target row. The pause is what makes the extra attempt worth
+# One pause per retry, so 3 attempts total. Measured 2026-08-01: two transient
+# `HTTP 403`s survived a single retry and both cleared on a manual re-run — one
+# of them on the video carrying that batch's only complete entry+stop+target row. The pause is what makes the extra attempt worth
 # anything: a 403 is server-side and returns instantly, so a zero-delay loop
 # spends every attempt inside the same bad second. Kept short because a whole
 # batch pays this serially, and the ceiling only binds on videos already lost.
@@ -888,9 +886,9 @@ def _load_cached(cache_dir: Path, video_id: str) -> BatchResult | None:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         # A cached frame_paths entry can point at a JPEG deleted since it was
-        # written (extract_frames now downloads real media and can be re-run with
+        # written (extract_frames downloads real media and can be re-run with
         # a pruned .cache/); a stale path here would silently send pass 2 to a
-        # nonexistent file, so drop anything that no longer exists on disk.
+        # nonexistent file, so drop anything that is not on disk.
         frame_paths = [p for p in data.get("frame_paths", []) if Path(p).exists()]
         return BatchResult(
             url=data["url"],

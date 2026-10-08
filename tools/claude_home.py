@@ -7,17 +7,17 @@ Linux box's absolute path as a tracked literal, so no environment variable
 could rescue them; the other three applied a separator rule that is correct
 only on POSIX.
 
-⚠ **Each one fails SILENTLY, in the direction of absence.** The backup script
+**Each one fails silently, in the direction of absence.** The backup script
 records ``files: 0`` for an absent external root rather than failing, the
 cadence checker degrades to a printed note, and ``post_branch_checks`` reports
 the memory cap against a file it never found. So the whole class reads as
 "nothing to do" on a host where the tree is present and merely unlocated --
-which is what let it survive a migration whose brief already named the slug
-remapping as a restore step.
+which is how it survives a migration whose brief names the slug remapping as a
+restore step.
 
 Deduping rather than correcting each site is deliberate, and is the same
 reasoning as ``cost_model``'s shared bars-per-day table: fixing the values in
-place would have hidden a missing key as well as the defect being fixed.
+place would hide a missing key as well as the defect being fixed.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ _SEPARATORS = re.compile(r"[/\\:]")
 #: serve both, and ``CLAUDE_CONFIG_DIR`` overrides both because that is the
 #: variable Claude Code itself honours.
 #:
-#: ⚠ **BOTH can exist at once, which is why order alone cannot decide.** See
+#: **Both can exist at once, which is why order alone cannot decide.** See
 #: `project_dir`: selection is on ``projects/<slug>``, never on the root.
 _CONFIG_DIR_NAMES = (".claude-personal", ".claude")
 
@@ -45,7 +45,7 @@ _CONFIG_DIR_NAMES = (".claude-personal", ".claude")
 def slugify_path(text: str) -> str:
     r"""Fold an absolute path into Claude Code's project-directory name.
 
-    Pure and platform-independent on purpose: it takes the path as TEXT rather
+    Pure and platform-independent on purpose: it takes the path as text rather
     than a ``Path``, so the Windows rule is testable from Linux CI and the
     POSIX rule from a Windows box. A ``Path``-typed argument would resolve
     against the running platform and make exactly one of those two assertions
@@ -78,15 +78,14 @@ def _config_root_candidates() -> tuple[Path, ...]:
 def project_dir(repo_root: Path) -> Path:
     """This checkout's Claude Code project directory.
 
-    ⚠ **Selection is on ``projects/<slug>``, never on the config ROOT.** The
-    first version of this probed whether ``~/.claude-personal`` existed and
-    took it if so -- and that shipped broken within the hour: the directory
-    appeared on this box while both profiles were in use, so the probe chose a
-    root that had never held this project and every consumer went back to
-    reading ABSENT. Both roots can exist; only one holds the tree.
+    **Selection is on ``projects/<slug>``, never on the config root.** Probing
+    whether ``~/.claude-personal`` exists and taking it if so is wrong: the
+    directory can appear while both profiles are in use, so the probe would
+    choose a root that never held this project and every consumer would read
+    ABSENT. Both roots can exist; only one holds the tree.
 
-    This is the repo's own recurring lesson landing on the fix for it — **a
-    check is only true about the scope it looked at**. Root existence is a
+    The repo's recurring lesson applies: **a check is only true about the scope
+    it looked at**. Root existence is a
     proxy; the project directory is the thing actually wanted, so it is what
     gets tested.
 

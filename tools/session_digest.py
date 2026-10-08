@@ -8,7 +8,7 @@ Replaces asking "what's next" at the start of every session. Two consumers:
   RED line.
 * **`wifey-daily-check` scheduled job** (`make session-digest TELEGRAM=1`). A hook
   fires only when a session opens; this push covers the days none does. It sends
-  EVERY day, green included, so a missing message is itself the signal that the
+  every day, green included, so a missing message is itself the signal that the
   scheduler on this box has stopped.
 
 It composes the existing probes rather than re-implementing them —
@@ -19,9 +19,9 @@ watchlist froze, and `freshness-check` said so only to whoever ran it.
 
 Two properties are load-bearing (ported from fund-management's `open_issues.py`):
 
-1. It ALWAYS exits 0 unless ``--exit-nonzero`` is passed. A digest must never block
+1. It always exits 0 unless ``--exit-nonzero`` is passed. A digest must never block
    a session, so a probe that raises becomes a BROKE line, never a traceback.
-2. A failure prints LOUDLY. "Could not fetch Issues" and "no open Issues" must not
+2. A failure prints loudly. "Could not fetch Issues" and "no open Issues" must not
    look alike; a silent degrade teaches its reader to trust an empty list.
 """
 

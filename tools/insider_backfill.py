@@ -5,13 +5,13 @@ company's Form 4 index (``filings.recent`` **plus** every older shard reaching
 into the window), fetches each filing's raw ownership XML, and upserts the
 non-derivative transactions into ``insider_transactions``.
 
-⚠ **The window starts three years before the study.** The classifier needs a
+**The window starts three years before the study.** The classifier needs a
 trade in each of the three preceding years to label an insider at all, so a run
 covering only the study window would leave every insider unclassifiable. The
 default ``--since 2015-01-01`` buys classification from 2018, which is the
 universe's price-data floor.
 
-⚠ **A long run is interrupt-safe only under ``--resume``.** A marker row is
+**A long run is interrupt-safe only under ``--resume``.** A marker row is
 written to ``insider_backfill_progress`` once a symbol finishes with zero
 errors, and ``--resume`` skips exactly those, so an interrupted or
 partially-failed symbol is retried in full rather than assumed done. Without it
@@ -119,8 +119,8 @@ def select_symbols(
 ) -> list[str]:
     """Pick this run's symbols from the research universe.
 
-    ⚠ **``--limit`` alone takes the HEAD, and `config/universe.json` is grouped by
-    SECTOR** — so ``--limit 15`` is fifteen Information Technology mega-caps rather
+    **``--limit`` alone takes the head, and `config/universe.json` is grouped by
+    sector** — so ``--limit 15`` is fifteen Information Technology mega-caps rather
     than a sample of anything. Measured 2026-09-01: those fifteen carry **18,549**
     Form 4 documents, of which CRM (4,175) and ACN (2,922) are ~38% on their own, so
     the head is simultaneously the slowest slice in the universe and the least
@@ -151,7 +151,7 @@ def select_symbols(
 def sample_filings(filings: list[Form4Filing], cap: int | None) -> list[Form4Filing]:
     """Evenly spaced subset of one symbol's filings, for a coverage sample.
 
-    ⚠ **Taking the first ``cap`` would BIAS THE OBSERVABLE OPTIMISTICALLY.**
+    **Taking the first ``cap`` would bias the observable optimistically.**
     ``collect_filings`` returns newest-first, and recent Form 4s are the most
     uniform — modern XML from current filing agents. Parse failures concentrate in
     older documents, so a head-capped sample measures the easy end of the range and

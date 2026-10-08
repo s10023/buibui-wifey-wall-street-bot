@@ -1,11 +1,10 @@
 """YouTube channel auto-feed backing /ingest-feed (ST10).
 
 Read-only discovery of new uploads across a configured channel list, plus the
-explicit-outcome ledger that decides what is "new". Consumption is stamped ONLY
+explicit-outcome ledger that decides what is "new". Consumption is stamped only
 by `mark`, after the /ingest-video review gate routes a batch — `poll` and
-`backfill` never write anything. (The historical defect this guards against:
-wifey PR #68 watermark-on-send — stamping "seen" at fetch time let an aborted
-run permanently consume items.) Mirrors tools/x_fetch.py: HTTP injectable for
+`backfill` never write anything. (This guards against the watermark-on-send defect of wifey PR #68: stamping
+"seen" at fetch time lets an aborted run permanently consume items.) Mirrors tools/x_fetch.py: HTTP injectable for
 tests, CLI for ad-hoc use.
 
 Spec: docs/superpowers/specs/2026-07-31-st10-youtube-feed-design.md
@@ -181,10 +180,10 @@ def is_intro_recap(
     measured the latter on about half its corpus — so the constant stays in charge
     rather than being replaced by it.
 
-    ⚠ Both of wifey's live channels are configured `intro_recap_s = 0`, so today this
-    function only ever fires on a positive `recap_end_s`. That makes the chapter path
-    the ONLY live trim here, which is why the hint list it depends on ships in its
-    narrowed post-#695 form.
+    Both of wifey's live channels are configured `intro_recap_s = 0`, so this
+    function only fires on a positive `recap_end_s`. That makes the chapter path
+    the only live trim here, which is why the hint list it depends on is the
+    narrowed form (parent #695).
     """
     window = (
         recap_end_s if recap_end_s > 0 else (channel.intro_recap_s if channel else 0)

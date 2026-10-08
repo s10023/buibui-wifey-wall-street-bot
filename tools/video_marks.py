@@ -22,7 +22,7 @@ DEDUP_WINDOW_S = 45.0
 SAFETY_SAMPLE_S = 300.0
 
 # Seconds back from the end. The safety grid stops at floor(duration/sample_s)*sample_s
-# and so can never reach the tail; these two anchors do. Their spread MUST exceed
+# and so can never reach the tail; these two anchors do. Their spread must exceed
 # DEDUP_WINDOW_S or dedupe collapses the pair and keeps the earlier one, losing the very
 # last frame — which is the one a closing slide lives on.
 TAIL_OFFSETS_S: tuple[float, ...] = (2.0, 60.0)
@@ -118,7 +118,7 @@ def tail_marks(
 
     `sample_marks` emits at multiples of `sample_s`, so its last mark sits at
     `floor(duration/sample_s)*sample_s` — up to a full interval short of the end.
-    Measured across /ingest-feed round 6, the last mark of *any* kind landed 133.8 /
+    Measured across one /ingest-feed batch, the last mark of *any* kind landed 133.8 /
     61.7 / 0.0 / 79.0 / 152.1s before the end.
 
     That is not cosmetic. A trader who closes on a summary card — 大漂亮的K线日记 posts

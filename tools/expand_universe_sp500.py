@@ -10,18 +10,18 @@ companies" via pandas.read_html; pass --from-csv PATH (columns: Symbol,Sector)
 for a deterministic/offline run. Run once, then commit universe.json + snapshot
 and re-run `make wifey-universe-backfill`.
 
-**This script rewrites ``members`` and deliberately does NOT touch
+**This script rewrites ``members`` and deliberately does not touch
 ``universe_policy`` or ``membership_as_of``** — the first is prose only a human
 should write, and the second is a computed field (``with_min_history`` anchors
 its cutoff to it), so moving it silently shifts a filter. The cost of that split
 is that the universe can change size while its own self-description does not:
-the 2026-06-21 run here took the file from 105 members to 508 and left the note
-claiming "~100 ... 105 members" until 2026-08-06, re-adding GOOG alongside GOOGL
-in the process (the S&P 100 selection had dropped it to avoid double-counting
-Alphabet). Nothing raised, and ``describe()`` printed the true count directly
-above the false one. **If you re-run this, update the note in the same commit**
-— ``tests/test_config_validation.py::TestShippedUniverseFile`` now binds the
-stated counts and the GOOG/GOOGL claim to the file and will fail until you do.
+a re-run takes the file from 105 members to 508 and leaves a note claiming
+"~100 ... 105 members", and re-adds GOOG alongside GOOGL (the S&P 100 selection
+drops it to avoid double-counting Alphabet). Nothing raises, and ``describe()``
+prints the true count directly above the false one (observed on the 2026-06-21
+run). **If you re-run this, update the note in the same commit** —
+``tests/test_config_validation.py::TestShippedUniverseFile`` binds the stated
+counts and the GOOG/GOOGL claim to the file and fails until you do.
 
 Usage::
 

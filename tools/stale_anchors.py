@@ -21,7 +21,7 @@ is.** "Phase 3" appears in ordinary prose about `run_scan_cycle`, so a typed
 anchor is only read as a citation when it sits within
 :data:`TYPED_WINDOW` characters of a target reference with no sentence boundary
 between them. ``§`` is never ordinary prose, so it gets a wider window
-(:data:`UNTYPED_WINDOW`) and may cross a sentence break. ⚠ **That bound is a
+(:data:`UNTYPED_WINDOW`) and may cross a sentence break. **That bound is a
 real cap and it is stated rather than hidden**: a citation separated from its
 target by more than the window is invisible to this check.
 
@@ -30,7 +30,7 @@ Dated trees are excluded (:func:`is_dated_path`), the same exclusion
 correct by construction, and hand-sweeping this class found 2 such correct
 citations against 4 live ones.
 
-⚠ **Scope is wider than the repo.** Two of those 4 live citations were in the
+**Scope is wider than the repo.** Two of those 4 live citations were in the
 memory tree, which no repo-scoped check can reach — so ``post_branch_checks``
 scans both and ``sanity_checks`` gates the repo half that CI can actually see.
 """
@@ -67,12 +67,12 @@ _BOLD_LEAD = re.compile(r"^\*\*(.+?)\*\*", re.M)
 _HEAD_TYPED = re.compile(rf"^(step|phase)[ \t]+({_LABEL})\b", re.I)
 #: Tight on purpose: the label must lead and be closed by a separator, so
 #: ``**Fix: stamp last**`` declares nothing. Over-generating here would be a
-#: false NEGATIVE — a dead citation matching a coincidental bold line.
-#: ⚠ The `(?!\d)` is load-bearing. Without it a DECIMAL declares a section:
+#: false negative — a dead citation matching a coincidental bold line.
+#: The `(?!\d)` is load-bearing. Without it a decimal declares a section:
 #: `**4.9 min**` declared `section 4` and `### 12.5 GB` declared `section 12`.
 #: That is not merely a spurious entry — `declared_anchors` disables the
 #: ordered-list fallback the moment ANY declaration exists, so one decimal
-#: anywhere in a file blinded the check to every genuine ordered-list anchor in
+#: anywhere in a file blinds the check to every genuine ordered-list anchor in
 #: it. Both directions were live here: one memory file lost 3 real `step`
 #: anchors (false positives on every citation to them) and another gained a
 #: phantom `section 0` that made a dead citation read as valid (a false
@@ -205,7 +205,7 @@ def _quoted_spans(line: str) -> list[tuple[int, int]]:
 def _is_quoted(line: str, begin: int, end: int) -> bool:
     """Is this anchor inside a quotation, i.e. mentioned rather than used?
 
-    ⚠ **Tests the enclosing SPAN, never the two adjacent characters.** The
+    **Tests the enclosing span, never the two adjacent characters.** The
     adjacent-character form had one bug in each direction and they were only
     visible from opposite ends. It missed a quotation wrapping *target plus
     anchor* as one phrase (`"wifey's /post-branch Step 5c"`), because the

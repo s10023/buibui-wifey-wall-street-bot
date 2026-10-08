@@ -19,10 +19,10 @@ READ THE COLUMNS IN THIS ORDER, and the reasons are three prior sleeves:
    market bleeds in a rising one, which looks exactly like a refuted signal.
 4. ...only then ``sharpe``.
 
-THE ``gross`` TIER IS ``fee_pct = 0`` AND THAT IS THE POINT. Every sibling
-sleeve's audit prints a "0 bps" column that is NOT cost-free: ``run_xs_backtest``
+The ``gross`` tier is ``fee_pct = 0``, and that is the point. Every sibling
+sleeve's audit prints a "0 bps" column that is not cost-free: ``run_xs_backtest``
 charges ``cfg.fee_pct + cfg.slippage_pct`` and ``fee_pct`` defaults to 1bp, so
-zeroing slippage still bills a basis point (#198). Only a true zero-cost row can
+zeroing slippage still bills a basis point. Only a true zero-cost row can
 separate "the signal is absent" from "the costs ate it".
 
 Usage::

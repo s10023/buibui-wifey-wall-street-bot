@@ -1,20 +1,19 @@
 """Measure the correlation deflator for a pooled panel.
 
-``tools/distil_power.py`` has always **accepted** ``--n-series`` / ``--n-eff``
-and deflated a power calculation by them, while nothing in this repo could
-**measure** the second — and ``distil_power.effective_n`` returns ``n_obs``
-undeflated when both flags are omitted. So the deflator failed open on the tool
-that priced H-004. (H-001/H-002 used a two-sample MDE instead — this tool cannot
+``tools/distil_power.py`` **accepts** ``--n-series`` / ``--n-eff`` and deflates
+a power calculation by them, but cannot **measure** the second — and
+``distil_power.effective_n`` returns ``n_obs`` undeflated when both flags are
+omitted. So the deflator fails open on the tool that priced H-004. (H-001/H-002 used a two-sample MDE instead — this tool cannot
 price a calendar-cycle claim — but a pooled ``sd`` there carries the same
-correlation problem.) This is the missing measurement.
+correlation problem.) This tool supplies that measurement.
 
 Prints the two flags to paste into ``distil_power``, and **refuses to print
 them** when the deflator could not actually be measured — an unmeasurable panel
 and an uncorrelated one both yield a deflator of 1.0, and emitting flags for the
 first would launder "we could not tell" into "no correction needed".
 
-⚠ **Coverage is reported, never assumed.** ``4h`` reaches only ~21% of the 505
-universe and that subset is SIZE-TILTED, so a deflator measured there describes
+**Coverage is reported, never assumed.** ``4h`` reaches only ~21% of the 505
+universe and that subset is size-tilted, so a deflator measured there describes
 large caps, not the universe. The banner states requested-vs-returned every run;
 read it before quoting the number.
 """
@@ -102,8 +101,8 @@ def load_returns(
     ).df()
     if frame.empty:
         return {}, list(symbols)
-    # Returns are computed per symbol ON ITS OWN INDEX, never across a shared
-    # pivot. ⚠ A pivot looks equivalent and is not: symbols whose bars sit on
+    # Returns are computed per symbol on its own index, never across a shared
+    # pivot. A pivot looks equivalent and is not: symbols whose bars sit on
     # different stamp grids turn the union index sparse, and `pct_change` then
     # nulls almost every row because consecutive union rows belong to different
     # symbols. Measured on this DB at `1wk` it silently dropped 505 of 505

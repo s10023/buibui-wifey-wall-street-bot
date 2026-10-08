@@ -238,7 +238,7 @@ and impact. The backtest had charged its trades since Phase 0.4, so the two book
 comparable and live was the flattered one. Pooled moved **−0.2050 gross → −0.2192 net**
 across all 292 rows; gross remains recoverable as `outcome_r + outcome_cost_r`.
 
-⚠ **Two separate things have moved this number, and quoting one for the other is the
+**Two separate things have moved this number, and quoting one for the other is the
 staleness trap.** −0.1247 predates the 2026-08-14 `implied_tp_r` correction (#195, which
 credited wins the *declared* `tp_r` rather than the target walked); −0.1752 was that
 corrected figure at n=267 and still **gross**; −0.2050 is the same basis grown to n=292;

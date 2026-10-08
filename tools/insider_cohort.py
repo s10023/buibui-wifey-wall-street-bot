@@ -165,12 +165,12 @@ def _observability_divergence(txns: pd.DataFrame) -> None:
 def _code_mix(txns: pd.DataFrame) -> None:
     """Stored transaction-code mix.
 
-    ⚠ This is CONTEXT for the phase-1 shortfall, never a confirmation of it. The
-    4.8% of filings that failed to parse are NOT in this table — a rejected row
-    is not stored — so no query here can attribute them. The parser now records
+    This is context for the phase-1 shortfall, never a confirmation of it. The
+    4.8% of filings that failed to parse are not in this table — a rejected row
+    is not stored — so no query here can attribute them. The parser records
     the code in its failure string, which makes the attribution readable off the
-    NEXT backfill run; until that run happens the shortfall stays bounded and
-    unattributed, exactly as Amendment 2 left it.
+    next backfill run; until that run happens the shortfall stays bounded and
+    unattributed, as Amendment 2 left it.
     """
     if "transaction_code" not in txns.columns:
         return

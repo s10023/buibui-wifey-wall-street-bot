@@ -108,8 +108,8 @@ from typing import Any
 
 # A bare `python3 tools/route_dedup.py` puts `tools/` on sys.path rather than the repo
 # root, so the `tools.x_route` import below dies with ModuleNotFoundError; only the Make
-# target and an explicit `PYTHONPATH=.` worked. ⚠ The parent's copy hits the same class
-# on `analytics.*` — the RULE ports, the failing module name does not, because wifey's
+# target and an explicit `PYTHONPATH=.` worked. The parent's copy hits the same class
+# on `analytics.*`; the rule ports, the failing module name does not, because wifey's
 # copy imports from `tools.`. The guarantee is `test_bare_invocation_works`, never this
 # line, and the bootstrap is scoped to tools that actually import from the repo: in one
 # that does not it is dead code, masking the breakage the moment the first import lands.
@@ -124,13 +124,13 @@ MECHANICS_SINK = "docs/plans/mechanics-backlog.md"
 PUNDIT_SINK = "docs/plans/pundit-calls.jsonl"
 
 # The CLI's allowlist. `--sink` names a routing IDENTITY and `is_routed` keys on
-# `(source_id, item_ts, sink)` via `_key`, so a value outside this tuple is dedup-BLIND
+# `(source_id, item_ts, sink)` via `_key`, so a value outside this tuple is dedup-blind
 # rather than merely odd — it can never match the row a later round looks for.
 # `find_similar` stays lenient on an unrecognised sink (unscopeable, not an error)
 # because scoping genuinely cannot apply there, so the membership check belongs at the
-# CLI boundary and nowhere else. ⚠ Ported from parent #706 as PREVENTION, not a repair:
-# wifey's ledger carried 0 bad rows of 54 when this landed, where upstream had 30
-# writable — do not quote that count as this repo's.
+# CLI boundary and nowhere else. This is prevention, not a repair (ported from
+# parent #706): wifey's ledger carried 0 bad rows of 54 when it landed, where
+# upstream had 30 writable — do not quote that count as this repo's.
 KNOWN_SINKS = (THESIS_SINK, MECHANICS_SINK, PUNDIT_SINK)
 
 # Sinks where a near-duplicate is a defect between ANY two entries. Stream C is absent
