@@ -30,8 +30,8 @@ Idempotent by value: a second run finds nothing and reports zero.
 Usage:
     python migrations/009_purge_bny_4h_wrong_instrument.py [--db PATH] [--apply]
 
-Dry-run by default. A .bak copy must exist alongside the DB before --apply will
-proceed. The guard tests existence, not freshness: cut a fresh copy first.
+Dry-run by default. --apply refuses unless <db>.bak is a byte copy of the DB:
+cut a fresh one first.
 """
 
 import argparse
@@ -43,6 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import duckdb  # noqa: E402
 
 from analytics.store import DEFAULT_DB_PATH  # noqa: E402
+from analytics.store.migration_bak import require_fresh_bak  # noqa: E402
 from analytics.store.schema_migrations import record_applied  # noqa: E402
 
 #: 2026-04-01 UTC, inside the empty gap between the last bad bar
@@ -71,9 +72,8 @@ WHERE symbol = 'BNY' AND timeframe = '4h' AND ((close < ?) <> (open_time < ?))
 
 def migrate(db_path: str, apply: bool) -> int:
     """Return the number of wrong-instrument rows found (deleted under apply)."""
-    if apply and not os.path.exists(db_path + ".bak"):
-        print(f"Refusing to run: {db_path}.bak not found. Back the DB up first.")
-        sys.exit(1)
+    if apply:
+        require_fresh_bak(db_path)
 
     conn = duckdb.connect(db_path, read_only=not apply)
     try:

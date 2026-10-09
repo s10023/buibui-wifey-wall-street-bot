@@ -186,6 +186,7 @@ class TestMigration004:
         mod = _load()
         mod.migrate(str(db), True)
         once = _read(db)
+        shutil.copy(db, str(db) + ".bak")  # the first apply staled it
         mod.migrate(str(db), True)
         assert _read(db) == once
 
