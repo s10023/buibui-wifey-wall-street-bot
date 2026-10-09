@@ -108,7 +108,15 @@
   nav {
     display: flex;
     flex: 1;
+    min-width: 0;
     height: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  @media (max-width: 700px) {
+    header { padding: 0 12px; }
+    .brand { margin-right: 12px; }
   }
 
   a {

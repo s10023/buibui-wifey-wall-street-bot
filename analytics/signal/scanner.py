@@ -1111,7 +1111,8 @@ def run_scan_cycle(
                         "Failed to persist signal outcome for %s", signal_id
                     )
 
-            # Compute CME gap warning for this direction.
+            # Compute the overnight gap-fill warning for this direction
+            # (premise unaudited; see #400).
             # Rough TP mirrors the formatter's own SL/TP math so the gap
             # overlap check uses the same target price shown in the alert.
             _first = dir_events[0]

@@ -188,8 +188,8 @@ make test           # full pytest suite (make test-cov for coverage)
   on every PR, because the pytest job is path-filtered and skips docs-only PRs. Legs that need
   project imports or the gitignored watchlist report `SKIPPED` rather than a finding.
 - `make session-digest` prints one screen: is `wifey-signal-watch` scheduled on this box,
-  watchlist OHLCV, backup and cadence reds, the survival core's state (OV-1 × VM, read from
-  `^GSPC`), open GitHub Issues (the planning queue since 2026-09-30), and the handoff's first
+  watchlist OHLCV, backup and cadence reds (universe stragglers are AMBER, #389), the
+  survival core's state (OV-1 × VM, read from `^GSPC`), open GitHub Issues (the planning queue since 2026-09-30), and the handoff's first
   move. The `SessionStart` hook runs it at every session start; `wifey-daily-check` runs
   `TELEGRAM=1`, which sends to the personal channel every day, green included, so a missing
   message means the scheduler stopped. `TELEGRAM=1` runs `make core-sync` first, because no

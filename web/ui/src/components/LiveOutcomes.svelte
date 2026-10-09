@@ -399,6 +399,8 @@
   }
   .lo-chip-group {
     display: flex;
+    flex-wrap: wrap;
+    min-width: 0;
     gap: 4px;
   }
   .lo-chip {
@@ -408,6 +410,7 @@
     border-radius: 4px;
     padding: 0.15rem 0.55rem;
     font-size: 0.78rem;
+    white-space: nowrap;
     cursor: pointer;
   }
   .lo-chip.active {

@@ -13,15 +13,14 @@
 without a substantive revision.
 
 > **Reading rules for the numbers below.** Every figure in §4 was queried from
-> `analytics.db` on **2026-08-13**, with §4a re-run **2026-08-14** after #195 corrected the
-> ledger, and each carries the query that reproduces it. Two dating
+> `analytics.db` on **2026-08-13**, with §4a re-run **2026-10-09**, and each carries the query that reproduces it. Two dating
 > rules apply to anything quoted from elsewhere: a number measured **before 2026-08-07**
 > is on the **ungated** population (~33–35% more trades), and a rating measured **before
 > 2026-08-13** is **symbol-unweighted** (#172). `CLAUDE.md` remains authoritative for
 > sleeve verdicts and footguns; this doc is the mental model, not the source of truth.
 
-**Live state in one line** (2026-08-13): 18 detector modules, 16 dispatched; six research
-sleeves all non-positive and the TA detector book frozen; no equity-native edge established;
+**Live state in one line** (2026-10-09): 18 detector modules, 16 dispatched; ten research
+sleeves built, every one failing its gate, and the TA detector book frozen; no equity-native edge established;
 dispatch is a manual one-shot (`make go-live`), not a daemon.
 
 ---
@@ -212,25 +211,26 @@ A ledger symbol outside the 13 goes stale — `make go-live` syncs the watchlist
 
 ## 4. Current measured edge
 
-All figures below were queried from `analytics.db` on **2026-08-13** (§4a re-run **2026-08-19**) and are reproducible with
+All figures below were queried from `analytics.db` on **2026-08-13** (§4a re-run **2026-10-09**) and are reproducible with
 the query named in each row.
 
 ### 4a. Live alert ledger — the only record of real dispatched signals
 
-`signal_alert_outcomes`, **324 rows**, 13 symbols, **2026-06-04 → 2026-08-18** (UTC, by
-`fired_at_ms`). Re-run **2026-08-19**.
+`signal_alert_outcomes`, **609 rows**, 13 symbols, **2026-06-04 → 2026-10-08** (UTC, by
+`fired_at_ms`). Re-run **2026-10-09**.
 
 | Outcome | n | avg R (net) |
 | --- | --- | --- |
-| loss | 218 | −1.014 |
-| win | 46 | +2.822 |
-| expired | 28 | +0.976 |
-| still open | 32 | — |
-| **resolved total** | **292** | **−0.2192** |
+| loss | 377 | −1.148 |
+| win | 99 | +3.140 |
+| expired | 99 | +0.784 |
+| still open | 34 | — |
+| **resolved total** | **575** | **−0.0772** |
 
-**The live book is net negative at −0.219R per resolved alert**, on a 17.4% strike rate
-(46 of 264 decided). The payoff structure is working as designed — winners average +2.8R
-against −1.0R losers — but the hit rate does not pay for it.
+**The live book is net negative at −0.077R per resolved alert**, on a 20.8% strike rate
+(99 of 476 decided). The payoff structure is working as designed — winners average +3.1R
+against −1.1R losers — but the hit rate does not pay for it. Every resolved row is priced
+(no NULL `outcome_cost_r`); the same rows average −0.0617R gross.
 
 **These are NET of costs since 2026-08-19 (`migrations/004_*`), and the loss row is the
 tell**: a flat −1.000 means an uncharged ledger, because a real stop-out also pays spread
@@ -242,21 +242,26 @@ across all 292 rows; gross remains recoverable as `outcome_r + outcome_cost_r`.
 staleness trap.** −0.1247 predates the 2026-08-14 `implied_tp_r` correction (#195, which
 credited wins the *declared* `tp_r` rather than the target walked); −0.1752 was that
 corrected figure at n=267 and still **gross**; −0.2050 is the same basis grown to n=292;
-−0.2192 is n=292 **net**. Re-run the query below rather than trusting any of them.
+−0.2192 is n=292 **net**; −0.2553 is n=292 net after the symmetric gap fill
+(`migrations/005_*`, 2026-08-20); −0.0772 is that basis grown to n=575 (2026-10-09). Re-run
+the query below rather than trusting any of them.
 
-Read it with three caveats. **282 of 298 rows are pre-#151**, i.e. they fired before the EV
-gate was direction-counted and significance-tested; the 31 open rows are correctly open
-(the hold window is in **bars**, not days); and the whole sample is one bull-market quarter
-on 13 megacaps, so a long-tilted book flatters itself.
+Read it with three caveats. **282 rows are pre-#151** (counted at n=298), i.e. they fired
+before the EV gate was direction-counted and significance-tested, and that fixed set is still
+nearly half the ledger; the 34 open rows are correctly open (the hold window is in **bars**,
+not days); and the whole sample is four months of one bull market on 13 megacaps, so a
+long-tilted book flatters itself.
 
 ```sql
 SELECT outcome, COUNT(*), ROUND(AVG(outcome_r),3) FROM signal_alert_outcomes GROUP BY 1;
 ```
 
-Worst and best cells by realized R (n ≥ 13): `trend_day 1d` −0.405 (n=31), `inside_bar 4h`
-−0.333 (n=24), `trend_day 4h` −0.217 (n=68 — the largest single cell), against
-`morning_evening_star 1d` +0.447 (n=19) and `pin_bar 4h` +0.231 (n=13). No cell reaches the
-n=30 needed per direction to be worth acting on alone.
+Worst and best cells by realized R (n ≥ 13, 2026-10-09): `inside_bar 4h` −0.478 (n=35),
+`trend_day 1d` −0.471 (n=65), `trend_day 4h` −0.195 (n=140 — the largest single cell),
+against `hammer_hanging_man 4h` +0.525 (n=13), `morning_evening_star 1d` +0.277 (n=34) and
+`order_block 4h` +0.163 (n=68). Three cells now reach n=30 in each direction (`trend_day 1d`,
+`trend_day 4h`, `order_block 4h`); none has been significance-tested here, so a per-cell
+decision still goes through `audit_guard`.
 
 ### 4b. Star ratings
 
@@ -280,7 +285,7 @@ sparsity (the crypto-era reading); it is an empty table. Populating it means run
 `make wifey-combo-backtest` / `wifey-cross-tf-backtest` — which is a *sweep*, and sweeps are
 frozen. Left inert on purpose; the gate is tag-only, so nothing downstream breaks.
 
-### 4d. Research sleeves — eight built, eight non-positive
+### 4d. Research sleeves — ten built, every one failing its gate
 
 Full verdicts and the gate each failed live in `CLAUDE.md → Sleeve verdicts`; the one-line
 summary is that the free-data edge-hunt arc is **concluded**, `forecast` and `xsmom` fail
@@ -288,7 +293,11 @@ pre-cost, and `lowvol` / `pead` failed their own neutrality guardrails, so neith
 evidence about the underlying premium. The arc was reopened **per-candidate** twice on
 2026-08-14 — `gapfill` (EXCLUDED, direction refuted) and `velocity` (EXCLUDED as a null; its β
 guardrail fired, so read the beta-hedged −0.169 / alpha t −0.49 rather than the raw Sharpe).
-**Do not rebuild a shelved sleeve.**
+Two later sleeves left the price-only lane. `insider/` (H-024, Form 4 filings) is EXCLUDED as
+a deployable sleeve, but the test is underpowered, so the premise is not refuted. `tom/`
+(turn of the month) is EXCLUDED too, although its beta-hedged Sharpe +0.290 has a CI clear of
+zero on 1988→: a hedged 0.7 sits outside that CI, so "fails its gate" is now the accurate
+framing and "non-positive" is not. **Do not rebuild a shelved sleeve.**
 
 ### 4e. Data coverage — history is not uniform
 
@@ -307,7 +316,7 @@ the 6 a crypto-era constant assumes. Live scans run `4h` and `1d` only.
 ## 5. Known issues & open hypotheses
 
 1. **No equity-native edge is established.** This is the binding constraint, and it is
-   endogenous — eight sleeves are non-positive and the live ledger is −0.175R. Sizing, portfolio
+   endogenous — ten sleeves fail their gates and the live ledger is −0.077R net. Sizing, portfolio
    construction and the order layer are all downstream of an edge that does not yet exist.
 2. **The EV gate sits upstream of the recorder.** A blocked leg is dropped before
    `signal_alert_outcomes` is written, so suppression destroys evidence rather than merely
@@ -338,8 +347,8 @@ could make money*. Ordered by what blocks what.
 
 | Gap | Current state | What it blocks |
 | --- | --- | --- |
-| **An actual edge** | Eight sleeves non-positive; live ledger −0.175R over 267 resolved alerts. | Everything. You cannot vol-target or size your way out of a negative expectancy. |
-| **Outcome ledger depth** | 298 rows, **282 pre-#151**, 0 of 30 loss cells at n=30. | Per-cell decisions. The ledger exists and resolves correctly — it is simply young. |
+| **An actual edge** | Ten sleeves, every one failing its gate; live ledger −0.077R net over 575 resolved alerts. | Everything. You cannot vol-target or size your way out of a negative expectancy. |
+| **Outcome ledger depth** | 609 rows, **282 pre-#151**; three cells now at n=30 per direction, none significance-tested. | Per-cell decisions. The ledger exists and resolves correctly — it is simply young. |
 | **Position sizing** | None. Phase A emits levels, not size. | Turning a positive cell into PnL. Deferred until an edge clears gate G1. |
 | **Order layer / broker** | `trade/` is an empty placeholder — both files 0 bytes; the parent's Binance opener was dropped at fork and nothing replaced it. | Execution. **Phase B, gated G3→G4.** |
 | **Off-site backup** | `make backup` is verified but **local-only**; `docs/plans/` is single-copy and gitignored. | Survival of the research record. A provider decision, not a build. |
@@ -420,18 +429,22 @@ What exists:
 
 What the measurements say:
 
-- The live ledger is 298 alerts over ~10 weeks, 267 resolved, averaging -0.175R.
-  Strike rate 18.5%; winners average +2.84R, losers -1.0R. So the payoff shape is
-  fine and the hit rate is not.
-- Eight research sleeves have been built and measured, and ALL are non-positive:
+- The live ledger is 609 alerts over ~18 weeks, 575 resolved, averaging -0.077R net
+  of costs. Strike rate 20.8%; winners average +3.14R, losers -1.15R. So the payoff
+  shape is fine and the hit rate is not.
+- Ten research sleeves have been built and measured, and every one fails its gate:
   EWMAC trend following (portfolio Sharpe -0.05, negative even before costs),
   cross-sectional momentum (-0.156 at 2bps), residualised cross-sectional momentum
   (+0.15, fails DSR), low-beta/BAB (-0.069, and its beta-neutrality guardrail
   fired), cross-asset time-series momentum (+0.36 at 2bps, clean but too weak),
   post-earnings-announcement drift (+0.10, beta guardrail fired), a gap-fill
   magnet (-0.460 cost-free, i.e. the direction is refuted rather than merely
-  unsupported), and velocity alternation (beta guardrail fired; beta-hedged -0.169
-  with an alpha t-stat of -0.49, so a null in either direction).
+  unsupported), velocity alternation (beta guardrail fired; beta-hedged -0.169
+  with an alpha t-stat of -0.49, so a null in either direction), insider buying
+  from Form 4 filings (opportunistic long/short -0.468 net, though the test is too
+  underpowered to refute the premise), and the turn-of-the-month effect
+  (beta-hedged +0.290, CI clear of zero but far short of 0.7, and its second
+  half is flat).
 - The TA detector book is frozen: no new detectors and no threshold sweeps, on the
   grounds that the category has repeatedly produced negative expectancy.
 

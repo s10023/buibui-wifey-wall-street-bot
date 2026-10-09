@@ -13,7 +13,8 @@ reason is different and stronger** — wifey never had ``backtest_trades``'
 ``low_volume`` / ``volume_spike`` columns, so those notes are not re-derivable
 from the primary substrate at all. That is precisely why this module, and not
 ``gate_audit.py``, is the host that unblocks the guard: the six candle warnings
-below need only OHLCV. CME-gap warnings do not exist in this fork.
+below need only OHLCV. The CME-gap warning is gone in this fork, but its equity replacement
+(``overnight_gap_lib.gap_fill_warning``) is live and not covered here (#400).
 
 The module body is byte-identical to the parent repo's (PR #492) — all
 six ``alert_formatter`` helpers and the whole ``audit_guard`` public surface are

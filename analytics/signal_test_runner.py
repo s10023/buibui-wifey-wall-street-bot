@@ -340,7 +340,7 @@ def run_signal_test(
                                 direction=event.direction,
                             )
 
-                    # CME gap warning.
+                    # Overnight gap-fill warning (premise unaudited; see #400).
                     _entry = event.price
                     _sl_dist = (
                         abs(_entry - event.sl_price)
