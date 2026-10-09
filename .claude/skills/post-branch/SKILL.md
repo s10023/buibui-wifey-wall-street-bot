@@ -48,6 +48,7 @@ If phase 1 and the doc edits already ran on this HEAD, do not re-walk them: re-r
 
 ## Gotchas
 
+- **From a worktree, run the `make` targets as written.** The Makefile exports the main checkout's `.venv` as `VIRTUAL_ENV` when the worktree has none (`tools/worktree_venv.py`, #453); a bare `poetry run` outside `make` still lands in an empty env. The PR body lives in the main checkout's `docs/plans/` (`/pr-summary`), so it survives the worktree.
 - **Sweep before the PR.** Every push to an open PR re-runs the whole matrix, so this runs while the branch is local-only ([why](references/ci-visibility-flip.md#the-visibility-flip-decision)).
 - **Vacuous legs.** `memory-cap` and `handoff-size` score the previous session on the phase-1 run; re-run after phase 6 ([detail](references/sweep-checks.md#vacuous-legs-and-not-configured)).
 - **`NOT CONFIGURED` is a finding.** An absent `.claude/sensitive-terms.txt` is not a pass ([detail](references/sweep-checks.md#vacuous-legs-and-not-configured)).
@@ -86,7 +87,7 @@ requires anyway — a heredoc is the command payload and trips the destructive g
 then:
 
 ```bash
-make post-branch-text FILE=docs/plans/pr-<branch>.md
+make post-branch-text FILE=- < "$OUT"    # $OUT is /pr-summary's absolute path
 printf '%s' "$TITLE" | make post-branch-text FILE=-
 ```
 

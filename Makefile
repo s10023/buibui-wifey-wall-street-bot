@@ -16,6 +16,19 @@
 # Linux CI is unaffected either way: UTF-8 is already its default.
 export PYTHONUTF8 := 1
 
+# A linked worktree (.claude/worktrees/) has no .venv, and `poetry run` there
+# silently creates an empty cache env. Poetry adopts an exported VIRTUAL_ENV, so
+# point it at the main checkout's venv; tools/worktree_venv.py prints nothing
+# outside a worktree, and a caller's own VIRTUAL_ENV or an in-tree .venv wins (#453).
+ifndef VIRTUAL_ENV
+ifeq ($(wildcard .venv),)
+WORKTREE_VENV := $(shell (python tools/worktree_venv.py || python3 tools/worktree_venv.py) 2>/dev/null)
+ifneq ($(WORKTREE_VENV),)
+export VIRTUAL_ENV := $(WORKTREE_VENV)
+endif
+endif
+endif
+
 SORT ?= default
 SYMBOL ?= SPY
 STRATEGY ?= fvg
@@ -487,7 +500,7 @@ sanity-checks:
 ## (dirty tree) and INFRA (clone/install died) are NOT suite failures.
 preflight:
 	@echo "🧪 Running the clean-clone pre-flight..."
-	@python3 tools/clone_preflight.py
+	@$(if $(WORKTREE_VENV),env -u VIRTUAL_ENV )python3 tools/clone_preflight.py
 
 ## Which recurring tasks are overdue, read from docs/plans/task-marks/.
 ## ADVISORY and deliberately NOT in `make test`: the marks are gitignored, so a

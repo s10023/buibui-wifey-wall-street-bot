@@ -798,6 +798,19 @@ The end-to-end test must derive the foreign interpreter from `sys.base_prefix` r
 green-by-skip result. It carries a negative control asserting the degraded run is observable;
 without that control a pass is satisfied by the swap working or by never reaching a degraded run.
 
+## worktree_venv.py — which venv `make` uses from a linked worktree
+
+A `.claude/worktrees/` checkout holds tracked files only, so it has no `.venv`, and Poetry keys its
+cache env on the project directory: `poetry run` there creates an empty env and every gate dies on
+`ModuleNotFoundError` (#453). Poetry adopts an exported `VIRTUAL_ENV`, so the Makefile runs this
+helper at parse time and exports what it prints, the main checkout's `.venv`. It prints nothing
+outside a linked worktree (`--git-dir` equals `--git-common-dir`), when the worktree has its own
+`.venv`, or when the main venv has no interpreter (layout from `venv_bootstrap._venv_python`). The
+Makefile skips it when `VIRTUAL_ENV` is already set or `.venv` exists, and `make preflight` unsets
+the borrowed value so the clone installs its own venv (a caller-set `VIRTUAL_ENV` is #449). It
+resolves the common dir itself because `git rev-parse --path-format=absolute` needs git 2.31 and
+this host runs 2.28. A bare `poetry run` outside `make` still lands in the empty env.
+
 ## clone_preflight.py — does the suite pass on a machine that is not this one?
 
 `make preflight` clones HEAD into a temp dir, runs `poetry install --no-root` against the clone's
