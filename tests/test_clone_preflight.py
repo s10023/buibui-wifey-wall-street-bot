@@ -25,6 +25,7 @@ import pytest
 
 from tools import clone_preflight
 from tools.clone_preflight import (
+    CALLER_VENV_VARS,
     FAILED,
     INFRA,
     OK,
@@ -154,9 +155,10 @@ class TestSubprocessEnv:
         """It must ADD to os.environ, never replace it.
 
         A bare dict would drop PATH, and the failure would look like "poetry is
-        not installed" rather than like a preflight bug.
+        not installed" rather than like a preflight bug. The one exception is the
+        caller's venv, dropped on purpose (TestCallerVenvDoesNotReachTheClone).
         """
-        assert set(os.environ) <= set(subprocess_env())
+        assert set(os.environ) - CALLER_VENV_VARS <= set(subprocess_env())
 
     def test_both_subprocesses_receive_it(self) -> None:
         """Negative control on the half that is easy to miss.
@@ -175,6 +177,62 @@ class TestSubprocessEnv:
         }
         for name, rest in runs:
             assert "env=env" in rest, name
+
+
+class TestCallerVenvDoesNotReachTheClone:
+    """A caller's active venv must not redirect the clone's install (#449).
+
+    Poetry adopts ``VIRTUAL_ENV`` (or ``CONDA_PREFIX``) before it looks for
+    ``<clone>/.venv``, so a caller running under the dev venv installed into,
+    and tested against, that venv. Observed 2026-10-09: the only symptom was one
+    sanity-check test failing on the clone's empty ``.venv``.
+
+    The canary is the positive control: it is set the same way, so if it does
+    not arrive, the absence of ``VIRTUAL_ENV`` proves nothing.
+    """
+
+    CANARY = "WIFEY_PREFLIGHT_CANARY"
+
+    @pytest.mark.parametrize("var", sorted(CALLER_VENV_VARS))
+    def test_subprocess_env_drops_it(
+        self, monkeypatch: pytest.MonkeyPatch, var: str
+    ) -> None:
+        monkeypatch.setenv(var, "/caller/.venv")
+        monkeypatch.setenv(self.CANARY, "1")
+        env = subprocess_env()
+        assert env[self.CANARY] == "1"
+        assert var not in env
+
+    def test_no_clone_subprocess_receives_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Through `main`, at the env each subprocess is actually handed."""
+        repo = _make_repo(tmp_path)
+        monkeypatch.setenv("VIRTUAL_ENV", "/caller/.venv")
+        monkeypatch.setenv(self.CANARY, "1")
+        real_run = subprocess.run
+        seen: dict[str, dict[str, str]] = {}
+        steps = {
+            tuple(clone_preflight.install_argv()): "install",
+            tuple(clone_preflight.probe_argv()): "probe",
+            tuple(clone_preflight.pytest_argv()): "pytest",
+        }
+
+        def fake_run(argv: list[str], *args: Any, **kwargs: Any) -> Any:
+            if argv == clone_preflight.seed_venv_argv():
+                return subprocess.CompletedProcess(argv, 0)
+            if tuple(argv) in steps:
+                seen[steps[tuple(argv)]] = kwargs["env"]
+                return subprocess.CompletedProcess(argv, 0)
+            return real_run(argv, *args, **kwargs)
+
+        monkeypatch.setattr(clone_preflight.subprocess, "run", fake_run)
+        rc = main(["--repo", str(repo), "--dest", str(tmp_path / "clone")])
+        assert rc == OK
+        assert set(seen) == {"install", "probe", "pytest"}
+        for step, env in seen.items():
+            assert env[self.CANARY] == "1", step
+            assert "VIRTUAL_ENV" not in env, step
 
 
 def _run_with_fake_steps(
