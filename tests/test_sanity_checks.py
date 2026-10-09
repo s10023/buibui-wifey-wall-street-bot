@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
@@ -36,6 +36,7 @@ from tools.sanity_checks import (
     regression_filter_patterns,
     render,
     subcommand_names,
+    surface_name,
     surface_paths,
 )
 
@@ -310,10 +311,24 @@ class TestHelpers:
 
     def test_surface_paths_excludes_the_self_referential_skills(self) -> None:
         """Those two files quote the anti-patterns in order to hunt for them."""
-        names = [str(p) for p in surface_paths()]
+        names = [surface_name(p) for p in surface_paths()]
         assert not any(n.endswith("sanity-check/SKILL.md") for n in names)
         assert not any(n.endswith("post-branch/SKILL.md") for n in names)
         assert "CLAUDE.md" in names
+
+    def test_surface_name_is_posix_for_a_windows_path(self) -> None:
+        """A Windows-shaped path still reaches the leakage leg and its exemptions (#459).
+
+        `str()` of this path has backslashes, which no `.claude/` prefix, exemption or
+        `SELF_REFERENTIAL` suffix matches, so the leg used to skip it and report clean.
+        The exempt sibling is the positive control for the exemption half.
+        """
+        line = "see `make buibui-sync`\n"
+        flagged = surface_name(PureWindowsPath(r".claude\skills\demo\SKILL.md"))
+        exempt = surface_name(PureWindowsPath(r".claude\skills\sync-parent\SKILL.md"))
+        assert flagged == ".claude/skills/demo/SKILL.md"
+        leakage = check_parent_leakage([(flagged, line), (exempt, line)])
+        assert [f.detail.split(":")[0] for f in leakage] == [flagged]
 
     def test_surface_paths_skips_a_parallel_worktree(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -334,11 +349,13 @@ class TestHelpers:
         (tmp_path / ".claude/worktrees/x/README.md").write_text(bad, encoding="utf-8")
         monkeypatch.chdir(tmp_path)
 
-        surfaces = [(str(p), p.read_text(encoding="utf-8")) for p in surface_paths()]
+        surfaces = [
+            (surface_name(p), p.read_text(encoding="utf-8")) for p in surface_paths()
+        ]
         drift = check_fork_drift(surfaces, TARGETS, TIMEFRAMES, STRATEGIES, None)
         leakage = check_parent_leakage(surfaces)
 
-        own_name = str(Path(".claude/skills/demo/SKILL.md"))
+        own_name = ".claude/skills/demo/SKILL.md"
         assert [name for name, _ in surfaces] == [own_name]
         assert {f.detail for f in drift} == {
             f"{own_name}: make-target=no-such-target",
