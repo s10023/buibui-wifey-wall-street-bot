@@ -82,6 +82,9 @@ jobs:
               - 'pyproject.toml'
               - 'poetry.lock'
               - '.github/workflows/lint.yaml'
+              # Read by tests/test_hook_wiring.py and tests/test_context_guard.py.
+              - '.claude/settings.json'
+              - '.claude/hooks/*.json'
 
       - name: Set up Python
         if: steps.changes.outputs.python == 'true'
@@ -117,7 +120,7 @@ jobs:
 
       - name: Type check
         if: steps.changes.outputs.python == 'true'
-        run: poetry run mypy .
+        run: poetry run mypy . .claude/hooks
 
       # Deliberately no --cov. Nothing in this repo consumes coverage: there is
       # no codecov/coveralls step, no fail_under gate, and coverage.xml was only

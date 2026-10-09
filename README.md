@@ -1325,7 +1325,7 @@ Runs on every push to `main` and every PR. Uses path filters so only relevant jo
 | Job | Triggers on | Steps |
 | --- | --- | --- |
 | `markdownlint` | `*.md` changes; `.claude/skills/**` | markdownlint-cli2 across all Markdown files, plus `SKILL.md` frontmatter validation |
-| `lint-typecheck-test` | `*.py` / `pyproject.toml` / `poetry.lock` changes | ruff check, ruff format, mypy, pytest; uploads `test-results.xml` as an artifact |
+| `lint-typecheck-test` | `*.py` / `pyproject.toml` / `poetry.lock` / `.claude/settings.json` / `.claude/hooks/*.json` changes | ruff check, ruff format, mypy, pytest; uploads `test-results.xml` as an artifact |
 | `regression` | `analytics/**/*.py` / TOML / fixture / golden JSON changes | runs `make test-regression` against committed golden files; fails with a diff report if metrics drift |
 | `frontend-check` | `web/ui/**` changes | `npm ci`, production build, `svelte-check` |
 
@@ -1377,7 +1377,7 @@ To check formatting and types locally:
 ```bash
 poetry run ruff check .
 poetry run ruff format --check .
-poetry run mypy .
+poetry run mypy . .claude/hooks
 poetry run pytest tests/ -q --durations=10
 ```
 

@@ -8,6 +8,9 @@ updates:
     allow:
       - dependency-type: "direct"
     open-pull-requests-limit: 5
+    # Let a fresh release age a week before proposing it (parent #659, ST44).
+    cooldown:
+      default-days: 7
     groups:
       dev-dependencies:
         dependency-type: "development"
@@ -19,3 +22,5 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
