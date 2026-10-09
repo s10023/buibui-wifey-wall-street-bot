@@ -50,6 +50,17 @@ HANDOFF = Path("docs/plans/next-conversation-prompt.md")
 SIGNAL_TIMER = "wifey-signal-watch.timer"
 GH_TIMEOUT_S = 20
 
+#: The off-site leg's own result, which `backup_check` cannot see: it grades the
+#: local tree, so the daily digest stayed green for two days while every off-site
+#: run refused (#443). `deploy/windows/job.sh` heads each run with a `=== <ts> |`
+#: line, and `deploy/backup-offsite.sh` ends a good one with `OFFSITE_OK`.
+OFFSITE_TIMER = "wifey-backup-offsite.timer"
+OFFSITE_OK = "off-site backup OK"
+#: Daily job: one missed run of slack before a green last run stops counting.
+OFFSITE_MAX_AGE_S = 2 * 86400
+#: A run with no result line younger than this is still uploading.
+OFFSITE_RUNNING_GRACE_S = 2 * 3600
+
 #: Ordered best-first. An Issue carrying none is untriaged and sorts last, visibly.
 PRIORITIES = ("p1", "p2", "p3")
 
@@ -164,6 +175,53 @@ def backup_findings(report: Any) -> list[Finding]:
     ]
 
 
+def offsite_findings(log_text: str | None, now: datetime) -> list[Finding]:
+    """Grade the last run in the off-site job's log; ``None`` is an absent log."""
+    runs: list[tuple[datetime, list[str]]] = []
+    for line in (log_text or "").splitlines():
+        if line.startswith("=== "):
+            stamp = line[4:].split(" | ", 1)[0].strip()
+            try:
+                started = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ")
+            except ValueError:
+                continue
+            runs.append((started.replace(tzinfo=UTC), []))
+        elif runs:
+            runs[-1][1].append(line)
+    action = (
+        "check `rclone listremotes` and logs/wifey-backup-offsite.log"
+        " (never paste rclone config output)"
+    )
+    if not runs:
+        return [
+            Finding(
+                "AMBER",
+                "off-site backup never logged",
+                "the task is enabled but logs/wifey-backup-offsite.log holds no run",
+                action,
+            )
+        ]
+    started, body = runs[-1]
+    stamp = started.strftime("%Y-%m-%dT%H:%M:%SZ")
+    age_s = (now - started).total_seconds()
+    if any(line.strip() == OFFSITE_OK for line in body):
+        if age_s <= OFFSITE_MAX_AGE_S:
+            return []
+        return [
+            Finding(
+                "RED",
+                "off-site backup stale",
+                f"last run {stamp}, {age_s / 86400:.1f}d ago: the task stopped firing",
+                action,
+            )
+        ]
+    if age_s < OFFSITE_RUNNING_GRACE_S:
+        return []
+    error = next((ln.strip() for ln in body if "ERROR" in ln or "CRITICAL" in ln), "")
+    detail = error[:160] if error else f"did not print '{OFFSITE_OK}'"
+    return [Finding("RED", "off-site backup failed", f"{stamp}: {detail}", action)]
+
+
 def cadence_findings(statuses: list[Any]) -> list[Finding]:
     return [
         Finding(
@@ -257,7 +315,7 @@ def render(
         if f.action:
             lines.append(f"      → {f.action}")
     if not findings:
-        lines.append("OK    scheduler, watchlist OHLCV, backup, cadence")
+        lines.append("OK    scheduler, watchlist OHLCV, backup, off-site, cadence")
     if core:
         lines.append(core)
 
@@ -390,6 +448,20 @@ def _backup() -> list[Finding]:
     return backup_findings(report)
 
 
+def _offsite() -> list[Finding]:
+    """Only `job.sh`, the Windows wrapper, writes `logs/`; a systemd unit logs to the
+    journal, so a Linux box reads silent here rather than AMBER forever."""
+    from tools import freshness_check, host_platform
+
+    if not host_platform.is_windows() or not freshness_check.timer_enabled(
+        OFFSITE_TIMER
+    ):
+        return []
+    log = Path(os.environ.get("WIFEY_LOG_DIR") or "logs") / "wifey-backup-offsite.log"
+    text = log.read_text(encoding="utf-8", errors="replace") if log.exists() else None
+    return offsite_findings(text, datetime.now(UTC))
+
+
 def _cadence() -> list[Finding]:
     from tools import cadence_check
 
@@ -455,6 +527,7 @@ def collect_findings() -> list[Finding]:
     findings += _guarded("scheduler probe", _scheduler)
     findings += _guarded("freshness probe", _freshness)
     findings += _guarded("backup probe", _backup)
+    findings += _guarded("off-site probe", _offsite)
     findings += _guarded("cadence probe", _cadence)
     return findings
 
