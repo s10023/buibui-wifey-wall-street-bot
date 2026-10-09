@@ -63,6 +63,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import duckdb  # noqa: E402
 
 from analytics.store import DEFAULT_DB_PATH  # noqa: E402
+from analytics.store.schema_migrations import record_applied  # noqa: E402
 
 #: Rows whose (symbol, timeframe, open_time) belong to the maximal run of
 #: frozen bars that ends at the series' newest bar. `rn` counts backwards from
@@ -127,12 +128,19 @@ def migrate(db_path: str, apply: bool) -> None:
             print("\nDRY RUN — nothing written. Re-run with --apply.")
             return
 
-        if rows:
-            conn.executemany(
-                "DELETE FROM ohlcv "
-                "WHERE symbol = ? AND timeframe = ? AND open_time = ?",
-                [(r[0], r[1], r[2]) for r in rows],
-            )
+        conn.execute("BEGIN TRANSACTION")
+        try:
+            if rows:
+                conn.executemany(
+                    "DELETE FROM ohlcv "
+                    "WHERE symbol = ? AND timeframe = ? AND open_time = ?",
+                    [(r[0], r[1], r[2]) for r in rows],
+                )
+            record_applied(conn, __file__, len(rows))
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
         print(f"\nApplied: {len(rows)} row(s) deleted.")
     finally:
         conn.close()

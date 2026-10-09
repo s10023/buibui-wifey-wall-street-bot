@@ -705,6 +705,11 @@ pass over every stored series and keeps the pairs `data_quality.classify_level_b
 only the gapped kind, which has no measured false positive on analytics.db (it lists BNY `4h` on
 2026-10-09). `OhlcvReport.ok` ignores it: a break is a data-identity finding, not staleness.
 
+It also lists **unrecorded migrations** (#467): every `migrations/0*.py` with no
+`schema_migrations` row, read from the record and never from the scripts' predicates (see
+`.claude/context/migrations.md`). `None` means the DB was unreadable and renders nothing; it is
+not a claim that every migration is recorded. Advisory like the breaks.
+
 `collect()` is the I/O half `main` and `session_digest.py` share, and `timer_enabled(timer)` is the
 generic form of `universe_timer_enabled`, so the digest can ask the same question of
 `wifey-signal-watch.timer`.
@@ -719,7 +724,8 @@ that: the laptop move left no `\wifey\` tasks, the watchlist froze for 7 session
 `freshness-check` said so only to whoever ran it. It also lists open GitHub Issues (via
 `gh auth token --user s10023`, since the gh default account may be another) sorted p1→p3 with
 untriaged last, and the handoff's `## ▶` headings. A freshness-check level break becomes an AMBER
-`probable wrong-instrument series` line, so it reaches the daily Telegram digest.
+`probable wrong-instrument series` line, so it reaches the daily Telegram digest, and an
+unrecorded migration becomes an AMBER `unrecorded migration` line.
 
 Two consumers. The `SessionStart` hook prints it into the model's context with a banner telling the
 model to lead with every RED line. The `wifey-daily-check` job (09:15 UTC, after signal-watch and the

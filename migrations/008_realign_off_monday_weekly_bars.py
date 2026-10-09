@@ -52,6 +52,7 @@ import duckdb  # noqa: E402
 from analytics.data_fetcher import BARS_MAX_LIMIT, fetch_bars  # noqa: E402
 from analytics.data_sync import _store_page  # noqa: E402
 from analytics.store import DEFAULT_DB_PATH  # noqa: E402
+from analytics.store.schema_migrations import record_applied  # noqa: E402
 
 #: ``open_time`` is UTC ms; a 1wk bar stamps 04:00/05:00 UTC, i.e. midnight ET,
 #: so the UTC calendar day is the ET day. DuckDB's ``dayofweek`` has Monday = 1.
@@ -116,6 +117,19 @@ def migrate(db_path: str, apply: bool) -> dict[str, list[str]]:
             )
             outcome["realigned"].append(symbol)
 
+        # One row after the loop, not one per symbol: each symbol commits on its
+        # own around a network fetch, so there is no single transaction to join.
+        # A symbol the provider no longer serves (SATS) is kept by design and
+        # named here, so a later reader does not take it for undone work.
+        record_applied(
+            conn,
+            __file__,
+            len(outcome["realigned"]),
+            "realigned "
+            + (",".join(outcome["realigned"]) or "none")
+            + "; kept "
+            + (",".join(outcome["kept"]) or "none"),
+        )
         print(
             f"\nApplied: {len(outcome['realigned'])} realigned, "
             f"{len(outcome['kept'])} kept."

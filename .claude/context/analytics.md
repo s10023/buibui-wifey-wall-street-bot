@@ -4,8 +4,9 @@ Detailed API reference for `analytics/`. Load this when working on any analytics
 
 ## data_store.py — DB schema + upsert/query helpers
 
-The package physically backing these helpers is `store/`, split into 9 modules: `schema.py`
-(`init_schema`), `market_data.py` (OHLCV upsert + getters), `signals.py` (`upsert_signals`,
+The package physically backing these helpers is `store/`, split into modules: `schema.py`
+(`init_schema`), `schema_migrations.py` (which `migrations/` scripts reached this DB, #467),
+`market_data.py` (OHLCV upsert + getters), `signals.py` (`upsert_signals`,
 `get_signals_history`, `upsert_signal_outcome`), `backtest_runs.py` (`upsert_backtest_run`,
 `upsert_backtest_trades`, `list_backtest_runs`, `get_win_rate_by_strategy`), `backtest_cache.py`
 (`BacktestSnapshot`, `get/put/prune_backtest_cache`), `confidence.py` (`upsert_confidence_ratings`,

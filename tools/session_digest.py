@@ -173,6 +173,21 @@ def freshness_findings(signal: Any, ohlcv: Any) -> list[Finding]:
                 " quote, then purge in migration 007's shape (#469)",
             )
         )
+    # getattr: the report is duck-typed, and a missed purge is what let AVB's
+    # wrong-instrument tail sit in this DB for weeks (#445, #467).
+    missing = getattr(ohlcv, "unrecorded_migrations", None)
+    if missing:
+        out.append(
+            Finding(
+                "AMBER",
+                "unrecorded migration",
+                f"{len(missing)} migrations/ script(s) with no schema_migrations row:"
+                f" {', '.join(m.split('_', 1)[0] for m in missing[:5])}"
+                + (" …" if len(missing) > 5 else ""),
+                "`make freshness-check` lists them; dry-run each, then --apply"
+                " (backup + fresh .bak)",
+            )
+        )
     return out
 
 
