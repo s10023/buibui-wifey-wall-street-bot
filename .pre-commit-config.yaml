@@ -3,6 +3,8 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
+        # YouTube auto-caption cues carry one-space lines that parse_vtt_cues must see.
+        exclude: ^tests/fixtures/.*\.vtt$
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-json

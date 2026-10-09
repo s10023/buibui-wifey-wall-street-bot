@@ -9,6 +9,7 @@ same contract as tools/x_fetch.py.
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import os
 import random
@@ -311,11 +312,27 @@ class HttpPost(Protocol):
 
 
 def parse_vtt(text: str, lang: str) -> list[TranscriptSegment]:
-    """WebVTT cues → segments. Cue start time is the segment timestamp.
+    """WebVTT track → normalised segments (`parse_vtt_cues`, then `normalise_captions`).
+
+    Rolling-repeat collapse runs only on a track carrying inline word timings, which is
+    YouTube's auto-caption signature; an author-written track keeps every cue's words.
+    """
+    return normalise_captions(
+        parse_vtt_cues(text, lang), rolling=bool(_WORD_TIMING_RE.search(text))
+    )
+
+
+def parse_vtt_cues(text: str, lang: str) -> list[TranscriptSegment]:
+    """WebVTT cues → raw segments, one per cue. Cue start time is the segment timestamp.
 
     A cue's text may wrap over several lines — YouTube auto-captions routinely do —
     so every line of a cue is joined into one segment. Keeping only the first line
     would silently discard a majority of a real transcript.
+
+    YouTube auto-captions open each cue with a line holding one space. Only an empty
+    line ends a cue; a whitespace-only line ends one that already has text and is
+    skipped otherwise, or that first cue's words are lost and resurface stamped at the
+    next cue.
     """
     segments: list[TranscriptSegment] = []
     pending_ts: float | None = None
@@ -341,13 +358,58 @@ def parse_vtt(text: str, lang: str) -> list[TranscriptSegment]:
             pending_ts = hours * 3600 + minutes * 60 + seconds + millis / 1000
             continue
         if not stripped:
-            _flush()
+            if not line or pending_lines:
+                _flush()
             continue
         if pending_ts is None or stripped == "WEBVTT":
             continue
         pending_lines.append(stripped)
     _flush()
     return segments
+
+
+_INLINE_TAG_RE = re.compile(r"<[^>]*>")
+_WORD_TIMING_RE = re.compile(r"<\d{2}:\d{2}:\d{2}\.\d{3}>")
+
+
+def _clean_cue_text(text: str) -> str:
+    """Drop inline tags (`<00:00:02.840>`, `<c>`, `<i>`, `<v …>`), then decode entities.
+
+    Tags go first: VTT escapes a literal `<` as `&lt;`, so decoding first would turn
+    text into a tag.
+    """
+    return " ".join(html.unescape(_INLINE_TAG_RE.sub("", text)).split())
+
+
+def _new_words(prev: list[str], cur: list[str]) -> list[str]:
+    """`cur` minus its longest prefix that is also a suffix of `prev`."""
+    for k in range(min(len(prev), len(cur)), 0, -1):
+        if prev[-k:] == cur[:k]:
+            return cur[k:]
+    return cur
+
+
+def normalise_captions(
+    segments: list[TranscriptSegment], *, rolling: bool
+) -> list[TranscriptSegment]:
+    """Strip caption markup and, for a rolling track, keep only each cue's new words.
+
+    A YouTube auto-caption cue repeats the previous cue's last line before adding new
+    words, and a 10ms cue between them repeats that line alone, so about half the raw
+    text is repeats. With `rolling`, each cue keeps only the words after its overlap
+    with the previous cue's full text, so every surviving segment carries the start
+    time of the cue that introduced its words. The overlap is measured against the
+    previous cue as written, not what survived of it. Segments left empty are dropped.
+    """
+    out: list[TranscriptSegment] = []
+    prev: list[str] = []
+    for seg in segments:
+        words = _clean_cue_text(seg.text).split()
+        kept = _new_words(prev, words) if rolling else words
+        prev = words
+        if kept:
+            out.append(replace(seg, text=" ".join(kept)))
+    return out
 
 
 _SUB_FILENAME_RE = re.compile(r"^sub\.(.+)\.vtt$")
