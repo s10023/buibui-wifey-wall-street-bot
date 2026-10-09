@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import subprocess
 from collections.abc import Callable
 from dataclasses import MISSING, asdict, dataclass, fields, replace
@@ -34,8 +35,10 @@ from tools.video_fetch import (
     fetch_transcript,
     fetch_video_batch,
     main,
+    normalise_captions,
     parse_video_url,
     parse_vtt,
+    parse_vtt_cues,
     recap_window_s,
     split_audio,
 )
@@ -376,6 +379,88 @@ def test_parse_vtt_ignores_sequence_identifier_lines() -> None:
     assert parse_vtt(vtt, lang="en") == [
         TranscriptSegment(ts_s=1.0, text="hello", lang="en")
     ]
+
+
+# Synthetic words in the exact byte shape yt-dlp writes for a YouTube auto-caption
+# track: one-space lines, 10ms bridging cues, inline word timings, entities.
+AUTO_VTT = (Path(__file__).parent / "fixtures" / "youtube_auto_captions.vtt").read_text(
+    encoding="utf-8"
+)
+
+
+def _markup_free(text: str) -> str:
+    return " ".join(re.sub(r"<[^>]*>", "", text).split())
+
+
+def test_auto_caption_fixture_carries_markup_and_rolling_repeats() -> None:
+    """Positive control: without it the collapse and shrink tests could pass vacuously."""
+    assert AUTO_VTT.count("\n \n") == 5  # one-space lines survived the editor
+    raw = parse_vtt_cues(AUTO_VTT, lang="en")
+    assert len(raw) == 9
+    assert raw[0].ts_s == 0.96
+    assert sum("<c>" in s.text for s in raw) >= 4
+    rolling = [
+        (a, b)
+        for a, b in zip(raw, raw[1:], strict=False)
+        if _markup_free(b.text).startswith(_markup_free(a.text))
+    ]
+    assert len(rolling) >= 4
+
+
+def test_parse_vtt_collapses_rolling_auto_captions() -> None:
+    """Each segment keeps the start time of the cue that introduced its words."""
+    assert parse_vtt(AUTO_VTT, lang="en") == [
+        TranscriptSegment(ts_s=0.96, text="Hi all, welcome to the weekly", lang="en"),
+        TranscriptSegment(ts_s=2.16, text="market recap. Today it's really", lang="en"),
+        TranscriptSegment(
+            ts_s=4.96, text="it's really about bonds & rates.", lang="en"
+        ),
+        TranscriptSegment(ts_s=7.24, text="Right.", lang="en"),
+        TranscriptSegment(ts_s=9.44, text=">> Let's look at the chart.", lang="en"),
+    ]
+
+
+def test_parse_vtt_shrinks_auto_captions_by_more_than_half() -> None:
+    """Halving holds after markup alone is stripped, so the collapse earns it."""
+    raw = parse_vtt_cues(AUTO_VTT, lang="en")
+    norm_chars = sum(len(s.text) for s in parse_vtt(AUTO_VTT, lang="en"))
+    assert norm_chars * 2 < sum(len(_markup_free(s.text)) for s in raw)
+
+
+def test_parse_vtt_keeps_repeated_words_in_an_author_track() -> None:
+    """No word timings means no rolling collapse; markup and entities still clean."""
+    vtt = (
+        "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nI said no\n\n"
+        "00:00:02.000 --> 00:00:03.000\nno way, <i>really</i> &amp; truly\n"
+    )
+    assert parse_vtt(vtt, lang="en") == [
+        TranscriptSegment(ts_s=1.0, text="I said no", lang="en"),
+        TranscriptSegment(ts_s=2.0, text="no way, really & truly", lang="en"),
+    ]
+
+
+def test_parse_vtt_whitespace_only_line_ends_a_cue_with_text() -> None:
+    vtt = (
+        "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nhello\n   \n"
+        "2\n00:00:03.000 --> 00:00:04.000\nworld\n"
+    )
+    assert parse_vtt(vtt, lang="en") == [
+        TranscriptSegment(ts_s=1.0, text="hello", lang="en"),
+        TranscriptSegment(ts_s=3.0, text="world", lang="en"),
+    ]
+
+
+def test_normalise_captions_drops_a_cue_that_only_repeats() -> None:
+    segs = [
+        TranscriptSegment(ts_s=1.0, text="a b c", lang="en"),
+        TranscriptSegment(ts_s=2.0, text="b c", lang="en"),
+        TranscriptSegment(ts_s=3.0, text="b c d", lang="en"),
+    ]
+    assert normalise_captions(segs, rolling=True) == [
+        TranscriptSegment(ts_s=1.0, text="a b c", lang="en"),
+        TranscriptSegment(ts_s=3.0, text="d", lang="en"),
+    ]
+    assert normalise_captions(segs, rolling=False) == segs
 
 
 def test_split_audio_refuses_to_chunk_without_a_duration(tmp_path: Path) -> None:
