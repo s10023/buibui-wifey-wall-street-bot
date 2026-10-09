@@ -4,6 +4,7 @@ own modules; the I/O (gh, Task Scheduler, analytics.db) is not exercised here.""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,7 +13,7 @@ from typing import Any
 import pytest
 
 from tools import session_digest as sd
-from tools.freshness_check import Graded, OhlcvReport, SignalReport
+from tools.freshness_check import Graded, LevelBreakRow, OhlcvReport, SignalReport
 
 
 def _ohlcv(stale: int = 0, scheduled: int = 26, unscheduled: int = 0) -> OhlcvReport:
@@ -42,6 +43,12 @@ class TestScheduler:
 
 
 class TestFreshness:
+    def test_a_level_break_is_AMBER_and_names_the_series(self) -> None:
+        brk = LevelBreakRow("BNY", "4h", date(2026, 5, 22), 10.2, 140.6, 104.8)
+        (f,) = sd.freshness_findings(_signal(), replace(_ohlcv(), level_breaks=(brk,)))
+        assert f.level == "AMBER"
+        assert "BNY 4h 2026-05-22 x13.784" in f.detail
+
     def test_stale_watchlist_is_RED_with_the_oldest_session(self) -> None:
         (f,) = sd.freshness_findings(_signal(), _ohlcv(stale=3))
         assert f.level == "RED"

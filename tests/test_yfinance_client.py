@@ -101,3 +101,24 @@ def test_fetch_history_start_replaces_period() -> None:
         auto_adjust=False,
         actions=False,
     )
+
+
+def test_fetch_last_price_reads_the_quote() -> None:
+    from utils.yfinance_client import fetch_last_price
+
+    mock_ticker = MagicMock()
+    mock_ticker.fast_info = {"lastPrice": 184.06}
+    with patch("utils.yfinance_client.yf.Ticker", return_value=mock_ticker):
+        assert fetch_last_price("AVB") == 184.06
+
+
+def test_fetch_last_price_answers_none_on_any_failure() -> None:
+    """The caller is an advisory cross-check that must never break a sync."""
+    from utils.yfinance_client import fetch_last_price
+
+    with patch("utils.yfinance_client.yf.Ticker", side_effect=RuntimeError("boom")):
+        assert fetch_last_price("AVB") is None
+    mock_ticker = MagicMock()
+    mock_ticker.fast_info = {"lastPrice": 0.0}
+    with patch("utils.yfinance_client.yf.Ticker", return_value=mock_ticker):
+        assert fetch_last_price("AVB") is None

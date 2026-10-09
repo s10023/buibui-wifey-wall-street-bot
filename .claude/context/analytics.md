@@ -127,7 +127,13 @@ added DDL column). An unparseable INSERT must be named in `EXEMPT_TABLES` /
   seam and cannot repair a stored one — that needs a full re-backfill. Audit:
   `docs/audits/2026-09-04-split-adjustment-seams.md`. `backfill` also runs
   `trading_calendar.check_session_gaps` (N3 PR2) when at least 2 rows survive quarantine and logs
-  missing NYSE sessions warn-only, never quarantined.
+  missing NYSE sessions warn-only, never quarantined. `_store_page` also logs every level break
+  the page writes (`data_quality.find_level_breaks`), including the seam to the stored bar it
+  continues — prepended only when the page's first bar is new, so a split restatement (whose page
+  starts on the stored overlap bar) is not read as a break. On the series-ending page a break
+  triggers one call to the injected `quote_fn` (`utils.yfinance_client.fetch_last_price`, passed by
+  both runners), and a quote that contradicts the newest close upgrades the warning to "probable
+  wrong instrument". Nothing is dropped (#469).
 - `analytics_runner.py` — thin wrapper: opens the DB, resolves symbols, delegates to `data_sync`. No
   client object (yfinance is module-level, no auth).
   `_resolve_symbols(symbols, *, use_universe=False)` defaults to the
@@ -188,6 +194,13 @@ pass-through, so behaviour (and regression goldens) are unchanged on good data.
     0.5/⅓/0.25/0.2/2/3/4/5), `nonmonotonic_idx` (`open_time` goes backwards).
   - Props: `quarantine_idx`, `has_warnings`, `is_clean` (n_rows>0 ∧ no quarantine ∧ no warnings),
     `summary()` (human-readable count string).
+- `classify_level_break` / `find_level_breaks` / `quote_disagrees` (#469) — warn-only, called
+  from `data_sync._store_page` and `tools/freshness_check.py`. `gapped`: resumed after more than
+  `LEVEL_BREAK_GAP_DAYS` (7 calendar days, 14 on `1wk`) at `|ln r| > ln 1.25`, a probable wrong
+  instrument. `large`: an ungapped `|ln r| > ln 2`, usually real. Measured 2026-10-09 over
+  analytics.db: the gapped leg flags only AVB (backup copy) and BNY `4h`; the largest benign
+  gapped move is `^GSPC` after the 1933 bank holiday (`|ln r|` 0.154). The ungapped leg flags 7
+  `1d` bars since 2018 and would flag 32 at `ln 1.5`.
 - `frozen_tail_idx` is a property of the series, not of a row: the maximal run of zero-volume,
   close-unchanged bars that terminates the frame, i.e. a provider forward-filling a stopped tape's
   final print. It is empty unless the caller passes `series_ends_here=True`, which defaults to

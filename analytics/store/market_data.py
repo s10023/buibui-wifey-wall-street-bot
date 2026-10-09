@@ -90,3 +90,22 @@ def get_close_at(
     if result is None:
         return None
     return float(result[0])
+
+
+def get_bar_before(
+    conn: duckdb.DuckDBPyConnection,
+    symbol: str,
+    timeframe: str,
+    open_time: int,
+) -> tuple[int, float] | None:
+    """Return ``(open_time, close)`` of the newest stored bar strictly before
+    ``open_time``, or None when nothing precedes it."""
+    result = conn.execute(
+        "SELECT open_time, close FROM ohlcv"
+        " WHERE symbol = ? AND timeframe = ? AND open_time < ?"
+        " ORDER BY open_time DESC LIMIT 1",
+        [symbol, timeframe, open_time],
+    ).fetchone()
+    if result is None:
+        return None
+    return int(result[0]), float(result[1])

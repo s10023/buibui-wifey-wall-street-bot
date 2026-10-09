@@ -81,6 +81,22 @@ def fetch_history(
     return df
 
 
+def fetch_last_price(symbol: str) -> float | None:
+    """The provider's quoted last price, or None when it cannot be read.
+
+    Read from ``fast_info`` rather than ``history``: when Yahoo's history endpoint
+    serves a different security under a ticker, the quote has been observed to
+    keep the real one (AVB: last history close 68.14, quote 184.06). Any failure
+    answers None, because the only caller is an advisory cross-check
+    (``analytics.data_sync``, #469) that must never break a sync.
+    """
+    try:
+        price = float(yf.Ticker(symbol).fast_info["lastPrice"])
+    except Exception:  # noqa: BLE001 - an unreadable quote is not an error here
+        return None
+    return price if price > 0 else None
+
+
 def fetch_total_return_close(symbol: str, *, period: str = "max") -> pd.Series:
     """Daily close adjusted for splits **and dividends**, as a total-return index.
 

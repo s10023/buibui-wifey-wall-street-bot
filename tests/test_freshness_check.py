@@ -20,6 +20,8 @@ import json
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from analytics.backtest.cost_model import BARS_PER_DAY
 from tools.freshness_check import (
     BASE_TOLERANCE_SESSIONS,
@@ -28,14 +30,19 @@ from tools.freshness_check import (
     UNIVERSE_CADENCE,
     UNIVERSE_GAP_SESSIONS,
     WATCHLIST_CADENCE,
+    LevelBreakRow,
+    OhlcvReport,
     Series,
     evaluate_ohlcv,
     evaluate_signal,
+    gapped_breaks,
     grade,
     latest_session,
+    read_level_breaks,
     read_scheduled_symbols,
     read_universe_symbols,
     read_watermarks,
+    render_ohlcv,
     resolve_cadence,
     sessions_elapsed,
     sessions_per_bar,
@@ -516,3 +523,66 @@ class TestLatestSession:
 
         now = datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
         assert latest_session(now, _no_sessions) == date(2026, 8, 26)
+
+
+_DAY_MS = 86_400_000
+_T0 = 1_781_755_200_000  # AVB's last good bar, 2026-06-18
+
+
+class TestLevelBreaks:
+    """#469's network-free leg: gapped level breaks anywhere in stored history."""
+
+    def test_only_the_gapped_kind_is_kept(self) -> None:
+        rows = [
+            ("AVB", "1d", _T0, 177.32, _T0 + 29 * _DAY_MS, 68.93),
+            ("EQR", "1d", _T0, 64.09, _T0 + 29 * _DAY_MS, 69.0),
+            # Inside the SQL's 7-day prefilter but under 1wk's own 14-day limit,
+            # so this 2.5x move is the ungapped kind and needs a quote to judge.
+            ("W", "1wk", _T0, 100.0, _T0 + 10 * _DAY_MS, 250.0),
+        ]
+        (brk,) = gapped_breaks(rows)
+        assert (brk.symbol, brk.timeframe, brk.session) == (
+            "AVB",
+            "1d",
+            date(2026, 7, 17),
+        )
+        assert brk.ratio == pytest.approx(0.3887, abs=1e-4)
+
+    def test_a_real_db_is_scanned_across_every_series(self, tmp_path: Path) -> None:
+        import duckdb
+
+        db = tmp_path / "analytics.db"
+        conn = duckdb.connect(str(db))
+        conn.execute(
+            "CREATE TABLE ohlcv (symbol VARCHAR, timeframe VARCHAR,"
+            " open_time BIGINT, close DOUBLE)"
+        )
+        conn.executemany(
+            "INSERT INTO ohlcv VALUES (?, ?, ?, ?)",
+            [
+                ("AVB", "1d", _T0 - _DAY_MS, 177.0),
+                ("AVB", "1d", _T0, 177.32),
+                ("AVB", "1d", _T0 + 29 * _DAY_MS, 68.93),
+                ("SPY", "1d", _T0, 500.0),
+                ("SPY", "1d", _T0 + 29 * _DAY_MS, 505.0),
+            ],
+        )
+        conn.close()
+
+        breaks = read_level_breaks(db)
+        assert breaks is not None
+        assert [(b.symbol, b.timeframe) for b in breaks] == [("AVB", "1d")]
+
+    def test_an_absent_db_reads_none(self, tmp_path: Path) -> None:
+        assert read_level_breaks(tmp_path / "nope.db") is None
+
+    def test_a_break_renders_but_never_fails_the_leg(self) -> None:
+        brk = LevelBreakRow("BNY", "4h", date(2026, 5, 22), 10.2, 140.6, 104.8)
+        report = OhlcvReport([], 13, 0, None, None, level_breaks=(brk,))
+        assert report.ok, "a data-identity finding is not a staleness verdict"
+        text = render_ohlcv(report)
+        assert "LEVEL BREAK" in text
+        assert "BNY" in text and "x13.784" in text
+
+    def test_no_break_renders_no_section(self) -> None:
+        assert "LEVEL BREAK" not in render_ohlcv(OhlcvReport([], 13, 0, None, None))

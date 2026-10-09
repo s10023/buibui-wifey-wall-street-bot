@@ -302,7 +302,7 @@ class TestSyncWatchedSeriesDirect:
             patch("analytics.signal_runner.sync", side_effect=sync_effect),
             patch(
                 "analytics.signal_runner.backfill",
-                side_effect=lambda c, s, t, ms: backfilled.append((s, t, ms)),
+                side_effect=lambda c, s, t, ms, **kw: backfilled.append((s, t, ms)),
             ),
         ):
             _sync_watched_series(

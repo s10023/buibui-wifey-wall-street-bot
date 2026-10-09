@@ -28,7 +28,10 @@ backup tier; this does it for the two the backup probe cannot see:
   universe symbols frozen for eleven weeks with nothing broken and nothing
   watching. Wifey measured the same shape on 2026-08-26: the 13-symbol watchlist
   ran to the previous session while the bulk of the 505-member research universe
-  had not moved since 2026-06-18.
+  had not moved since 2026-06-18. It also lists **level breaks**: a series that
+  resumed after a gap at a different level, which is how a provider serving the
+  wrong security under a ticker shows in the stored tape (AVB, BNY `4h`; #469).
+  Network-free, and AMBER-only: it never makes the leg's ``ok`` false.
 
 Three properties decide whether a probe of this kind is worth anything, and all
 three are why this is a module rather than a line of SQL in a caller.
@@ -82,6 +85,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from analytics.backtest.cost_model import BARS_PER_DAY
+from analytics.data_quality import LEVEL_BREAK_GAP_DAYS, classify_level_break
 from tools import host_platform
 
 # --- Declared cadence -------------------------------------------------------
@@ -213,6 +217,27 @@ class Graded:
 
 
 @dataclass(frozen=True)
+class LevelBreakRow:
+    """A stored series that resumed after a gap at a different level (#469).
+
+    Only the gapped kind is reported: it has no measured false positive on
+    analytics.db, whereas an ungapped halving is usually a real move and needs
+    the provider's quote to judge, which this network-free probe does not read.
+    """
+
+    symbol: str
+    timeframe: str
+    session: date
+    prev_close: float
+    close: float
+    gap_days: float
+
+    @property
+    def ratio(self) -> float:
+        return self.close / self.prev_close
+
+
+@dataclass(frozen=True)
 class OhlcvReport:
     """Both tiers of the ohlcv leg, kept apart because they answer different questions."""
 
@@ -225,6 +250,9 @@ class OhlcvReport:
     # universe is fresh" from "the universe was never graded", which the counts
     # alone cannot separate — the same trap as a SKIPPED CI job reading green.
     universe_scheduled: bool = False
+    # Gapped level breaks anywhere in the stored history. Advisory: `ok` ignores
+    # them, because a break is a data-identity question, not a staleness one.
+    level_breaks: tuple[LevelBreakRow, ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -660,6 +688,70 @@ def read_series(db_path: Path) -> list[Series] | None:
     return [Series(str(sym), str(tf), int(newest)) for sym, tf, newest in rows]
 
 
+#: Every consecutive bar pair whose spacing exceeds the smallest gap any timeframe
+#: treats as a resumption; `gapped_breaks` applies the per-timeframe limit.
+LEVEL_BREAK_SQL = """
+WITH x AS (
+    SELECT symbol, timeframe, open_time, close,
+           lag(open_time) OVER w AS prev_open_time,
+           lag(close) OVER w AS prev_close
+    FROM ohlcv
+    WINDOW w AS (PARTITION BY symbol, timeframe ORDER BY open_time)
+)
+SELECT symbol, timeframe, prev_open_time, prev_close, open_time, close
+FROM x
+WHERE prev_open_time IS NOT NULL AND open_time - prev_open_time > ?
+ORDER BY symbol, timeframe, open_time
+"""
+
+_DAY_MS = 86_400_000
+
+
+def gapped_breaks(
+    rows: Iterable[tuple[str, str, int, float, int, float]],
+) -> list[LevelBreakRow]:
+    """Keep the pairs `classify_level_break` calls gapped. Pure."""
+    out: list[LevelBreakRow] = []
+    for symbol, timeframe, prev_t, prev_close, t, close in rows:
+        brk = classify_level_break(
+            int(prev_t), float(prev_close), int(t), float(close), str(timeframe)
+        )
+        if brk is not None and brk.kind == "gapped":
+            out.append(
+                LevelBreakRow(
+                    str(symbol),
+                    str(timeframe),
+                    session_date(int(t)),
+                    brk.prev_close,
+                    brk.close,
+                    brk.gap_days,
+                )
+            )
+    return out
+
+
+def read_level_breaks(db_path: Path) -> list[LevelBreakRow] | None:
+    """Gapped level breaks across every stored series; None when unreadable."""
+    try:
+        import duckdb
+    except ImportError:  # pragma: no cover - duckdb is a runtime dep
+        return None
+    if not db_path.exists():
+        return None
+    try:
+        conn = duckdb.connect(str(db_path), read_only=True)
+    except Exception:
+        return None
+    try:
+        min_gap_ms = int(min(LEVEL_BREAK_GAP_DAYS.values()) * _DAY_MS)
+        rows = conn.execute(LEVEL_BREAK_SQL, [min_gap_ms]).fetchall()
+    except Exception:
+        return None
+    finally:
+        conn.close()
+    return gapped_breaks(rows)
+
+
 def latest_session(now: datetime, sessions_fn: SessionsFn) -> date:
     """The most recent NYSE session on or before ``now``.
 
@@ -780,6 +872,25 @@ def render_ohlcv(report: OhlcvReport) -> str:
                 "          habit — see deploy/README.md. The pundit ledger has"
                 " no timer at all."
             )
+
+    if report.level_breaks:
+        lines.append(
+            f"      ! LEVEL BREAK  {len(report.level_breaks)} gapped resumption(s)"
+            " at a different level — a probable wrong instrument (#469)"
+        )
+        for brk in report.level_breaks[:10]:
+            lines.append(
+                f"          {brk.symbol:<10} {brk.timeframe:<4} {brk.session}"
+                f"  {brk.prev_close:.2f} -> {brk.close:.2f} (x{brk.ratio:.3f})"
+                f" after {brk.gap_days:.1f} days"
+            )
+        if len(report.level_breaks) > 10:
+            lines.append(f"          … and {len(report.level_breaks) - 10} more")
+        lines.append(
+            "        Advisory: nothing was dropped. Compare the series with the"
+            " provider's quote"
+        )
+        lines.append("        before purging; migration 007 (AVB) is the repair shape.")
     return "\n".join(lines)
 
 
@@ -840,6 +951,7 @@ def collect(
             sessions_fn=nyse_sessions,
             universe_symbols=members,
         )
+        ohlcv = replace(ohlcv, level_breaks=tuple(read_level_breaks(db) or ()))
     return signal, ohlcv
 
 

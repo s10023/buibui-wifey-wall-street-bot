@@ -699,6 +699,12 @@ a stale scheduled series at wifey's real 2026-06-18 freeze date and asserts it i
 fresh one is not. `--exit-nonzero` opts in for a shell condition, and the unscheduled tier
 deliberately cannot make it fire.
 
+The ohlcv leg also lists **level breaks** (#469): `read_level_breaks` runs one window-`lag` SQL
+pass over every stored series and keeps the pairs `data_quality.classify_level_break` calls
+`gapped`, a series that resumed after a gap at a different level. It is network-free and reports
+only the gapped kind, which has no measured false positive on analytics.db (it lists BNY `4h` on
+2026-10-09). `OhlcvReport.ok` ignores it: a break is a data-identity finding, not staleness.
+
 `collect()` is the I/O half `main` and `session_digest.py` share, and `timer_enabled(timer)` is the
 generic form of `universe_timer_enabled`, so the digest can ask the same question of
 `wifey-signal-watch.timer`.
@@ -712,7 +718,8 @@ directly: is `wifey-signal-watch` scheduled on this box at all? The 2026-09-18 o
 that: the laptop move left no `\wifey\` tasks, the watchlist froze for 7 sessions, and
 `freshness-check` said so only to whoever ran it. It also lists open GitHub Issues (via
 `gh auth token --user s10023`, since the gh default account may be another) sorted p1→p3 with
-untriaged last, and the handoff's `## ▶` headings.
+untriaged last, and the handoff's `## ▶` headings. A freshness-check level break becomes an AMBER
+`probable wrong-instrument series` line, so it reaches the daily Telegram digest.
 
 Two consumers. The `SessionStart` hook prints it into the model's context with a banner telling the
 model to lead with every RED line. The `wifey-daily-check` job (09:15 UTC, after signal-watch and the

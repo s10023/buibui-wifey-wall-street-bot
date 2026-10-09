@@ -9,10 +9,10 @@ Nothing runs these for you. They are not in the Makefile, not in `make db-update
 Each is invoked by hand, once, and is not idempotent in the sense of being safe to re-reason about
 — read the docstring before touching either.
 
-## The one invariant all eight scripts enforce
+## The one invariant all nine scripts enforce
 
 A `.bak` must exist alongside the DB or the script refuses to start (`001:46-48`, `002:63-65`,
-`003:76-78`, `004:119-121`, `005:78-80`, `006:99-101`, `007:91-93`, `008:75-77` — unconditionally for `001`,
+`003:76-78`, `004:119-121`, `005:78-80`, `006:99-101`, `007:91-93`, `008:75-77`, `009:73-75` — unconditionally for `001`,
 under `--apply` for the rest). `analytics.db.bak` is an undated, unverified byte copy, not a
 backup; `make backup` is the real snapshot. Create the `.bak` anyway — the guard is what stands
 between a bad migration and an unrecoverable DB.
@@ -254,6 +254,23 @@ the scheduled sync runs, or the next universe sync appends off-Monday bars again
 
 **Run:** `python migrations/008_realign_off_monday_weekly_bars.py [--db PATH] [--apply]` —
 dry-run by default.
+
+## 009_purge_bny_4h_wrong_instrument.py — the rebranded ticker's previous holder
+
+BNY's `4h` series held 816 bars from 2024-06-17 to 2026-02-06 at $9.33–11.08 (median volume
+22,258), then a 104.8-day gap, then real BNY from 2026-05-22 at $139+ (median ~1.0M). By price and
+volume the cheap bars are the ticker's previous holder, a ~$10 fund (inferred, not confirmed);
+`1d` and `1wk` are clean. #469's level-break scan found it, and the earlier reading of it as a
+benign intraday shortfall was wrong. Like 007 it cannot be repaired by refetch: on 2026-10-09
+`history(interval="1h")` still served ~$10 bars for Jan–Feb 2026.
+
+Same shape as 007: value (`close < 50`) and date (`open_time < 2026-04-01`) predicates must agree,
+scoped to `symbol = 'BNY' AND timeframe = '4h'`. The margin is 137.50 (good minimum low) against
+11.10 (bad maximum high). A routine sync will not re-import the rows, because it extends forward
+from the newest stored bar; a hand-run full `4h` backfill would, and the ingest warning names it.
+
+**Run:** `python migrations/009_purge_bny_4h_wrong_instrument.py [--db PATH] [--apply]` —
+dry-run by default (816 rows on 2026-10-09).
 
 ## The transferable rule
 

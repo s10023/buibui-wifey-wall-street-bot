@@ -1,15 +1,22 @@
 """Tests for analytics/data_quality.py."""
 
+import math
 from datetime import date
 
 import pandas as pd
+import pytest
 
 from analytics.data_quality import (
+    GAPPED_BREAK_LN,
+    LARGE_BREAK_LN,
     DataQualityReport,
     SessionGapReport,
     check_ohlcv,
+    classify_level_break,
     detect_session_gaps,
+    find_level_breaks,
     quarantine,
+    quote_disagrees,
 )
 
 _COLS = ["symbol", "timeframe", "open_time", "open", "high", "low", "close", "volume"]
@@ -322,3 +329,83 @@ class TestDetectSessionGaps:
         rep = detect_session_gaps([_ot(d) for d in present], "1d", sessions)
         assert "1" in rep.summary()
         assert "gap" in rep.summary().lower()
+
+
+_D = 86_400_000
+
+
+class TestLevelBreak:
+    """#469: the gapped leg flags the two measured wrong instruments and none of
+    the benign gapped resumptions; the ungapped leg flags only halvings and
+    doublings. Every shape below is a measured row from analytics.db."""
+
+    def test_the_avb_shape_is_a_gapped_break(self) -> None:
+        brk = classify_level_break(0, 177.32, 29 * _D, 68.93, "1d")
+        assert brk is not None and brk.kind == "gapped"
+        assert brk.ratio == pytest.approx(0.3887, abs=1e-4)
+        assert brk.gap_days == pytest.approx(29.0)
+
+    def test_the_bny_4h_shape_is_a_gapped_break(self) -> None:
+        brk = classify_level_break(0, 10.2, int(104.8 * _D), 140.6, "4h")
+        assert brk is not None and brk.kind == "gapped"
+
+    def test_the_1933_bank_holiday_is_not_a_break(self) -> None:
+        """The largest benign gapped resumption measured: +16.6% after 12 days."""
+        assert classify_level_break(0, 5.84, 12 * _D, 6.81, "1d") is None
+
+    def test_a_gapped_resumption_near_its_level_is_not_a_break(self) -> None:
+        """EQR came back from AVB's own 29-day outage 7.7% higher."""
+        assert classify_level_break(0, 64.09, 29 * _D, 69.0, "1d") is None
+
+    def test_an_ungapped_doubling_is_large_not_gapped(self) -> None:
+        """MRNA +177% on 2026-08-19 is real: it warns, it is not called wrong."""
+        brk = classify_level_break(0, 62.96, _D, 174.38, "1d")
+        assert brk is not None and brk.kind == "large"
+
+    def test_an_ungapped_move_under_2x_is_silent(self) -> None:
+        """An AVB-sized drop with no gap is a real crash's shape (FISV -44%)."""
+        assert classify_level_break(0, 100.0, _D, 60.0, "1d") is None
+
+    def test_weekly_needs_more_than_two_weeks_of_gap(self) -> None:
+        assert classify_level_break(0, 100.0, 14 * _D, 70.0, "1wk") is None
+        brk = classify_level_break(0, 100.0, 21 * _D, 70.0, "1wk")
+        assert brk is not None and brk.kind == "gapped"
+
+    def test_an_unknown_timeframe_gets_the_ungapped_leg_only(self) -> None:
+        assert classify_level_break(0, 100.0, 30 * _D, 70.0, "5m") is None
+        brk = classify_level_break(0, 100.0, 30 * _D, 40.0, "5m")
+        assert brk is not None and brk.kind == "large"
+
+    def test_unpriceable_rows_answer_none(self) -> None:
+        assert classify_level_break(0, 0.0, 30 * _D, 70.0, "1d") is None
+        assert classify_level_break(0, 100.0, 30 * _D, float("nan"), "1d") is None
+
+    def test_thresholds_sit_inside_the_measured_margins(self) -> None:
+        """Benign gapped max 0.154 < bar < AVB 0.945; real ungapped breaks at
+        ln 1.5 numbered 32 against 7 at ln 2, which is why the bar is ln 2."""
+        assert 0.154 < GAPPED_BREAK_LN < 0.945
+        assert pytest.approx(math.log(2.0)) == LARGE_BREAK_LN
+
+    def test_find_level_breaks_walks_consecutive_pairs(self) -> None:
+        breaks = find_level_breaks(
+            [0, _D, 30 * _D, 31 * _D], [100.0, 101.0, 40.0, 41.0], "1d"
+        )
+        assert [(b.prev_open_time, b.open_time, b.kind) for b in breaks] == [
+            (_D, 30 * _D, "gapped")
+        ]
+
+    def test_a_series_of_one_bar_has_no_pairs(self) -> None:
+        assert find_level_breaks([0], [100.0], "1d") == []
+
+
+class TestQuoteDisagrees:
+    def test_the_avb_history_contradicts_its_quote(self) -> None:
+        assert quote_disagrees(68.93, 184.06)
+
+    def test_an_agreeing_quote_does_not(self) -> None:
+        assert not quote_disagrees(197.0, 197.0)
+        assert not quote_disagrees(197.0, 210.0)
+
+    def test_an_unreadable_quote_is_no_evidence(self) -> None:
+        assert not quote_disagrees(68.93, None)
+        assert not quote_disagrees(68.93, 0.0)

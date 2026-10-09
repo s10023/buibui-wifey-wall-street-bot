@@ -19,6 +19,7 @@ from utils.config_validation import (
     load_stocks_config,
     load_universe_policy,
 )
+from utils.yfinance_client import fetch_last_price
 
 
 def _resolve_symbols(
@@ -96,7 +97,9 @@ def run_backfill(
         for symbol in resolved:
             for timeframe in timeframes:
                 logging.info("Backfilling %s %s ...", symbol, timeframe)
-                total = backfill(conn, symbol, timeframe, since_ms)
+                total = backfill(
+                    conn, symbol, timeframe, since_ms, quote_fn=fetch_last_price
+                )
                 logging.info(
                     "Backfill complete: %s %s — %d rows", symbol, timeframe, total
                 )
@@ -121,7 +124,13 @@ def run_sync(
             for timeframe in timeframes:
                 logging.info("Syncing %s %s ...", symbol, timeframe)
                 try:
-                    total = sync(conn, symbol, timeframe, require_data=True)
+                    total = sync(
+                        conn,
+                        symbol,
+                        timeframe,
+                        require_data=True,
+                        quote_fn=fetch_last_price,
+                    )
                 except ValueError as e:
                     logging.warning("%s — skipping (run backfill first)", e)
                     continue
