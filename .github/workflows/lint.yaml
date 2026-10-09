@@ -10,11 +10,12 @@ permissions:
   contents: read
   pull-requests: read
 
-# Supersede in-flight PR runs; never cancel on main — a cancelled main run
-# destroys the record of whether main is green.
+# A newer push supersedes the in-flight run on main too: HEAD's run is the one
+# that says whether main is green, and `make wait-ci-main` follows a
+# superseded SHA to the new HEAD. Intermediate merges keep no run of their own.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   markdownlint:
