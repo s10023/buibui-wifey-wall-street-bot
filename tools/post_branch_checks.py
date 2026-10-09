@@ -44,9 +44,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools.child_env import python_child_env
 from tools.claude_home import memory_dir
+from tools.session_digest import (
+    ISSUE_COMMENTS_PATH,
+    PR_REVIEW_COMMENTS_PATH,
+    fetch_gh_pages,
+    fetch_issue_items,
+)
 from tools.stale_anchors import default_resolver, describe, scan
 
 Runner = Callable[[Sequence[str]], str]
+#: One text already published on GitHub: ``(where, text)``, e.g.
+#: ``("Issue #12 body", "...")``. ``where`` is printed; ``text`` never is.
+PublishedText = tuple[str, str]
+#: ``(texts, "")`` on a complete read, ``(None, reason)`` on any failure.
+PublishedFetcher = Callable[[], tuple[list[PublishedText] | None, str]]
 
 HANDOFF = Path("docs/plans/next-conversation-prompt.md")
 
@@ -1156,7 +1167,7 @@ def gather(runner: Runner = _run) -> list[CheckResult]:
         CheckResult("memory-cap", _check_memory_cap()),
         _handoff_leg("handoff-size", handoff, lambda: _check_handoff_size(handoff)),
         CheckResult("stale-anchors", _check_stale_anchors()),
-        sensitive_terms_result(runner),
+        sensitive_terms_result(runner, fetch_published=fetch_published_texts),
     ]
     return results
 
@@ -1254,8 +1265,70 @@ def sensitive_text_result(
     return CheckResult("sensitive-terms", findings, note=note)
 
 
+def fetch_published_texts() -> tuple[list[PublishedText] | None, str]:
+    """Every Issue and PR title and body, and every comment on either, as published.
+
+    Open and closed alike: closing an Issue does not hide it from a public repo.
+    PRs are in scope because they publish on the same flip, and
+    `sensitive_text_result` screens only a body still being composed — not a PR
+    edited after it posted, opened by another session, or older than that gate.
+    Fails closed: one unreadable listing, or an item missing the fields a label is
+    built from, returns ``(None, reason)`` rather than a shorter list.
+    """
+    items, err = fetch_issue_items("all", include_prs=True)
+    if items is None:
+        return None, f"Issues/PRs: {err}"
+    texts: list[PublishedText] = []
+    for it in items:
+        if "number" not in it or "title" not in it:
+            return None, "Issues/PRs: an item has no number or title"
+        where = f"{'PR' if 'pull_request' in it else 'Issue'} #{it['number']}"
+        texts.append((f"{where} title", it["title"] or ""))
+        texts.append((f"{where} body", it.get("body") or ""))
+    for label, path, url_key in (
+        ("comment", ISSUE_COMMENTS_PATH, "issue_url"),
+        ("review comment", PR_REVIEW_COMMENTS_PATH, "pull_request_url"),
+    ):
+        comments, err = fetch_gh_pages(path)
+        if comments is None:
+            return None, f"{label}s: {err}"
+        for c in comments:
+            if url_key not in c:
+                return None, f"{label}s: an item has no {url_key}"
+            number = str(c[url_key]).rsplit("/", 1)[-1]
+            texts.append((f"{label} on #{number}", c.get("body") or ""))
+    return texts, ""
+
+
+def scan_published_texts(
+    texts: Sequence[PublishedText], terms: Sequence[str]
+) -> list[Finding]:
+    """Sensitive terms in Issue/PR text that is already on GitHub.
+
+    Labels only, never the text, for the reason `scan_text_for_terms` gives.
+    """
+    findings = []
+    for term in terms:
+        where = [label for label, text in texts if term in text.lower()]
+        if not where:
+            continue
+        shown = ", ".join(where[:3]) + (" …" if len(where) > 3 else "")
+        findings.append(
+            Finding(
+                "sensitive-terms",
+                f"{mask_term(term)} in {len(where)} published Issue/PR text(s): "
+                f"{shown} — public on the next flip; an edit keeps the old text "
+                "in GitHub's edit history until that revision is deleted",
+            )
+        )
+    return findings
+
+
 def sensitive_terms_result(
-    runner: Runner, terms: Sequence[str] | None = None
+    runner: Runner,
+    terms: Sequence[str] | None = None,
+    *,
+    fetch_published: PublishedFetcher,
 ) -> CheckResult:
     """Pre-flip gate: would making this repo public expose a work identifier?
 
@@ -1283,9 +1356,17 @@ def sensitive_terms_result(
     operator ruled ACCEPT AND DOCUMENT on that baseline on 2026-08-19, and a
     check that is never clean trains dismissal.
 
-    ⚠ **The fourth surface is NOT here.** A PR title and body are neither the
-    tree nor a commit, so screening them is :func:`sensitive_text_result`
-    (``--text``), run before ``gh pr create``.
+    The fourth question is what GitHub already holds: every Issue and PR title,
+    body and comment, open and closed (#373). Planning moved into Issues on
+    2026-09-30, and they publish with the repo. ``fetch_published`` is required
+    so no call site can drop the surface silently, and a failed read is an
+    ``UNREADABLE`` finding, never a pass. A title's rename history is not
+    screened: GitHub keeps the old title in the timeline, which this read does
+    not fetch (#448).
+
+    ⚠ **A PR body still being composed is NOT here.** It is not on GitHub yet,
+    so screening it is :func:`sensitive_text_result` (``--text``), run before
+    ``gh pr create``.
     """
     terms = _resolve_terms(terms)
     if not terms:
@@ -1323,11 +1404,24 @@ def sensitive_terms_result(
                 )
             )
 
+    published, err = fetch_published()
+    if published is None:
+        findings.append(
+            Finding(
+                "sensitive-terms",
+                f"UNREADABLE — GitHub Issues/PRs could not be read ({err}); that "
+                "surface was not screened, which is NOT the same as passing",
+            )
+        )
+    else:
+        findings.extend(scan_published_texts(published, terms))
+
     note = None
     if not findings:
         note = (
-            f"{len(terms)} term(s) checked against the tracked tree and this "
-            "branch's commits; main's accepted historical baseline is not re-reported"
+            f"{len(terms)} term(s) checked against the tracked tree, this "
+            f"branch's commits and {len(published or [])} published Issue/PR "
+            "text(s); main's accepted historical baseline is not re-reported"
         )
     return CheckResult("sensitive-terms", findings, note=note)
 

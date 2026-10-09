@@ -50,7 +50,8 @@ a private repo runs the whole matrix for free, so the question this phase asks i
 "did the last run on this repo execute real steps?" — a yes means open the PR private.
 **Confirm the flip with the user on every occasion** — CLAUDE.md makes the mechanics
 standing authorisation and the timing not, because the window republishes the parent's
-pre-fork commits.
+pre-fork commits. Read the sweep's `sensitive-terms` leg before asking: it screens every
+Issue and PR the flip publishes, and `UNREADABLE` there means unscreened, not clean.
 
 The paths filter fires **for** Python, so a Python diff **runs** those jobs; a
 **docs-only** diff is what skips them. Paths tell you what a private PR *loses* once

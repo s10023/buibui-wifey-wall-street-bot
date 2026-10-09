@@ -39,7 +39,7 @@ doesn't read as a complete walk. This note is suppressed for `--text` and for an
 | `memory-cap` | Is MEMORY.md over 6 Current State bullets or ~17KB? **Phase 6 reading** |
 | `handoff-size` | Is the handoff past `HANDOFF_MAX_LINES` (240), or within `HANDOFF_WARN_MARGIN` (20) of it? **SKIPPED when the handoff is absent — never clean.** **Phase 6 reading** |
 | `stale-anchors` | Does a doc cite a numbered section (`Step 3`, `§4a`) its target no longer has? |
-| `sensitive-terms` | Would a visibility flip publish a work identifier? Tracked tree · this branch's commit **content** · this branch's commit **messages**. The PR title/body is a **fourth** surface none of these reach — `--text`, below |
+| `sensitive-terms` | Would a visibility flip publish a work identifier? Tracked tree · this branch's commit **content** · this branch's commit **messages** · every Issue and PR title, body and comment already on GitHub (an unreadable read is `UNREADABLE`, never clean). A PR title/body not yet posted is the surface none of these reach — `--text`, below |
 
 ## Vacuous legs and NOT CONFIGURED
 
