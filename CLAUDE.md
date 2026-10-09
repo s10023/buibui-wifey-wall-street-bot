@@ -658,7 +658,8 @@ Mechanical guards, because prose does not enforce:
   - `sensitive-terms` screens four surfaces: the tracked tree, this branch's commit content, its
     commit messages (a flip republishes the whole history), and every Issue and PR title, body
     and comment on GitHub, open and closed, read over REST. An unreadable GitHub is an
-    `UNREADABLE` finding, never clean. A title's rename history is not read (#448). The term
+    `UNREADABLE` finding, never clean. A title replaced by a rename is read from its `renamed`
+    timeline event (#448). The term
     list, `.claude/sensitive-terms.txt`, is gitignored by policy (a tracked list of the words you are
     hiding is the leak), so an absent list is a `NOT CONFIGURED` finding, never a skip. Output
     masks the term and excludes main's accepted baseline. The list is single-copy and covered by
