@@ -114,7 +114,9 @@ class TestBackfillPaging:
         ]
         starts: list[int] = []
 
-        def fake_fetch(sym: str, tf: str, start: int, *args: Any) -> pd.DataFrame:
+        def fake_fetch(
+            sym: str, tf: str, start: int, *args: Any, **kwargs: Any
+        ) -> pd.DataFrame:
             starts.append(start)
             return pages[len(starts) - 1] if len(starts) <= len(pages) else _EMPTY
 
@@ -131,7 +133,9 @@ class TestBackfillPaging:
         full = _make_df(list(range(1, BARS_MAX_LIMIT + 1)), timeframe="1d")
         calls: list[int] = []
 
-        def fake_fetch(sym: str, tf: str, start: int, *args: Any) -> pd.DataFrame:
+        def fake_fetch(
+            sym: str, tf: str, start: int, *args: Any, **kwargs: Any
+        ) -> pd.DataFrame:
             calls.append(start)
             return full if len(calls) == 1 else _EMPTY
 
@@ -146,7 +150,9 @@ class TestBackfillPaging:
         conn = _make_conn()
         calls: list[int] = []
 
-        def fake_fetch(sym: str, tf: str, start: int, *args: Any) -> pd.DataFrame:
+        def fake_fetch(
+            sym: str, tf: str, start: int, *args: Any, **kwargs: Any
+        ) -> pd.DataFrame:
             calls.append(start)
             return _make_df([1_000, 2_000], timeframe="1d")
 
@@ -184,7 +190,9 @@ class TestFrozenTailIsPageScoped:
 
         calls: list[int] = []
 
-        def fake_fetch(sym: str, tf: str, start: int, *args: Any) -> pd.DataFrame:
+        def fake_fetch(
+            sym: str, tf: str, start: int, *args: Any, **kwargs: Any
+        ) -> pd.DataFrame:
             calls.append(start)
             return pages[len(calls) - 1] if len(calls) <= len(pages) else _EMPTY
 
@@ -221,7 +229,7 @@ class TestSync:
         upsert_ohlcv(conn, _make_df([1_000_000]))
         captured: list[int] = []
 
-        def capture(c: Any, sym: Any, tf: Any, start: int) -> int:
+        def capture(c: Any, sym: Any, tf: Any, start: int, **kwargs: Any) -> int:
             captured.append(start)
             return 0
 
@@ -381,7 +389,9 @@ class TestAdjustmentBasisGuard:
         upsert_ohlcv(conn, _bars_at([1_000, 2_000, 3_000], 400.0))
         starts: list[int] = []
 
-        def fake_fetch(sym: str, tf: str, start: int, *args: Any) -> pd.DataFrame:
+        def fake_fetch(
+            sym: str, tf: str, start: int, *args: Any, **kwargs: Any
+        ) -> pd.DataFrame:
             starts.append(start)
             if start == 3_000:  # the tail, already on the post-split basis
                 return _bars_at([3_000, 4_000], 100.0)
@@ -402,7 +412,9 @@ class TestAdjustmentBasisGuard:
         upsert_ohlcv(conn, _bars_at([1_000, 2_000, 3_000], 400.0))
         starts: list[int] = []
 
-        def fake_fetch(sym: str, tf: str, start: int, *args: Any) -> pd.DataFrame:
+        def fake_fetch(
+            sym: str, tf: str, start: int, *args: Any, **kwargs: Any
+        ) -> pd.DataFrame:
             starts.append(start)
             return _bars_at([3_000, 4_000], 400.0)
 
@@ -418,7 +430,9 @@ class TestAdjustmentBasisGuard:
         upsert_ohlcv(conn, _bars_at([1_000, 2_000, 3_000], 400.0))
         starts: list[int] = []
 
-        def fake_fetch(sym: str, tf: str, start: int, *args: Any) -> pd.DataFrame:
+        def fake_fetch(
+            sym: str, tf: str, start: int, *args: Any, **kwargs: Any
+        ) -> pd.DataFrame:
             starts.append(start)
             return _bars_at([3_000], 402.0)  # +0.5%, a candle that closed
 
@@ -435,7 +449,9 @@ class TestAdjustmentBasisGuard:
         upsert_ohlcv(conn, _bars_at([1_000], 400.0))
         starts: list[int] = []
 
-        def fake_fetch(sym: str, tf: str, start: int, *args: Any) -> pd.DataFrame:
+        def fake_fetch(
+            sym: str, tf: str, start: int, *args: Any, **kwargs: Any
+        ) -> pd.DataFrame:
             starts.append(start)
             return _bars_at([1_000], 100.0)
 
@@ -448,7 +464,9 @@ class TestAdjustmentBasisGuard:
         conn = _make_conn()
         upsert_ohlcv(conn, _bars_at([1_000, 2_000], 400.0))
 
-        def fake_fetch(sym: str, tf: str, start: int, *args: Any) -> pd.DataFrame:
+        def fake_fetch(
+            sym: str, tf: str, start: int, *args: Any, **kwargs: Any
+        ) -> pd.DataFrame:
             return (
                 _bars_at([2_000], 100.0)
                 if start == 2_000

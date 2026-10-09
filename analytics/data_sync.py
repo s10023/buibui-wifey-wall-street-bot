@@ -56,16 +56,20 @@ def backfill(
     symbol: str,
     timeframe: str,
     start_ms: int,
+    *,
+    require_data: bool = False,
 ) -> int:
     """Fetch OHLCV history from ``start_ms`` to now and store it.
 
     Pages through ``fetch_bars`` — each call yields at most ``BARS_MAX_LIMIT``
     bars — until a page comes back short. Returns total rows upserted.
+    ``require_data`` is passed to ``fetch_bars``, so a page the provider
+    returned nothing for raises ``NoProviderDataError``.
     """
     total = 0
     cursor = start_ms
     while True:
-        df = fetch_bars(symbol, timeframe, cursor)
+        df = fetch_bars(symbol, timeframe, cursor, require_data=require_data)
         if df.empty:
             return total
         page_rows = len(df)
@@ -140,6 +144,8 @@ def sync(
     conn: duckdb.DuckDBPyConnection,
     symbol: str,
     timeframe: str,
+    *,
+    require_data: bool = False,
 ) -> int:
     """Fetch candles from the latest stored open_time onwards (inclusive).
 
@@ -153,14 +159,16 @@ def sync(
     when it moves — see ``ADJUSTMENT_BASIS_TOL``.
 
     Raises ``ValueError`` if no data exists for (symbol, timeframe) — run
-    backfill first. Returns total rows upserted.
+    backfill first. Returns total rows upserted. With ``require_data=True``,
+    raises ``NoProviderDataError`` when the provider returned nothing, which
+    ``0`` rows alone cannot tell apart from "no new bars".
     """
     latest = get_latest_open_time(conn, symbol, timeframe)
     if latest is None:
         raise ValueError(f"No data found for {symbol}/{timeframe}. Run backfill first.")
 
     before = get_close_at(conn, symbol, timeframe, latest)
-    rows = backfill(conn, symbol, timeframe, latest)
+    rows = backfill(conn, symbol, timeframe, latest, require_data=require_data)
     after = get_close_at(conn, symbol, timeframe, latest)
     # The None legs are re-stated here rather than left to `basis_changed`
     # alone so mypy narrows both operands for the ratio in the log line below.
@@ -181,4 +189,4 @@ def sync(
     )
     if earliest is None or earliest >= latest:
         return rows
-    return rows + backfill(conn, symbol, timeframe, earliest)
+    return rows + backfill(conn, symbol, timeframe, earliest, require_data=require_data)
