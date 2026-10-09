@@ -66,6 +66,7 @@ import duckdb  # noqa: E402
 
 from analytics.signal.outcome_backfill import implied_tp_r  # noqa: E402
 from analytics.store.migration_bak import require_fresh_bak  # noqa: E402
+from analytics.store.schema_migrations import record_applied  # noqa: E402
 
 # Float tolerance for "the stored value already equals the derived one". The
 # derived value round-trips through a division, so an exact compare would
@@ -153,6 +154,8 @@ def migrate(db_path: str, apply: bool) -> None:
 
         if not rr_updates:
             print("Nothing to do.")
+            if apply:
+                record_applied(conn, __file__, 0)
             conn.close()
             return
 
@@ -180,6 +183,9 @@ def migrate(db_path: str, apply: bool) -> None:
         conn.executemany(
             "UPDATE signal_alert_outcomes SET outcome_r = ? WHERE signal_id = ?",
             r_updates,
+        )
+        record_applied(
+            conn, __file__, len(rr_updates), f"{len(r_updates)} outcome_r rewritten"
         )
         conn.execute("COMMIT")
 

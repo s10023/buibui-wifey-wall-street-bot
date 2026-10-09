@@ -31,6 +31,9 @@ backup tier; this does it for the two the backup probe cannot see:
   had not moved since 2026-06-18. It also lists **level breaks**: a series that
   resumed after a gap at a different level, which is how a provider serving the
   wrong security under a ticker shows in the stored tape (AVB, BNY `4h`; #469).
+  And it lists every `migrations/0*.py` this DB has no `schema_migrations` row
+  for, since a purge that never ran leaves its bad rows in what a study reads
+  (007 sat unapplied here until #445; #467).
   Network-free, and AMBER-only: it never makes the leg's ``ok`` false.
 
 Three properties decide whether a probe of this kind is worth anything, and all
@@ -86,6 +89,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from analytics.backtest.cost_model import BARS_PER_DAY
 from analytics.data_quality import LEVEL_BREAK_GAP_DAYS, classify_level_break
+from analytics.store.schema_migrations import recorded_ids, script_ids
 from tools import host_platform
 
 # --- Declared cadence -------------------------------------------------------
@@ -132,6 +136,7 @@ BASE_TOLERANCE_SESSIONS: float = 2.0
 DEFAULT_DB = Path("analytics.db")
 DEFAULT_STATE = Path("signal_state.json")
 DEFAULT_STOCKS = Path("config/stocks.json")
+DEFAULT_MIGRATIONS = Path("migrations")
 
 # Scans `ohlcv`, the view consumers actually read. A fresh tail written somewhere
 # the view does not surface is not freshness — it is a series that still looks
@@ -253,6 +258,11 @@ class OhlcvReport:
     # Gapped level breaks anywhere in the stored history. Advisory: `ok` ignores
     # them, because a break is a data-identity question, not a staleness one.
     level_breaks: tuple[LevelBreakRow, ...] = ()
+    # `migrations/0*.py` scripts with no `schema_migrations` row in this DB
+    # (#467). None means the record was not read (DB absent or locked), which is
+    # not the same claim as "every migration recorded". Advisory like the breaks:
+    # a missed purge changes what a study reads, but it is not staleness.
+    unrecorded_migrations: tuple[str, ...] | None = None
 
     @property
     def ok(self) -> bool:
@@ -752,6 +762,38 @@ def read_level_breaks(db_path: Path) -> list[LevelBreakRow] | None:
     return gapped_breaks(rows)
 
 
+def unrecorded(script_ids: Sequence[str], recorded: frozenset[str]) -> tuple[str, ...]:
+    """Scripts with no applied record, in script order. Pure."""
+    return tuple(i for i in script_ids if i not in recorded)
+
+
+def read_unrecorded_migrations(
+    db_path: Path, migrations_dir: Path = DEFAULT_MIGRATIONS
+) -> tuple[str, ...] | None:
+    """Migration scripts this DB has no record of; None when the DB is unreadable.
+
+    Reads the record, never the scripts' predicates: a predicate re-run flags
+    config drift (002) and by-design residuals (008) as pending (#467).
+    """
+    try:
+        import duckdb
+    except ImportError:  # pragma: no cover - duckdb is a runtime dep
+        return None
+    if not db_path.exists():
+        return None
+    try:
+        conn = duckdb.connect(str(db_path), read_only=True)
+    except Exception:
+        return None
+    try:
+        recorded = recorded_ids(conn)
+    except Exception:
+        return None
+    finally:
+        conn.close()
+    return unrecorded(script_ids(migrations_dir), recorded)
+
+
 def latest_session(now: datetime, sessions_fn: SessionsFn) -> date:
     """The most recent NYSE session on or before ``now``.
 
@@ -891,6 +933,25 @@ def render_ohlcv(report: OhlcvReport) -> str:
             " provider's quote"
         )
         lines.append("        before purging; migration 007 (AVB) is the repair shape.")
+    if report.unrecorded_migrations:
+        lines.append(
+            f"      ! UNRECORDED MIGRATION  {len(report.unrecorded_migrations)}"
+            " script(s) in migrations/ with no schema_migrations row (#467)"
+        )
+        for mid in report.unrecorded_migrations[:10]:
+            lines.append(f"          {mid}")
+        if len(report.unrecorded_migrations) > 10:
+            lines.append(
+                f"          … and {len(report.unrecorded_migrations) - 10} more"
+            )
+        lines.append(
+            "        Dry-run each to see whether it is pending here, then --apply"
+            " (backup + fresh .bak)."
+        )
+        lines.append(
+            "        A DB that predates the record table: run"
+            " migrations/seed_applied_2026_10_09.py."
+        )
     return "\n".join(lines)
 
 
@@ -920,6 +981,7 @@ def collect(
     state: Path = DEFAULT_STATE,
     stocks: Path = DEFAULT_STOCKS,
     universe: Path = DEFAULT_UNIVERSE,
+    migrations: Path = DEFAULT_MIGRATIONS,
 ) -> tuple[SignalReport | None, OhlcvReport | None]:
     """Read observed state and grade it; the I/O half `main` and the digest share."""
     from analytics.trading_calendar import nyse_sessions
@@ -951,7 +1013,11 @@ def collect(
             sessions_fn=nyse_sessions,
             universe_symbols=members,
         )
-        ohlcv = replace(ohlcv, level_breaks=tuple(read_level_breaks(db) or ()))
+        ohlcv = replace(
+            ohlcv,
+            level_breaks=tuple(read_level_breaks(db) or ()),
+            unrecorded_migrations=read_unrecorded_migrations(db, migrations),
+        )
     return signal, ohlcv
 
 

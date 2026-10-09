@@ -1,6 +1,6 @@
 # `migrations/` — hand-run one-shot DB migrations
 
-Eight scripts. Routine schema changes do not go here — they belong in
+Nine numbered scripts, plus a one-time seed for the applied record (below). Routine schema changes do not go here — they belong in
 `analytics/store/schema.py`'s migration list, which runs automatically on connect. This directory
 is only for changes that list cannot express: a column's type changing, or existing row values
 being rewritten.
@@ -278,6 +278,25 @@ from the newest stored bar; a hand-run full `4h` backfill would, and the ingest 
 
 **Run:** `python migrations/009_purge_bny_4h_wrong_instrument.py [--db PATH] [--apply]` —
 dry-run by default (816 rows on 2026-10-09).
+
+## The applied record — `schema_migrations` (#467)
+
+The scripts keep no state of their own, so whether one reached a given DB could only be
+re-derived by hand, and 007 sat unapplied on this host's DB until #445 found it. Every numbered
+script's `--apply` now calls `analytics/store/schema_migrations.py::record_applied`, including a
+zero-row apply, inside its write transaction where it has one; 008 records once after its
+per-symbol loop and names the symbols it kept. The table lives in `analytics.db`, so a restored
+snapshot shows that snapshot's applied set. A new script must call it too:
+`tests/test_schema_migrations.py` fails on any `migrations/0*.py` that does not.
+
+`make freshness-check` (and the session digest, as AMBER) lists every `0*.py` with no row. It
+reads the record, never the predicates, because re-running them is not a sound check: 002's reads
+today's config and flags 13 truthful rows that `fa89d57` exempted after they were written, and
+008 keeps SATS by design. For the same reason 002's `--apply` refuses once it is recorded.
+
+`seed_applied_2026_10_09.py` records 001–009 once on the DB the #467 probe read (this host's),
+with a note per row saying how each was established and `applied_at_utc` left NULL. Do not run it
+against any other DB, where its notes would be claims nobody checked; re-run the probe there.
 
 ## The transferable rule
 

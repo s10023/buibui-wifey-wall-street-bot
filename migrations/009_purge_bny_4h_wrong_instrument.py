@@ -44,6 +44,7 @@ import duckdb  # noqa: E402
 
 from analytics.store import DEFAULT_DB_PATH  # noqa: E402
 from analytics.store.migration_bak import require_fresh_bak  # noqa: E402
+from analytics.store.schema_migrations import record_applied  # noqa: E402
 
 #: 2026-04-01 UTC, inside the empty gap between the last bad bar
 #: (1770399000000, 2026-02-06) and the first good one (1779456600000,
@@ -101,12 +102,19 @@ def migrate(db_path: str, apply: bool) -> int:
             print("\nDRY RUN — nothing written. Re-run with --apply.")
             return len(rows)
 
-        if rows:
-            conn.executemany(
-                "DELETE FROM ohlcv "
-                "WHERE symbol = ? AND timeframe = ? AND open_time = ?",
-                [(r[0], r[1], r[2]) for r in rows],
-            )
+        conn.execute("BEGIN TRANSACTION")
+        try:
+            if rows:
+                conn.executemany(
+                    "DELETE FROM ohlcv "
+                    "WHERE symbol = ? AND timeframe = ? AND open_time = ?",
+                    [(r[0], r[1], r[2]) for r in rows],
+                )
+            record_applied(conn, __file__, len(rows))
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
         print(f"\nApplied: {len(rows)} row(s) deleted.")
         return len(rows)
     finally:

@@ -2,6 +2,8 @@
 
 import duckdb
 
+from analytics.store.schema_migrations import ensure_schema_migrations
+
 
 def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
     """Create all tables if they do not exist."""
@@ -415,6 +417,9 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
             PRIMARY KEY (symbol, since)
         )
     """)
+    # Which one-shot `migrations/` scripts reached this DB (#467). The DDL lives
+    # beside its writer, which also creates the table on an un-initialised DB.
+    ensure_schema_migrations(conn)
     # Backfill existing runs from trades table where split columns are still NULL.
     # Runs after backtest_trades is created so the table always exists.
     conn.execute("""
