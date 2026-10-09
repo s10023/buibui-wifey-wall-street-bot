@@ -8,12 +8,15 @@ it was never run against something that should fail.
 
 from __future__ import annotations
 
+import json
 import re
+import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
 
+from tools import session_digest
 from tools.post_branch_checks import (
     HANDOFF_MAX_LINES,
     HANDOFF_WARN_MARGIN,
@@ -22,6 +25,8 @@ from tools.post_branch_checks import (
     NEGATIVE_CLAIM_RE,
     UNCOVERED_STEPS,
     Finding,
+    PublishedFetcher,
+    PublishedText,
     Runner,
     _check_handoff_size,
     _handoff_leg,
@@ -43,6 +48,7 @@ from tools.post_branch_checks import (
     demote_unchanged_in_rewrites,
     enumerated_members,
     extract_tokens,
+    fetch_published_texts,
     load_sensitive_terms,
     main,
     mask_term,
@@ -771,6 +777,17 @@ class TestHandoffLeg:
         assert result.findings == [finding]
 
 
+def _published(
+    texts: list[PublishedText] | None = None, err: str = ""
+) -> PublishedFetcher:
+    """A stub GitHub read: ``texts`` (default none), or a failure when ``err``."""
+
+    def fetch() -> tuple[list[PublishedText] | None, str]:
+        return (None, err) if err else (texts or [], "")
+
+    return fetch
+
+
 class TestSensitiveTerms:
     """The pre-flip gate (ported from parent #658).
 
@@ -800,13 +817,17 @@ class TestSensitiveTerms:
 
     def test_an_absent_list_is_a_FINDING_not_a_skip(self) -> None:
         """ "Did not run" and "passed" must not look alike before a flip."""
-        result = sensitive_terms_result(self._runner(), terms=[])
+        result = sensitive_terms_result(
+            self._runner(), terms=[], fetch_published=_published()
+        )
         assert len(result.findings) == 1
         assert "NOT CONFIGURED" in result.findings[0].detail
         assert "NOT the same as passing" in result.findings[0].detail
 
     def test_a_clean_branch_reports_no_findings_and_notes_the_baseline(self) -> None:
-        result = sensitive_terms_result(self._runner(), terms=[self.TERM])
+        result = sensitive_terms_result(
+            self._runner(), terms=[self.TERM], fetch_published=_published()
+        )
         assert result.findings == []
         assert result.note is not None
         assert "1 term(s)" in result.note
@@ -815,7 +836,9 @@ class TestSensitiveTerms:
     def test_a_tracked_file_hit_fires(self) -> None:
         """Positive control for the only leg a plain `git grep` covers."""
         result = sensitive_terms_result(
-            self._runner(tracked="docs/a.md\ndocs/b.md\n"), terms=[self.TERM]
+            self._runner(tracked="docs/a.md\ndocs/b.md\n"),
+            terms=[self.TERM],
+            fetch_published=_published(),
         )
         assert len(result.findings) == 1
         assert "2 tracked file(s)" in result.findings[0].detail
@@ -825,6 +848,7 @@ class TestSensitiveTerms:
         result = sensitive_terms_result(
             self._runner(messages=f"chore: scrub {self.TERM} from the docs\n"),
             terms=[self.TERM],
+            fetch_published=_published(),
         )
         assert len(result.findings) == 1
         assert "commit MESSAGE" in result.findings[0].detail
@@ -832,7 +856,9 @@ class TestSensitiveTerms:
 
     def test_a_term_INTRODUCED_on_this_branch_fires(self) -> None:
         result = sensitive_terms_result(
-            self._runner(introduced="abc1234 feat: add a thing\n"), terms=[self.TERM]
+            self._runner(introduced="abc1234 feat: add a thing\n"),
+            terms=[self.TERM],
+            fetch_published=_published(),
         )
         assert len(result.findings) == 1
         assert "introduced by 1 commit(s)" in result.findings[0].detail
@@ -852,8 +878,9 @@ class TestSensitiveTerms:
                 introduced="abc1234 feat: add a thing\n",
             ),
             terms=[self.TERM],
+            fetch_published=_published([("Issue #7 body", f"ask {self.TERM}")]),
         )
-        assert len(result.findings) == 3, "all three legs should fire"
+        assert len(result.findings) == 4, "all four legs should fire"
         for finding in result.findings:
             assert self.TERM not in finding.detail
             assert "acm…" in finding.detail
@@ -867,6 +894,143 @@ class TestSensitiveTerms:
             "# a comment\n\nAcmeCorp\n  Other Co  # trailing note\n"
         )
         assert terms == ["acmecorp", "other co"]
+
+
+class TestSensitiveTermsPublished:
+    """The fourth surface: Issue/PR text already on GitHub (#373).
+
+    Planning moved into Issues on 2026-09-30 and they publish with the repo, yet
+    the three git legs never read them. The read can fail where git cannot, so the
+    unreadable case is pinned as hard as the hit.
+    """
+
+    TERM = "acmecorp"
+
+    @staticmethod
+    def _quiet_git() -> Runner:
+        return lambda argv: ""
+
+    def test_a_planted_Issue_hit_fires_masked_and_labelled(self) -> None:
+        result = sensitive_terms_result(
+            self._quiet_git(),
+            terms=[self.TERM],
+            fetch_published=_published(
+                [
+                    ("Issue #7 title", "Plan the review"),
+                    ("Issue #7 body", f"Ask {self.TERM.upper()} about it"),
+                    ("comment on #9", f"see {self.TERM}"),
+                ]
+            ),
+        )
+        assert len(result.findings) == 1
+        detail = result.findings[0].detail
+        assert "acm…" in detail
+        assert self.TERM not in detail.lower()
+        assert "2 published Issue/PR text(s): Issue #7 body, comment on #9" in detail
+        assert "Plan the review" not in detail, "labels only, never the text"
+
+    def test_an_unreadable_GitHub_is_a_FINDING_never_clean(self) -> None:
+        """A failed read must not look like an empty, clean Issue set."""
+        result = sensitive_terms_result(
+            self._quiet_git(),
+            terms=[self.TERM],
+            fetch_published=_published(err="Issues/PRs: HTTP 401"),
+        )
+        assert len(result.findings) == 1
+        detail = result.findings[0].detail
+        assert detail.startswith("UNREADABLE")
+        assert "HTTP 401" in detail
+        assert "NOT the same as passing" in detail
+        assert result.note is None
+
+    def test_a_clean_read_counts_what_it_screened(self) -> None:
+        result = sensitive_terms_result(
+            self._quiet_git(),
+            terms=[self.TERM],
+            fetch_published=_published([("Issue #1 title", "x"), ("PR #2 body", "")]),
+        )
+        assert result.findings == []
+        assert result.note is not None
+        assert "2 published Issue/PR text(s)" in result.note
+
+
+class TestFetchPublishedTexts:
+    """The real `gh api` read, with `subprocess.run` mocked: no network."""
+
+    @staticmethod
+    def _gh(pages: dict[str, object], monkeypatch: pytest.MonkeyPatch) -> None:
+        """Answer each `gh api <path>` from ``pages``, keyed by path prefix."""
+        monkeypatch.setenv("GH_TOKEN", "test-token")
+
+        def run(argv: Sequence[str], **_: object) -> subprocess.CompletedProcess[str]:
+            path = argv[2]
+            for prefix, answer in pages.items():
+                if path.startswith(prefix):
+                    if isinstance(answer, int):
+                        return subprocess.CompletedProcess(argv, answer, "", "HTTP 401")
+                    body = json.dumps(answer if "page=1" in path else [])
+                    return subprocess.CompletedProcess(argv, 0, body, "")
+            raise AssertionError(f"unexpected gh call: {path}")
+
+        monkeypatch.setattr(session_digest.subprocess, "run", run)
+
+    def test_issues_PRs_and_both_comment_kinds_are_labelled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        slug = "repos/s10023/buibui-wifey-wall-street-bot"
+        self._gh(
+            {
+                f"{slug}/issues?": [
+                    {"number": 3, "title": "t3", "body": None},
+                    {"number": 4, "title": "t4", "body": "b4", "pull_request": {}},
+                ],
+                f"{slug}/issues/comments": [
+                    {
+                        "issue_url": f"https://api.github.com/{slug}/issues/3",
+                        "body": "c",
+                    }
+                ],
+                f"{slug}/pulls/comments": [
+                    {"pull_request_url": f"https://x/{slug}/pulls/4", "body": "r"}
+                ],
+            },
+            monkeypatch,
+        )
+        texts, err = fetch_published_texts()
+        assert err == ""
+        assert texts == [
+            ("Issue #3 title", "t3"),
+            ("Issue #3 body", ""),
+            ("PR #4 title", "t4"),
+            ("PR #4 body", "b4"),
+            ("comment on #3", "c"),
+            ("review comment on #4", "r"),
+        ]
+
+    def test_a_failed_comment_read_fails_the_whole_read(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Issues alone would read as a complete, clean surface."""
+        slug = "repos/s10023/buibui-wifey-wall-street-bot"
+        self._gh(
+            {
+                f"{slug}/issues?": [{"number": 3, "title": "t3", "body": "b"}],
+                f"{slug}/issues/comments": 1,
+            },
+            monkeypatch,
+        )
+        texts, err = fetch_published_texts()
+        assert texts is None
+        assert err == "comments: HTTP 401"
+
+    def test_an_item_without_a_number_fails_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        slug = "repos/s10023/buibui-wifey-wall-street-bot"
+        self._gh({f"{slug}/issues?": [{"title": "no number"}]}, monkeypatch)
+        texts, err = fetch_published_texts()
+        assert texts is None
+        assert "no number or title" in err
 
 
 class TestUncoveredSteps:

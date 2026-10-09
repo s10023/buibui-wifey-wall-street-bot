@@ -51,7 +51,7 @@ If phase 1 and the doc edits already ran on this HEAD, do not re-walk them: re-r
 - **Sweep before the PR.** Every push to an open PR re-runs the whole matrix, so this runs while the branch is local-only ([why](references/ci-visibility-flip.md#the-visibility-flip-decision)).
 - **Vacuous legs.** `memory-cap` and `handoff-size` score the previous session on the phase-1 run; re-run after phase 6 ([detail](references/sweep-checks.md#vacuous-legs-and-not-configured)).
 - **`NOT CONFIGURED` is a finding.** An absent `.claude/sensitive-terms.txt` is not a pass ([detail](references/sweep-checks.md#vacuous-legs-and-not-configured)).
-- **PR text is a fourth surface.** The sweep cannot see a title or body; screen them with `make post-branch-text`, repo-relative `FILE=`, chained with `&&` ([detail](references/sweep-checks.md#screening-a-pr-title-and-body)).
+- **Unposted PR text is outside the sweep.** The sweep reads Issues and PRs already on GitHub, not a title or body still being composed; screen them with `make post-branch-text`, repo-relative `FILE=`, chained with `&&` ([detail](references/sweep-checks.md#screening-a-pr-title-and-body)).
 - **A name grep misses removals and stale values.** Grep the constrained artifact and compare values, not keys ([detail](references/doc-walk.md#what-the-name-grep-misses)).
 - **Memory cap is bytes too.** Re-home the largest bullet before trimming the new one ([detail](references/reconcile-and-claims.md#memorymd-cap)).
 - **Commit messages are audited prose.** Amend an unpushed commit; never add a wording commit ([detail](references/reconcile-and-claims.md#commit-messages-and-comments-are-audited-prose)).
@@ -79,9 +79,9 @@ The thirteen checks are `queue-items`, `handoff-symbols`, `new-files`, `new-modu
 
 **`memory-cap` and `handoff-size` are vacuous on the phase-1 run; re-run `make post-branch-checks` after phase 6 and read them then. `sensitive-terms` reading `NOT CONFIGURED` is a finding, not a skip.** Detail: [references/sweep-checks.md](references/sweep-checks.md#vacuous-legs-and-not-configured).
 
-**Those three legs cannot see a PR title or body — screen it with `--text` before you
-post.** A body is neither the tree nor a commit, so the sweep reports `clean` on one
-naming every term: correctly, and uselessly. Write the body to a file (which CLAUDE.md
+**The sweep cannot see a PR title or body before it posts — screen it with `--text`
+first.** An unposted body is neither the tree, a commit nor on GitHub, so the sweep
+reports `clean` on one naming every term: correctly, and uselessly. Write the body to a file (which CLAUDE.md
 requires anyway — a heredoc is the command payload and trips the destructive guard),
 then:
 
@@ -295,9 +295,8 @@ Not a `post_branch_checks` leg (it needs `gh`); phase 6's flip-back gate closes 
 
 Then compose the **Documentation updates** section and pass it in the *initial* `--body`; never open the PR and then edit its body. Write PR and Issue bodies with one line per paragraph or bullet. Detail: [references/ci-visibility-flip.md](references/ci-visibility-flip.md#composing-the-pr-body).
 
-**Screen the composed title and body before they post** — they are the fourth exposure
-surface and the only indexable one, and the sweep's three git legs cannot see either
-(phase 1). Do it while the text is still a local file:
+**Screen the composed title and body before they post** — once posted they are public on
+the next flip, and the sweep reads them only after they land (phase 1). Do it while the text is still a local file:
 
 ```bash
 make post-branch-text FILE=docs/plans/pr-<branch>.md \

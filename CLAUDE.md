@@ -655,13 +655,15 @@ Mechanical guards, because prose does not enforce:
   handoff's size against `HANDOFF_MAX_LINES`, dead cross-document section anchors
   (`stale-anchors`, which also sweeps the memory tree), and the pre-flip `sensitive-terms` gate.
   Details for every leg: `.claude/context/tools.md`.
-  - `sensitive-terms` screens three surfaces: the tracked tree, this branch's commit content and
-    its commit messages, because a flip republishes the whole history. The term list,
-    `.claude/sensitive-terms.txt`, is gitignored by policy (a tracked list of the words you are
+  - `sensitive-terms` screens four surfaces: the tracked tree, this branch's commit content, its
+    commit messages (a flip republishes the whole history), and every Issue and PR title, body
+    and comment on GitHub, open and closed, read over REST. An unreadable GitHub is an
+    `UNREADABLE` finding, never clean. A title's rename history is not read (#448). The term
+    list, `.claude/sensitive-terms.txt`, is gitignored by policy (a tracked list of the words you are
     hiding is the leak), so an absent list is a `NOT CONFIGURED` finding, never a skip. Output
     masks the term and excludes main's accepted baseline. The list is single-copy and covered by
     `BACKUP_FILES`.
-  - PR titles and bodies are a fourth surface that leg cannot see. Screen the composed text with
+  - A PR title and body not yet posted are a surface that leg cannot see. Screen the composed text with
     `make post-branch-text FILE=<path>` (`FILE=-` reads stdin) in `/post-branch` phase 5, beside
     `make preflight`, before it posts; a posted body is public the moment it lands. It gates
     (exit 1 on a hit, which `make` shows as 2) and prints line numbers with a masked term, never
@@ -840,7 +842,9 @@ Pushing a branch costs nothing: `push:` triggers only on `main` and `pull_reques
 PR, so the meter starts at `gh pr create`.
 
 Confirm each flip with the user. Standing authorisation covers the mechanics, not the timing,
-and a flip publishes the parent's pre-fork commits for its duration.
+and a flip publishes the parent's pre-fork commits for its duration. Before flipping public, run
+`make post-branch-checks` and read its `sensitive-terms` leg: it screens the tree, the branch's
+commits and every Issue and PR on GitHub, all of which the flip publishes.
 
 ```bash
 GH_TOKEN=$(gh auth token --user s10023) gh repo edit s10023/buibui-wifey-wall-street-bot \

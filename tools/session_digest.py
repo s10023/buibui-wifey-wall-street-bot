@@ -379,18 +379,24 @@ ISSUES_PATH = f"repos/{REPO_SLUG}/issues?state={{state}}&per_page=100&page={{pag
 MAX_ISSUE_PAGES = 50
 
 
-def fetch_issue_items(state: str) -> tuple[list[dict[str, Any]] | None, str]:
-    """Issues in ``state`` (``open``, ``closed`` or ``all``) via `gh api`.
+#: Every Issue and PR conversation comment in the repo, one listing (#373).
+ISSUE_COMMENTS_PATH = f"repos/{REPO_SLUG}/issues/comments?per_page=100&page={{page}}"
+#: Every PR review (diff-line) comment, which the listing above does not carry.
+PR_REVIEW_COMMENTS_PATH = f"repos/{REPO_SLUG}/pulls/comments?per_page=100&page={{page}}"
 
-    The issues endpoint also returns pull requests, and they are dropped here, so
-    every consumer sees Issues only. Returns ``(None, reason)`` on any failure.
+
+def fetch_gh_pages(path: str) -> tuple[list[dict[str, Any]] | None, str]:
+    """Every item of a paged REST listing; ``path`` carries a ``{page}`` slot.
+
+    Returns ``(None, reason)`` on any failure, including a listing longer than
+    ``MAX_ISSUE_PAGES``: a partial read must never pass for a complete one.
     """
     env = owner_env()
     items: list[dict[str, Any]] = []
     for page in range(1, MAX_ISSUE_PAGES + 1):
         try:
             proc = subprocess.run(
-                ["gh", "api", ISSUES_PATH.format(state=state, page=page)],
+                ["gh", "api", path.format(page=page)],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -410,10 +416,26 @@ def fetch_issue_items(state: str) -> tuple[list[dict[str, Any]] | None, str]:
             return None, f"unparseable gh output ({exc})"
         if not isinstance(batch, list):
             return None, f"unexpected gh output on page {page}"
-        items.extend(it for it in batch if "pull_request" not in it)
+        items.extend(batch)
         if len(batch) < 100:
             return items, ""
-    return None, f"more than {MAX_ISSUE_PAGES} pages of Issues; refusing a partial read"
+    return None, f"more than {MAX_ISSUE_PAGES} pages; refusing a partial read"
+
+
+def fetch_issue_items(
+    state: str, *, include_prs: bool = False
+) -> tuple[list[dict[str, Any]] | None, str]:
+    """Issues in ``state`` (``open``, ``closed`` or ``all``) via `gh api`.
+
+    The issues endpoint also returns pull requests. They are dropped unless
+    ``include_prs``, so every planning consumer sees Issues only; the
+    `sensitive-terms` leg keeps them, because a PR publishes on the same flip.
+    Returns ``(None, reason)`` on any failure.
+    """
+    items, err = fetch_gh_pages(ISSUES_PATH.replace("{state}", state))
+    if items is None or include_prs:
+        return items, err
+    return [it for it in items if "pull_request" not in it], err
 
 
 def fetch_issues() -> tuple[list[dict[str, Any]] | None, str]:

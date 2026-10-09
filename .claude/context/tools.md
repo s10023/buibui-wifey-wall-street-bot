@@ -131,9 +131,13 @@ Checks: `queue-items` · `handoff-symbols` · `new-files` · `new-modules` · `n
 `amended-targets` · `negative-claims` · `doc-indexes` · `md-atx` · `memory-cap` · `handoff-size` ·
 `stale-anchors` (engine in `stale_anchors.py`, below) · `sensitive-terms` (the pre-flip gate,
 ported from the parent; asks the tracked tree, this branch's commit content and its commit
-messages, because a flip republishes the whole history and no file edit reaches a message. An
-absent `.claude/sensitive-terms.txt` is a finding reading `NOT CONFIGURED`, never a skip, and
-terms are masked in the output).
+messages, because a flip republishes the whole history and no file edit reaches a message, and
+since #373 every Issue and PR title, body, comment and review comment, open and closed, read over
+REST through `session_digest.fetch_gh_pages`. PRs are in because they publish on the same flip
+and `--text` sees only a body not yet posted. Any failed or partial read is an `UNREADABLE`
+finding, never clean, and title rename history is not fetched (#448). An absent
+`.claude/sensitive-terms.txt` is a finding reading `NOT CONFIGURED`, never a skip, and terms are
+masked in the output).
 
 ### amended-targets
 
@@ -172,9 +176,10 @@ A cap that is silent while the file sits on it invites shuffling text to fit ins
 
 ### The `--text` surface
 
-`--text <file>` (`make post-branch-text FILE=<path>`) is a fourth surface for the sensitive-terms
-gate and runs alone, without any git surface: a PR title or body is neither the tree nor a commit,
-so the three git-scoped legs report clean on one naming every term. Repeatable, `FILE=-` reads
+`--text <file>` (`make post-branch-text FILE=<path>`) is the pre-posting surface for the
+sensitive-terms gate and runs alone, without any git surface: a PR title or body still being
+composed is neither the tree, a commit nor on GitHub yet, so the leg reports clean on one naming
+every term. Repeatable, `FILE=-` reads
 stdin, exit 1 on a hit (`make` collapses that to its own 2, as with `wait_ci`). It prints line
 numbers and a masked term, never the matching line, because the match sits inside the very prose
 being screened. Belongs in phase 5 — a posted body is public on landing and a later edit does not
