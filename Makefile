@@ -1,3 +1,39 @@
+# Every recipe is bash. On Windows, make with no SHELL uses the first sh.exe on
+# PATH, and falls back to cmd.exe when there is none, which is the case in
+# PowerShell: Git's installer by default puts Git\cmd on PATH but not usr\bin.
+# cmd.exe then fails on the first `set -a` (`Environment variable -a; ... not
+# defined`). So pin Git's
+# bin/bash.exe, which also puts /usr/bin first so `find` is not Windows find.
+# It is located from a Git\cmd entry on PATH, then from the default install
+# dirs. Spaces become `?` so each candidate is one word, and `wildcard` turns it
+# back into the real path. Never take a bare bash.exe off PATH: System32's is
+# WSL's. Git Bash's own sh still works when none is found (MSYSTEM is set), and
+# `make SHELL=<path>` overrides. Plain lines with no shell syntax are still
+# exec'd directly by make, so `preflight`'s bare python3 is unaffected (#461).
+ifeq ($(OS),Windows_NT)
+ifneq ($(origin SHELL),command line)
+_space := $() $()
+_winpath = $(subst $(_space),?,$(subst \,/,$(1)))
+GIT_BASH := $(firstword $(foreach c,\
+  $(patsubst %/Git/cmd,%/Git/bin/bash.exe,$(filter %/Git/cmd,$(patsubst %/,%,$(subst ;, ,$(call _winpath,$(PATH)))))) \
+  $(call _winpath,$(ProgramW6432))/Git/bin/bash.exe \
+  $(call _winpath,$(ProgramFiles))/Git/bin/bash.exe \
+  $(call _winpath,$(LOCALAPPDATA))/Programs/Git/bin/bash.exe,\
+  $(if $(wildcard $(c)),$(c))))
+ifneq ($(GIT_BASH),)
+SHELL := $(wildcard $(GIT_BASH))
+# A line make execs directly inherits make's PATH, not the one bin/bash.exe
+# builds, so outside Git Bash give it Git's dirs too: tests run `bash` bare.
+ifeq ($(MSYSTEM),)
+_git_root := $(patsubst %/bin/bash.exe,%,$(GIT_BASH))
+export PATH := $(subst /,\,$(wildcard $(_git_root)/mingw64/bin));$(subst /,\,$(wildcard $(_git_root)/usr/bin));$(PATH)
+endif
+else ifeq ($(MSYSTEM),)
+$(error No Git for Windows bash.exe found, and make would fall back to cmd.exe. Install Git for Windows, or run make SHELL=<path to Git's bin/bash.exe>)
+endif
+endif
+endif
+
 # Exported to EVERY recipe, not just `test`. Windows defaults a redirected
 # stdout and every implicit text read to the ANSI codepage (cp1252 here), and
 # this tree's source, docs, configs and fixtures are full of em-dashes and ⚠.
