@@ -2176,6 +2176,15 @@ items that look fine. Diagnose by running the download, never by reading the cod
   `test_a_genuinely_caption_less_video_stays_plain_asr` exists. The no-Groq path says
   `caption download failed` rather than `no captions available` so the distinction survives to the
   one surface a human reads.
+- `parse_vtt` is `parse_vtt_cues` (one raw segment per cue) then `normalise_captions` (#330):
+  inline tags are stripped, entities decoded, and on a track carrying inline word timings
+  (YouTube's auto-caption signature) each cue keeps only the words after its overlap with the
+  previous cue, so every segment carries the start time of the cue that introduced its words.
+  An author-written track keeps every cue's words. A whitespace-only line ends a cue only once
+  it has text: YouTube opens each cue with a one-space line, which used to drop the track's
+  first cue. `tests/fixtures/youtube_auto_captions.vtt` depends on those one-space lines, so
+  `trailing-whitespace` excludes `tests/fixtures/*.vtt`. Transcripts cached under `.cache/video/`
+  before this stay raw until re-fetched with `--force`.
 - `_sub_langs` decides which caption tracks are even requested, and asking wrong costs the whole
   transcript. yt-dlp returns `language: null` on a large slice of the follow list, and requesting
   `en` alone means a Chinese upload with an author-written `zh-Hant` track gets "no subtitles for
