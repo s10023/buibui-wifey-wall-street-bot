@@ -48,6 +48,39 @@ class TestFreshness:
         assert "3 of 26" in f.detail
         assert "2026-09-16" in f.detail  # the oldest of 18, 17, 16
 
+    def test_universe_stragglers_are_AMBER_and_never_labelled_watchlist(self) -> None:
+        """#389: a stale universe member (AVB) red-lined the digest as 'watchlist'."""
+        report = OhlcvReport(
+            [
+                Graded("AVB", "1d", date(2026, 8, 24), 30, 30.0, cadence="universe"),
+                Graded("AVB", "1wk", date(2026, 8, 24), 30, 6.0, cadence="universe"),
+            ],
+            1109,
+            0,
+            None,
+            None,
+        )
+        (f,) = sd.freshness_findings(_signal(), report)
+        assert (f.level, f.label) == ("AMBER", "universe OHLCV stale")
+        assert "2 of 1109" in f.detail and "2026-08-24" in f.detail
+
+    def test_mixed_tiers_give_one_line_each_with_their_own_oldest(self) -> None:
+        report = OhlcvReport(
+            [
+                Graded("AAPL", "1d", date(2026, 9, 30), 5, 5.0, cadence="watchlist"),
+                Graded("AVB", "1d", date(2026, 8, 24), 30, 30.0, cadence="universe"),
+            ],
+            1109,
+            0,
+            None,
+            None,
+        )
+        red, amber = sd.freshness_findings(_signal(), report)
+        assert (red.level, red.label) == ("RED", "watchlist OHLCV stale")
+        assert "1 of 1109" in red.detail and "2026-09-30" in red.detail
+        assert (amber.level, amber.label) == ("AMBER", "universe OHLCV stale")
+        assert "2026-08-24" in amber.detail
+
     def test_fresh_watchlist_is_silent(self) -> None:
         assert sd.freshness_findings(_signal(), _ohlcv()) == []
 

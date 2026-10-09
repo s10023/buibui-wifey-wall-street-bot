@@ -72,7 +72,7 @@ import json
 import subprocess
 import sys
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -203,6 +203,9 @@ class Graded:
     newest_session: date
     age_sessions: int
     age_bars: float | None
+    # The cadence that graded it (`Cadence.name`); None until `evaluate_ohlcv` assigns
+    # one. Readers treat None as the strict watchlist tier.
+    cadence: str | None = None
 
     @property
     def measurable(self) -> bool:
@@ -411,6 +414,7 @@ def evaluate_ohlcv(
             unscheduled.append(graded.newest_session)
             continue
         scheduled_total += 1
+        graded = replace(graded, cadence=cadence.name)
         limit = tolerance_sessions_for(series.timeframe, cadence)
         if limit is None or not graded.measurable:
             # Scheduled but unmeasurable: report it. An unknown bars-per-day is

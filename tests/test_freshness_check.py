@@ -318,6 +318,25 @@ class TestUniverseTierIsGatedOnTheTimer:
         assert [(g.symbol, g.timeframe) for g in report.stale] == [("ZTS", "1d")]
         assert report.universe_scheduled
 
+    def test_each_stale_series_carries_the_cadence_that_graded_it(self) -> None:
+        """The digest splits its RED/AMBER lines on this tag (#389). A symbol on
+        both lists takes the tighter watchlist cadence, so it must tag watchlist."""
+        rows = [
+            Series("ZTS", "1d", _ms(date(2026, 6, 18))),
+            Series("AAPL", "1d", _ms(date(2026, 6, 18))),
+        ]
+        report = evaluate_ohlcv(
+            rows,
+            now=TUE,
+            scheduled_symbols=frozenset({"AAPL"}),
+            sessions_fn=_weekday_sessions,
+            universe_symbols=frozenset({"ZTS", "AAPL"}),
+        )
+        assert sorted((g.symbol, g.cadence) for g in report.stale) == [
+            ("AAPL", "watchlist"),
+            ("ZTS", "universe"),
+        ]
+
     def test_the_same_series_is_an_absence_when_the_timer_is_off(self) -> None:
         """The other half: identical input, no members, no fault reported."""
         rows = [Series("ZTS", "1d", _ms(date(2026, 6, 18)))]

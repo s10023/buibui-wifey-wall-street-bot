@@ -122,17 +122,32 @@ def freshness_findings(signal: Any, ohlcv: Any) -> list[Finding]:
                 "config/stocks.json is absent, so no scheduled series was graded",
             )
         )
-    elif ohlcv.stale:
-        oldest = min(g.newest_session for g in ohlcv.stale)
-        out.append(
-            Finding(
-                "RED",
-                "watchlist OHLCV stale",
-                f"{len(ohlcv.stale)} of {ohlcv.scheduled_total} scheduled series behind;"
-                f" oldest last session {oldest}",
-                "CATCH_UP=1 make go-live, then check why the scheduled run did not",
+    else:
+        # Split by the cadence that graded each series: a universe straggler is a
+        # research-data gap, not a live-path fault, and must not read as one (#389).
+        # An untagged series counts as watchlist, the strict tier.
+        universe = [g for g in ohlcv.stale if g.cadence == "universe"]
+        watchlist = [g for g in ohlcv.stale if g.cadence != "universe"]
+        if watchlist:
+            out.append(
+                Finding(
+                    "RED",
+                    "watchlist OHLCV stale",
+                    f"{len(watchlist)} of {ohlcv.scheduled_total} scheduled series behind;"
+                    f" oldest last session {min(g.newest_session for g in watchlist)}",
+                    "CATCH_UP=1 make go-live, then check why the scheduled run did not",
+                )
             )
-        )
+        if universe:
+            out.append(
+                Finding(
+                    "AMBER",
+                    "universe OHLCV stale",
+                    f"{len(universe)} of {ohlcv.scheduled_total} scheduled series behind;"
+                    f" oldest last session {min(g.newest_session for g in universe)}",
+                    "check the wifey-universe-sync task; `make freshness-check` lists them",
+                )
+            )
     return out
 
 
