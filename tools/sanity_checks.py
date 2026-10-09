@@ -53,6 +53,14 @@ Runner = Callable[[Sequence[str]], str]
 SURFACE_ROOTS = (".claude",)
 SURFACE_FILES = ("CLAUDE.md", "README.md", "docs/system-overview.md")
 
+#: Trees under a surface root that belong to another checkout. Parallel sessions put
+#: git worktrees at `.claude/worktrees/<name>/`, each a full copy of the repo, so an
+#: `rglob` over `.claude` read every worktree's CLAUDE.md, README.md and skills as this
+#: checkout's surfaces: 17 findings on 2026-10-09, none of them this branch's (#454).
+#: Excluded here rather than by asking git, because git ignores them only where
+#: `.gitignore` or a per-clone `.git/info/exclude` says so, and this must hold in both.
+FOREIGN_TREES = (Path(".claude/worktrees"),)
+
 #: These two files quote the anti-patterns in order to hunt for them, so their
 #: own text is not evidence of drift.
 SELF_REFERENTIAL = ("sanity-check/SKILL.md", "post-branch/SKILL.md")
@@ -225,7 +233,10 @@ def _run(argv: Sequence[str]) -> str:
 
 
 def surface_paths() -> list[Path]:
-    """Every current-state doc surface that exists, self-referential ones dropped."""
+    """Every current-state doc surface that exists.
+
+    Self-referential skills and foreign trees (see `FOREIGN_TREES`) are dropped.
+    """
     paths: list[Path] = []
     for root in SURFACE_ROOTS:
         paths += sorted(Path(root).rglob("*.md"))
@@ -233,7 +244,9 @@ def surface_paths() -> list[Path]:
     return [
         p
         for p in paths
-        if p.exists() and not any(str(p).endswith(s) for s in SELF_REFERENTIAL)
+        if p.exists()
+        and not any(str(p).endswith(s) for s in SELF_REFERENTIAL)
+        and not any(p.is_relative_to(t) for t in FOREIGN_TREES)
     ]
 
 

@@ -742,9 +742,11 @@ description and trigger conditions load every session, so use them proactively. 
 descriptions do not say:
 
 - `.claude/` is a denylist: `.gitignore` names only `settings.local.json` (absolute machine
-  paths), `RESUME.md` (session scratch), `sensitive-terms.txt` (never tracked, by policy) and
-  `skill-usage.log` (machine-local, #395). Skills, agents, context, hooks and `settings.json` all
-  ship, and a new artifact class is tracked by default. Check `git check-ignore` before assuming.
+  paths), `RESUME.md` (session scratch), `sensitive-terms.txt` (never tracked, by policy),
+  `skill-usage.log` (machine-local, #395) and `worktrees/` (parallel-session checkouts, which
+  `make sanity-checks` and `make lint-md` also skip, #454). Skills, agents, context, hooks and
+  `settings.json` all ship, and a new artifact class is tracked by default. Check
+  `git check-ignore` before assuming.
 - Load `/frontend-design` before any Svelte, CSS or UI change.
 - Invoke `/post-branch` before `gh pr create`, while the branch is still local-only.
 - When a skill upgrade fixes a defect, ask whether the defect changed coverage or only

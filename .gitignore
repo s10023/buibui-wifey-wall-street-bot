@@ -28,6 +28,10 @@ config/youtube_channels.toml
 .claude/sensitive-terms.txt
 # Skill-usage log appended by .claude/hooks/log-skill-usage.py (#395). Machine-local evidence.
 .claude/skill-usage.log
+# Parallel-session git worktrees: each is another checkout, never this one's content.
+# Tracked here rather than only in a per-clone .git/info/exclude so every clone ignores
+# them; the gates that walk the filesystem exclude the path themselves (#454).
+.claude/worktrees/
 .idea/
 
 # Local planning docs — personal notes, not for public repo
