@@ -315,6 +315,37 @@ class TestHelpers:
         assert not any(n.endswith("post-branch/SKILL.md") for n in names)
         assert "CLAUDE.md" in names
 
+    def test_surface_paths_skips_a_parallel_worktree(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A worktree under `.claude/worktrees/` is another checkout, not a surface (#454).
+
+        The same drifting skill is planted twice: once as this checkout's own, once
+        inside a fake worktree. The own copy is the positive control: it proves the
+        planted text reaches both legs and is flagged, so the worktree copy's silence
+        is the exclusion working rather than a fixture that never fires.
+        """
+        bad = "Run `make no-such-target`; see `make buibui-sync`.\n"
+        own = tmp_path / ".claude/skills/demo/SKILL.md"
+        foreign = tmp_path / ".claude/worktrees/x/.claude/skills/demo/SKILL.md"
+        for path in (own, foreign):
+            path.parent.mkdir(parents=True)
+            path.write_text(bad, encoding="utf-8")
+        (tmp_path / ".claude/worktrees/x/README.md").write_text(bad, encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+
+        surfaces = [(str(p), p.read_text(encoding="utf-8")) for p in surface_paths()]
+        drift = check_fork_drift(surfaces, TARGETS, TIMEFRAMES, STRATEGIES, None)
+        leakage = check_parent_leakage(surfaces)
+
+        own_name = str(Path(".claude/skills/demo/SKILL.md"))
+        assert [name for name, _ in surfaces] == [own_name]
+        assert {f.detail for f in drift} == {
+            f"{own_name}: make-target=no-such-target",
+            f"{own_name}: make-target=buibui-sync",
+        }
+        assert [f.detail.split(":")[0] for f in leakage] == [own_name]
+
     def test_render_counts_findings_but_not_notes(self) -> None:
         """A degraded leg must not make the sweep permanently red."""
         lines, total = render(
