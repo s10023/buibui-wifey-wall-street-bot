@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from tools import session_digest
+from tools import post_branch_checks, session_digest
 from tools.post_branch_checks import (
     HANDOFF_MAX_LINES,
     HANDOFF_WARN_MARGIN,
@@ -993,6 +993,19 @@ class TestFetchPublishedTexts:
                 f"{slug}/pulls/comments": [
                     {"pull_request_url": f"https://x/{slug}/pulls/4", "body": "r"}
                 ],
+                f"{slug}/issues/events": [
+                    {"event": "labeled", "issue": {"number": 3}},
+                    {
+                        "event": "renamed",
+                        "issue": {"number": 4, "pull_request": {}},
+                        "rename": {"from": "old4", "to": "t4"},
+                    },
+                    {
+                        "event": "renamed",
+                        "issue": {"number": 3},
+                        "rename": {"from": "old3", "to": "t3"},
+                    },
+                ],
             },
             monkeypatch,
         )
@@ -1005,7 +1018,103 @@ class TestFetchPublishedTexts:
             ("PR #4 body", "b4"),
             ("comment on #3", "c"),
             ("review comment on #4", "r"),
+            ("PR #4 old title", "old4"),
+            ("Issue #3 old title", "old3"),
         ]
+
+    def test_a_term_only_in_a_renamed_away_title_still_fires(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """#448: renaming a title does not unpublish the old one.
+
+        Every current text is clean, so the hit can only arrive through the
+        ``renamed`` event; drop that read and this goes green.
+        """
+        term = "acmecorp"
+        slug = "repos/s10023/buibui-wifey-wall-street-bot"
+        self._gh(
+            {
+                f"{slug}/issues?": [
+                    {"number": 4, "title": "Plan the review", "body": "b"}
+                ],
+                f"{slug}/issues/comments": [],
+                f"{slug}/pulls/comments": [],
+                f"{slug}/issues/events": [
+                    {
+                        "event": "renamed",
+                        "issue": {"number": 4},
+                        "rename": {
+                            "from": f"Ask {term} first",
+                            "to": "Plan the review",
+                        },
+                    }
+                ],
+            },
+            monkeypatch,
+        )
+        result = sensitive_terms_result(
+            lambda argv: "", terms=[term], fetch_published=fetch_published_texts
+        )
+        assert len(result.findings) == 1
+        detail = result.findings[0].detail
+        assert "1 published Issue/PR text(s): Issue #4 old title" in detail
+        assert term not in detail.lower()
+
+    def test_a_failed_events_read_fails_the_whole_read(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        slug = "repos/s10023/buibui-wifey-wall-street-bot"
+        self._gh(
+            {
+                f"{slug}/issues?": [{"number": 3, "title": "t3", "body": "b"}],
+                f"{slug}/issues/comments": [],
+                f"{slug}/pulls/comments": [],
+                f"{slug}/issues/events": 1,
+            },
+            monkeypatch,
+        )
+        texts, err = fetch_published_texts()
+        assert texts is None
+        assert err == "rename events: HTTP 401"
+
+    def test_a_rename_without_its_old_title_fails_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        slug = "repos/s10023/buibui-wifey-wall-street-bot"
+        self._gh(
+            {
+                f"{slug}/issues?": [],
+                f"{slug}/issues/comments": [],
+                f"{slug}/pulls/comments": [],
+                f"{slug}/issues/events": [
+                    {"event": "renamed", "issue": {"number": 3}, "rename": {}}
+                ],
+            },
+            monkeypatch,
+        )
+        texts, err = fetch_published_texts()
+        assert texts is None
+        assert "no issue number or rename.from" in err
+
+    def test_the_events_read_refuses_a_partial_listing_at_its_own_cap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Full pages past ``MAX_EVENT_PAGES`` are UNREADABLE, never truncated."""
+        slug = "repos/s10023/buibui-wifey-wall-street-bot"
+        full_page = [{"event": "labeled", "issue": {"number": 1}}] * 100
+        self._gh(
+            {
+                f"{slug}/issues?": [],
+                f"{slug}/issues/comments": [],
+                f"{slug}/pulls/comments": [],
+                f"{slug}/issues/events": full_page,
+            },
+            monkeypatch,
+        )
+        monkeypatch.setattr(post_branch_checks, "MAX_EVENT_PAGES", 2)
+        texts, err = fetch_published_texts()
+        assert texts is None
+        assert err == "rename events: more than 2 pages; refusing a partial read"
 
     def test_a_failed_comment_read_fails_the_whole_read(
         self, monkeypatch: pytest.MonkeyPatch
