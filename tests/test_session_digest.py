@@ -114,6 +114,55 @@ class TestBackupAndCadence:
         assert "make cadence-stamp TASK=sanity-check" in f.action
 
 
+_NOW = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
+_OK_RUN = (
+    "=== 2026-10-09T03:18:49Z | wifey-backup-offsite | deploy/backup-offsite.sh\n"
+    "off-site backup: ... (14 verified snapshot(s))\n"
+    "off-site backup OK\n"
+)
+# The 2026-10-07 shape (#443): rclone lost its remote, the guard refused.
+_FAILED_RUN = (
+    "=== 2026-10-08T13:55:02Z | wifey-backup-offsite | deploy/backup-offsite.sh\n"
+    "ERROR: could not list gdrive-wifey:snapshots (rclone lsf rc=1), so the destination\n"
+    '    CRITICAL: didn\'t find section in config file ("gdrive-wifey")\n'
+)
+
+
+class TestOffsite:
+    def test_a_recent_ok_run_is_silent(self) -> None:
+        assert sd.offsite_findings(_OK_RUN, _NOW) == []
+
+    def test_a_failed_last_run_is_RED_with_its_error_line(self) -> None:
+        (f,) = sd.offsite_findings(_OK_RUN + _FAILED_RUN, _NOW)
+        assert (f.level, f.label) == ("RED", "off-site backup failed")
+        assert f.detail.startswith("2026-10-08T13:55:02Z: ERROR: could not list")
+
+    def test_only_the_last_run_counts(self) -> None:
+        later_ok = _OK_RUN.replace("2026-10-09T03:18:49Z", "2026-10-09T04:00:00Z")
+        assert sd.offsite_findings(_FAILED_RUN + later_ok, _NOW) == []
+
+    def test_a_run_still_in_progress_is_silent(self) -> None:
+        running = "=== 2026-10-09T11:00:00Z | wifey-backup-offsite | x\nuploading\n"
+        assert sd.offsite_findings(_OK_RUN + running, _NOW) == []
+
+    def test_an_unfinished_run_past_the_grace_is_RED(self) -> None:
+        hung = "=== 2026-10-09T08:00:00Z | wifey-backup-offsite | x\nuploading\n"
+        (f,) = sd.offsite_findings(_OK_RUN + hung, _NOW)
+        assert f.label == "off-site backup failed"
+        assert "did not print" in f.detail
+
+    def test_an_old_ok_run_is_RED_stale(self) -> None:
+        # A task that stops firing writes no header at all, so a green last run
+        # is no evidence on its own.
+        (f,) = sd.offsite_findings(_OK_RUN, _NOW + timedelta(days=3))
+        assert (f.level, f.label) == ("RED", "off-site backup stale")
+
+    @pytest.mark.parametrize("text", [None, "", "no header here\n"])
+    def test_no_logged_run_is_AMBER(self, text: str | None) -> None:
+        (f,) = sd.offsite_findings(text, _NOW)
+        assert (f.level, f.label) == ("AMBER", "off-site backup never logged")
+
+
 class TestIssues:
     def test_priority_then_number_with_untriaged_last(self) -> None:
         issues = [_issue(5), _issue(9, "p2"), _issue(2, "p3"), _issue(7, "p1")]

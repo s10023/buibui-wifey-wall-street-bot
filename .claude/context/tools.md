@@ -717,6 +717,15 @@ Two properties are load-bearing: it exits 0 unless `EXIT_NONZERO=1` (a probe tha
 `BROKE` line, never a traceback), and a failed Issue fetch prints `BROKE could not fetch open Issues`
 rather than an empty list. The pure half is tested in `tests/test_session_digest.py`.
 
+The off-site line (#443) reads the last `=== <ts> |` block `job.sh` wrote to
+`logs/wifey-backup-offsite.log`: RED `off-site backup failed` when that run did not print
+`off-site backup OK` (a run under 2h old with no result is still uploading), RED
+`off-site backup stale` when the last good run is over 2 days old, since a task that stops
+firing writes no header at all, and AMBER when an enabled task never logged. It runs only on
+Windows with the task enabled: systemd units log to the journal, not `logs/`.
+`backup-check` cannot replace it, because it grades the local tree, which is how the
+daily Telegram stayed green from 10-07 to 10-08 while every off-site run refused.
+
 The core line (#423) is the survival core's state, OV-1 × VM (ruled in #429), from
 `analytics/overlay/live.py`: exposure, the MA leg with sessions held and the close that would flip
 it, VM's `σ̂` and weight, and the as-of close. `collect_core` reads `^GSPC` read-only. A locked or
