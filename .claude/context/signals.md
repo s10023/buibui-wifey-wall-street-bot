@@ -153,7 +153,7 @@ last run:
 
 ### Other
 
-- `format_signal_alert()` / `format_confluence_alert()` — both accept `ohlcv_df: pd.DataFrame | None` (signal candle = last row) + `gap_warning: str | None` (overnight equity gap notice; replaces parent's `cme_gap_warning`)
+- `format_signal_alert()` / `format_confluence_alert()` — both accept `ohlcv_df: pd.DataFrame | None` (signal candle = last row); the parent's `cme_gap_warning` parameter and its equity replacement were removed (#400)
 - `_adr_bar(consumed_pct)` — 10-char ASCII bar with `▓` overflow
 - `_format_stats_line(ctx, direction)` — direction-aware; line 1: `📐` bull%/P1/ADR; line 2: `🎯` TP window/weekly timing
 - Same-TF confluence renders `> ⚡⚡ CONFLUENCE`; cross-TF renders `> ⚡⚡ CONFLUENCE (1d → 4h)`

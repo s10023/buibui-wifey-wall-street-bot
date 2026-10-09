@@ -34,7 +34,6 @@ from analytics.data_store import (
     upsert_signal_outcome,
     upsert_signals,
 )
-from analytics.overnight_gap_lib import gap_fill_warning, get_overnight_gap
 from analytics.regime import Regime, classify_series
 from analytics.signal._common import (
     _SCAN_WINDOW,
@@ -493,10 +492,9 @@ def run_scan_cycle(
     # scan_symbol is pure Python/pandas — no DB access, no shared mutable state.
     # pandas rolling/shift/boolean masks release the GIL → real concurrency.
     # Closures are safe here: ThreadPoolExecutor shares memory, no pickling needed.
-    def _scan_task(_sym: str, _tf: str) -> "tuple[str, str, list[SignalEvent], Any]":
+    def _scan_task(_sym: str, _tf: str) -> "tuple[str, str, list[SignalEvent]]":
         _ohlcv = ohlcv_map[(_sym, _tf)]
         _funding = funding_map.get(_sym)
-        _gap = get_overnight_gap(_ohlcv)
         # Slice to _SCAN_WINDOW for detectors — they only need recent candles
         # (max lookback = 100). Full window stays in ohlcv_map for Phase 3 backtest.
         _ohlcv_scan = (
@@ -514,7 +512,7 @@ def run_scan_cycle(
             directional_confidence_override=directional_confidence_override,
             catch_up=catch_up,
         )
-        return _sym, _tf, _events, _gap
+        return _sym, _tf, _events
 
     _pairs = [(sym, tf) for sym in symbols for tf in timeframes]
     _n_workers = max(1, min((os.cpu_count() or 2) - 1, len(_pairs)))
@@ -549,13 +547,13 @@ def run_scan_cycle(
     # Default path = single latest candle = one group = byte-identical to the
     # pre-catch-up flow.
     _grouped: list[Any] = []
-    for _s, _t, _evs, _g in scan_results:
+    for _s, _t, _evs in scan_results:
         if not catch_up or not _evs:
-            _grouped.append((_s, _t, _evs, _g, False))
+            _grouped.append((_s, _t, _evs, False))
             continue
         _full = ohlcv_map[(_s, _t)]
         if len(_full) < 2:
-            _grouped.append((_s, _t, _evs, _g, False))
+            _grouped.append((_s, _t, _evs, False))
             continue
         # The newest CLOSED candle — taken from OHLCV, not from the events.
         # Using max(event.open_time) would promote an older candle to "latest"
@@ -590,13 +588,13 @@ def run_scan_cycle(
             _is_backfill = not may_dispatch_candle(
                 _ot, _latest_closed, _tf_ms, _now_ms, max_alert_age_hours
             )
-            _grouped.append((_s, _t, _by_candle[_ot], _g, _is_backfill))
+            _grouped.append((_s, _t, _by_candle[_ot], _is_backfill))
     scan_results = _grouped
 
     # --- Phase 3: Fan-in — sequential processing of scan results ---
     # All shared-state operations happen here: CooldownStore reads/writes,
     # bt_cache updates, DB writes (upsert_signals, upsert_backtest_run).
-    for symbol, tf, events, overnight_gap, is_backfill in scan_results:
+    for symbol, tf, events, is_backfill in scan_results:
         ohlcv_df = ohlcv_map[(symbol, tf)]
         funding_df = funding_map.get(symbol)
 
@@ -1111,40 +1109,6 @@ def run_scan_cycle(
                         "Failed to persist signal outcome for %s", signal_id
                     )
 
-            # Compute the overnight gap-fill warning for this direction
-            # (premise unaudited; see #400).
-            # Rough TP mirrors the formatter's own SL/TP math so the gap
-            # overlap check uses the same target price shown in the alert.
-            _first = dir_events[0]
-            _entry = _first.price
-            if direction == "long":
-                _valid_sls = [e.sl_price for e in dir_events if 0 < e.sl_price < _entry]
-                _sl_dist = _entry - (
-                    min(_valid_sls) if _valid_sls else _entry * (1 - sl_pct)
-                )
-                _sl_dist = max(_sl_dist, _entry * min_sl_pct)
-                _rough_tp = (
-                    _first.tp_price
-                    if _first.tp_price > _entry
-                    else _entry + _sl_dist * eff_alert_tp_r
-                )
-            else:
-                _valid_sls = [e.sl_price for e in dir_events if e.sl_price > _entry]
-                _sl_dist = (
-                    max(_valid_sls) if _valid_sls else _entry * (1 + sl_pct)
-                ) - _entry
-                _sl_dist = max(_sl_dist, _entry * min_sl_pct)
-                _rough_tp = (
-                    _first.tp_price
-                    if 0 < _first.tp_price < _entry
-                    else _entry - _sl_dist * eff_alert_tp_r
-                )
-            _gap_warning = (
-                gap_fill_warning(overnight_gap, direction, _entry)
-                if overnight_gap is not None
-                else None
-            )
-
             # Co-fire confluence tagging (D10 step 3): check if a known-good
             # strategy pair from backtest_combos co-fired within combo_window
             # candles. Attaches ConfluenceData to each event so the formatter
@@ -1223,7 +1187,6 @@ def run_scan_cycle(
                 min_sl_pct=min_sl_pct,
                 backtest_summary=dir_summary,
                 stats_context=stats_ctx_cache.get(symbol),
-                gap_warning=_gap_warning,
                 ohlcv_df=ohlcv_df,
             )
             alerts.append(msg)

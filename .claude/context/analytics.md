@@ -1267,13 +1267,11 @@ explicit user go.
 - `query_cross_tf_combos` deduplicates by `(symbol, tf_htf, tf_ltf, strategy_htf, strategy_ltf, window_hours, day_filter)`
 - Powers `GET /api/backtest/analysis?use_config=true` and the `wifey digest` CLI
 
-## overnight_gap_lib.py — equity session-gap features
+## overnight gap-fill warning — removed (#400)
 
-`overnight_gap_lib.py` — equity session-gap features (`OvernightGap` dataclass, `get_overnight_gap`, `gap_fill_warning`). Replaces parent's `cme_gap_lib`; consumed by T10 scanner rewire. T8 ORB anchor inlined a 13:30 UTC timestamp shift instead of consuming this lib.
-
-- `OvernightGap` — the equity-native replacement dataclass
-- `get_overnight_gap(...)` — equity session-gap detector (the crypto-era CME-futures-gap concept has no equity analogue; sessions gap overnight/over-weekend instead of over a specific futures-market closure window)
-- `gap_fill_warning(...)` — alert-formatter warning hook, equity equivalent of the retired `cme_gap_alert_warning`
+`overnight_gap_lib.py` (the equity replacement for the parent's `cme_gap_lib`) fed one live alert
+warning, "unfilled gap ⇒ magnet". It was audited and removed with its module: no warned cell earned a
+keep, and warned shorts did better than clean ones. Audit: `docs/audits/2026-10-09-overnight-gap-fill-warning.md`.
 
 Retired parent API this replaced (`cme_gap_lib.py`, kept here for historical reference only — no longer imported anywhere in this repo):
 
@@ -1339,7 +1337,6 @@ Retired parent API this replaced (`cme_gap_lib.py`, kept here for historical ref
   byte-identical across it.
 - Volume gate: `_resolve_volume_suppress/spike_boost_long/short` — directional overrides → symmetric fallback; `SignalEvent.volume_spike` tagged
 - `_compute_stats_context()` computes `StatsContext` once per cycle
-- CME gap: `get_recent_cme_gap(ohlcv_df)` per (symbol, tf); passes `cme_gap_warning` to formatter
 - **Same-TF co-fire**: `combo_lookup`, `combo_window=5`, `combo_min_avg_r=1.0`; `_find_live_cofire` checks same-cycle pairs + cross-cycle DB signals; attaches `ConfluenceData`
 - **Cross-TF co-fire**: `cross_tf_lookup`, `cross_tf_pairs`, `cross_tf_window_hours=4.0`, `cross_tf_min_avg_r=1.0`; `_find_cross_tf_cofire` queries DB signals history for HTF; same-TF and cross-TF both evaluated — higher avg_r wins
 - `_parse_htf_ltf_pairs(list[str])` — parses `["1d:4h", ...]` TOML strings

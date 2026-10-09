@@ -363,23 +363,6 @@ class TestWarningsPosition:
         warn_idx = next(i for i, line in enumerate(lines) if "Low volume" in line)
         assert warn_idx > tp_idx
 
-    def test_gap_warning_in_warnings_block(self) -> None:
-        ev = SignalEvent(
-            symbol="AAPL",
-            timeframe="1d",
-            strategy="fvg",
-            direction="long",
-            reason="fvg_long@175.00",
-            open_time=self._TS_MS,
-            price=175.0,
-            sl_price=170.0,
-        )
-        msg = format_signal_alert(ev, gap_warning="⚠️ Unfilled gap-down at $178.00")
-        lines = msg.split("\n")
-        tp_idx = next(i for i, line in enumerate(lines) if line.startswith("TP:"))
-        gap_idx = next(i for i, line in enumerate(lines) if "gap-down" in line)
-        assert gap_idx > tp_idx
-
     def test_warnings_before_backtest_summary(self) -> None:
         from signals.alert_formatter import format_confluence_alert
 
