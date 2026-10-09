@@ -102,6 +102,18 @@ added DDL column). An unparseable INSERT must be named in `EXEMPT_TABLES` /
   against 24,774 available from 1927. Pinned by `tests/test_data_sync.py::TestBackfillPaging`
   (mutation-checked); narrative in `docs/audits/2026-08-19-h021-party-regime-annual-returns.md`.
   `sync_funding_rates` / `sync_open_interest` have no equity equivalent and are not ported.
+- A fetch failure arrives as an empty frame, not an exception. yfinance 1.7 hides its own
+  exceptions by default (`hide_exceptions`), so a DNS outage, a dropped connection and a
+  delisted ticker each log an error and return nothing; a rate limit (`YFRateLimitError`) on
+  the price request still raises. `fetch_bars(..., require_data=True)` turns "the provider returned nothing" into
+  `NoProviderDataError`, distinct from history with no bars after the cursor; `backfill` and
+  `sync` pass the flag through and default it off, so `signal_runner`'s own sync is unchanged.
+  `analytics_runner.run_sync` opts in, logs `Sync summary: F of A fetches returned no data`,
+  and exits 1 only when every attempted fetch failed, so a scheduled sync notifies on an
+  outage. The bar is all-or-nothing because a delisted name empties one series on every run,
+  which is `make freshness-check`'s to grade. `go-live` and `session-digest` call this path
+  `-`-prefixed, so its exit code stops neither. Pinned by
+  `tests/test_analytics_runner.py::TestRunSyncTotalFailure` (mutation-checked) (#444).
   `sync(conn, symbol, timeframe)`
   re-fetches from the latest stored `open_time` and delegates to `backfill`, so it inherits the
   gate and also guards the adjustment basis: the re-fetched overlap bar is the only point at which

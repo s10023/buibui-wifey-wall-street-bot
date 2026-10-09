@@ -8,6 +8,7 @@ from pathlib import Path
 
 import duckdb
 
+from analytics.data_fetcher import NoProviderDataError
 from analytics.data_store import DEFAULT_DB_PATH, init_schema
 from analytics.data_sync import backfill, sync
 from analytics.db_retry import connect_with_retry
@@ -113,14 +114,37 @@ def run_sync(
     resolved = _resolve_symbols(
         symbols, use_universe=use_universe, use_pundit=use_pundit, use_core=use_core
     )
+    attempted = 0
+    failed = 0
     with _open_session(db_path) as conn:
         for symbol in resolved:
             for timeframe in timeframes:
                 logging.info("Syncing %s %s ...", symbol, timeframe)
                 try:
-                    total = sync(conn, symbol, timeframe)
-                    logging.info(
-                        "Sync complete: %s %s — %d new rows", symbol, timeframe, total
-                    )
+                    total = sync(conn, symbol, timeframe, require_data=True)
                 except ValueError as e:
                     logging.warning("%s — skipping (run backfill first)", e)
+                    continue
+                except NoProviderDataError as e:
+                    attempted += 1
+                    failed += 1
+                    logging.warning("%s — fetch failed or symbol delisted", e)
+                    continue
+                attempted += 1
+                logging.info(
+                    "Sync complete: %s %s — %d new rows", symbol, timeframe, total
+                )
+    logging.info("Sync summary: %d of %d fetches returned no data", failed, attempted)
+    # All-or-nothing on purpose. yfinance re-raises a rate limit on the price
+    # request, which already crashes the run; a network failure (DNS,
+    # connection) is hidden and empties every series at once, while a delisted
+    # name empties one series on every run and is `make freshness-check`'s to
+    # grade. Any share below 100% would either trip
+    # on those chronic empties or need a tuned number nothing measures. A
+    # non-zero exit is what lets `deploy/windows/job.sh` notify (#444).
+    if attempted and failed == attempted:
+        logging.error(
+            "Every fetch in this sync returned no data, so the provider was "
+            "most likely unreachable (yfinance logs the cause above). Exiting 1."
+        )
+        sys.exit(1)

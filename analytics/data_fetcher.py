@@ -14,6 +14,18 @@ from utils.yfinance_client import fetch_history
 
 BARS_MAX_LIMIT: int = 5000
 
+
+class NoProviderDataError(RuntimeError):
+    """The provider returned no history at all for a symbol and interval.
+
+    yfinance hides its own fetch exceptions by default (``hide_exceptions``): a
+    DNS outage, a dropped connection and a delisted ticker each come back as one
+    logged error and an empty frame. This error therefore says that a fetch
+    produced nothing, never which of those causes it was. Only a caller that
+    passes ``require_data=True`` to ``fetch_bars`` sees it.
+    """
+
+
 OHLCV_COLUMNS: list[str] = [
     "symbol",
     "timeframe",
@@ -40,12 +52,19 @@ def fetch_bars(
     interval: str,
     start_ms: int,
     limit: int = BARS_MAX_LIMIT,
+    *,
+    require_data: bool = False,
 ) -> pd.DataFrame:
     """Fetch up to ``limit`` bars at or after start_ms (Unix ms).
 
     Returns a DataFrame with columns matching OHLCV_COLUMNS.
     Returns an empty DataFrame (with correct columns) on no data.
-    Raises on yfinance / network errors — callers decide whether to retry.
+
+    "No data" covers two states: the provider returned history but none of it
+    is at or after ``start_ms``, or the provider returned nothing. The second
+    is how yfinance reports a network failure, so ``require_data=True`` raises
+    ``NoProviderDataError`` for it instead. yfinance raises a rate limit
+    (``YFRateLimitError``) either way.
     """
     if interval not in _INTERVAL_CONFIG:
         raise ValueError(
@@ -54,6 +73,8 @@ def fetch_bars(
     yf_interval, period = _INTERVAL_CONFIG[interval]
     raw = fetch_history(symbol, interval=yf_interval, period=period)
     if raw.empty:
+        if require_data:
+            raise NoProviderDataError(f"{symbol} {interval}: provider returned no data")
         return pd.DataFrame(columns=OHLCV_COLUMNS)
 
     if interval == "4h":

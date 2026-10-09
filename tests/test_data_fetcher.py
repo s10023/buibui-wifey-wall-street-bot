@@ -5,8 +5,9 @@ from typing import Any
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
-from analytics.data_fetcher import OHLCV_COLUMNS, fetch_bars
+from analytics.data_fetcher import OHLCV_COLUMNS, NoProviderDataError, fetch_bars
 
 
 def _yf_frame(rows: list[dict[str, Any]]) -> pd.DataFrame:
@@ -70,6 +71,29 @@ def test_fetch_bars_empty_returns_correct_columns() -> None:
         result = fetch_bars("AAPL", "1d", start_ms)
     assert result.empty
     assert list(result.columns) == OHLCV_COLUMNS
+
+
+class TestRequireData:
+    """``require_data`` separates "provider sent nothing" from "nothing new" (#444)."""
+
+    def test_empty_provider_frame_raises(self) -> None:
+        start_ms = int(datetime(2024, 1, 15, tzinfo=UTC).timestamp() * 1000)
+        with (
+            patch("analytics.data_fetcher.fetch_history", return_value=pd.DataFrame()),
+            pytest.raises(NoProviderDataError, match="AAPL 1d"),
+        ):
+            fetch_bars("AAPL", "1d", start_ms, require_data=True)
+
+    def test_history_older_than_cursor_is_not_a_failure(self) -> None:
+        """The provider answered, just with nothing at or after the cursor."""
+        start_ms = int(datetime(2024, 2, 1, tzinfo=UTC).timestamp() * 1000)
+        with patch(
+            "analytics.data_fetcher.fetch_history",
+            return_value=_yf_frame([_row(ts="2024-01-15T14:30:00")]),
+        ):
+            result = fetch_bars("AAPL", "1d", start_ms, require_data=True)
+        assert result.empty
+        assert list(result.columns) == OHLCV_COLUMNS
 
 
 def test_fetch_bars_respects_limit() -> None:
