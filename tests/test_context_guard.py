@@ -50,7 +50,7 @@ def _run(payload: dict[str, Any], *, hook: Path = HOOK) -> str:
         capture_output=True,
         text=True,
         encoding="utf-8",
-        env=_env(),
+        env=python_child_env({**os.environ, "CLAUDE_PROJECT_DIR": str(REPO_ROOT)}),
         check=False,
     )
     assert out.returncode == 0, f"hook exited {out.returncode}: {out.stderr}"
@@ -203,7 +203,7 @@ class TestFailOpen:
             capture_output=True,
             text=True,
             encoding="utf-8",
-            env=_env(),
+            env=python_child_env({**os.environ, "CLAUDE_PROJECT_DIR": str(REPO_ROOT)}),
             check=False,
         )
         assert proc.returncode == 0
