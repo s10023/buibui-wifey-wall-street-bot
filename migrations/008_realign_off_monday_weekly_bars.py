@@ -34,11 +34,7 @@ Usage:
 
 Dry-run by default: prints what would change and exits without writing. The dry
 run makes no network calls.
-A .bak copy must exist alongside the DB before --apply will proceed.
-
-The .bak guard tests existence, not freshness, as in every migration here. Cut a
-fresh copy from the current database before --apply; a weeks-old one satisfies
-it silently.
+--apply refuses unless <db>.bak is a byte copy of the DB: cut a fresh one first.
 """
 
 import argparse
@@ -52,6 +48,7 @@ import duckdb  # noqa: E402
 from analytics.data_fetcher import BARS_MAX_LIMIT, fetch_bars  # noqa: E402
 from analytics.data_sync import _store_page  # noqa: E402
 from analytics.store import DEFAULT_DB_PATH  # noqa: E402
+from analytics.store.migration_bak import require_fresh_bak  # noqa: E402
 
 #: ``open_time`` is UTC ms; a 1wk bar stamps 04:00/05:00 UTC, i.e. midnight ET,
 #: so the UTC calendar day is the ET day. DuckDB's ``dayofweek`` has Monday = 1.
@@ -72,9 +69,8 @@ _DELETE_SQL = (
 
 def migrate(db_path: str, apply: bool) -> dict[str, list[str]]:
     """Returns ``{"realigned": [...], "kept": [...]}`` by symbol."""
-    if apply and not os.path.exists(db_path + ".bak"):
-        print(f"Refusing to run: {db_path}.bak not found. Back the DB up first.")
-        sys.exit(1)
+    if apply:
+        require_fresh_bak(db_path)
 
     outcome: dict[str, list[str]] = {"realigned": [], "kept": []}
     conn = duckdb.connect(db_path, read_only=not apply)

@@ -11,6 +11,7 @@ Loaded by path because the module name starts with a digit.
 from __future__ import annotations
 
 import importlib.util
+import shutil
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -66,7 +67,7 @@ def _seed(db: Path) -> None:
         conn.execute("INSERT INTO ohlcv SELECT * FROM f")
         conn.unregister("f")
     conn.close()
-    (db.parent / (db.name + ".bak")).write_bytes(b"")
+    shutil.copyfile(db, db.parent / (db.name + ".bak"))
 
 
 def _weekdays(db: Path, symbol: str) -> list[int]:
@@ -115,6 +116,7 @@ def test_a_second_run_finds_only_the_unserved_symbol(tmp_path: Path) -> None:
     mod = _load()
     with patch.object(mod, "fetch_bars", side_effect=_fake_fetch):
         mod.migrate(str(db), apply=True)
+        shutil.copyfile(db, tmp_path / "a.db.bak")  # the first apply staled it
         again = mod.migrate(str(db), apply=True)
     assert again == {"realigned": [], "kept": ["SATS"]}
 

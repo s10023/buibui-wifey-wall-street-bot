@@ -27,7 +27,7 @@ Usage:
     python migrations/002_adr_threshold_executed.py [--db PATH] [--apply]
 
 Dry-run by default: prints what would change and exits without writing.
-A .bak copy must exist alongside the DB before --apply will proceed.
+--apply refuses unless <db>.bak is a byte copy of the DB: cut a fresh one first.
 """
 
 import argparse
@@ -41,6 +41,7 @@ import duckdb  # noqa: E402
 
 from analytics.signal.gates import effective_adr_threshold  # noqa: E402
 from analytics.store.backtest_runs import _backtest_run_id  # noqa: E402
+from analytics.store.migration_bak import require_fresh_bak  # noqa: E402
 
 # #142 (54cef12) — "no-op the ADR gate where a calendar day holds one bar".
 # Rows written at or after this instant ran the gate the current code describes.
@@ -60,9 +61,8 @@ CONFIG_BY_DAY_FILTER = {
 def migrate(db_path: str, apply: bool) -> None:
     from analytics.signal_config import load_signal_config
 
-    if apply and not os.path.exists(db_path + ".bak"):
-        print(f"Refusing to run: {db_path}.bak not found. Back the DB up first.")
-        sys.exit(1)
+    if apply:
+        require_fresh_bak(db_path)
 
     cfgs = {k: load_signal_config(v) for k, v in CONFIG_BY_DAY_FILTER.items()}
     conn = duckdb.connect(db_path)

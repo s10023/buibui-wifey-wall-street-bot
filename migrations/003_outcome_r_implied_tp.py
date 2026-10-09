@@ -53,7 +53,7 @@ Usage:
     python migrations/003_outcome_r_effective_tp.py [--db PATH] [--apply]
 
 Dry-run by default: prints what would change and exits without writing.
-A .bak copy must exist alongside the DB before --apply will proceed.
+--apply refuses unless <db>.bak is a byte copy of the DB: cut a fresh one first.
 """
 
 import argparse
@@ -65,6 +65,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import duckdb  # noqa: E402
 
 from analytics.signal.outcome_backfill import implied_tp_r  # noqa: E402
+from analytics.store.migration_bak import require_fresh_bak  # noqa: E402
 
 # Float tolerance for "the stored value already equals the derived one". The
 # derived value round-trips through a division, so an exact compare would
@@ -73,9 +74,8 @@ TOL = 1e-6
 
 
 def migrate(db_path: str, apply: bool) -> None:
-    if apply and not os.path.exists(db_path + ".bak"):
-        print(f"Refusing to run: {db_path}.bak not found. Back the DB up first.")
-        sys.exit(1)
+    if apply:
+        require_fresh_bak(db_path)
 
     # A dry run must not be able to write, and must not take a write lock the
     # user then has to wait out. Plain `duckdb.connect` rather than

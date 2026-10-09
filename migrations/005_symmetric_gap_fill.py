@@ -55,7 +55,7 @@ Usage:
     python migrations/005_symmetric_gap_fill.py [--db PATH] [--apply]
 
 Dry-run by default: prints what would change and exits without writing.
-A .bak copy must exist alongside the DB before --apply will proceed.
+--apply refuses unless <db>.bak is a byte copy of the DB: cut a fresh one first.
 """
 
 import argparse
@@ -72,12 +72,12 @@ from analytics.signal.outcome_backfill import (  # noqa: E402
     _scan_forward,
 )
 from analytics.store import DEFAULT_DB_PATH  # noqa: E402
+from analytics.store.migration_bak import require_fresh_bak  # noqa: E402
 
 
 def migrate(db_path: str, apply: bool) -> None:
-    if apply and not os.path.exists(db_path + ".bak"):
-        print(f"Refusing to run: {db_path}.bak not found. Back the DB up first.")
-        sys.exit(1)
+    if apply:
+        require_fresh_bak(db_path)
 
     conn = duckdb.connect(db_path, read_only=not apply)
     try:

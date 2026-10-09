@@ -115,7 +115,7 @@
       "globs": [
         "migrations/*.py"
       ],
-      "text": "migrations/: check what the target table's KEY is made of before choosing a shape (rewrite run_id, update in place, or delete and refetch). Fetch before you delete, per symbol: history the provider no longer serves cannot be recovered. The `.bak` guard tests existence, not freshness, so the operator must cut a fresh copy. Routine schema changes go through analytics/store/schema.py instead. Deep ref: .claude/context/migrations.md"
+      "text": "migrations/: check what the target table's KEY is made of before choosing a shape (rewrite run_id, update in place, or delete and refetch). Fetch before you delete, per symbol: history the provider no longer serves cannot be recovered. The `.bak` guard (analytics/store/migration_bak.py) refuses unless <db>.bak is a byte copy of the DB, so cut a fresh one before every --apply, re-runs included. Routine schema changes go through analytics/store/schema.py instead. Deep ref: .claude/context/migrations.md"
     },
     {
       "id": "hooks",

@@ -42,11 +42,7 @@ Usage:
     python migrations/007_purge_avb_wrong_instrument_tail.py [--db PATH] [--apply]
 
 Dry-run by default: prints what would change and exits without writing.
-A .bak copy must exist alongside the DB before --apply will proceed.
-
-The .bak guard tests existence, not freshness — all seven migrations do. Cut a
-fresh copy from the current database before --apply; a weeks-old one satisfies
-it silently.
+--apply refuses unless <db>.bak is a byte copy of the DB: cut a fresh one first.
 """
 
 import argparse
@@ -58,6 +54,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import duckdb  # noqa: E402
 
 from analytics.store import DEFAULT_DB_PATH  # noqa: E402
+from analytics.store.migration_bak import require_fresh_bak  # noqa: E402
 
 #: 2026-07-01 UTC, chosen to sit inside the empty gap between the two
 #: populations rather than on either edge of one: the last good bar is
@@ -88,9 +85,8 @@ WHERE symbol = 'AVB' AND ((close < ?) <> (open_time >= ?))
 
 
 def migrate(db_path: str, apply: bool) -> None:
-    if apply and not os.path.exists(db_path + ".bak"):
-        print(f"Refusing to run: {db_path}.bak not found. Back the DB up first.")
-        sys.exit(1)
+    if apply:
+        require_fresh_bak(db_path)
 
     conn = duckdb.connect(db_path, read_only=not apply)
     try:

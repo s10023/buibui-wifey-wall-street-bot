@@ -11,17 +11,24 @@ Each is invoked by hand, once, and is not idempotent in the sense of being safe 
 
 ## The one invariant all nine scripts enforce
 
-A `.bak` must exist alongside the DB or the script refuses to start (`001:46-48`, `002:63-65`,
-`003:76-78`, `004:119-121`, `005:78-80`, `006:99-101`, `007:91-93`, `008:75-77`, `009:73-75` — unconditionally for `001`,
-under `--apply` for the rest). `analytics.db.bak` is an undated, unverified byte copy, not a
-backup; `make backup` is the real snapshot. Create the `.bak` anyway — the guard is what stands
-between a bad migration and an unrecoverable DB.
+`<db>.bak` must be a byte copy of the DB, or the script refuses to start: every script calls
+`analytics/store/migration_bak.py::require_fresh_bak` (unconditionally in `001`, under `--apply`
+in the rest), and `tests/test_migration_bak.py` fails on a `migrations/0*.py` that does not, or
+whose apply path writes past a stale copy. `analytics.db.bak` is an undated byte copy, not a
+backup; `make backup` is the real snapshot. Take a `make backup`, then cut the `.bak`
+immediately before every `--apply` (`Copy-Item analytics.db analytics.db.bak -Force`). A
+successful apply leaves the `.bak` stale on purpose, since it is the undo, so a re-run needs a
+fresh copy too.
 
-The guard only tests existence, never freshness, so a stale `.bak` satisfies it silently. Measured
-2026-09-03 before applying `006`: the `.bak` in the tree was 14 days old and 94 MB smaller than
-`analytics.db`, and the guard would have passed on it. Cut a fresh `.bak` from the current DB
-immediately before every `--apply`, and take a `make backup` first — the `.bak` is the migration's
-undo, the snapshot is the real one.
+The guard compares bytes because nothing cheaper carries freshness. It tested existence only
+until 2026-10-09, and two stale copies would have passed it: on 2026-09-03 the `.bak` was 14
+days old and 94 MB smaller, and on 2026-10-09 a pre-`009` copy had exactly `analytics.db`'s size
+while differing from byte 8,192. DuckDB never shrinks its file on delete, and `Copy-Item`
+preserves the mtime. Measured on duckdb 1.5.6, byte equality is not too strict: a read-only or a
+no-write read-write open leaves the file identical, and a clean close checkpoints and removes
+`<db>.wal`. A pending `.wal` (the file alone is not the whole DB) and an unreadable DB (on Windows
+a writer locks it against reads) refuse rather than compare. The compare takes about 0.4 s on the
+276 MB DB.
 
 Do not assume an existing `.bak` is redundant with a dated sibling: one such copy differed from
 `analytics.db.bak.2026-08-19` byte-for-byte despite an identical size and mtime, so it was

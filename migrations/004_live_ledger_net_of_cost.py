@@ -59,7 +59,7 @@ Usage:
     python migrations/004_live_ledger_net_of_cost.py [--db PATH] [--apply]
 
 Dry-run by default: prints what would change and exits without writing.
-A .bak copy must exist alongside the DB before --apply will proceed.
+--apply refuses unless <db>.bak is a byte copy of the DB: cut a fresh one first.
 """
 
 import argparse
@@ -80,6 +80,7 @@ from analytics.signal.outcome_backfill import (  # noqa: E402
     live_cost_r,
 )
 from analytics.signal_config import load_signal_config  # noqa: E402
+from analytics.store.migration_bak import require_fresh_bak  # noqa: E402
 
 # Both live configs. They inherit `[backtest.cost_model]` from the shared base,
 # so they agree — but that is asserted below rather than assumed, because the
@@ -116,9 +117,8 @@ def _resolve_cost_model(
 
 
 def migrate(db_path: str, apply: bool) -> None:
-    if apply and not os.path.exists(db_path + ".bak"):
-        print(f"Refusing to run: {db_path}.bak not found. Back the DB up first.")
-        sys.exit(1)
+    if apply:
+        require_fresh_bak(db_path)
 
     cost_model, fee_pct = _resolve_cost_model(LIVE_CONFIGS)
     if cost_model is None and fee_pct == 0.0:

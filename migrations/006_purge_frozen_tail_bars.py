@@ -51,7 +51,7 @@ Usage:
     python migrations/006_purge_frozen_tail_bars.py [--db PATH] [--apply]
 
 Dry-run by default: prints what would change and exits without writing.
-A .bak copy must exist alongside the DB before --apply will proceed.
+--apply refuses unless <db>.bak is a byte copy of the DB: cut a fresh one first.
 """
 
 import argparse
@@ -63,6 +63,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import duckdb  # noqa: E402
 
 from analytics.store import DEFAULT_DB_PATH  # noqa: E402
+from analytics.store.migration_bak import require_fresh_bak  # noqa: E402
 
 #: Rows whose (symbol, timeframe, open_time) belong to the maximal run of
 #: frozen bars that ends at the series' newest bar. `rn` counts backwards from
@@ -96,9 +97,8 @@ ORDER BY f.symbol, f.timeframe, f.open_time
 
 
 def migrate(db_path: str, apply: bool) -> None:
-    if apply and not os.path.exists(db_path + ".bak"):
-        print(f"Refusing to run: {db_path}.bak not found. Back the DB up first.")
-        sys.exit(1)
+    if apply:
+        require_fresh_bak(db_path)
 
     conn = duckdb.connect(db_path, read_only=not apply)
     try:

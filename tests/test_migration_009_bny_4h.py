@@ -11,6 +11,7 @@ Loaded by path because the module name starts with a digit.
 from __future__ import annotations
 
 import importlib.util
+import shutil
 from pathlib import Path
 from types import ModuleType
 
@@ -99,7 +100,7 @@ class TestMigration009:
         self, tmp_path: Path
     ) -> None:
         path = _db(tmp_path)
-        Path(path + ".bak").write_bytes(b"")
+        shutil.copyfile(path, path + ".bak")
         mod = _load()
         assert mod.migrate(path, apply=True) == 3
         assert _rows(path) == [
@@ -108,6 +109,7 @@ class TestMigration009:
             ("BNY", "4h", 140.6),
             ("XYZ", "4h", 10.2),
         ]
+        shutil.copyfile(path, path + ".bak")  # the first apply staled it
         assert mod.migrate(path, apply=True) == 0
 
     def test_overlapping_populations_refuse(self, tmp_path: Path) -> None:

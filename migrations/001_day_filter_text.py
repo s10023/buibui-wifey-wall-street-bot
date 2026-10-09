@@ -12,8 +12,8 @@ Usage:
     python migrations/001_day_filter_text.py [--db PATH]
 
 Default DB path: analytics.db (relative to project root).
-A .bak copy must already exist before running — this script will refuse to
-proceed if analytics.db.bak is not found alongside the DB file.
+A fresh .bak copy must exist before running: this script refuses to proceed
+unless analytics.db.bak is a byte copy of the DB (analytics/store/migration_bak.py).
 """
 
 import argparse
@@ -42,11 +42,12 @@ def _run_id(
 
 
 def migrate(db_path: str) -> None:
-    bak_path = db_path + ".bak"
-    if not os.path.exists(bak_path):
-        print(f"ERROR: backup not found at {bak_path}")
-        print("Create a backup first:  cp analytics.db analytics.db.bak")
-        sys.exit(1)
+    # Imported lazily after putting the repo root on the path: this script
+    # predates the module-level convention the later migrations use.
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from analytics.store.migration_bak import require_fresh_bak
+
+    require_fresh_bak(db_path)
 
     import duckdb
 
