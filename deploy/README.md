@@ -588,6 +588,8 @@ leaving a stale tree.
 
 `systemctl --user list-timers 'wifey-*'` reports whether a timer is scheduled; `make backup-check`
 reports whether its output is current, which is the question the failure-only alert cannot answer.
+On Windows the session digest also grades the off-site job's own last run from
+`logs/wifey-backup-offsite.log`, which `backup-check` cannot see (#443).
 Neither is a push heartbeat — both have to be run by someone.
 
 `sync` mirrors deletions in both directions. The source side is guarded upstream — a missing
@@ -670,6 +672,10 @@ rclone lsf gdrive-wifey:
 # 5. Wire it in. The path is relative to the pinned root.
 echo 'WIFEY_BACKUP_REMOTE=gdrive-wifey:snapshots' >> .env
 echo 'WIFEY_RCLONE_FLAGS=--drive-use-trash=false' >> .env
+#    Pin the config file that holds gdrive-wifey (`rclone config file` names it).
+#    The default, %APPDATA%\rclone\rclone.conf on Windows, is shared by every repo
+#    on the box, and another repo's setup rewrote it and dropped this remote (#443).
+echo "RCLONE_CONFIG=$(rclone config file | tail -1)" >> .env
 
 # 6. Dry-run before the timer exists. Read the delete lines, not just the copies.
 make backup-offsite-dry-run
