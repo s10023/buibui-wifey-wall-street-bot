@@ -46,6 +46,8 @@ from tools.child_env import python_child_env
 from tools.claude_home import memory_dir
 from tools.session_digest import (
     ISSUE_COMMENTS_PATH,
+    ISSUE_EVENTS_PATH,
+    MAX_EVENT_PAGES,
     PR_REVIEW_COMMENTS_PATH,
     fetch_gh_pages,
     fetch_issue_items,
@@ -1272,6 +1274,10 @@ def fetch_published_texts() -> tuple[list[PublishedText] | None, str]:
     PRs are in scope because they publish on the same flip, and
     `sensitive_text_result` screens only a body still being composed — not a PR
     edited after it posted, opened by another session, or older than that gate.
+    Old titles too (#448): a rename leaves the replaced title in the public
+    timeline as a ``renamed`` event, so a term scrubbed by renaming still
+    publishes. That costs the repo-wide events listing, measured 2026-10-09 at 20
+    of the read's 27 pages (1,990 events, 25 renames); the whole read took 18 s.
     Fails closed: one unreadable listing, or an item missing the fields a label is
     built from, returns ``(None, reason)`` rather than a shorter list.
     """
@@ -1297,6 +1303,17 @@ def fetch_published_texts() -> tuple[list[PublishedText] | None, str]:
                 return None, f"{label}s: an item has no {url_key}"
             number = str(c[url_key]).rsplit("/", 1)[-1]
             texts.append((f"{label} on #{number}", c.get("body") or ""))
+    events, err = fetch_gh_pages(ISSUE_EVENTS_PATH, max_pages=MAX_EVENT_PAGES)
+    if events is None:
+        return None, f"rename events: {err}"
+    for e in events:
+        if e.get("event") != "renamed":
+            continue
+        issue, rename = e.get("issue") or {}, e.get("rename") or {}
+        if "number" not in issue or "from" not in rename:
+            return None, "rename events: an item has no issue number or rename.from"
+        where = f"{'PR' if 'pull_request' in issue else 'Issue'} #{issue['number']}"
+        texts.append((f"{where} old title", rename["from"] or ""))
     return texts, ""
 
 
@@ -1360,9 +1377,10 @@ def sensitive_terms_result(
     body and comment, open and closed (#373). Planning moved into Issues on
     2026-09-30, and they publish with the repo. ``fetch_published`` is required
     so no call site can drop the surface silently, and a failed read is an
-    ``UNREADABLE`` finding, never a pass. A title's rename history is not
-    screened: GitHub keeps the old title in the timeline, which this read does
-    not fetch (#448).
+    ``UNREADABLE`` finding, never a pass. Old titles are read from the timeline's
+    ``renamed`` events (#448), because a rename does not unpublish them. An
+    edited body or comment is still not screened: its earlier revisions sit in
+    GitHub's edit history, which no REST listing returns.
 
     ⚠ **A PR body still being composed is NOT here.** It is not on GitHub yet,
     so screening it is :func:`sensitive_text_result` (``--text``), run before

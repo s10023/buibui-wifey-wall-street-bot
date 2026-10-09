@@ -135,7 +135,9 @@ messages, because a flip republishes the whole history and no file edit reaches 
 since #373 every Issue and PR title, body, comment and review comment, open and closed, read over
 REST through `session_digest.fetch_gh_pages`. PRs are in because they publish on the same flip
 and `--text` sees only a body not yet posted. Any failed or partial read is an `UNREADABLE`
-finding, never clean, and title rename history is not fetched (#448). An absent
+finding, never clean. Since #448 it also screens each title a rename replaced, from the `renamed`
+events of the repo-wide `issues/events` listing, under that listing's own `MAX_EVENT_PAGES` cap
+(20 pages and 25 renames on 2026-10-09, against ~23 new events a day). An absent
 `.claude/sensitive-terms.txt` is a finding reading `NOT CONFIGURED`, never a skip, and terms are
 masked in the output).
 
@@ -836,8 +838,10 @@ an untested CLI branch.
 The clone's interpreter is pinned before the install: when preflight runs from a virtualenv (as
 `make preflight` does), `seed_venv_argv` creates `<clone>/.venv` on that same python, and Poetry
 adopts it. Left alone, Poetry builds the venv on whatever python Poetry runs under, which on the
-cloud host is 3.11 against the 3.13 floor (#397, ported from parent #880). The interpreter probe
-stays as the backstop: a clone whose `poetry run` still cannot start Python reports INFRA, never a
+cloud host is 3.11 against the 3.13 floor (#397, ported from parent #880). Adoption holds only
+while no other venv is active: Poetry prefers `VIRTUAL_ENV`, then `CONDA_PREFIX`, over the
+in-project `.venv`, so `subprocess_env` drops both from the clone's environment (#449). The
+interpreter probe stays as the backstop: a clone whose `poetry run` still cannot start Python reports INFRA, never a
 red suite.
 
 Exit codes: `0` pass, `1` the suite failed (a real finding), `2` REFUSED (dirty tree), `3` INFRA (the

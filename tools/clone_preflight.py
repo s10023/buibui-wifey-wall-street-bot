@@ -76,6 +76,9 @@ PYTEST_ARGS: tuple[str, ...] = (
     "--ignore=tests/test_regression.py",
 )
 
+#: Variables that make Poetry adopt the caller's venv over the clone's (#449).
+CALLER_VENV_VARS: frozenset[str] = frozenset({"VIRTUAL_ENV", "CONDA_PREFIX"})
+
 
 def clone_argv(root: Path, dest: Path) -> list[str]:
     """Argv for the clone.
@@ -138,8 +141,17 @@ def subprocess_env() -> dict[str, str]:
     not guarded by a host check: the venv is created and destroyed with the
     clone rather than persisting in a cache shared with the dev box, so a stale
     cached venv cannot answer for a lock file it does not match.
+
+    The caller's own venv is dropped (#449). Poetry adopts an active venv
+    before it looks for ``<clone>/.venv``: ``EnvManager.get`` reads
+    ``VIRTUAL_ENV``, falling back to ``CONDA_PREFIX``, and skips the in-project
+    check when either is set (Poetry 2.4.3). A worktree session that borrows the
+    main checkout's venv then installs into, and tests against, the dev venv
+    rather than the clone's lock. ``POETRY_ACTIVE`` is left alone: Poetry itself
+    never reads it, so it cannot redirect the install.
     """
-    return {**os.environ, "POETRY_VIRTUALENVS_IN_PROJECT": "1"}
+    env = {k: v for k, v in os.environ.items() if k not in CALLER_VENV_VARS}
+    return {**env, "POETRY_VIRTUALENVS_IN_PROJECT": "1"}
 
 
 def probe_argv() -> list[str]:

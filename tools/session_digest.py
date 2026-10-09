@@ -383,17 +383,26 @@ MAX_ISSUE_PAGES = 50
 ISSUE_COMMENTS_PATH = f"repos/{REPO_SLUG}/issues/comments?per_page=100&page={{page}}"
 #: Every PR review (diff-line) comment, which the listing above does not carry.
 PR_REVIEW_COMMENTS_PATH = f"repos/{REPO_SLUG}/pulls/comments?per_page=100&page={{page}}"
+#: Every Issue and PR timeline event; its ``renamed`` events keep each title a
+#: rename replaced (#448).
+ISSUE_EVENTS_PATH = f"repos/{REPO_SLUG}/issues/events?per_page=100&page={{page}}"
+#: The events listing's own runaway guard. Measured 2026-10-09: 20 pages (1,990
+#: events, 25 renames) growing ~23 events a day, so ``MAX_ISSUE_PAGES`` would
+#: turn the read UNREADABLE within about 130 days.
+MAX_EVENT_PAGES = 200
 
 
-def fetch_gh_pages(path: str) -> tuple[list[dict[str, Any]] | None, str]:
+def fetch_gh_pages(
+    path: str, *, max_pages: int = MAX_ISSUE_PAGES
+) -> tuple[list[dict[str, Any]] | None, str]:
     """Every item of a paged REST listing; ``path`` carries a ``{page}`` slot.
 
     Returns ``(None, reason)`` on any failure, including a listing longer than
-    ``MAX_ISSUE_PAGES``: a partial read must never pass for a complete one.
+    ``max_pages``: a partial read must never pass for a complete one.
     """
     env = owner_env()
     items: list[dict[str, Any]] = []
-    for page in range(1, MAX_ISSUE_PAGES + 1):
+    for page in range(1, max_pages + 1):
         try:
             proc = subprocess.run(
                 ["gh", "api", path.format(page=page)],
@@ -419,7 +428,7 @@ def fetch_gh_pages(path: str) -> tuple[list[dict[str, Any]] | None, str]:
         items.extend(batch)
         if len(batch) < 100:
             return items, ""
-    return None, f"more than {MAX_ISSUE_PAGES} pages; refusing a partial read"
+    return None, f"more than {max_pages} pages; refusing a partial read"
 
 
 def fetch_issue_items(
