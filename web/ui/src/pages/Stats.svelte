@@ -933,14 +933,14 @@
   /* Grid layout */
   .grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 16px;
   }
 
   .card-wide { grid-column: 1 / -1; }
 
   @media (max-width: 700px) {
-    .grid { grid-template-columns: 1fr; }
+    .grid { grid-template-columns: minmax(0, 1fr); }
     .card-wide { grid-column: 1; }
   }
 
@@ -949,6 +949,8 @@
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 16px;
+    min-width: 0;
+    overflow-x: auto;
   }
 
   /* Card header */
