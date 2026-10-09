@@ -72,6 +72,7 @@ from analytics.signal.outcome_backfill import (  # noqa: E402
     _scan_forward,
 )
 from analytics.store import DEFAULT_DB_PATH  # noqa: E402
+from analytics.store.schema_migrations import record_applied  # noqa: E402
 
 
 def migrate(db_path: str, apply: bool) -> None:
@@ -108,6 +109,8 @@ def migrate(db_path: str, apply: bool) -> None:
         print(f"Rows eligible to re-price: {len(rows)}")
         if not rows:
             print("Nothing to do.")
+            if apply:
+                record_applied(conn, __file__, 0)
             conn.close()
             return
 
@@ -220,11 +223,18 @@ def migrate(db_path: str, apply: bool) -> None:
             conn.close()
             return
 
-        if updates:
-            conn.executemany(
-                "UPDATE signal_alert_outcomes SET outcome_r = ? WHERE signal_id = ?",
-                updates,
-            )
+        conn.execute("BEGIN TRANSACTION")
+        try:
+            if updates:
+                conn.executemany(
+                    "UPDATE signal_alert_outcomes SET outcome_r = ? WHERE signal_id = ?",
+                    updates,
+                )
+            record_applied(conn, __file__, len(updates))
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
         print(f"\nApplied: {len(updates)} row(s) re-priced.")
     finally:
         conn.close()

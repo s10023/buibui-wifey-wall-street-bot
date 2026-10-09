@@ -191,6 +191,13 @@ def migrate(db_path: str) -> None:
         print(f"\nMigration complete. {count} rows in backtest_runs.")
         print("day_filter distribution:", sample)
 
+        # Record the apply (#467). Imported lazily, like duckdb above, after
+        # putting the repo root on the path: this script predates that convention.
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from analytics.store.schema_migrations import record_applied
+
+        record_applied(conn, __file__, count)
+
     except Exception:
         conn.close()
         raise

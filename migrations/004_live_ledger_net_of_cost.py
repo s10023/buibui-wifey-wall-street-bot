@@ -80,6 +80,7 @@ from analytics.signal.outcome_backfill import (  # noqa: E402
     live_cost_r,
 )
 from analytics.signal_config import load_signal_config  # noqa: E402
+from analytics.store.schema_migrations import record_applied  # noqa: E402
 
 # Both live configs. They inherit `[backtest.cost_model]` from the shared base,
 # so they agree — but that is asserted below rather than assumed, because the
@@ -181,6 +182,8 @@ def migrate(db_path: str, apply: bool) -> None:
         print(f"Rows still on the gross basis: {len(rows)}")
         if not rows:
             print("Nothing to do — every resolved row already carries a cost.")
+            if apply:
+                record_applied(conn, __file__, 0)
             conn.close()
             return
 
@@ -270,6 +273,7 @@ def migrate(db_path: str, apply: bool) -> None:
             "SET outcome_r = ?, outcome_cost_r = ? WHERE signal_id = ?",
             updates,
         )
+        record_applied(conn, __file__, len(updates))
         conn.execute("COMMIT")
 
         after = conn.execute(

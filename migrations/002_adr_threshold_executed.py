@@ -41,6 +41,7 @@ import duckdb  # noqa: E402
 
 from analytics.signal.gates import effective_adr_threshold  # noqa: E402
 from analytics.store.backtest_runs import _backtest_run_id  # noqa: E402
+from analytics.store.schema_migrations import is_recorded, record_applied  # noqa: E402
 
 # #142 (54cef12) — "no-op the ADR gate where a calendar day holds one bar".
 # Rows written at or after this instant ran the gate the current code describes.
@@ -66,6 +67,17 @@ def migrate(db_path: str, apply: bool) -> None:
 
     cfgs = {k: load_signal_config(v) for k, v in CONFIG_BY_DAY_FILTER.items()}
     conn = duckdb.connect(db_path)
+    if apply and is_recorded(conn, __file__):
+        # The predicate reads TODAY's config, not the config at write time, so
+        # once applied it reads later config drift as pending: on 2026-10-09 it
+        # flagged 13 truthful eqh_eql rows that `fa89d57` exempted after they
+        # were written (#467). A re-run would rewrite them. Dry runs still work.
+        conn.close()
+        print(
+            "Refusing to run: 002 is already recorded in schema_migrations, and "
+            "its predicate now flags config drift, not undone work (#467)."
+        )
+        sys.exit(1)
     try:
         rows = conn.execute(
             "SELECT run_id, symbol, timeframe, strategy, days, sl_pct, tp_r, "
@@ -148,6 +160,8 @@ def migrate(db_path: str, apply: bool) -> None:
 
         if not updates:
             print("Nothing to do.")
+            if apply:
+                record_applied(conn, __file__, 0)
             conn.close()
             return
 
@@ -168,6 +182,7 @@ def migrate(db_path: str, apply: bool) -> None:
                 "WHERE run_id = ?",
                 [new, executed, old],
             )
+        record_applied(conn, __file__, len(updates))
         conn.execute("COMMIT")
 
         remaining = conn.execute(
