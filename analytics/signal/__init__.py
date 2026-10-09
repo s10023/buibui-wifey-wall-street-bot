@@ -26,7 +26,6 @@ from analytics.data_store import (
     upsert_signal_outcome,
     upsert_signals,
 )
-from analytics.overnight_gap_lib import gap_fill_warning, get_overnight_gap
 from analytics.signal._common import (
     _CANDLE_CLOSE_BUFFER_SECS,
     _SCAN_WINDOW,
@@ -115,10 +114,8 @@ __all__ = [
     "_resolve_volume_suppress_short",
     "adr_gate_applies",
     "effective_adr_threshold",
-    "gap_fill_warning",
     "get_backtest_cache",
     "get_ohlcv",
-    "get_overnight_gap",
     "parse_timeframe_secs",
     "put_backtest_cache",
     "run_scan_cycle",

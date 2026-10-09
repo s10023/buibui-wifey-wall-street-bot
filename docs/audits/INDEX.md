@@ -4,13 +4,14 @@
 `make docs-index-check` (and `tests/test_docs_index.py`) fails when this file
 drifts from the corpus.
 
-**48 audits.** A verdict line is shown only where one could be read
-out of a Verdict heading as prose — that is **38 of 48**.
+**49 audits.** A verdict line is shown only where one could be read
+out of a Verdict heading as prose — that is **39 of 49**.
 An em dash means the doc states its verdict in a table, a blockquote or the body,
 **not** that it lacks one; open the file. Nothing here is keyword-guessed.
 
 | Date | Audit | Verdict (as written) | File |
 | --- | --- | --- | --- |
+| 2026-10-09 | Overnight gap-fill warning — no measured value, removed from live alerts | EXCLUDED: no cell earned a keep, and the warning was removed. The live alert path appended `overnight_gap_lib.gap_fill_warning`… | [2026-10-09-overnight-gap-fill-warning.md](2026-10-09-overnight-gap-fill-warning.md) |
 | 2026-10-08 | VM — volatility management adds survival beside OV-1, on a thin ulcer-ratio margin | FOUND as an increment over OV-1, on the overlay yardstick only. OV-1 × VM against OV-1 itself, 1929-01-02 → 2026-08-31 at 2 bps,… | [2026-10-08-vm-overlay-increment.md](2026-10-08-vm-overlay-increment.md) |
 | 2026-10-08 | TOM — the turn-of-the-month premium is real on 1988→ but too small to hedge into a sleeve, and gone since 2006 | EXCLUDED as a deployable sleeve; the premise is not refuted on the primary panel, but it has not held since 2006. On 1988-01-04 →… | [2026-10-08-tom-turn-of-month.md](2026-10-08-tom-turn-of-month.md) |
 | 2026-10-08 | OV-1 — the 200-session MA filter passes as a risk overlay on a total-return frame | FOUND as an overlay, on the overlay yardstick and nothing else. Judged against buy-and-hold on the Ken French total-return market… | [2026-10-08-ov1-ma-overlay-total-return.md](2026-10-08-ov1-ma-overlay-total-return.md) |

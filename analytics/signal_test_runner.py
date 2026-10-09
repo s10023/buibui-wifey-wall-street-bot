@@ -18,7 +18,6 @@ import duckdb
 import pandas as pd
 
 from analytics.data_store import DEFAULT_DB_PATH, get_ohlcv
-from analytics.overnight_gap_lib import gap_fill_warning, get_overnight_gap
 from analytics.signal.types import SignalEvent
 from analytics.signal_config import BacktestFilterConfig, BiasConfig, StrategyOverride
 from analytics.signal_lib import (
@@ -220,7 +219,6 @@ def run_signal_test(
                     continue
 
                 fallback_close = float(closed_df["close"].iloc[-1])
-                overnight_gap = get_overnight_gap(ohlcv_df)
 
                 for strategy in strategies:
                     plugin = SIGNAL_REGISTRY[strategy]
@@ -340,31 +338,6 @@ def run_signal_test(
                                 direction=event.direction,
                             )
 
-                    # Overnight gap-fill warning (premise unaudited; see #400).
-                    _entry = event.price
-                    _sl_dist = (
-                        abs(_entry - event.sl_price)
-                        if event.sl_price
-                        else _entry * sl_pct
-                    )
-                    if event.direction == "long":
-                        _rough_tp = (
-                            event.tp_price
-                            if event.tp_price > _entry
-                            else _entry + _sl_dist * tp_r
-                        )
-                    else:
-                        _rough_tp = (
-                            event.tp_price
-                            if 0 < event.tp_price < _entry
-                            else _entry - _sl_dist * tp_r
-                        )
-                    gap_warning = (
-                        gap_fill_warning(overnight_gap, event.direction, _entry)
-                        if overnight_gap is not None
-                        else None
-                    )
-
                     alert_text = format_confluence_alert(
                         [event],
                         tp_r=tp_r,
@@ -372,7 +345,6 @@ def run_signal_test(
                         min_sl_pct=min_sl_pct,
                         backtest_summary=bt_summary,
                         stats_context=stats_ctx_cache.get(symbol),  # type: ignore[arg-type]
-                        gap_warning=gap_warning,
                         ohlcv_df=ohlcv_df,
                     )
 
