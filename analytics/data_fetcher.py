@@ -1,12 +1,14 @@
 """Pure data-fetching logic — yfinance to canonical OHLCV DataFrames.
 
 4h bars are synthesised by resampling 1h bars anchored to 13:30 UTC
-(US regular-session open). Other intervals (1h, 1d, 1wk) pass through.
+(US regular-session open). 1h and 1d pass through; 1wk is re-fetched onto Monday
+stamps when Yahoo anchors it elsewhere (see ``_monday_anchored``).
 
 No module-level side effects.
 """
 
 from datetime import UTC, datetime
+from typing import cast
 
 import pandas as pd
 
@@ -60,6 +62,8 @@ def fetch_bars(
         raw = _resample_to_4h(raw)
         if raw.empty:
             return pd.DataFrame(columns=OHLCV_COLUMNS)
+    if interval == "1wk":
+        raw = _monday_anchored(symbol, raw)
 
     start_dt = datetime.fromtimestamp(start_ms / 1000, tz=UTC).replace(tzinfo=None)
     raw = raw.loc[raw.index >= start_dt]
@@ -83,6 +87,30 @@ def fetch_bars(
             "volume": raw["volume"].astype(float).values,
         }
     )
+
+
+def _monday_anchored(symbol: str, weekly: pd.DataFrame) -> pd.DataFrame:
+    """Return ``weekly`` re-fetched onto Monday stamps if Yahoo anchored it elsewhere.
+
+    Under ``period="max"`` Yahoo anchors 1wk bars on the weekday of the symbol's
+    first session, so a history that began on a Tuesday is Tuesday-stamped
+    forever (ABBV, UNP, LUV, PEG; AEE on Thursday). A request starting on or
+    after that session anchors on Monday, so re-ask from the first Monday after
+    the first bar; only that partial listing week is lost. The two anchors bucket
+    different days, so a stamp shift cannot repair it. Raises rather than store
+    a mixed series if the re-fetch is still off-Monday (#323).
+    """
+    if weekly.empty or (cast(pd.DatetimeIndex, weekly.index).dayofweek == 0).all():
+        return weekly
+    first = cast(pd.Timestamp, weekly.index.min()).normalize()
+    monday = first + pd.Timedelta(days=(7 - first.dayofweek) % 7)
+    refetched = fetch_history(symbol, interval="1wk", start=monday.date().isoformat())
+    if not (cast(pd.DatetimeIndex, refetched.index).dayofweek == 0).all():
+        raise ValueError(
+            f"{symbol} 1wk: off-Monday anchor persists after re-fetching from "
+            f"{monday.date()}"
+        )
+    return refetched
 
 
 def _resample_to_4h(hourly: pd.DataFrame) -> pd.DataFrame:

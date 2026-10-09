@@ -85,3 +85,19 @@ def test_fetch_total_return_close_empty_on_no_data() -> None:
     mock_ticker.history.return_value = pd.DataFrame()
     with patch("utils.yfinance_client.yf.Ticker", return_value=mock_ticker):
         assert fetch_total_return_close("SPY").empty
+
+
+def test_fetch_history_start_replaces_period() -> None:
+    """A ``start`` is sent instead of ``period`` (#323: it sets the 1wk anchor)."""
+    from utils.yfinance_client import fetch_history
+
+    mock_ticker = MagicMock()
+    mock_ticker.history.return_value = pd.DataFrame()
+    with patch("utils.yfinance_client.yf.Ticker", return_value=mock_ticker):
+        fetch_history("ABBV", interval="1wk", start="2013-01-07")
+    mock_ticker.history.assert_called_once_with(
+        start="2013-01-07",
+        interval="1wk",
+        auto_adjust=False,
+        actions=False,
+    )
