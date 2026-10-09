@@ -1,6 +1,6 @@
 # `migrations/` — hand-run one-shot DB migrations
 
-Seven scripts. Routine schema changes do not go here — they belong in
+Eight scripts. Routine schema changes do not go here — they belong in
 `analytics/store/schema.py`'s migration list, which runs automatically on connect. This directory
 is only for changes that list cannot express: a column's type changing, or existing row values
 being rewritten.
@@ -9,10 +9,10 @@ Nothing runs these for you. They are not in the Makefile, not in `make db-update
 Each is invoked by hand, once, and is not idempotent in the sense of being safe to re-reason about
 — read the docstring before touching either.
 
-## The one invariant all seven scripts enforce
+## The one invariant all eight scripts enforce
 
 A `.bak` must exist alongside the DB or the script refuses to start (`001:46-48`, `002:63-65`,
-`003:76-78`, `004:119-121`, `005:78-80`, `006:99-101`, `007:91-93` — unconditionally for `001`,
+`003:76-78`, `004:119-121`, `005:78-80`, `006:99-101`, `007:91-93`, `008:75-77` — unconditionally for `001`,
 under `--apply` for the rest). `analytics.db.bak` is an undated, unverified byte copy, not a
 backup; `make backup` is the real snapshot. Create the `.bak` anyway — the guard is what stands
 between a bad migration and an unrecoverable DB.
@@ -237,6 +237,23 @@ Idempotent by value, like 006.
 
 **Run:** `python migrations/007_purge_avb_wrong_instrument_tail.py [--db PATH] [--apply]` —
 dry-run by default. Audit: `docs/audits/2026-09-04-split-adjustment-seams.md`.
+
+## 008_realign_off_monday_weekly_bars.py — a 1wk anchor set by the request
+
+Under `period="max"` Yahoo anchors `1wk` bars on the weekday of the symbol's first session, so
+ABBV, UNP, LUV, PEG and SATS were Tuesday-stamped and AEE Thursday-stamped for every week, while
+the other 502 series were Monday-stamped. A start on or after the first session anchors on Monday;
+`data_fetcher._monday_anchored` now re-fetches from there (#323). A re-sync cannot repair the
+stored rows, because `sync` upserts on `open_time` and Monday bars would land beside the Tuesday
+ones; a stamp shift cannot either, because a Tuesday bar straddles two Monday weeks.
+
+It fetches before it deletes, per symbol, so a series the provider no longer serves keeps its rows:
+SATS (`delisted: true`, #281, Yahoo 404) keeps 442 Tuesday rows. It is the one migration that
+needs the network, and its dry run makes no calls. Apply it only once the anchor fix is the code
+the scheduled sync runs, or the next universe sync appends off-Monday bars again.
+
+**Run:** `python migrations/008_realign_off_monday_weekly_bars.py [--db PATH] [--apply]` —
+dry-run by default.
 
 ## The transferable rule
 

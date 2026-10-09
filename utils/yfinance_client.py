@@ -27,6 +27,7 @@ def fetch_history(
     *,
     interval: str,
     period: str = "max",
+    start: str | None = None,
 ) -> pd.DataFrame:
     """Fetch raw OHLCV bars for a single symbol.
 
@@ -35,6 +36,8 @@ def fetch_history(
         interval: One of ``YF_INTERVALS`` keys (``"1h"``, ``"1d"``, ``"1wk"``).
         period: yfinance period string (``"6mo"``, ``"2y"``, ``"max"``, ...).
             yfinance caps 1h period to 730 days regardless of this value.
+        start: ISO date sent instead of ``period`` when given. It also sets the
+            ``1wk`` anchor, which ``analytics.data_fetcher`` relies on (#323).
 
     Returns:
         DataFrame with columns ``open, high, low, close, volume`` and a
@@ -52,10 +55,11 @@ def fetch_history(
     ``docs/redesign/phase0-lookahead-audit.md``.
     """
     yf_interval = YF_INTERVALS[interval]
+    window = {"start": start} if start is not None else {"period": period}
     raw = cast(
         pd.DataFrame,
         yf.Ticker(symbol).history(
-            period=period,
+            **window,
             interval=yf_interval,
             auto_adjust=False,
             actions=False,

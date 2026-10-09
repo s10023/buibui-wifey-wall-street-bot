@@ -155,3 +155,56 @@ def test_fetch_bars_4h_resamples_from_1h() -> None:
     assert mock_fetch.call_args.kwargs["interval"] == "1h"
     assert len(result) == 2
     assert (result["timeframe"] == "4h").all()
+
+
+def _weekly(first: str, n: int = 3) -> pd.DataFrame:
+    """``n`` weekly bars from ``first``, stamped at 05:00 UTC like Yahoo's."""
+    stamps = pd.date_range(f"{first}T05:00:00", periods=n, freq="7D")
+    return _yf_frame([_row(ts.isoformat()) for ts in stamps])
+
+
+class TestWeeklyMondayAnchor:
+    """#323: under ``period="max"`` Yahoo anchors 1wk bars on the weekday of the
+    symbol's first session (ABBV Tuesday, AEE Thursday); a start at or after
+    that session anchors them on Monday."""
+
+    START_MS = int(datetime(2018, 1, 1, tzinfo=UTC).timestamp() * 1000)
+
+    def test_a_monday_frame_is_fetched_once(self) -> None:
+        with patch(
+            "analytics.data_fetcher.fetch_history",
+            return_value=_weekly("2018-01-01"),
+        ) as fh:
+            result = fetch_bars("AAPL", "1wk", self.START_MS)
+        assert fh.call_count == 1
+        stamps = pd.to_datetime(result["open_time"], unit="ms")
+        assert (stamps.dt.dayofweek == 0).all()
+
+    def test_an_off_monday_frame_is_refetched_from_the_next_monday(self) -> None:
+        # ABBV's history starts Tuesday 2013-01-01; the next Monday is 01-07.
+        with patch(
+            "analytics.data_fetcher.fetch_history",
+            side_effect=[_weekly("2013-01-01"), _weekly("2013-01-07")],
+        ) as fh:
+            result = fetch_bars("ABBV", "1wk", 0)
+        assert fh.call_args_list[1].kwargs == {"interval": "1wk", "start": "2013-01-07"}
+        stamps = pd.to_datetime(result["open_time"], unit="ms")
+        assert list(stamps.dt.dayofweek) == [0, 0, 0]
+
+    def test_a_refetch_still_off_monday_raises(self) -> None:
+        with (
+            patch(
+                "analytics.data_fetcher.fetch_history",
+                side_effect=[_weekly("2013-01-01"), _weekly("2013-01-08")],
+            ),
+            pytest.raises(ValueError, match="off-Monday"),
+        ):
+            fetch_bars("ABBV", "1wk", 0)
+
+    def test_daily_bars_are_never_realigned(self) -> None:
+        with patch(
+            "analytics.data_fetcher.fetch_history",
+            return_value=_weekly("2013-01-01"),
+        ) as fh:
+            fetch_bars("ABBV", "1d", 0)
+        assert fh.call_count == 1
