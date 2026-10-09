@@ -1,8 +1,8 @@
 ---
 name: pr-summary
 description: >
-  Write a PR body to `docs/plans/pr-<branch>.md` — slashes in the branch name flattened to
-  `-` — and return the PR title beside the path, after a branch is complete
+  Write a PR body to the main checkout's `docs/plans/pr-<branch>.md`, even from a worktree —
+  slashes in the branch name flattened to `-` — and return the PR title beside the path, after a branch is complete
   (lint/typecheck/tests green, commit done). The body takes the shape of mattpocock's `pr`
   skill (Summary visual, Evidence, Merge Danger); this skill adds the repo's title, test-plan
   and output rules. Never returns the body inline. Invoke automatically when a branch
@@ -25,8 +25,9 @@ know: where the file goes, how the title is written, which gates the body may cl
    `git diff main..HEAD --stat`, and the Issue(s) the branch closes.
 3. Write the title (rules below).
 4. Write the body in the `pr` shape, with this repo's additions (below).
-5. Screen it: `make post-branch-text FILE=<path>` and fix every finding. It gates; through
-   `make`, read the banner rather than the exit code.
+5. Screen it: `make post-branch-text FILE=- < "$OUT"` and fix every finding. It gates;
+   through `make`, read the banner rather than the exit code. Stdin, because `$OUT` is
+   absolute and the recipe strips a Windows path's backslashes.
 6. Write it to the output path. Return exactly two lines and nothing else: the file path, then
    the title.
 
@@ -38,10 +39,21 @@ into a directory that does not exist, and a path the next session cannot predict
 "return only the path" contract. `docs/plans/` is gitignored but in-repo, so it survives a
 session delete and a reboot, unlike `/tmp`.
 
+**Always the main checkout's `docs/plans/`, even from a worktree.** A `.claude/worktrees/`
+checkout's own `docs/plans/` dies with the worktree, and the session that opens the PR is in
+the main checkout. The main checkout is the parent of git's common dir, which the `cd`
+resolves whether `git` prints it relative or absolute (`--path-format=absolute` needs git
+2.31; this host runs 2.28, which echoes the flag back as output):
+
 ```bash
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
-OUT="docs/plans/pr-$(printf '%s' "$BRANCH" | tr '/' '-').md"
+MAIN=$(cd "$(git rev-parse --git-common-dir)/.." && pwd)
+OUT="$MAIN/docs/plans/pr-$(printf '%s' "$BRANCH" | tr '/' '-').md"
 ```
+
+Return `$OUT` as printed: it is absolute, so it resolves from either checkout. From a
+worktree the harness refuses a Write-tool edit outside it, so Write the draft to the scratchpad
+and `cp` it to `$OUT` with Bash.
 
 ## Title
 
