@@ -41,7 +41,7 @@ import sys
 import tomllib
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePath
 
 Runner = Callable[[Sequence[str]], str]
 
@@ -232,6 +232,16 @@ def _run(argv: Sequence[str]) -> str:
     return out.stdout
 
 
+def surface_name(path: PurePath) -> str:
+    """A surface's name in POSIX form, which every leg's matching assumes.
+
+    `str(path)` is `.claude\\skills\\...` on Windows, so `startswith(".claude/")`,
+    `SELF_REFERENTIAL` and the leakage exemptions all missed there, and the leakage
+    leg checked nothing while reporting clean (#459).
+    """
+    return path.as_posix()
+
+
 def surface_paths() -> list[Path]:
     """Every current-state doc surface that exists.
 
@@ -245,7 +255,7 @@ def surface_paths() -> list[Path]:
         p
         for p in paths
         if p.exists()
-        and not any(str(p).endswith(s) for s in SELF_REFERENTIAL)
+        and not any(surface_name(p).endswith(s) for s in SELF_REFERENTIAL)
         and not any(p.is_relative_to(t) for t in FOREIGN_TREES)
     ]
 
@@ -489,7 +499,7 @@ def check_regression_surface(claude_md: str, workflow: str) -> list[Finding]:
 
 
 def _read_surfaces() -> list[tuple[str, str]]:
-    return [(str(p), p.read_text(encoding="utf-8")) for p in surface_paths()]
+    return [(surface_name(p), p.read_text(encoding="utf-8")) for p in surface_paths()]
 
 
 def _top_level_packages() -> list[str]:
