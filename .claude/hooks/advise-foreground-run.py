@@ -40,6 +40,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from typing import Any
 
 # A leading `FOO=bar ` / `PYTHONPATH=. ` prefix is still a head position.
 _ENV = r"(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*"
@@ -190,8 +191,8 @@ def _selftest() -> int:
         )
 
     # Discriminator 1 — the tool parameter, on a byte-identical command.
-    fg = {"tool_name": "Bash", "tool_input": {"command": _IDENTICAL}}
-    bg = {
+    fg: dict[str, Any] = {"tool_name": "Bash", "tool_input": {"command": _IDENTICAL}}
+    bg: dict[str, Any] = {
         "tool_name": "Bash",
         "tool_input": {"command": _IDENTICAL, "run_in_background": True},
     }

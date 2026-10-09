@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "_readme": [
+    "Card map for .claude/hooks/context-guard.py (ported from the parent, #320). Data only.",
+    "A card fires when the file about to be edited matches one of its globs.",
+    "Rules: keep each `text` to 2-4 sentences (the hook caps total injection at",
+    "2600 chars); state the TRAP and what to do instead, never the feature; and",
+    "name the deep reference rather than reproducing it. Globs are fnmatch over",
+    "the repo-relative posix path, so `*` crosses directory separators.",
+    "OWNERSHIP: CLAUDE.md's Footguns section owns these rules; a card restates the",
+    "trap at edit time and carries NO measured figure, so no number gets a second",
+    "copy. tests/test_context_guard.py fails if a glob matches no tracked file."
+  ],
+  "cards": [
+    {
+      "id": "store-upsert",
+      "globs": [
+        "analytics/store/_common.py"
+      ],
+      "text": "analytics/store/_common.py: `_upsert` uses explicit conn.register / conn.unregister in try/finally. NEVER switch to the implicit replacement scan (it corrupts the malloc heap) and never drop the try/finally. DEFAULT_DB_PATH lives HERE: import it from analytics.store or analytics.data_store, never redefine it in a runner. Deep ref: .claude/context/analytics.md"
+    },
+    {
+      "id": "db-writers",
+      "globs": [
+        "analytics/db_retry.py",
+        "web/api/routers/stats.py"
+      ],
+      "text": "DB write sites: open every writer in analytics/ and web/ through `connect_with_retry`; the stats router's cache write is the one exception. Narrow every `except duckdb.IOException` with `is_lock_conflict`, because DuckDB raises that class for EVERY I/O failure and an unnarrowed handler reports a missing or corrupt DB as 'busy'. `read_only=True` does not admit a second process. Tests must mock the open site, not duckdb or init_schema."
+    },
+    {
+      "id": "backtest-runs",
+      "globs": [
+        "analytics/store/backtest_runs.py",
+        "analytics/store/schema.py"
+      ],
+      "text": "backtest_runs: `upsert_backtest_run` needs `origin`, `live_parity` (cfg.live_parity.identity(), what EXECUTED) and the EFFECTIVE adr threshold, or one writer replaces another's row in place. mypy cannot see a required kwarg through a **dict splat, so run the suite. Before adding a column, grep tests/ for `INSERT INTO backtest_runs VALUES` (test_schema_insert_arity.py does not scan tests/). A column in the identity hash needs a migration that respects code eras."
+    },
+    {
+      "id": "signal-outcomes",
+      "globs": [
+        "analytics/store/signals.py",
+        "analytics/signal/outcome_backfill.py"
+      ],
+      "text": "live ledger: `upsert_signal_outcome` merges with COALESCE on the outcome columns; never replace the whole row, and test BOTH directions (a resolved label survives re-detection AND a caller can still set one). `outcome_r` is NET: pass `cost_model`/`fee_pct` through or the ledger silently reverts to gross, and `outcome_cost_r IS NULL` means unpriced, never free. One `implied_tp_r` serves the resolver, the scanner and exits/: do not fork it. `fired_at_ms` is not a dispatch record; the `:wife` watermark is."
+    },
+    {
+      "id": "fills",
+      "globs": [
+        "analytics/backtest/fills.py",
+        "analytics/backtest/engine.py"
+      ],
+      "text": "fills: a bar that opens beyond a level fills at the open on BOTH sides; `gap_fill_price` and `level_is_on_the_expected_side` in fills.py are the one rule, imported by both books. Pricing only the adverse tail overstates losses, so measure both tails before changing either. This path is in the regression trigger set: run `make test-regression`."
+    },
+    {
+      "id": "ohlcv-ingest",
+      "globs": [
+        "analytics/data_sync.py",
+        "analytics/data_fetcher.py",
+        "utils/yfinance_client.py"
+      ],
+      "text": "OHLCV ingest: `sync` re-fetches the overlap bar to catch split restatements, and ADJUSTMENT_BASIS_TOL is safe ONLY because the client fetches with auto_adjust=False; flipping that trips the guard on every ex-dividend date. The guard prevents a new seam but cannot repair a stored one. `1wk` fetches are Monday-anchored (`_monday_anchored`); a re-sync cannot fix off-anchor rows, it lands beside them. A bar count is not a calendar span on an RTH tape. Deep ref: .claude/context/footguns.md"
+    },
+    {
+      "id": "signal-config",
+      "globs": [
+        "config/signal_watch*.toml",
+        "config/strategy_params.toml"
+      ],
+      "text": "config/: in the regression trigger set, so run `make test-regression`, and a moved golden is a DECISION. Gates live in the shared base (TestSharedBaseGateState), never a Makefile flag. `adr_suppress_threshold` with `volume_suppress` needs `adr_exempt = true` or the loader refuses it, and the ADR gate is intraday-only. `day_filter = tue_thu` is why alerts go out Wed-Fri. go-live reads the WORKING TREE, so an edit here is live at the next scheduled run regardless of PR state."
+    },
+    {
+      "id": "strategies",
+      "globs": [
+        "analytics/strategies/*.py",
+        "signals/registry.py"
+      ],
+      "text": "strategy surface: the TA detector book is FROZEN (no new boolean detectors, no tp_r/gate/threshold sweeps). A detector change needs FOUR edits (strategy module, _registry.py, signals/registry.py, tests; see /new-strategy), must keep tests/test_lookahead.py green, and invalidates stored backtests (/db-update). In the regression trigger set. Demote, never delete, and only on evidence from the right panel."
+    },
+    {
+      "id": "audit-verdict",
+      "globs": [
+        "analytics/audit_guard.py",
+        "analytics/sweep_guard.py",
+        "analytics/research_guards/*.py"
+      ],
+      "text": "verdict surface: a powered null is CI CONTAINMENT via `audit_guard.powered_null`, never n, and INSUFFICIENT is a different state. Verdicts are priced per session day: keep `cluster_key` aligned with supp_r, and do not port `session_day_keys` to a 24h tape. Deflate a pooled cross-section before quoting a t-stat (`make wifey-n-eff`; pass --n-series or --n-eff to distil_power). A sleeve is judged on `passes_sleeve_gate` at GATE_SHARPE, a detector cell on pooled avg_r: name the panel."
+    },
+    {
+      "id": "research-ingest",
+      "globs": [
+        "tools/x_route.py",
+        "tools/route_dedup.py",
+        "tools/pundit_score.py",
+        "tools/video_marks.py"
+      ],
+      "text": "research ingest: level parsing fails SILENTLY; find defects by running the code. MONTH_YEAR_RE and PCT_RE are shared by x_route, route_dedup and pundit_score: do not fork them. Encode a one-legged call as entry plus target with the stop unstated, never an invented level. Record the underlying the author quoted (GC=F, not GLD). Anchor plausibility to the price at call_ts_utc. `keep_items` truncates at ITEM_CAP, so a thin yield from a dense video is a cap artifact first. Deep ref: .claude/context/tools.md"
+    },
+    {
+      "id": "web-ui",
+      "globs": [
+        "web/ui/*"
+      ],
+      "text": "web/ui/: load /frontend-design FIRST, then /frontend-svelte. `make web-build` is not a type gate; run `make web-check`. Nothing in CI sees rendering, so ask the operator for a screenshot before claiming a visual change works. Deep ref: .claude/context/web.md"
+    },
+    {
+      "id": "backup-deploy",
+      "globs": [
+        "deploy/*.sh",
+        "deploy/windows/*"
+      ],
+      "text": "deploy/: no CI step reads this tree, so tests/test_backup_*.py are its only gate. MANIFEST.json is written with json.dumps, never printf (Windows paths carry backslashes). The off-site leg is `rclone sync`, which mirrors deletions: dry-run after touching the remote. Keep the CR strip in load-env.sh. Never paste `rclone config` output: it carries a live refresh token. Deep ref: deploy/README.md"
+    },
+    {
+      "id": "migrations",
+      "globs": [
+        "migrations/*.py"
+      ],
+      "text": "migrations/: check what the target table's KEY is made of before choosing a shape (rewrite run_id, update in place, or delete and refetch). Fetch before you delete, per symbol: history the provider no longer serves cannot be recovered. The `.bak` guard tests existence, not freshness, so the operator must cut a fresh copy. Routine schema changes go through analytics/store/schema.py instead. Deep ref: .claude/context/migrations.md"
+    },
+    {
+      "id": "hooks",
+      "globs": [
+        ".claude/hooks/*.py",
+        ".claude/settings.json"
+      ],
+      "text": "hooks: each wrapper exits 0 when its script is missing and tries .venv/Scripts/python.exe, .venv/bin/python, then python3, in that order; on this host python3 is the Windows Store stub (exit 126), which would silently disable every hook. Hook tests live in tests/, not beside the hook (testpaths = tests). tests/test_hook_wiring.py runs the real wrapper string. Deep ref: .claude/context/hooks.md"
+    }
+  ],
+  "claim": {
+    "id": "negative-claim",
+    "tokens": [
+      "no edge",
+      "noedge",
+      "powered null",
+      "confirmed bad",
+      "no difference",
+      "cosmetic",
+      "no effect",
+      "ruled out",
+      "no detectable",
+      "indistinguishable"
+    ],
+    "text": "NEGATIVE CLAIM DETECTED in what you are about to write. 'No effect worth acting on' is a POSITIVE claim and needs the CI to rule one out: a powered null is CI CONTAINMENT, strictly inside +/- bar, via `analytics.audit_guard.powered_null`; do not restate the comparison inline. A sample-size floor, an MDE, a p-value or a failure to clear the bar is NOT power, and 'indistinguishable' means only that the CI contains zero. Price the CI per session day and deflate a pooled cross-section first. Quote the TEST's n, not the impressive one."
+  }
+}

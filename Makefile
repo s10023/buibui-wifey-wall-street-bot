@@ -80,7 +80,7 @@ lint-py:
 
 typecheck:
 	@echo "🔎 Type checking with mypy..."
-	poetry run mypy .
+	poetry run mypy . .claude/hooks
 
 test:
 	@echo "🧪 Running tests..."

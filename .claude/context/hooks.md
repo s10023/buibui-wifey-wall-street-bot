@@ -95,6 +95,22 @@ An inline `--body`, stdin, an unreadable file or a chained `git commit -F` still
 `main` gets a "branch off latest main" reminder, once per session per branch, never for gitignored
 paths. Ported from the parent with only its rationale pointer changed.
 
+## context-guard.py — advises, never blocks
+
+`PreToolUse` on `Edit|Write|NotebookEdit|MultiEdit` (#320, parent #659): delivers the footgun that
+governs the file about to change, so the trap arrives at the edit rather than only in CLAUDE.md.
+`context-guard.py` is a byte-for-byte copy of the parent's; the cards in `context-map.json` beside it are
+wifey's own, re-derived from CLAUDE.md's Footguns. Two triggers: a path glob, and a claim trigger
+that fires when a `.py` file or a `docs/audits/` or `docs/superpowers/specs/` file asserts a
+negative result ("no edge", "powered null", "indistinguishable"). Each card speaks once per
+session, the total injection is capped, and every failure path is silent. Unlike `guard-branch.py`
+it does not skip gitignored paths, because `docs/plans/scripts/` is where a mis-stated null hides.
+
+CLAUDE.md owns the rules and their figures; a card restates the trap with no measured number, so a
+moved figure never has a second copy. `tests/test_context_guard.py` fails on a card glob that
+matches no tracked file and on a figure inside a card, and mutation-tests both triggers. Add a card
+when a footgun is tied to specific files; keep its text to two to four sentences.
+
 ## log-skill-usage.py — logs, never blocks
 
 `PreToolUse` on `Skill` and `UserPromptSubmit` (#395): appends one tab-separated line per skill
@@ -134,10 +150,12 @@ Test the wiring, not just the module. `tests/test_hook_wiring.py` reads the wrap
 passes whether or not the wrapper string in `settings.json` is correct — the wrapper string is a
 surface of its own, separate from the module it invokes.
 
-`tests/test_hook_wiring.py`, `tests/test_guard_shell_hygiene.py`, `tests/test_advise_lifecycle.py` and
-`tests/test_log_skill_usage.py` live in `tests/`, so
-`make test` and CI's `lint-typecheck-test` job both run them; `make lint-py` and `make typecheck`
-cover the hook sources like any other tracked `.py` module.
+`tests/test_hook_wiring.py`, `tests/test_guard_shell_hygiene.py`, `tests/test_advise_lifecycle.py`,
+`tests/test_log_skill_usage.py` and `tests/test_context_guard.py` live in `tests/`, so
+`make test` and CI's `lint-typecheck-test` job both run them; CI's Python filter also fires on
+`.claude/settings.json` and `.claude/hooks/*.json`, which those tests read. `make lint-py` reaches
+the hook sources on its own, but `mypy .` silently skips dot-directories, so `make typecheck` and
+CI's type-check step name `.claude/hooks` explicitly. Keep the two in step.
 
 An advisory hook that stops firing is silent by construction, the same shape as the off-site
 backup's failure-only alerting. After editing one, trigger it deliberately once and confirm the
