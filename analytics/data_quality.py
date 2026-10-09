@@ -16,6 +16,7 @@ property of the *series* rather than of a row, so it is opt-in per call: see
 ``check_ohlcv``.
 """
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -303,3 +304,120 @@ def detect_session_gaps(
         n_expected=len(expected_keys),
         missing=missing,
     )
+
+
+# --- Level breaks: a probable wrong instrument --------------------------------
+#
+# A provider that stops serving a ticker and later resumes it with a DIFFERENT
+# security leaves a level break: the series picks up again at an unrelated price.
+# AVB (migration 007) resumed after a 29-day gap at 0.389x its last close; BNY
+# `4h` (#468) at 13.8x after 104.8 days. A big move alone is not evidence — MRNA's
+# +177% on 2026-08-19 is real — so these are warn-only, never quarantined.
+#
+# Measured 2026-10-09 over every consecutive bar pair in analytics.db (#469):
+# no `1d`/`1wk` series ever resumed after a gap at a level more than 25% away
+# (the largest benign gapped move is ^GSPC after the 1933 bank holiday, |ln r|
+# 0.154), and the two wrong instruments sit at 0.945 and 2.624. Without a gap,
+# `ln 2` flags 7 `1d` bars since 2018, each matching a known event (KDP's 2018
+# merger dividend, the 2020-03-09 oil crash, GL, PCG, MRNA); at `ln 1.5` it
+# would flag 32. Persistence, range disjointness, volume ratio and split-ratio
+# exclusion were measured and do not separate real breaks from AVB.
+
+#: Calendar days between consecutive bars beyond which a resumption is "gapped".
+#: Above a holiday weekend, but not above every closure: the 1933 bank holiday
+#: is a 12-day ``1d`` gap, and it is the price bar, not this one, that keeps its
+#: +16.6% quiet. A timeframe absent here gets the ungapped leg only.
+LEVEL_BREAK_GAP_DAYS: dict[str, float] = {"1h": 7.0, "4h": 7.0, "1d": 7.0, "1wk": 14.0}
+
+#: |ln(close / prev_close)| beyond which a gapped resumption reads as a probable
+#: wrong instrument.
+GAPPED_BREAK_LN: float = math.log(1.25)
+
+#: |ln(close / prev_close)| beyond which an ungapped move is worth a warning and
+#: a cross-check against the provider's own quote.
+LARGE_BREAK_LN: float = math.log(2.0)
+
+#: |ln(stored close / quoted last price)| beyond which the quote contradicts the
+#: history. AVB's newest stored close was 68.14 against a quote of 184.06
+#: (|ln| 0.99); on 2026-10-09 MRNA and GL quoted exactly their last `1d` close.
+QUOTE_MISMATCH_LN: float = math.log(1.25)
+
+_DAY_MS = 86_400_000
+
+
+@dataclass(frozen=True)
+class LevelBreak:
+    """One consecutive bar pair whose level changed beyond a threshold.
+
+    ``kind`` is ``"gapped"`` (resumed after a gap at a different level: a
+    probable wrong instrument) or ``"large"`` (an ungapped halving or doubling:
+    usually real, and worth a quote cross-check).
+    """
+
+    prev_open_time: int
+    prev_close: float
+    open_time: int
+    close: float
+    gap_days: float
+    kind: str
+
+    @property
+    def ratio(self) -> float:
+        return self.close / self.prev_close
+
+
+def classify_level_break(
+    prev_open_time: int,
+    prev_close: float,
+    open_time: int,
+    close: float,
+    timeframe: str,
+) -> LevelBreak | None:
+    """Classify one consecutive pair, or None when it is not a level break.
+
+    Pure. A non-positive or NaN close answers None: those rows are quarantined
+    elsewhere, and a ratio over them measures nothing.
+    """
+    if not (prev_close > 0 and close > 0):
+        return None
+    abs_log = abs(math.log(close / prev_close))
+    gap_days = (open_time - prev_open_time) / _DAY_MS
+    gap_limit = LEVEL_BREAK_GAP_DAYS.get(timeframe)
+    if gap_limit is not None and gap_days > gap_limit and abs_log > GAPPED_BREAK_LN:
+        kind = "gapped"
+    elif abs_log > LARGE_BREAK_LN:
+        kind = "large"
+    else:
+        return None
+    return LevelBreak(prev_open_time, prev_close, open_time, close, gap_days, kind)
+
+
+def find_level_breaks(
+    open_times: Sequence[int],
+    closes: Sequence[float],
+    timeframe: str,
+) -> list[LevelBreak]:
+    """Every level break across consecutive pairs of an open_time-sorted series."""
+    out: list[LevelBreak] = []
+    for i in range(1, len(open_times)):
+        brk = classify_level_break(
+            int(open_times[i - 1]),
+            float(closes[i - 1]),
+            int(open_times[i]),
+            float(closes[i]),
+            timeframe,
+        )
+        if brk is not None:
+            out.append(brk)
+    return out
+
+
+def quote_disagrees(close: float, quote: float | None) -> bool:
+    """Does the provider's quoted last price contradict the newest stored close?
+
+    An absent or non-positive quote answers False: an unreadable quote is no
+    evidence either way, and the break's own warning has already been logged.
+    """
+    if quote is None or not (quote > 0 and close > 0):
+        return False
+    return abs(math.log(close / quote)) > QUOTE_MISMATCH_LN

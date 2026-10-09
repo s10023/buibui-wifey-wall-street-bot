@@ -51,6 +51,7 @@ from analytics.signal_lib import (
 )
 from signals.cooldown_store import CooldownStore
 from utils.config_validation import load_stocks_config
+from utils.yfinance_client import fetch_last_price
 
 logger = logging.getLogger(__name__)
 
@@ -137,14 +138,14 @@ def _sync_watched_series(
     for symbol in symbols:
         for tf in timeframes:
             try:
-                sync(conn, symbol, tf)
+                sync(conn, symbol, tf, quote_fn=fetch_last_price)
             except ValueError:
                 logger.info(
                     "No data for %s/%s — running initial backfill",
                     symbol,
                     tf,
                 )
-                backfill(conn, symbol, tf, backfill_start_ms)
+                backfill(conn, symbol, tf, backfill_start_ms, quote_fn=fetch_last_price)
                 ohlcv_cache.pop((symbol, tf), None)  # force cold read
             except duckdb.IOException as exc:
                 if not is_lock_conflict(exc):

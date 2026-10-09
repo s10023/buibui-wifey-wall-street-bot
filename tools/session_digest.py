@@ -159,6 +159,20 @@ def freshness_findings(signal: Any, ohlcv: Any) -> list[Finding]:
                     "check the wifey-universe-sync task; `make freshness-check` lists them",
                 )
             )
+    if ohlcv.level_breaks:
+        shown = "; ".join(
+            f"{b.symbol} {b.timeframe} {b.session} x{b.ratio:.3f} after {b.gap_days:.0f}d"
+            for b in ohlcv.level_breaks[:3]
+        )
+        out.append(
+            Finding(
+                "AMBER",
+                "probable wrong-instrument series",
+                f"{len(ohlcv.level_breaks)} gapped level break(s): {shown}",
+                "`make freshness-check` lists them; confirm against the provider's"
+                " quote, then purge in migration 007's shape (#469)",
+            )
+        )
     return out
 
 

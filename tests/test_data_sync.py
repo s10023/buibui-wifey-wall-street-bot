@@ -18,6 +18,7 @@ from analytics.data_store import (
 )
 from analytics.data_sync import (
     ADJUSTMENT_BASIS_TOL,
+    _store_page,
     backfill,
     basis_changed,
     sync,
@@ -480,3 +481,175 @@ class TestAdjustmentBasisGuard:
             sync(conn, "AAPL", "1d")
 
         assert "adjustment basis changed AAPL 1d" in caplog.text
+
+
+_DAY = 86_400_000
+
+
+def _fetch_returning(df: pd.DataFrame) -> Any:
+    def fake_fetch(
+        sym: str, tf: str, start: int, *args: Any, **kwargs: Any
+    ) -> pd.DataFrame:
+        return df
+
+    return fake_fetch
+
+
+class TestLevelBreakWarning:
+    """#469: a provider that resumes a ticker with another security leaves its
+    break on the stored/new seam, which no page-scoped check sees. It is logged
+    and stored, never dropped."""
+
+    def test_a_page_without_the_overlap_bar_is_judged_against_the_stored_tail(
+        self, caplog: Any
+    ) -> None:
+        """AVB's shape: the provider returned only the bogus bars."""
+        conn = _make_conn()
+        upsert_ohlcv(conn, _bars_at([0, _DAY], 177.32, symbol="AVB"))
+        page = _bars_at([30 * _DAY, 31 * _DAY], 68.93, symbol="AVB")
+        with (
+            caplog.at_level("WARNING"),
+            patch("analytics.data_sync.fetch_bars", side_effect=_fetch_returning(page)),
+        ):
+            sync(conn, "AVB", "1d")
+
+        assert "probable wrong instrument AVB 1d" in caplog.text
+        assert _stored_closes(conn, "AVB") == pytest.approx(
+            [177.32, 177.32, 68.93, 68.93]
+        ), "advisory: the bars are stored, not dropped"
+
+    def test_an_overlapping_page_is_judged_in_page(self, caplog: Any) -> None:
+        conn = _make_conn()
+        upsert_ohlcv(conn, _bars_at([0, _DAY], 177.32, symbol="AVB"))
+        page = pd.concat(
+            [
+                _bars_at([_DAY], 177.32, symbol="AVB"),
+                _bars_at([30 * _DAY], 68.93, symbol="AVB"),
+            ],
+            ignore_index=True,
+        )
+        with (
+            caplog.at_level("WARNING"),
+            patch("analytics.data_sync.fetch_bars", side_effect=_fetch_returning(page)),
+        ):
+            sync(conn, "AVB", "1d")
+
+        assert "probable wrong instrument AVB 1d" in caplog.text
+
+    def test_a_split_restatement_is_not_a_level_break(self, caplog: Any) -> None:
+        """The overlap bar arrives on the new basis while its stored predecessor is
+        on the old one; anchoring on the predecessor would call the split a break."""
+        conn = _make_conn()
+        upsert_ohlcv(conn, _bars_at([1_000, 2_000, 3_000], 400.0))
+
+        def fake_fetch(
+            sym: str, tf: str, start: int, *args: Any, **kwargs: Any
+        ) -> pd.DataFrame:
+            if start == 3_000:
+                return _bars_at([3_000, 4_000], 100.0)
+            return _bars_at([1_000, 2_000, 3_000, 4_000], 100.0)
+
+        with (
+            caplog.at_level("WARNING"),
+            patch("analytics.data_sync.fetch_bars", side_effect=fake_fetch),
+        ):
+            sync(conn, "AAPL", "1d")
+
+        assert "adjustment basis changed" in caplog.text
+        assert "level move" not in caplog.text
+        assert "wrong instrument" not in caplog.text
+
+    def test_positive_control_the_same_move_as_a_seam_is_seen(
+        self, caplog: Any
+    ) -> None:
+        """Pairs with the split test: offered without the overlap bar, the same
+        4x drop reaches the classifier, so the silence above is the anchor rule."""
+        conn = _make_conn()
+        upsert_ohlcv(conn, _bars_at([1_000, 2_000, 3_000], 400.0))
+        with (
+            caplog.at_level("WARNING"),
+            patch(
+                "analytics.data_sync.fetch_bars",
+                side_effect=_fetch_returning(_bars_at([4_000], 100.0)),
+            ),
+        ):
+            sync(conn, "AAPL", "1d")
+
+        assert "large level move AAPL 1d" in caplog.text
+
+    def test_a_contradicting_quote_upgrades_an_ungapped_break(
+        self, caplog: Any
+    ) -> None:
+        conn = _make_conn()
+        upsert_ohlcv(conn, _bars_at([0, _DAY], 100.0))
+        calls: list[str] = []
+
+        def quote(sym: str) -> float | None:
+            calls.append(sym)
+            return 100.0
+
+        with (
+            caplog.at_level("WARNING"),
+            patch(
+                "analytics.data_sync.fetch_bars",
+                side_effect=_fetch_returning(_bars_at([2 * _DAY], 40.0)),
+            ),
+        ):
+            sync(conn, "AAPL", "1d", quote_fn=quote)
+
+        assert calls == ["AAPL"]
+        assert "large level move AAPL 1d" in caplog.text
+        assert "the provider quotes 100.0000" in caplog.text
+
+    def test_an_agreeing_quote_does_not_upgrade(self, caplog: Any) -> None:
+        conn = _make_conn()
+        upsert_ohlcv(conn, _bars_at([0, _DAY], 100.0))
+        with (
+            caplog.at_level("WARNING"),
+            patch(
+                "analytics.data_sync.fetch_bars",
+                side_effect=_fetch_returning(_bars_at([2 * _DAY], 40.0)),
+            ),
+        ):
+            sync(conn, "AAPL", "1d", quote_fn=lambda sym: 40.0)
+
+        assert "large level move AAPL 1d" in caplog.text
+        assert "the provider quotes" not in caplog.text
+
+    def test_no_break_means_no_quote_call(self) -> None:
+        conn = _make_conn()
+        upsert_ohlcv(conn, _bars_at([0, _DAY], 100.0))
+        calls: list[str] = []
+
+        def quote(sym: str) -> float | None:
+            calls.append(sym)
+            return 100.0
+
+        with patch(
+            "analytics.data_sync.fetch_bars",
+            side_effect=_fetch_returning(_bars_at([_DAY, 2 * _DAY], 101.0)),
+        ):
+            sync(conn, "AAPL", "1d", quote_fn=quote)
+
+        assert calls == [], "the quote is a network call, spent only on a break"
+
+    def test_a_paging_boundary_never_consults_the_quote(self) -> None:
+        """A full page's last bar is not the newest bar, so the quote measures
+        nothing about it."""
+        conn = _make_conn()
+        upsert_ohlcv(conn, _bars_at([0, _DAY], 100.0))
+        calls: list[str] = []
+
+        def quote(sym: str) -> float | None:
+            calls.append(sym)
+            return 100.0
+
+        _store_page(
+            conn,
+            "AAPL",
+            "1d",
+            _bars_at([2 * _DAY], 40.0),
+            series_ends_here=False,
+            quote_fn=quote,
+        )
+        assert calls == []
