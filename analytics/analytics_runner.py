@@ -135,10 +135,11 @@ def run_sync(
                     "Sync complete: %s %s — %d new rows", symbol, timeframe, total
                 )
     logging.info("Sync summary: %d of %d fetches returned no data", failed, attempted)
-    # All-or-nothing on purpose. yfinance re-raises a rate limit, so the hidden
-    # failures counted here are network-level (DNS, connection) and empty the
-    # whole run, while a delisted name empties one series on every run and is
-    # `make freshness-check`'s to grade. Any share below 100% would either trip
+    # All-or-nothing on purpose. yfinance re-raises a rate limit on the price
+    # request, which already crashes the run; a network failure (DNS,
+    # connection) is hidden and empties every series at once, while a delisted
+    # name empties one series on every run and is `make freshness-check`'s to
+    # grade. Any share below 100% would either trip
     # on those chronic empties or need a tuned number nothing measures. A
     # non-zero exit is what lets `deploy/windows/job.sh` notify (#444).
     if attempted and failed == attempted:

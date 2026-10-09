@@ -516,6 +516,11 @@ needs the backfill once — that is why both targets exist. It is also why 400 o
 stay absent: that is yfinance's intraday history window, not staleness, and this unit cannot close
 that 21% coverage gap.
 
+A run in which every fetch came back empty exits 1, so the failure alert fires (#444). yfinance
+reports a network outage as an empty frame rather than an error, and before that change the
+2026-10-03 DNS outage logged `0 new rows` on every series in the retained log and exited 0. A partial failure still exits 0,
+so `make freshness-check` remains the probe for staleness.
+
 Saturday 10:00 UTC holds for three reasons, and all three have to. It is the longest-running
 writer on `analytics.db` (2m15s) and shares that file with two other units — on a weekday it would
 sit between `wifey-backup` (08:10) and `wifey-signal-watch` (08:30), putting a multi-minute writer

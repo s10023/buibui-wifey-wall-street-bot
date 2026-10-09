@@ -27,7 +27,8 @@ Documentation=file:///home/kng/repo/buibui-wifey-wall-street-bot/deploy/README.m
 # Pinned by tests/test_systemd_units.py.
 #
 # ⚠ AND AN OnFailure= ALERT CANNOT SEE THE FAILURE THIS UNIT IS ABOUT. A run that
-# never fires, or one that fires and refreshes nothing, exits 0 and stays silent.
+# never fires, or one that fires and refreshes only part of the universe, exits 0
+# and stays silent. Only a run where every fetch came back empty exits 1 (#444).
 # That is the whole premise of `make freshness-check`, which dates observed state
 # instead -- the alert covers a crash, the probe covers a silence. Do not read
 # this line as making the probe redundant.
