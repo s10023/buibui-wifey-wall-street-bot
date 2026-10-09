@@ -808,8 +808,10 @@ cache env on the project directory: `poetry run` there creates an empty env and 
 helper at parse time and exports what it prints, the main checkout's `.venv`. It prints nothing
 outside a linked worktree (`--git-dir` equals `--git-common-dir`), when the worktree has its own
 `.venv`, or when the main venv has no interpreter (layout from `venv_bootstrap._venv_python`). The
-Makefile skips it when `VIRTUAL_ENV` is already set or `.venv` exists, and `make preflight` unsets
-the borrowed value so the clone installs its own venv (a caller-set `VIRTUAL_ENV` is #449). It
+Makefile skips it when `VIRTUAL_ENV` is already set or `.venv` exists. `make preflight` inherits the
+borrowed value and `subprocess_env` drops it, as it does a caller-set one (#449), so the clone
+installs its own venv; the recipe must not unset it through `env`, which cannot exec the Store
+`python3` alias (#461). It
 resolves the common dir itself because `git rev-parse --path-format=absolute` needs git 2.31 and
 this host runs 2.28. A bare `poetry run` outside `make` still lands in the empty env.
 
