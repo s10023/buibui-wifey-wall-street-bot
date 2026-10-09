@@ -495,12 +495,15 @@ sanity-checks:
 ## running it earlier tests stale HEAD and reports green. It REPLACES that
 ## branch's `make test`, which it mirrors argument-for-argument; only this one
 ## is hermetic. Bare python3 on purpose: the gate must still run when the dev
-## venv is the thing that is broken.
+## venv is the thing that is broken. No wrapper or env prefix either: a plain
+## line is launched by make itself, which runs the Windows Store python3 alias,
+## while MSYS `env` or `sh` exec of it fails with exit 126 (#461). A worktree's
+## borrowed VIRTUAL_ENV needs no unset here: subprocess_env drops it (#456).
 ## ⚠ make collapses the recipe's exit code, so read the printed banner: REFUSED
 ## (dirty tree) and INFRA (clone/install died) are NOT suite failures.
 preflight:
 	@echo "🧪 Running the clean-clone pre-flight..."
-	@$(if $(WORKTREE_VENV),env -u VIRTUAL_ENV )python3 tools/clone_preflight.py
+	@python3 tools/clone_preflight.py
 
 ## Which recurring tasks are overdue, read from docs/plans/task-marks/.
 ## ADVISORY and deliberately NOT in `make test`: the marks are gitignored, so a

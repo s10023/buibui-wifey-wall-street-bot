@@ -348,6 +348,22 @@ class TestWiredIntoTheWorkflow:
         assert "preflight:" in makefile
         assert "tools/clone_preflight.py" in makefile
 
+    def test_recipe_launches_python3_directly(self) -> None:
+        """No `env`/shell prefix, so native make runs the Store alias itself (#461).
+
+        On the Windows host `python3` is the Store app-execution alias. Make launches
+        a metacharacter-free line directly and the alias runs; `env -u VIRTUAL_ENV`
+        or `VIRTUAL_ENV= ` hands the exec to MSYS, which fails with exit 126, so
+        `make preflight` died in every linked worktree. The borrowed venv needs no
+        unset: `TestCallerVenvDoesNotReachTheClone` pins that `subprocess_env`
+        drops it.
+        """
+        makefile = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
+        recipe = re.search(r"^preflight:\n(?:\t.*\n)*", makefile, re.M)
+        assert recipe is not None, "could not locate the `preflight:` recipe"
+        launch = [ln for ln in recipe.group(0).splitlines() if "clone_preflight" in ln]
+        assert launch == ["\t@python3 tools/clone_preflight.py"]
+
     def test_post_branch_phase_5_names_the_gate(self) -> None:
         skill = (REPO_ROOT / ".claude/skills/post-branch/SKILL.md").read_text(
             encoding="utf-8"
