@@ -6,6 +6,11 @@ yfinance is mocked end-to-end — these tests must never touch the network.
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import pytest
+from yfinance.exceptions import (  # type: ignore[import-untyped]
+    YFException,
+    YFRateLimitError,
+)
 
 
 def test_fetch_history_calls_yfinance_with_canonical_args() -> None:
@@ -122,3 +127,30 @@ def test_fetch_last_price_answers_none_on_any_failure() -> None:
     mock_ticker.fast_info = {"lastPrice": 0.0}
     with patch("utils.yfinance_client.yf.Ticker", return_value=mock_ticker):
         assert fetch_last_price("AVB") is None
+
+
+def test_fetch_history_wraps_a_payload_error_as_provider_error() -> None:
+    """#474: a per-ticker YFException becomes ProviderError, cause kept."""
+    from utils.yfinance_client import ProviderError, fetch_history
+
+    mock_ticker = MagicMock()
+    mock_ticker.history.side_effect = YFException("Dividends events are out-of-range")
+    with (
+        patch("utils.yfinance_client.yf.Ticker", return_value=mock_ticker),
+        pytest.raises(ProviderError, match="AVB 1wk: YFException") as exc,
+    ):
+        fetch_history("AVB", interval="1wk")
+    assert isinstance(exc.value.__cause__, YFException)
+
+
+def test_fetch_history_lets_a_rate_limit_through_unwrapped() -> None:
+    from utils.yfinance_client import ProviderError, fetch_history
+
+    mock_ticker = MagicMock()
+    mock_ticker.history.side_effect = YFRateLimitError()
+    with (
+        patch("utils.yfinance_client.yf.Ticker", return_value=mock_ticker),
+        pytest.raises(YFRateLimitError) as exc,
+    ):
+        fetch_history("AAPL", interval="1d")
+    assert not isinstance(exc.value, ProviderError)

@@ -66,7 +66,8 @@ def fetch_bars(
     is at or after ``start_ms``, or the provider returned nothing. The second
     is how yfinance reports a network failure, so ``require_data=True`` raises
     ``NoProviderDataError`` for it instead. yfinance raises a rate limit
-    (``YFRateLimitError``) either way.
+    (``YFRateLimitError``) either way, and a per-ticker payload it rejects
+    arrives as ``utils.yfinance_client.ProviderError`` (#474).
     """
     if interval not in _INTERVAL_CONFIG:
         raise ValueError(
