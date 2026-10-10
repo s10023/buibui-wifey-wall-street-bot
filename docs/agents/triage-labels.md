@@ -17,7 +17,8 @@ label string from this table.
 
 The skills' two category roles, `bug` and `enhancement`, are not applied here: the repo's kind
 label (`build`, `mechanics`, `audit`, `hypothesis`, `ops`, `decision`, `question`) is the
-category, and every Issue already carries exactly one, so triage adds only a state role.
+category, and the filing rule in `docs/agents/issue-tracker.md` gives each Issue exactly one, so
+triage adds only a state role.
 `.out-of-scope/` takes a rejected Issue of any kind, not only an enhancement.
 
 `needs-info` is not `question` or `decision`: `needs-info` waits on a reporter to supply facts,
