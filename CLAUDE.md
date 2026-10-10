@@ -112,6 +112,12 @@ tracked files alone (no `analytics.db`, no memory tree, no Windows host). A clou
 `gh api 'repos/s10023/buibui-wifey-wall-street-bot/issues?state=open&per_page=100'`, because
 `gh issue list` goes through GraphQL, which cloud sessions are refused.
 
+**A cloud session (claude.ai/code) is not the laptop.** It has no `analytics.db`, `docs/plans/`,
+memory tree, `.env` keys, watchlist, term list or account plugins, and its clone is shallow. The
+digest prints a `CLOUD SESSION` banner when `CLAUDE_CODE_REMOTE=true`. **From there, file every
+Issue as `needs-triage`, never `ready-for-*`, and give work that needs the laptop a
+`## Local session prompt` block.** Table and rule: `.claude/context/cloud-sessions.md`.
+
 **North star.** `docs/north-star.md` holds the north star, acceptance gates G1–G4, the
 data-cost policy and the frozen list; it is tracked so a cloud session can read it.
 `project_todo_master.md` in this checkout's memory tree (`memory_dir(<this repo>)`) keeps only

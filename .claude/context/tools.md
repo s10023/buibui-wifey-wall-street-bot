@@ -737,6 +737,13 @@ Two properties are load-bearing: it exits 0 unless `EXIT_NONZERO=1` (a probe tha
 `BROKE` line, never a traceback), and a failed Issue fetch prints `BROKE could not fetch open Issues`
 rather than an empty list. The pure half is tested in `tests/test_session_digest.py`.
 
+Ported from parent #1020 (2026-10-10): under the Issue list a `Triage owed` line counts Issues
+carrying `needs-triage` or no triage role at all, and when `CLAUDE_CODE_REMOTE=true` the hook
+output opens with a `CLOUD SESSION` banner pointing at `.claude/context/cloud-sessions.md`. The
+banner also warns that the probe lines below it grade the container. The Telegram push never
+carries the banner. Tests drive `main()` through the environment, so deleting the wiring fails
+them, not only deleting `cloud_banner`.
+
 The off-site line (#443) reads the last `=== <ts> |` block `job.sh` wrote to
 `logs/wifey-backup-offsite.log`: RED `off-site backup failed` when that run did not print
 `off-site backup OK` (a run under 2h old with no result is still uploading), RED

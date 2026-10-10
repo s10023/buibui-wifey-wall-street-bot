@@ -4,6 +4,7 @@ own modules; the I/O (gh, Task Scheduler, analytics.db) is not exercised here.""
 
 from __future__ import annotations
 
+import io
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -218,6 +219,80 @@ class TestRender:
         out = sd.render([], issues, "", [], for_model=False, max_issues=2)
         assert "Open Issues (5):" in out
         assert "… and 3 more" in out
+
+
+class TestTriageOwed:
+    """Ported from parent #1020: a backlog of role-less Issues shows every session."""
+
+    def test_needs_triage_and_role_less_are_counted_apart(self) -> None:
+        issues = [
+            _issue(1, "p2", "needs-triage"),
+            _issue(2, "p2", "ready-for-agent"),
+            _issue(3, "p3"),
+        ]
+        assert sd.triage_owed(issues) == (
+            "Triage owed: 1 needs-triage + 1 with no role label"
+            " — `/triage` (mattpocock-skills, local)"
+        )
+
+    def test_every_role_but_needs_triage_clears_an_issue(self) -> None:
+        decided = ["needs-info", "ready-for-agent", "ready-for-human", "wontfix"]
+        assert sd.triage_owed([_issue(n, r) for n, r in enumerate(decided)]) is None
+
+    def test_render_carries_the_line_and_drops_it_once_triaged(self) -> None:
+        owed = sd.render([], [_issue(1, "p1")], "", [], for_model=True)
+        done = sd.render([], [_issue(1, "p1", "wontfix")], "", [], for_model=True)
+        assert "  Triage owed: 0 needs-triage + 1 with no role label" in owed
+        assert "Triage owed" not in done
+
+
+class TestCloudBanner:
+    def _run(
+        self, monkeypatch: pytest.MonkeyPatch, *argv: str
+    ) -> tuple[str, list[str]]:
+        sent: list[str] = []
+        monkeypatch.setattr(sd, "collect_findings", list)
+        monkeypatch.setattr(sd, "fetch_issues", lambda: ([], ""))
+        monkeypatch.setattr(sd, "collect_core", lambda: ("", []))
+        monkeypatch.setattr("utils.telegram.send_telegram_message", sent.append)
+        monkeypatch.setattr("dotenv.load_dotenv", lambda: None)
+        monkeypatch.setattr("sys.argv", ["session_digest.py", *argv])
+        out = io.StringIO()
+        monkeypatch.setattr("sys.stdout", out)
+        sd.main()
+        return out.getvalue(), sent
+
+    def test_the_hook_opens_with_the_banner_in_a_cloud_session(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CLAUDE_CODE_REMOTE", "true")
+        out, _ = self._run(monkeypatch)
+        assert out.startswith("## CLOUD SESSION")
+        assert ".claude/context/cloud-sessions.md" in out.splitlines()[0]
+        assert "needs-triage, never ready-for-*" in out
+        assert "## Local session prompt" in out
+        assert "SESSION DIGEST" in out  # the digest still follows
+
+    @pytest.mark.parametrize("value", [None, "false", "1", "TRUE"])
+    def test_no_banner_unless_the_variable_is_exactly_true(
+        self, monkeypatch: pytest.MonkeyPatch, value: str | None
+    ) -> None:
+        if value is None:
+            monkeypatch.delenv("CLAUDE_CODE_REMOTE", raising=False)
+        else:
+            monkeypatch.setenv("CLAUDE_CODE_REMOTE", value)
+        out, _ = self._run(monkeypatch)
+        assert "CLOUD SESSION" not in out
+        assert out.startswith("SESSION DIGEST")
+
+    def test_the_telegram_push_never_carries_the_banner(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CLAUDE_CODE_REMOTE", "true")
+        out, sent = self._run(monkeypatch, "--telegram")
+        assert "CLOUD SESSION" not in out
+        assert len(sent) == 1
+        assert "CLOUD SESSION" not in sent[0]
 
 
 def _weekdays(start: date, end: date) -> list[date]:

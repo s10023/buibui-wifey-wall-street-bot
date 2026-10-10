@@ -179,6 +179,9 @@ each module does, because a second copy of the module map is what rotted the fir
 | `trade/` | Empty placeholder package marking the Phase B seam (both files are 0 bytes) — the fork's Binance order opener was stripped. Phase B fills it with an equities broker adapter | — |
 | `deploy/` | Verified local backup of `analytics.db`, the gitignored `docs/plans/` research tree and the memory tree (which lives outside the repo), plus **opt-in** `wifey-*` systemd user units and, in `deploy/windows/`, the same five jobs' Task Scheduler half (nothing installs either) | `deploy/README.md` |
 
+What a claude.ai cloud session (or Routine) lacks next to the laptop, and how it files Issues:
+`.claude/context/cloud-sessions.md`.
+
 Repo-root files: `Makefile` (dev & run commands), `Dockerfile` / `docker-compose.yml`,
 `pyproject.toml` (Poetry), `.env.example`, and `.github/workflows/` (`lint.yaml` CI,
 `docker-build.yaml`, `security-scan.yaml`).

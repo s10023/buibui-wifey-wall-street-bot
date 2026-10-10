@@ -23,6 +23,12 @@ Two properties are load-bearing (ported from fund-management's `open_issues.py`)
    a session, so a probe that raises becomes a BROKE line, never a traceback.
 2. A failure prints loudly. "Could not fetch Issues" and "no open Issues" must not
    look alike; a silent degrade teaches its reader to trust an empty list.
+
+In a claude.ai cloud session (``CLAUDE_CODE_REMOTE=true``) the hook output opens with
+a banner naming what that container lacks and the filing rule that follows
+(`.claude/context/cloud-sessions.md`); the digest is the one text every session reads
+before acting. Every session also gets a ``Triage owed`` count of Issues still
+waiting on a triage role. Ported from parent #1020.
 """
 
 from __future__ import annotations
@@ -32,7 +38,7 @@ import json
 import os
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -67,6 +73,13 @@ PRIORITIES = ("p1", "p2", "p3")
 #: Effort labels name the /effort level an Issue wants. Unset prints ``effort:?``
 #: so an unlabelled row is visible rather than silently defaulted.
 EFFORT_PREFIX = "effort:"
+
+#: The five triage roles (`docs/agents/triage-labels.md`). ``needs-triage`` is an
+#: explicit "not yet"; an Issue carrying none of them has had no decision at all.
+ROLES = ("needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix")
+
+#: Set by the claude.ai cloud harness and by nothing else.
+CLOUD_ENV = "CLAUDE_CODE_REMOTE"
 
 #: Telegram's hard cap is 4096 characters; leave room for the header.
 TELEGRAM_MAX_CHARS = 3800
@@ -310,6 +323,35 @@ def format_issue(issue: dict[str, Any]) -> str:
     return f"#{issue['number']} [{tags}] {issue['title']}"
 
 
+def triage_owed(issues: list[dict[str, Any]]) -> str | None:
+    """Issues still waiting on a triage role, or None once every one has a decision."""
+    named = [{lb["name"] for lb in i.get("labels", [])} for i in issues]
+    waiting = sum(1 for n in named if "needs-triage" in n)
+    no_role = sum(1 for n in named if not n & set(ROLES))
+    if not (waiting or no_role):
+        return None
+    return (
+        f"Triage owed: {waiting} needs-triage + {no_role} with no role label"
+        " — `/triage` (mattpocock-skills, local)"
+    )
+
+
+def cloud_banner(env: Mapping[str, str]) -> list[str]:
+    """The cloud-session warning, or nothing on any other host."""
+    if env.get(CLOUD_ENV) != "true":
+        return []
+    return [
+        "## CLOUD SESSION — not the laptop. Read .claude/context/cloud-sessions.md",
+        "   Absent here: analytics.db, docs/plans/ (handoff, task marks), the memory",
+        "   tree, .env keys, config/stocks.json, the term list, account plugins",
+        "   (mattpocock-skills included). The probe lines below grade THIS container,",
+        "   so their REDs say nothing about the laptop's scheduler, data or backups.",
+        "   File Issues as needs-triage, never ready-for-*. Work that needs the",
+        "   laptop carries a `## Local session prompt` block in its Issue body.",
+        "",
+    ]
+
+
 def handoff_first_moves(text: str) -> list[str]:
     """The handoff's `## ▶` headings: the moves the last session queued first."""
     return [
@@ -358,6 +400,9 @@ def render(
         lines.extend(f"  {format_issue(i)}" for i in shown)
         if len(shown) < len(issues):
             lines.append(f"  … and {len(issues) - len(shown)} more")
+        owed = triage_owed(issues)
+        if owed:
+            lines.append(f"  {owed}")
 
     if handoff is None:
         lines.append(f"Handoff: {HANDOFF} absent on this box")
@@ -621,14 +666,21 @@ def main() -> None:
         else None
     )
 
+    # The banner is for the model; the Telegram push runs on the laptop.
+    banner = [] if args.telegram else cloud_banner(os.environ)
     print(
-        render(
-            findings,
-            issues,
-            issues_error,
-            handoff,
-            for_model=not args.telegram,
-            core=core,
+        "\n".join(
+            [
+                *banner,
+                render(
+                    findings,
+                    issues,
+                    issues_error,
+                    handoff,
+                    for_model=not args.telegram,
+                    core=core,
+                ),
+            ]
         )
     )
 
