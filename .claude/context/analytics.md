@@ -115,6 +115,13 @@ added DDL column). An unparseable INSERT must be named in `EXEMPT_TABLES` /
   which is `make freshness-check`'s to grade. `go-live` and `session-digest` call this path
   `-`-prefixed, so its exit code stops neither. Pinned by
   `tests/test_analytics_runner.py::TestRunSyncTotalFailure` (mutation-checked) (#444).
+  yfinance does raise when it rejects one ticker's payload (AVB `1wk`, 2026-10-10: a Dividends
+  event it could not place on a weekly bar), which aborted the whole universe run mid-list.
+  `utils/yfinance_client.fetch_history` now re-raises any `YFException` except
+  `YFRateLimitError` as `ProviderError`, and `run_sync` counts it as one failed fetch and
+  continues; a rate limit still aborts, since every later call would hit it too.
+  `signal_runner`'s live loop does not catch `ProviderError`: it fails the cycle on purpose
+  rather than scan stale bars (#474).
   `sync(conn, symbol, timeframe)`
   re-fetches from the latest stored `open_time` and delegates to `backfill`, so it inherits the
   gate and also guards the adjustment basis: the re-fetched overlap bar is the only point at which

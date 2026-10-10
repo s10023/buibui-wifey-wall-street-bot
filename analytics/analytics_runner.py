@@ -19,7 +19,7 @@ from utils.config_validation import (
     load_stocks_config,
     load_universe_policy,
 )
-from utils.yfinance_client import fetch_last_price
+from utils.yfinance_client import ProviderError, fetch_last_price
 
 
 def _resolve_symbols(
@@ -138,6 +138,13 @@ def run_sync(
                     attempted += 1
                     failed += 1
                     logging.warning("%s — fetch failed or symbol delisted", e)
+                    continue
+                except ProviderError as e:
+                    # One ticker's bad payload must not strand every member
+                    # after it (#474); it counts toward the all-failed exit.
+                    attempted += 1
+                    failed += 1
+                    logging.warning("%s — provider error, skipping", e)
                     continue
                 attempted += 1
                 logging.info(

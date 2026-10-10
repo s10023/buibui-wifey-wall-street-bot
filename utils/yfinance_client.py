@@ -14,6 +14,22 @@ from typing import cast
 
 import pandas as pd
 import yfinance as yf  # type: ignore[import-untyped]
+from yfinance.exceptions import (  # type: ignore[import-untyped]
+    YFException,
+    YFRateLimitError,
+)
+
+
+class ProviderError(RuntimeError):
+    """yfinance raised for one symbol and interval, other than a rate limit.
+
+    yfinance validates each response itself and raises for one ticker's bad
+    payload, e.g. a dividend it cannot place on a ``1wk`` bar (AVB, 2026-10-10,
+    #474). That says nothing about the next ticker, so a batch caller can skip
+    it. ``YFRateLimitError`` subclasses ``YFException`` but is left to
+    propagate: a rate limit applies to every later call too.
+    """
+
 
 YF_INTERVALS: dict[str, str] = {
     "1h": "60m",
@@ -56,15 +72,22 @@ def fetch_history(
     """
     yf_interval = YF_INTERVALS[interval]
     window = {"start": start} if start is not None else {"period": period}
-    raw = cast(
-        pd.DataFrame,
-        yf.Ticker(symbol).history(
-            **window,
-            interval=yf_interval,
-            auto_adjust=False,
-            actions=False,
-        ),
-    )
+    try:
+        raw = cast(
+            pd.DataFrame,
+            yf.Ticker(symbol).history(
+                **window,
+                interval=yf_interval,
+                auto_adjust=False,
+                actions=False,
+            ),
+        )
+    except YFRateLimitError:
+        raise
+    except YFException as exc:
+        raise ProviderError(
+            f"{symbol} {interval}: {type(exc).__name__}: {exc}"
+        ) from exc
     if raw.empty:
         return raw
     idx_utc = cast(pd.DatetimeIndex, raw.index).tz_convert("UTC").tz_localize(None)

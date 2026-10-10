@@ -8,6 +8,10 @@ from unittest.mock import MagicMock, patch
 import duckdb
 import pandas as pd
 import pytest
+from yfinance.exceptions import (  # type: ignore[import-untyped]
+    YFException,
+    YFRateLimitError,
+)
 
 from analytics import analytics_runner
 from analytics.data_fetcher import OHLCV_COLUMNS
@@ -175,6 +179,40 @@ class TestRunSyncTotalFailure:
         ]
         self._run(client)
         assert client.return_value.history.call_count == 2
+
+    def test_one_tickers_provider_error_does_not_strand_the_rest(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """#474: AVB `1wk` raised a Dividends out-of-range YFException on
+        2026-10-10 and aborted the run, leaving every later member unsynced."""
+        client = MagicMock()
+        client.return_value.history.side_effect = [
+            YFException("The following 'Dividends' events are out-of-range"),
+            _provider_frame(["2024-01-16 05:00"]),
+        ]
+        with caplog.at_level(logging.INFO):
+            self._run(client)  # exits 0: one of two fetches failed
+        assert client.return_value.history.call_count == 2
+        assert "AAPL 1d: YFException" in caplog.text
+        assert "Sync complete: MSFT 1d — 1 new rows" in caplog.text
+        assert "Sync summary: 1 of 2 fetches returned no data" in caplog.text
+
+    def test_provider_errors_on_every_fetch_still_exit_non_zero(self) -> None:
+        client = MagicMock()
+        client.return_value.history.side_effect = YFException("bad payload")
+        with pytest.raises(SystemExit) as exc:
+            self._run(client)
+        assert exc.value.code == 1
+        assert client.return_value.history.call_count == len(self.SYMBOLS)
+
+    def test_a_rate_limit_still_aborts_the_run(self) -> None:
+        """YFRateLimitError subclasses YFException, yet every later call would
+        hit the same limit, so it must not be skipped like a bad payload."""
+        client = MagicMock()
+        client.return_value.history.side_effect = YFRateLimitError()
+        with pytest.raises(YFRateLimitError):
+            self._run(client)
+        assert client.return_value.history.call_count == 1
 
     def test_unbackfilled_series_are_not_fetch_failures(self) -> None:
         """A series with no stored bars is skipped before any fetch."""
