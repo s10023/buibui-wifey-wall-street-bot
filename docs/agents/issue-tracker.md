@@ -58,6 +58,16 @@ lives in GitHub Issues" defines:
 `ready-for-agent` and `cloud-ok` are different claims: the first says the Issue is fully
 specified, the second says where it can run.
 
+## Filing from a cloud session
+
+A cloud session may have no `/triage` (the plugin is account-level) and has none of the laptop's
+gitignored state, so it files differently. **Every Issue it files carries `needs-triage` and no
+other role**: granting `ready-for-agent` or `ready-for-human` is `/triage`'s call. Work that needs
+the laptop gets a `## Local session prompt` block, a quoted prompt the operator pastes into a
+local session as-is. Never leave such work as a chat prompt alone, since the container is
+reclaimed. The term list for `make post-branch-text` is absent there, so screen the body by
+reading it and say so. Detail: `.claude/context/cloud-sessions.md`.
+
 ## Specs from `/to-spec`
 
 A spec published by `/to-spec` also carries a `## Decision Log` section naming, for each
