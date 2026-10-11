@@ -30,7 +30,8 @@ backup tier; this does it for the two the backup probe cannot see:
   ran to the previous session while the bulk of the 505-member research universe
   had not moved since 2026-06-18. It also lists **level breaks**: a series that
   resumed after a gap at a different level, which is how a provider serving the
-  wrong security under a ticker shows in the stored tape (AVB, BNY `4h`; #469).
+  wrong security under a ticker shows in the stored tape (AVB, BNY `4h`; #469),
+  and every `4h` slot missing from a session that holds another bar (#327).
   And it lists every `migrations/0*.py` this DB has no `schema_migrations` row
   for, since a purge that never ran leaves its bad rows in what a study reads
   (007 sat unapplied here until #445; #467).
@@ -88,7 +89,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from analytics.backtest.cost_model import BARS_PER_DAY
-from analytics.data_quality import LEVEL_BREAK_GAP_DAYS, classify_level_break
+from analytics.data_quality import (
+    LEVEL_BREAK_GAP_DAYS,
+    _et_date,
+    classify_level_break,
+    detect_slot_gaps,
+)
 from analytics.store.schema_migrations import recorded_ids, script_ids
 from tools import host_platform
 
@@ -263,6 +269,9 @@ class OhlcvReport:
     # not the same claim as "every migration recorded". Advisory like the breaks:
     # a missed purge changes what a study reads, but it is not staleness.
     unrecorded_migrations: tuple[str, ...] | None = None
+    # `(symbol, slot open_time ms)` for each `4h` slot missing from a session
+    # that holds another bar (#327). Advisory like the breaks: absent data.
+    slot_gaps: tuple[tuple[str, int], ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -762,6 +771,56 @@ def read_level_breaks(db_path: Path) -> list[LevelBreakRow] | None:
     return gapped_breaks(rows)
 
 
+#: Every stored `4h` bar, grouped for a per-series slot scan.
+SLOT_GAP_SQL = """
+SELECT symbol, open_time FROM ohlcv WHERE timeframe = '4h'
+ORDER BY symbol, open_time
+"""
+
+BoundsFn = Callable[[date, date], list[tuple[date, int, int]]]
+
+
+def slot_gaps(
+    rows: Iterable[tuple[str, int]], bounds_fn: BoundsFn
+) -> list[tuple[str, int]]:
+    """Missing `4h` slots per symbol, from ``(symbol, open_time)`` rows. Pure."""
+    by_symbol: dict[str, list[int]] = {}
+    for symbol, t in rows:
+        by_symbol.setdefault(str(symbol), []).append(int(t))
+    if not by_symbol:
+        return []
+    every = [t for ts in by_symbol.values() for t in ts]
+    bounds = bounds_fn(_et_date(min(every)), _et_date(max(every)))
+    return [
+        (symbol, slot)
+        for symbol, ts in sorted(by_symbol.items())
+        for slot in detect_slot_gaps(ts, "4h", bounds).missing
+    ]
+
+
+def read_slot_gaps(db_path: Path) -> list[tuple[str, int]] | None:
+    """Missing `4h` slots across every stored series; None when unreadable."""
+    try:
+        import duckdb
+    except ImportError:  # pragma: no cover - duckdb is a runtime dep
+        return None
+    if not db_path.exists():
+        return None
+    try:
+        conn = duckdb.connect(str(db_path), read_only=True)
+    except Exception:
+        return None
+    try:
+        rows = conn.execute(SLOT_GAP_SQL).fetchall()
+    except Exception:
+        return None
+    finally:
+        conn.close()
+    from analytics.trading_calendar import nyse_session_bounds
+
+    return slot_gaps(rows, nyse_session_bounds)
+
+
 def unrecorded(script_ids: Sequence[str], recorded: frozenset[str]) -> tuple[str, ...]:
     """Scripts with no applied record, in script order. Pure."""
     return tuple(i for i in script_ids if i not in recorded)
@@ -933,6 +992,30 @@ def render_ohlcv(report: OhlcvReport) -> str:
             " provider's quote"
         )
         lines.append("        before purging; migration 007 (AVB) is the repair shape.")
+    if report.slot_gaps:
+        by_slot: dict[int, list[str]] = {}
+        for symbol, slot in report.slot_gaps:
+            by_slot.setdefault(slot, []).append(symbol)
+        lines.append(
+            f"      ! SLOT GAP  {len(report.slot_gaps)} missing 4h slot(s) in"
+            f" {len(by_slot)} session slot(s) otherwise present (#327)"
+        )
+        for slot, symbols in sorted(by_slot.items())[:10]:
+            label = datetime.fromtimestamp(slot / 1000, tz=UTC).strftime(
+                "%Y-%m-%d %H:%MZ"
+            )
+            shown = ", ".join(symbols[:4]) + ("…" if len(symbols) > 4 else "")
+            lines.append(f"          {label}  {len(symbols):>3} symbol(s): {shown}")
+        if len(by_slot) > 10:
+            lines.append(f"          … and {len(by_slot) - 10} more slots")
+        lines.append(
+            "        Advisory: nothing was dropped. Re-fetch with"
+            " `make wifey-analytics-backfill"
+        )
+        lines.append(
+            "        TIMEFRAMES=4h SINCE=<date> SYMBOLS=…`; a slot the provider"
+            " no longer serves stays missing."
+        )
     if report.unrecorded_migrations:
         lines.append(
             f"      ! UNRECORDED MIGRATION  {len(report.unrecorded_migrations)}"
@@ -1017,6 +1100,7 @@ def collect(
             ohlcv,
             level_breaks=tuple(read_level_breaks(db) or ()),
             unrecorded_migrations=read_unrecorded_migrations(db, migrations),
+            slot_gaps=tuple(read_slot_gaps(db) or ()),
         )
     return signal, ohlcv
 

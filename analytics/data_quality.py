@@ -9,7 +9,9 @@ unambiguous timestamp anomalies (duplicates, non-monotonic order). Calendar-awar
 *session-gap* detection lives in the pure ``detect_session_gaps`` /
 ``SessionGapReport`` below, fed an NYSE trading-date list by
 ``analytics.trading_calendar`` (the only module importing ``exchange_calendars``).
-Missing sessions are warn-only — absent data, never quarantined.
+Missing sessions are warn-only — absent data, never quarantined. For `4h`,
+``detect_slot_gaps`` / ``SlotGapReport`` also name a missing slot inside a
+session that is otherwise present, from calendar open/close bounds.
 
 A frozen tail (``series_ends_here=True``) is the one quarantine set that is a
 property of the *series* rather than of a row, so it is opt-in per call: see
@@ -302,6 +304,108 @@ def detect_session_gaps(
         unit=unit,
         n_present=len(present_keys),
         n_expected=len(expected_keys),
+        missing=missing,
+    )
+
+
+# --- 4h slot gaps: a session present but short a bar -------------------------
+#
+# `detect_session_gaps` counts a session present when it holds any bar, so a
+# `4h` session missing one of its two RTH slots passes as complete (#327). The
+# slots sit on the fixed UTC grid `data_fetcher._resample_to_4h` bins on
+# (13:30 / 17:30 UTC in every season), never on an ET wall-clock hour.
+
+_HOUR_MS = 3_600_000
+_SLOT_MS = 4 * _HOUR_MS
+_SLOT_ORIGIN_MS = 13 * _HOUR_MS + 30 * 60_000  # 13:30 UTC
+# A bin is expected only when a full session hour falls inside it. Yahoo omits
+# the final partial hour of an early close (12:30-13:00 ET on 2025-11-28 and
+# 2025-12-24, both winter), so a bin overlapping the session by 30 minutes
+# holds no bar, while a regular close's half hour lands in a bin that already
+# holds three full hours.
+_MIN_SLOT_OVERLAP_MS = _HOUR_MS
+
+
+def expected_4h_slots(open_ms: int, close_ms: int) -> tuple[int, ...]:
+    """The 4h grid slots (UTC epoch ms) one NYSE session should fill. Pure."""
+    day_ms = open_ms - open_ms % 86_400_000
+    first = day_ms + _SLOT_ORIGIN_MS - _SLOT_MS  # 09:30 UTC, before any open
+    slots = []
+    s = first
+    while s < close_ms:
+        overlap = min(s + _SLOT_MS, close_ms) - max(s, open_ms)
+        if overlap >= _MIN_SLOT_OVERLAP_MS:
+            slots.append(s)
+        s += _SLOT_MS
+    return tuple(slots)
+
+
+@dataclass(frozen=True)
+class SlotGapReport:
+    """Missing `4h` slots inside sessions that hold at least one bar.
+
+    A wholly absent session is ``SessionGapReport``'s finding and is not
+    repeated here. Warn-only, like session gaps.
+    """
+
+    timeframe: str
+    n_present: int
+    n_expected: int
+    missing: tuple[int, ...]  # UTC epoch-ms open_time of each missing slot
+
+    @property
+    def n_missing(self) -> int:
+        return len(self.missing)
+
+    @property
+    def has_gaps(self) -> bool:
+        return bool(self.missing)
+
+    def summary(self) -> str:
+        if not self.missing:
+            return f"no slot gaps ({self.n_present} slots present)"
+        sample = ", ".join(_slot_label(t) for t in self.missing[:5])
+        more = "" if self.n_missing <= 5 else f", +{self.n_missing - 5} more"
+        return (
+            f"{self.n_missing} slot gap(s) "
+            f"({self.n_present}/{self.n_expected} present): {sample}{more}"
+        )
+
+
+def _slot_label(open_time_ms: int) -> str:
+    return pd.Timestamp(open_time_ms, unit="ms", tz="UTC").strftime("%Y-%m-%d %H:%MZ")
+
+
+def detect_slot_gaps(
+    open_times: Sequence[int],
+    timeframe: str,
+    session_bounds: Sequence[tuple[date, int, int]],
+) -> SlotGapReport:
+    """Find `4h` slots absent from sessions that are otherwise present (pure).
+
+    ``session_bounds`` is ``(session date, open ms, close ms)`` per NYSE session,
+    supplied by ``analytics.trading_calendar`` so an early close expects one
+    slot. Only slots within the observed ``[min, max]`` open_time are expected,
+    so a forming or not-yet-synced edge is not a gap. Any other timeframe
+    returns an empty report.
+    """
+    if timeframe != "4h" or not open_times:
+        return SlotGapReport(timeframe, 0, 0, ())
+    present = set(open_times)
+    present_dates = {_et_date(t) for t in present}
+    lo, hi = min(present), max(present)
+    expected = [
+        s
+        for d, open_ms, close_ms in session_bounds
+        if d in present_dates
+        for s in expected_4h_slots(open_ms, close_ms)
+        if lo <= s <= hi
+    ]
+    missing = tuple(s for s in expected if s not in present)
+    return SlotGapReport(
+        timeframe=timeframe,
+        n_present=len(expected) - len(missing),
+        n_expected=len(expected),
         missing=missing,
     )
 

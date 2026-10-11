@@ -4,7 +4,12 @@ from datetime import date
 
 import pandas as pd
 
-from analytics.trading_calendar import check_session_gaps, nyse_sessions
+from analytics.trading_calendar import (
+    check_session_gaps,
+    check_slot_gaps,
+    nyse_session_bounds,
+    nyse_sessions,
+)
 
 
 def _ohlcv(open_times: list[int], timeframe: str) -> pd.DataFrame:
@@ -97,3 +102,80 @@ def test_check_session_gaps_empty_frame() -> None:
     rep = check_session_gaps(_ohlcv([], "1d"), "1d")
     assert rep.n_present == 0
     assert rep.has_gaps is False
+
+
+def _slot(d: date, hh: int, mm: int) -> int:
+    ts = pd.Timestamp(
+        year=d.year, month=d.month, day=d.day, hour=hh, minute=mm, tz="UTC"
+    )
+    return int(ts.value // 1_000_000)
+
+
+class TestCheckSlotGaps:
+    """4h slot gaps against the real XNYS schedule (#327)."""
+
+    def test_full_session_missing_second_slot_reports_that_slot(self) -> None:
+        # 2026-01-30 (winter, regular close), the shape of the measured hole.
+        d0, d1, d2 = date(2026, 1, 29), date(2026, 1, 30), date(2026, 2, 2)
+        ots = [
+            _slot(d0, 13, 30),
+            _slot(d0, 17, 30),
+            _slot(d1, 13, 30),
+            _slot(d2, 13, 30),
+            _slot(d2, 17, 30),
+        ]
+        rep = check_slot_gaps(_ohlcv(ots, "4h"), "4h")
+        assert rep.missing == (_slot(d1, 17, 30),)
+        assert rep.n_expected == 6
+
+    def test_winter_early_close_single_bar_is_not_a_gap(self) -> None:
+        # 2025-11-28 closes 18:00 UTC: the 17:30 bin overlaps by 30 minutes only.
+        days = [date(2025, 11, 26), date(2025, 11, 28), date(2025, 12, 1)]
+        ots = [_slot(days[0], 13, 30), _slot(days[0], 17, 30)]
+        ots += [_slot(days[1], 13, 30)]
+        ots += [_slot(days[2], 13, 30), _slot(days[2], 17, 30)]
+        assert not check_slot_gaps(_ohlcv(ots, "4h"), "4h").has_gaps
+
+    def test_summer_early_close_single_bar_is_not_a_gap(self) -> None:
+        days = [date(2024, 7, 2), date(2024, 7, 3), date(2024, 7, 5)]
+        ots = [_slot(days[0], 13, 30), _slot(days[0], 17, 30)]
+        ots += [_slot(days[1], 13, 30)]
+        ots += [_slot(days[2], 13, 30), _slot(days[2], 17, 30)]
+        assert not check_slot_gaps(_ohlcv(ots, "4h"), "4h").has_gaps
+
+    def test_positive_control_single_bar_on_a_full_session_is_reported(self) -> None:
+        # The same one-bar shape on 2025-11-25, a regular session, must report.
+        days = [date(2025, 11, 24), date(2025, 11, 25), date(2025, 11, 26)]
+        ots = [_slot(days[0], 13, 30), _slot(days[0], 17, 30)]
+        ots += [_slot(days[1], 13, 30)]
+        ots += [_slot(days[2], 13, 30), _slot(days[2], 17, 30)]
+        rep = check_slot_gaps(_ohlcv(ots, "4h"), "4h")
+        assert rep.missing == (_slot(days[1], 17, 30),)
+
+    def test_forming_edge_is_not_a_gap(self) -> None:
+        # The newest session holds only its first slot: not yet a gap.
+        d0, d1 = date(2026, 1, 29), date(2026, 1, 30)
+        ots = [_slot(d0, 13, 30), _slot(d0, 17, 30), _slot(d1, 13, 30)]
+        assert not check_slot_gaps(_ohlcv(ots, "4h"), "4h").has_gaps
+
+    def test_whole_missing_session_is_left_to_session_gaps(self) -> None:
+        d0, d2 = date(2026, 1, 29), date(2026, 2, 2)
+        ots = [_slot(d0, 13, 30), _slot(d0, 17, 30)]
+        ots += [_slot(d2, 13, 30), _slot(d2, 17, 30)]
+        assert not check_slot_gaps(_ohlcv(ots, "4h"), "4h").has_gaps
+        assert check_session_gaps(_ohlcv(ots, "4h"), "4h").missing == (
+            date(2026, 1, 30),
+        )
+
+    def test_daily_and_weekly_give_an_empty_report(self) -> None:
+        df = _ohlcv([_ot(date(2024, 1, 2)), _ot(date(2024, 1, 4))], "1d")
+        for tf in ("1d", "1wk"):
+            rep = check_slot_gaps(df, tf)
+            assert (rep.n_expected, rep.missing) == (0, ())
+
+
+def test_session_bounds_carry_the_early_close() -> None:
+    bounds = nyse_session_bounds(date(2025, 11, 26), date(2025, 11, 28))
+    closes = {d: c for d, _, c in bounds}
+    assert closes[date(2025, 11, 28)] == _slot(date(2025, 11, 28), 18, 0)
+    assert closes[date(2025, 11, 26)] == _slot(date(2025, 11, 26), 21, 0)

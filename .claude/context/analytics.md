@@ -236,6 +236,14 @@ pass-through, so behaviour (and regression goldens) are unchanged on good data.
   comes from `trading_calendar.nyse_sessions`. `SessionGapReport` carries `timeframe`, `unit`,
   `n_present`, `n_expected`, `missing`, plus `n_missing` / `has_gaps` / `summary()`.
   `data_sync.backfill` logs this warn-only: a missing session is absent data, never quarantined.
+- `4h` slot gaps (#327): `detect_slot_gaps(open_times, timeframe, session_bounds) -> SlotGapReport`
+  names each missing slot inside a session that holds another bar (a wholly absent session stays
+  `SessionGapReport`'s finding). Slots are the fixed UTC grid `_resample_to_4h` bins on (13:30 /
+  17:30 UTC in every season), and `expected_4h_slots(open_ms, close_ms)` expects a bin only when a
+  full session hour falls inside it, because Yahoo omits an early close's final partial hour; an
+  early close in either season therefore expects one slot. Expected slots clamp to the observed
+  `[min, max]` open_time, so a forming edge is not a gap. Any timeframe but `4h` returns an empty
+  report. `data_sync.backfill` logs it warn-only beside session gaps.
 
 ## trading_calendar.py — NYSE trading-calendar wrapper
 
@@ -243,6 +251,7 @@ The **only** module importing `exchange_calendars`. No DB; one process-lifetime 
 
 - `nyse_sessions(start, end) -> list[date]` — NYSE (`XNYS`) session dates in `[start, end]`, weekends/holidays excluded, sorted. The calendar is built with an explicit `1990-01-01` start (not the library's rolling today-minus-20y default), and every query is clamped to its `[first_session, last_session]` window so out-of-range dates degrade to fewer/zero sessions rather than raising `DateOutOfBounds` (gap detection is warn-only and must never crash ingestion).
 - `check_session_gaps(df, timeframe) -> SessionGapReport` — bridge: derives the observed ET session-date range from `df["open_time"]`, fetches the spanning NYSE sessions, and delegates to the pure `data_quality.detect_session_gaps`. Empty frame → empty (no-gap) report. Consumed by `data_sync.backfill`.
+- `nyse_session_bounds(start, end) -> list[(date, open_ms, close_ms)]` — the schedule's real open and close per session (early closes included), clamped like `nyse_sessions`. `check_slot_gaps(df, timeframe) -> SlotGapReport` bridges it to the pure `data_quality.detect_slot_gaps`; consumed by `data_sync.backfill` and `tools/freshness_check.py`.
 
 ## pundit_direction.py / pundit_horizon.py / pundit_authors.py — ledger enum guards
 
