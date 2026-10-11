@@ -552,7 +552,9 @@ audit are in `.claude/context/footguns.md`.
   (`TestBarsPerDayIsShared`), and `min_periods` clamps to the window via `atr_window_bars`. A
   wall-clock hour is not a stable key either: `4h` sits on a fixed UTC grid (13:30 / 17:30 UTC),
   which is 09:30 / 13:30 ET in summer and 08:30 / 12:30 ET in winter, so anything keyed on an ET
-  hour mislabels every winter bar. Narrative: `.claude/context/footguns.md`.
+  hour mislabels every winter bar. Yahoo's 1h archive can lose hours after the fact
+  (2026-01-30 / 02-02, #327), so a re-backfill inherits the hole while bars stored earlier
+  survive; a re-fetch is not a repair. Narrative: `.claude/context/footguns.md`.
 
 #### Statistics
 
