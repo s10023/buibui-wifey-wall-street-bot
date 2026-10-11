@@ -47,7 +47,7 @@ from analytics.data_store import (
     get_latest_open_time,
     upsert_ohlcv,
 )
-from analytics.trading_calendar import check_session_gaps
+from analytics.trading_calendar import check_session_gaps, check_slot_gaps
 
 #: Relative move in the re-fetched overlap bar's close that means the provider
 #: restated the series rather than merely finalising a forming candle.
@@ -144,6 +144,11 @@ def _store_page(
         if gap_report.has_gaps:
             logging.warning(
                 "session gap %s %s: %s", symbol, timeframe, gap_report.summary()
+            )
+        slot_report = check_slot_gaps(clean, timeframe)
+        if slot_report.has_gaps:
+            logging.warning(
+                "slot gap %s %s: %s", symbol, timeframe, slot_report.summary()
             )
 
     _warn_level_breaks(

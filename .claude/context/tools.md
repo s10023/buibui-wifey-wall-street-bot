@@ -710,6 +710,12 @@ It also lists **unrecorded migrations** (#467): every `migrations/0*.py` with no
 `.claude/context/migrations.md`). `None` means the DB was unreadable and renders nothing; it is
 not a claim that every migration is recorded. Advisory like the breaks.
 
+It also lists **`4h` slot gaps** (#327): `read_slot_gaps` reads every stored `4h` bar and runs
+`data_quality.detect_slot_gaps` per symbol against `trading_calendar.nyse_session_bounds`, and the
+render groups the findings by slot, since a provider hole hits every symbol at once. Advisory like
+the breaks; `ok` ignores it. Its first run listed 180 bars in two slots (2026-01-30 17:30Z,
+2026-02-02 13:30Z), 90 symbols each, and none on the six early closes.
+
 `collect()` is the I/O half `main` and `session_digest.py` share, and `timer_enabled(timer)` is the
 generic form of `universe_timer_enabled`, so the digest can ask the same question of
 `wifey-signal-watch.timer`.

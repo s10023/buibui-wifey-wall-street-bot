@@ -11,9 +11,12 @@ from analytics.data_quality import (
     LARGE_BREAK_LN,
     DataQualityReport,
     SessionGapReport,
+    SlotGapReport,
     check_ohlcv,
     classify_level_break,
     detect_session_gaps,
+    detect_slot_gaps,
+    expected_4h_slots,
     find_level_breaks,
     quarantine,
     quote_disagrees,
@@ -409,3 +412,44 @@ class TestQuoteDisagrees:
     def test_an_unreadable_quote_is_no_evidence(self) -> None:
         assert not quote_disagrees(68.93, None)
         assert not quote_disagrees(68.93, 0.0)
+
+
+class TestExpected4hSlots:
+    """The pure slot expectation behind `detect_slot_gaps` (#327)."""
+
+    @staticmethod
+    def _ms(hh: int, mm: int) -> int:
+        return int(pd.Timestamp(2026, 1, 30, hh, mm, tz="UTC").value // 1_000_000)
+
+    def test_regular_winter_session_expects_both_grid_slots(self) -> None:
+        got = expected_4h_slots(self._ms(14, 30), self._ms(21, 0))
+        assert got == (self._ms(13, 30), self._ms(17, 30))
+
+    def test_regular_summer_session_expects_both_grid_slots(self) -> None:
+        got = expected_4h_slots(self._ms(13, 30), self._ms(20, 0))
+        assert got == (self._ms(13, 30), self._ms(17, 30))
+
+    def test_early_closes_expect_one_slot_in_either_season(self) -> None:
+        assert expected_4h_slots(self._ms(14, 30), self._ms(18, 0)) == (
+            self._ms(13, 30),
+        )
+        assert expected_4h_slots(self._ms(13, 30), self._ms(17, 0)) == (
+            self._ms(13, 30),
+        )
+
+    def test_detect_ignores_other_timeframes(self) -> None:
+        rep = detect_slot_gaps([self._ms(13, 30)], "1d", [])
+        assert isinstance(rep, SlotGapReport)
+        assert rep.n_expected == 0 and not rep.has_gaps
+
+    def test_summary_names_the_slot_in_utc(self) -> None:
+        day = 86_400_000
+        d0, d1 = date(2026, 1, 30), date(2026, 1, 31)
+        bounds = [
+            (d0, self._ms(14, 30), self._ms(21, 0)),
+            (d1, self._ms(14, 30) + day, self._ms(21, 0) + day),
+        ]
+        ots = [self._ms(13, 30), self._ms(13, 30) + day, self._ms(17, 30) + day]
+        rep = detect_slot_gaps(ots, "4h", bounds)
+        assert rep.missing == (self._ms(17, 30),)
+        assert "2026-01-30 17:30Z" in rep.summary()

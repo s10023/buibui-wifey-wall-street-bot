@@ -17,7 +17,12 @@ from typing import Any
 import exchange_calendars as xcals
 import pandas as pd
 
-from analytics.data_quality import SessionGapReport, detect_session_gaps
+from analytics.data_quality import (
+    SessionGapReport,
+    SlotGapReport,
+    detect_session_gaps,
+    detect_slot_gaps,
+)
 from analytics.data_quality import _et_date as _session_date
 
 _CALENDAR_NAME = "XNYS"  # exchange_calendars' code for NYSE
@@ -68,3 +73,40 @@ def check_session_gaps(df: pd.DataFrame, timeframe: str) -> SessionGapReport:
     hi = max(_session_date(t) for t in open_times)
     sessions = nyse_sessions(lo, hi)
     return detect_session_gaps(open_times, timeframe, sessions)
+
+
+def nyse_session_bounds(start: date, end: date) -> list[tuple[date, int, int]]:
+    """``(session date, open ms, close ms)`` per NYSE session in ``[start, end]``.
+
+    Open and close are UTC epoch ms from the calendar's schedule, so an early
+    close carries its real close. Clamped like ``nyse_sessions``.
+    """
+    if end < start:
+        return []
+    cal = _calendar()
+    lo = max(pd.Timestamp(start), cal.first_session)
+    hi = min(pd.Timestamp(end), cal.last_session)
+    if hi < lo:
+        return []
+    sched = cal.schedule.loc[lo:hi]
+    return [
+        (
+            ts.date(),
+            int(pd.Timestamp(o).value // 1_000_000),
+            int(pd.Timestamp(c).value // 1_000_000),
+        )
+        for ts, o, c in zip(sched.index, sched["open"], sched["close"], strict=True)
+    ]
+
+
+def check_slot_gaps(df: pd.DataFrame, timeframe: str) -> SlotGapReport:
+    """Calendar-backed bridge: missing `4h` slots in sessions that hold a bar.
+
+    Any timeframe other than `4h`, or an empty frame, gives an empty report.
+    """
+    if timeframe != "4h" or df.empty:
+        return detect_slot_gaps([], timeframe, [])
+    open_times = [int(t) for t in df["open_time"].tolist()]
+    lo = min(_session_date(t) for t in open_times)
+    hi = max(_session_date(t) for t in open_times)
+    return detect_slot_gaps(open_times, timeframe, nyse_session_bounds(lo, hi))

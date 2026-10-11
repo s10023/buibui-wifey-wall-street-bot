@@ -40,6 +40,7 @@ from tools.freshness_check import (
     latest_session,
     read_level_breaks,
     read_scheduled_symbols,
+    read_slot_gaps,
     read_universe_symbols,
     read_watermarks,
     render_ohlcv,
@@ -586,3 +587,56 @@ class TestLevelBreaks:
 
     def test_no_break_renders_no_section(self) -> None:
         assert "LEVEL BREAK" not in render_ohlcv(OhlcvReport([], 13, 0, None, None))
+
+
+class TestSlotGaps:
+    """The `4h` slot-gap leg (#327): advisory, grouped by slot."""
+
+    @staticmethod
+    def _ms(d: date, hh: int, mm: int) -> int:
+        ts = datetime(d.year, d.month, d.day, hh, mm, tzinfo=UTC)
+        return int(ts.timestamp() * 1000)
+
+    def _rows(self, symbol: str, *, hole: bool) -> list[tuple[str, int]]:
+        d0, d1, d2 = date(2026, 1, 29), date(2026, 1, 30), date(2026, 2, 2)
+        slots = [(d0, 13), (d0, 17), (d1, 13), (d1, 17), (d2, 13), (d2, 17)]
+        if hole:
+            slots.remove((d1, 17))
+        return [(symbol, self._ms(d, h, 30)) for d, h in slots]
+
+    def test_a_real_db_lists_only_the_holed_series(self, tmp_path: Path) -> None:
+        import duckdb
+
+        db = tmp_path / "analytics.db"
+        conn = duckdb.connect(str(db))
+        conn.execute(
+            "CREATE TABLE ohlcv (symbol VARCHAR, timeframe VARCHAR, open_time BIGINT)"
+        )
+        rows = self._rows("AAPL", hole=True) + self._rows("MSFT", hole=False)
+        conn.executemany(
+            "INSERT INTO ohlcv VALUES (?, '4h', ?)", [(s, t) for s, t in rows]
+        )
+        # A daily bar on the holed session must not enter the 4h scan.
+        conn.execute(
+            "INSERT INTO ohlcv VALUES ('MSFT', '1d', ?)",
+            [self._ms(date(2026, 1, 30), 5, 0)],
+        )
+        conn.close()
+
+        assert read_slot_gaps(db) == [("AAPL", self._ms(date(2026, 1, 30), 17, 30))]
+
+    def test_an_absent_db_reads_none(self, tmp_path: Path) -> None:
+        assert read_slot_gaps(tmp_path / "nope.db") is None
+
+    def test_gaps_render_grouped_by_slot_and_never_fail_the_leg(self) -> None:
+        slot = self._ms(date(2026, 1, 30), 17, 30)
+        report = OhlcvReport(
+            [], 13, 0, None, None, slot_gaps=(("AAPL", slot), ("MSFT", slot))
+        )
+        assert report.ok
+        text = render_ohlcv(report)
+        assert "SLOT GAP  2 missing 4h slot(s) in 1 session slot(s)" in text
+        assert "2026-01-30 17:30Z    2 symbol(s): AAPL, MSFT" in text
+
+    def test_no_gap_renders_no_section(self) -> None:
+        assert "SLOT GAP" not in render_ohlcv(OhlcvReport([], 13, 0, None, None))
